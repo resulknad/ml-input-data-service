@@ -140,6 +140,14 @@ cc_library(
 )
 
 tf_kernel_library(
+    name = "add_one",
+    srcs = ["community_ops/add_one.cc"],
+    deps = [
+        "//tensorflow/core:framework",
+    ],
+)
+
+tf_kernel_library(
     name = "strided_slice_op",
     srcs = [
         "strided_slice_op.cc",

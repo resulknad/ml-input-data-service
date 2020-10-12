@@ -1005,6 +1005,7 @@ cc_library(
         "//tensorflow/c/kernels:histogram_summary_op",
         "//tensorflow/c/kernels:merge_summary_op",
         "//tensorflow/c/kernels:summary_op",
+        "//tensorflow/core/kernels:add_one",
         "//tensorflow/core/kernels:array",
         "//tensorflow/core/kernels:audio",
         "//tensorflow/core/kernels:batch_kernels",
