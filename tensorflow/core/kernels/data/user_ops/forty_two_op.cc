@@ -8,24 +8,17 @@ namespace tensorflow {
 namespace data {
 
 // @damien-aymon C++, why is redeclaration needed here?
-/* static */ constexpr const char* const FortyTwoDatasetOp::kDatasetType;
+// /* static */ constexpr const char* const FortyTwoDatasetOp::kDatasetType;
+constexpr char kInfiniteTake[] = "InfiniteFortyTwo";
 
 
-FortyTwoDataset::FortyTwoDataset(OpKernelContext* ctx,
-                                 const DatasetBase* input)
-    : DatasetBase(DatasetContext(ctx)),
-      input_dataset_(input) {
-  input_dataset_->Ref(); // increase reference count on dataset object.
-}
+FortyTwoDataset::FortyTwoDataset(OpKernelContext* ctx)
+    : DatasetBase(DatasetContext(ctx)) {}
 
-FortyTwoDataset::FortyTwoDataset(DatasetContext::Params params,
-                                 const DatasetBase* input)
-    : DatasetBase(DatasetContext(std::move(params))),
-      input_dataset_(input) {
-  input_dataset_->Ref(); // increase reference count on dataset object.
-}
+FortyTwoDataset::FortyTwoDataset(DatasetContext::Params params)
+    : DatasetBase(DatasetContext(std::move(params))) {}
 
-FortyTwoDataset::~FortyTwoDataset() { input_dataset_.Unref(); }
+FortyTwoDataset::~FortyTwoDataset() {}
 
 const DataTypeVector& FortyTwoDataset::output_dtypes() const {
   static DataTypeVector* dtypes = new DataTypeVector({DT_UINT8});
@@ -33,8 +26,8 @@ const DataTypeVector& FortyTwoDataset::output_dtypes() const {
 }
 
 const std::vector<PartialTensorShape>& FortyTwoDataset::output_shapes() const {
-  static TensorShape* shape = new TensorShape({1}})
-  return *shape;
+  std::vector<PartialTensorShape>* shapes{new TensorShape({1})}; 
+  return *shapes;
 }
 
 string FortyTwoDataset::DebugString() const {
@@ -45,7 +38,64 @@ Status FortyTwoDataset::CheckExternalState() {
   return Status::OK();
 }
 
+// See documentation in ../../ops/dataset_ops.cc for a high-level
+// description of the following op.
+std::unique_ptr<IteratorBase> FortyTwoDataset::MakeIteratorInternal(
+    const string& prefix) const {
+  return absl::make_unique<InfiniteIterator>(InfiniteIterator::Params{
+        this, name_utils::IteratorPrefix(kInfiniteTake, prefix)});
+  }
+}
 
+Status FortyTwoDataset::AsGraphDefInternal(SerializationContext* ctx,
+                                           DatasetGraphDefBuilder* b,
+                                           Node** output) const {
+  TF_RETURN_IF_ERROR(b->AddDataset(this, {}, output));
+  return Status::OK();
+}
+
+class FortyTwoDataset::InfiniteIterator : public DatasetIterator<FortyTwoDataset> {
+  public:
+  explicit InfiniteIterator(const Params& params)
+      : DatasetIterator<FortyTwoDataset>(params) {}
+
+  Status Initialize(IteratorContext* ctx) override {
+    return Status::OK();
+  }
+
+  Status GetNextInternal(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+                         bool* end_of_sequence) override {
+    out_tensors->clear();
+    out_tensors->add(new Tensor(42.0f));                        
+    return Status::OK();
+  }
+
+ protected:
+  std::shared_ptr<model::Node> CreateNode(
+      IteratorContext* ctx, model::Node::Args args) const override {
+    return model::MakeKnownRatioNode(std::move(args), 0);
+  }
+
+  Status SaveInternal(SerializationContext* ctx,
+                      IteratorStateWriter* writer) override {
+    return Status::OK();
+  }
+
+  Status RestoreInternal(IteratorContext* ctx,
+                         IteratorStateReader* reader) override {
+    return Status::OK();
+  }
+}
+
+FortyTwoDatasetOp::FortyTwoDatasetOp(OpKernelConstruction* ctx)
+    : UnaryDatasetOpKernel(ctx) {}
+
+
+void FortyTwoDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
+                                    DatasetBase** output) {
+  // Create a new TakeDatasetOp::Dataset, and return it as the output.
+  *output = new FortyTwoDataset(ctx);
+}
 
 namespace {
 REGISTER_KERNEL_BUILDER(Name("FortyTwoDataset").Device(DEVICE_CPU), FortyTwoDatasetOp);

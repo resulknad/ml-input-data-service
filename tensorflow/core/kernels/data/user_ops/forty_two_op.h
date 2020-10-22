@@ -13,13 +13,13 @@ the constant 42.
 #include "tensorflow/core/framework/dataset.h"
 
 namespace tensorflow {
-nanespace data {
+namespace data {
 
 class FortyTwoDataset : public DatasetBase {
   public:
-    FortyTwoDataset(OpKernelContext* ctx, const DatasetBase* input);
+    FortyTwoDataset(OpKernelContext* ctx);
     
-    FortyTwoDataset(DatasetContext::Params params, const DatasetBase* input);
+    FortyTwoDataset(DatasetContext::Params params);
 
     ~FortyTwoDataset() override;
 
@@ -34,21 +34,17 @@ class FortyTwoDataset : public DatasetBase {
 
   int64 Cardinality() const override;
 
-  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override;
-
   Status CheckExternalState() const override;
 
  protected:
   
   // Not implemented
-  /*Status AsGraphDefInternal(SerializationContext* ctx,
+  Status AsGraphDefInternal(SerializationContext* ctx,
                             DatasetGraphDefBuilder* b,
-                            Node** output) const override;*/
+                            Node** output) const override;
     
   private:
     class InfiniteIterator;
-
-    const DatasetBase* const input_dataset_;
 };
 
 

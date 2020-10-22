@@ -1178,6 +1178,19 @@ cc_library(
 )
 
 tf_kernel_library(
+    name = "forty_two_op",
+    srcs = ["user_ops/forty_two_op.cc"],
+    hdrs = ["user_ops/forty_two_op.h"],
+    deps = [
+        ":name_utils",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_kernel_library(
     name = "take_dataset_op",
     srcs = ["take_dataset_op.cc"],
     hdrs = ["take_dataset_op.h"],
@@ -1484,6 +1497,7 @@ tf_kernel_library(
         ":skip_dataset_op",
         ":sparse_tensor_slice_dataset_op",
         ":take_dataset_op",
+        ":forty_two_op",
         ":tensor_dataset_op",
         ":tensor_slice_dataset_op",
         ":text_line_dataset_op",
