@@ -17,9 +17,9 @@ namespace data {
 
 class FortyTwoDataset : public DatasetBase {
   public:
-    FortyTwoDataset(OpKernelContext* ctx);
+    FortyTwoDataset(OpKernelContext* ctx, const DatasetBase* input);
     
-    FortyTwoDataset(DatasetContext::Params params);
+    FortyTwoDataset(DatasetContext::Params params, const DatasetBase* input);
 
     ~FortyTwoDataset() override;
 
@@ -32,19 +32,18 @@ class FortyTwoDataset : public DatasetBase {
 
   string DebugString() const override;
 
-  int64 Cardinality() const override;
-
   Status CheckExternalState() const override;
 
  protected:
-  
-  // Not implemented
+
   Status AsGraphDefInternal(SerializationContext* ctx,
                             DatasetGraphDefBuilder* b,
                             Node** output) const override;
     
   private:
     class InfiniteIterator;
+  const DatasetBase* const input_;
+
 };
 
 

@@ -25,13 +25,13 @@ FortyTwoDataset::FortyTwoDataset(DatasetContext::Params params, const DatasetBas
 FortyTwoDataset::~FortyTwoDataset() { input_->Unref(); }
 
 const DataTypeVector& FortyTwoDataset::output_dtypes() const {
-  static DataTypeVector* dtypes = new DataTypeVector({DT_UINT64});
+  static DataTypeVector* dtypes = new DataTypeVector({DT_INT64});
   return *dtypes;
 }
 
 const std::vector<PartialTensorShape>& FortyTwoDataset::output_shapes() const {
   std::vector<PartialTensorShape>* shapes = new std::vector<PartialTensorShape>(); 
-  shapes->push_back(TensorShape({1})); 
+  shapes->push_back(TensorShape()); 
   return *shapes;
 }
 
@@ -55,7 +55,8 @@ class FortyTwoDataset::InfiniteIterator : public DatasetIterator<FortyTwoDataset
   Status GetNextInternal(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
                          bool* end_of_sequence) override {
     out_tensors->clear();
-    out_tensors->push_back(Tensor(42u));                        
+    int64 val = 42;
+    out_tensors->push_back(Tensor(val));                        
     return Status::OK();
   }
 
