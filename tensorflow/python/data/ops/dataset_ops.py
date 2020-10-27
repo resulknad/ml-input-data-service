@@ -1338,6 +1338,9 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     """
     return TakeDataset(self, count)
 
+  def forty_two(self):
+    return FortyTwoDataset(self)
+
   def skip(self, count):
     """Creates a `Dataset` that skips `count` elements from this dataset.
 
@@ -3777,6 +3780,15 @@ class TakeDataset(UnaryUnchangedStructureDataset):
         count=self._count,
         **self._flat_structure)
     super(TakeDataset, self).__init__(input_dataset, variant_tensor)
+
+
+class FortyTwoDataset(UnaryUnchangedStructureDataset):
+
+  def __init__(self, input_dataset):
+    self._input_dataset = input_dataset
+    variant_tensor = gen_dataset_ops.forty_two_dataset(input_dataset._variant_tensor, **self._flat_structure)
+    super(FortyTwoDataset, self).__init__(input_dataset, variant_tensor)
+
 
 
 class SkipDataset(UnaryUnchangedStructureDataset):
