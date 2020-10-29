@@ -9,15 +9,16 @@ namespace grappler {
 // This optimization adds 'forty_two_dataset_op'
 // at the end of the tf.data pipeline.
 class AppendFortyTwo : public TFDataOptimizerBase {
+  public:
   AppendFortyTwo() = default;
   ~AppendFortyTwo() override = default;
 
   string name() const override { return "append_forty_two"; };
 
-  bool UsesFunctionLibrary() const override { return false };
+  bool UsesFunctionLibrary() const override { return false; };
 
   Status Init(
-      const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
+    const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
     // Ignore configuration
     return Status::OK();
   }
@@ -29,7 +30,7 @@ class AppendFortyTwo : public TFDataOptimizerBase {
   void Feedback(Cluster* cluster, const GrapplerItem& item,
                 const GraphDef& optimize_output, double result) override;
 
-}
+};
 
 } // namespace grappler
 } // namespace tensorflow
