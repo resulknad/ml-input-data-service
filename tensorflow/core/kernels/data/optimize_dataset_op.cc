@@ -123,6 +123,7 @@ void OptimizeDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
     metrics::RecordTFDataExperiment(experiment);
   }
 
+
   // If there are no optimizations to be applied, directly return the input.
   if (optimizations.empty()) {
     *output = input;

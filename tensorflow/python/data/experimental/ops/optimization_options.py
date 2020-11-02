@@ -214,6 +214,13 @@ class OptimizationOptions(options.OptionsBase):
       docstring="Whether to fuse shuffle and repeat transformations. If None, "
       "defaults to True.")
 
+  append_forty_two = options.create_option(
+      name="append_forty_two",
+      ty=bool,
+      docstring="Wether to append the custom forty_two_dataset_op at the end"
+      "of the pipeline. If None, defaults to false."
+  )
+
   def _autotune_buffers(self):
     if self.autotune_buffers is not None:
       return self.autotune_buffers
@@ -253,11 +260,6 @@ class OptimizationOptions(options.OptionsBase):
         that are enabled by default (the user has not explicitly enabled or
         disabled them).
     """
-    if self.map_vectorization is not None:
-      result = self.map_vectorization._graph_rewrites()  # pylint: disable=protected-access
-    else:
-      result = MapVectorizationOptions()._graph_rewrites()  # pylint: disable=protected-access
-
     all_optimizations = [
         "filter_fusion",
         "filter_with_random_uniform_fusion",
@@ -271,6 +273,31 @@ class OptimizationOptions(options.OptionsBase):
         "reorder_data_discarding_ops",
         "shuffle_and_repeat_fusion",
     ]
+
+    # If append_forty_two option is set to True, only set all options to disable and return.
+    if self.append_forty_two is True:
+      # disables mapVectorization
+      result = MapVectorizationOptions()._graph_rewrites()  # pylint: disable=protected-access
+      # enable append_forty_two
+      result.enabled.append("append_forty_two")
+      
+      # Explicitly disable all other optimizations
+      # @damien-aymon note: may not be needed.
+      for optimization in all_optimizations:
+        result.disabled.append(optimization)
+
+      result.disabled.append("autotune_buffer_sizes")
+      result.disabled.append("disable_prefetch_legacy_autotune")
+
+      return result
+    
+        
+    if self.map_vectorization is not None:
+      result = self.map_vectorization._graph_rewrites()  # pylint: disable=protected-access
+    else:
+      result = MapVectorizationOptions()._graph_rewrites()  # pylint: disable=protected-access
+
+    
 
     if self.apply_default_optimizations is not False:  # pylint: disable=g-bool-id-comparison
       # The following optimizations are turned on by default, unless the user
