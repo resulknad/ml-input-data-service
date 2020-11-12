@@ -307,6 +307,18 @@ Status DataServiceDispatcherImpl::MakeSplitProvider(
   return Status::OK();
 }
 
+Status DataServiceDispatcherImpl::UpdateMetadata(
+    const UpdateMetadataRequest* request,
+    UpdateMetadataResponse* response) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  uint64 fingerprint = request->fingerprint();
+  int64 update = request->update();
+  // TODO(damien-aymon) check if started?
+  mutex_lock l(mu_);
+  TF_RETURN_IF_ERROR( metadata_store_.UpdateMetadata(fingerprint, update));
+  VLOG3() << "Updated metadata for fingerprint " << fingerprint;
+  return Status::OK();
+}
+
 Status DataServiceDispatcherImpl::GetOrRegisterDataset(
     const GetOrRegisterDatasetRequest* request,
     GetOrRegisterDatasetResponse* response) {

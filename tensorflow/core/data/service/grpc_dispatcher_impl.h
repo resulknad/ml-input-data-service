@@ -49,6 +49,7 @@ class GrpcDispatcherImpl : public DispatcherService::Service {
   HANDLER(GetOrCreateJob);
   HANDLER(GetTasks);
   HANDLER(GetWorkers);
+  HANDLER(UpdateMetadata);
 #undef HANDLER
 
  private:

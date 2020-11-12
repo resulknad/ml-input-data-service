@@ -120,6 +120,13 @@ message GetWorkersResponse {
   repeated WorkerInfo workers = 1;
 }
 
+message UpdateMetadataRequest {
+  int64 id = 1;
+  int64 update = 2;
+}
+
+message UpdateMetadataResponse {}
+
 service DispatcherService {
   // Performs a periodic worker heartbeat.
   rpc WorkerHeartbeat(WorkerHeartbeatRequest) returns (WorkerHeartbeatResponse);
@@ -156,4 +163,7 @@ service DispatcherService {
 
   // Reports a list of all workers registered with the dispatcher.
   rpc GetWorkers(GetWorkersRequest) returns (GetWorkersResponse);
+
+  // Applies the metadata update to the metadata store.
+  rpc UpdateMetadata(UpdateMetadataRequest) returns (UpdateMetadataResponse);
 }

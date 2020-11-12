@@ -50,6 +50,7 @@ HANDLER(ReleaseJobClient);
 HANDLER(GetOrCreateJob);
 HANDLER(GetTasks);
 HANDLER(GetWorkers);
+HANDLER(UpdateMetadata);
 #undef HANDLER
 
 }  // namespace data

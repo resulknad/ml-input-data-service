@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/dataset_store.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/dispatcher_state.h"
+#include "tensorflow/core/data/service/metadata_store.h"
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -64,6 +65,9 @@ class DataServiceDispatcherImpl {
   Status GetDatasetDef(const GetDatasetDefRequest* request,
                        GetDatasetDefResponse* response);
   Status GetSplit(const GetSplitRequest* request, GetSplitResponse* response);
+
+  Status UpdateMetadata(const UpdateMetadataRequest* request,
+                        UpdateMetadataResponse* response);
 
   /// Client-facing API.
   Status GetOrRegisterDataset(const GetOrRegisterDatasetRequest* request,
@@ -194,6 +198,8 @@ class DataServiceDispatcherImpl {
   absl::optional<std::unique_ptr<JournalWriter>> journal_writer_
       TF_GUARDED_BY(mu_);
   DispatcherState state_ TF_GUARDED_BY(mu_);
+
+  MetadataStore metadata_store_ TF_GUARDED_BY(mu_);
   // Condition variable for waking up the job gc thread.
   condition_variable job_gc_thread_cv_;
   std::unique_ptr<Thread> job_gc_thread_;
