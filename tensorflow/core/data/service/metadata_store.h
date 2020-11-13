@@ -38,7 +38,7 @@ class MetadataStore {
   Status UpdateMetadata(const uint64& fingerprint, const int64& update);
   // Returns the (dummy for now) metadata by fingerprint.
   Status MetadataFromFingerprint(uint64 fingerprint,
-                                 std::shared_ptr<const int64>& metadata) const;
+                                 std::shared_ptr<int64>& metadata) const;
   
   private:
   // Some dummy metadata.
