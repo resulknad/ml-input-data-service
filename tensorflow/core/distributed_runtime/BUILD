@@ -24,8 +24,6 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["LICENSE"])
-
 exports_files(
     ["server_lib.h"],
     visibility = ["//tensorflow:internal"],
@@ -244,6 +242,7 @@ tf_cc_test(
 
 cc_library(
     name = "cancellable_call",
+    srcs = ["cancellable_call.cc"],
     hdrs = ["cancellable_call.h"],
     deps = [
         ":call_options",
@@ -533,6 +532,7 @@ cc_library(
     srcs = ["collective_rma_distributed.cc"],
     hdrs = ["collective_rma_distributed.h"],
     deps = [
+        ":call_options",
         ":cancellable_call",
         ":request_id",
         ":worker_cache",

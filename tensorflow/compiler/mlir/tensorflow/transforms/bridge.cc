@@ -48,17 +48,17 @@ void AddGraphExportLoweringPasses(OpPassManager &pm) {
 
   pm.addNestedPass<FuncOp>(CreateFunctionalToExecutorDialectConversionPass());
   add_pass(TFDevice::CreateParallelizeEmbeddingParamsOpsPass());
-  pm.addPass(TFDevice::CreateReplicateToIslandPass());
-  pm.addPass(CreateBreakUpIslandsPass());
+  add_pass(TFDevice::CreateReplicateToIslandPass());
   add_pass(TFDevice::CreateParallelExecuteToIslandsPass());
   add_pass(TFDevice::CreateLaunchToDeviceAttributePass());
+  pm.addPass(createSymbolDCEPass());
 }
 
 tensorflow::Status RunTPUBridge(
     ModuleOp module, bool enable_logging,
     llvm::function_ref<void(OpPassManager &pm)> pipeline_builder) {
   PassManager bridge(module.getContext());
-  ::tensorflow::SetCrashReproducer(bridge);
+  ::tensorflow::applyTensorflowAndCLOptions(bridge);
   if (enable_logging) EnableLogging(&bridge);
 
   // Populate a passmanager with the list of passes that implement the bridge.
@@ -119,8 +119,7 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   pm.addPass(CreateTPURewritePass());
   pm.addPass(createSymbolDCEPass());
   pm.addNestedPass<FuncOp>(TFDevice::CreateReplicateInvariantOpHoistingPass());
-  pm.addNestedPass<FuncOp>(CreateTPUDynamicLayoutPass());
-  pm.addNestedPass<FuncOp>(CreateTPUParallelExecuteSinkResourceWritePass());
+  pm.addPass(CreateTPUDynamicLayoutPass());
   pm.addNestedPass<FuncOp>(CreateTPUMergeVariablesWithExecutePass());
   pm.addNestedPass<FuncOp>(CreateTPUColocateCompositeResourceOps());
   pm.addPass(CreateTPUVariableReformattingPass());

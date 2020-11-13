@@ -28,10 +28,11 @@ namespace TF {
 namespace {
 using Status = ::tensorflow::Status;
 using ConfigProto = ::tensorflow::ConfigProto;
+using Graph = ::tensorflow::Graph;
 }  // namespace
 
 Status MlirGraphOptimizationPass::Run(const ConfigProto& config_proto,
-                                      ModuleOp module) {
+                                      ModuleOp module, const Graph& graph) {
   if (!config_proto.experimental().enable_mlir_graph_optimization()) {
     VLOG(1) << "Skipping MLIR Graph Optimization Pass"
             << ", session flag not enabled";
@@ -40,7 +41,7 @@ Status MlirGraphOptimizationPass::Run(const ConfigProto& config_proto,
 
   VLOG(1) << "Run MLIR Graph Optimization Passes";
   PassManager pm(module.getContext());
-  ::tensorflow::SetCrashReproducer(pm);
+  ::tensorflow::applyTensorflowAndCLOptions(pm);
 
   // Run island coarsening before shape inference to allow more exact shape
   // inference using constant folding within islands.
@@ -50,7 +51,8 @@ Status MlirGraphOptimizationPass::Run(const ConfigProto& config_proto,
   // Assign optimal data layout to layout sensitive operations and delete
   // redundant transposes from the IR.
   LayoutOptimizationPipelineOptions layout_optimization_options;
-  CreateLayoutOptimizationPipeline(pm, layout_optimization_options);
+  CreateLayoutOptimizationPipeline(pm.nest<FuncOp>(),
+                                   layout_optimization_options);
 
   // Prepare IR for exporting.
   pm.addPass(CreateBreakUpIslandsPass());

@@ -55,8 +55,9 @@ ENTRY computation {
   EXPECT_THAT(root->operand(0), op::Slice());
   auto reshape = root->operand(0)->operand(0);
   EXPECT_THAT(reshape, op::Reshape());
-  EXPECT_THAT(reshape->operand(0), op::Convolution());
+  EXPECT_THAT(reshape->operand(0)->operand(1), op::Convolution());
   const int64 batch_dim = reshape->operand(0)
+                              ->operand(1)
                               ->convolution_dimension_numbers()
                               .output_batch_dimension();
   // Verify that the transform has increased the batch size.
@@ -65,14 +66,13 @@ ENTRY computation {
 
 TEST_F(ConvolutionSpaceToBatchConverterTest, SimpleBatch2) {
   string hlo_string = R"(
-  
   HloModule module
-ENTRY computation {
-  %p0 = bf16[2,258,258,32] parameter(0)
-  %p1 = bf16[3,3,32,32] parameter(1)
-  ROOT %convolution = bf16[2,256,256,32] convolution(%p0, %p1), window={size=3x3}, 
-  dim_labels=b01f_01io->b01f
-}
+  ENTRY computation {
+    %p0 = bf16[2,258,258,32] parameter(0)
+    %p1 = bf16[3,3,32,32] parameter(1)
+    ROOT %convolution = bf16[2,256,256,32] convolution(%p0, %p1), window={size=3x3}, 
+    dim_labels=b01f_01io->b01f
+  }
 
   )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -97,19 +97,20 @@ TEST_F(ConvolutionSpaceToBatchConverterTest, Batch1WithStrideAndPad) {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   auto computation = module->entry_computation();
-  ConvolutionSpaceToBatchConverter converter;
+  ConvolutionSpaceToBatchConverter converter(/*limit_on_batch_size=*/4);
   ASSERT_TRUE(converter.Run(module.get()).ValueOrDie());
   HloInstruction* root = computation->root_instruction();
   EXPECT_THAT(root, op::Transpose());
   EXPECT_THAT(root->operand(0), op::Slice());
   auto reshape = root->operand(0)->operand(0);
   EXPECT_THAT(reshape, op::Reshape());
-  EXPECT_THAT(reshape->operand(0), op::Convolution());
+  EXPECT_THAT(reshape->operand(0)->operand(1), op::Convolution());
   const int64 batch_dim = reshape->operand(0)
+                              ->operand(1)
                               ->convolution_dimension_numbers()
                               .output_batch_dimension();
 
-  EXPECT_GT(reshape->operand(0)->shape().dimensions(batch_dim), 1);
+  EXPECT_GT(reshape->operand(0)->shape().dimensions(batch_dim), 4);
 }
 
 TEST_F(ConvolutionSpaceToBatchConverterTest, Batch1WithKernelDilation) {

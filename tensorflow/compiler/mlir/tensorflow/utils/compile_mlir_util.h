@@ -86,6 +86,7 @@ struct TensorOrResourceShape {
 Status CompileMlirToXlaHlo(
     mlir::ModuleOp module_op, llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
     llvm::StringRef device_type, bool use_tuple_args, bool use_return_tuple,
+    bool use_resource_updates_for_aliases,
     XlaHelpers::ShapeRepresentationFn shape_representation_fn,
     XlaCompilationResult* compilation_result,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
@@ -116,11 +117,11 @@ Status CompileGraphToXlaHlo(
 
 // Compiles a TensorFlow Graph into XLA HLO, generates all accompanying metadata
 // and stores them in CompilationResult.
-// TODO(lyandy): Allow populating of targets/control outputs.
 Status CompileGraphToXlaHlo(
     const Graph& graph, llvm::ArrayRef<XlaArgument> args,
-    llvm::StringRef device_type, bool use_tuple_args,
-    const FunctionLibraryDefinition& flib_def, const GraphDebugInfo& debug_info,
+    llvm::ArrayRef<std::string> control_rets, llvm::StringRef device_type,
+    bool use_tuple_args, const FunctionLibraryDefinition& flib_def,
+    const GraphDebugInfo& debug_info,
     const XlaHelpers::ShapeRepresentationFn shape_representation_fn,
     XlaCompilationResult* compilation_result,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>

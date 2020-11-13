@@ -45,7 +45,6 @@ cc_library(
     hdrs = ["tpu_embedding_output_layout_utils.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
@@ -112,29 +111,14 @@ cc_library(
 )
 
 cc_library(
-    name = "tpu_config_c_api",
-    hdrs = ["tpu_config_c_api.h"],
-    deps = [
-        ":libtftpu_header",
-        "//tensorflow/c:tf_status",
-    ],
-    alwayslink = True,
-)
-
-cc_library(
     name = "tpu_api",
     srcs = ["tpu_api.cc"],
     hdrs = ["tpu_api.h"],
     deps = [
         ":libtftpu_header",
-        ":tpu_config_c_api",
         ":tpu_executor_api",
-        "//tensorflow/core/tpu/kernels:tpu_compile_c_api_hdrs",
-        "//tensorflow/core/tpu/kernels:tpu_execute_c_api_hdrs",
-        "//tensorflow/core/tpu/kernels:tpu_mesh_state_c_api_hdrs",
-        "//tensorflow/core/tpu/kernels:tpu_util_c_api_hdrs",
+        ":tpu_ops_c_api_hdrs",
         "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
-        "//tensorflow/stream_executor/tpu:tpu_node_context_c_api_hdrs",
     ],
 )
 
@@ -161,21 +145,36 @@ cc_library(
         ":tpu_api",
         ":tpu_api_dlsym_set_fn",
         ":tpu_compilation_device",
-        ":tpu_config_c_api",
         ":tpu_executor_init_fns",
         ":tpu_library_init_fns",
         ":tpu_node_device",
+        ":tpu_ops_c_api_hdrs",
         ":tpu_system_device",
         "//tensorflow/core:lib",
         "//tensorflow/core/tpu/graph_rewrite:tpu_rewrite_pass_registration",
-        "//tensorflow/core/tpu/kernels:tpu_compile_c_api_hdrs",
-        "//tensorflow/core/tpu/kernels:tpu_execute_c_api_hdrs",
-        "//tensorflow/core/tpu/kernels:tpu_mesh_state_c_api_hdrs",
-        "//tensorflow/core/tpu/kernels:tpu_util_c_api_hdrs",
         "//tensorflow/stream_executor/tpu:tpu_computation_placer",
         "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
-        "//tensorflow/stream_executor/tpu:tpu_node_context_c_api_hdrs",
     ],
+)
+
+# This is an alternative to "tpu_api_dlsym_initializer" that only initializes
+# methods needed for the base TPU executor APIs (and thus has fewer deps). Do
+# not link in both this and "tpu_api_dlsym_initializer".
+cc_library(
+    name = "tpu_executor_dlsym_initializer",
+    srcs = if_windows(
+        ["tpu_executor_dlsym_initializer_windows.cc"],
+        otherwise = ["tpu_executor_dlsym_initializer.cc"],
+    ),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":tpu_api_dlsym_set_fn",
+        ":tpu_executor_init_fns",
+        "//tensorflow/core:lib",
+        "//tensorflow/stream_executor/tpu:tpu_computation_placer",
+        "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
+    ],
+    alwayslink = True,
 )
 
 cc_library(
@@ -276,7 +275,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/lib:traceme",
-        "//tensorflow/core/tpu/kernels:tpu_compile_c_api_hdrs",
+        "//tensorflow/core/tpu:tpu_ops_c_api_hdrs",
         "//tensorflow/core/tpu/kernels:tpu_executable_info_proto_cc",
         "//tensorflow/stream_executor:device_memory",
         "//tensorflow/stream_executor:stream",
@@ -295,6 +294,7 @@ cc_library(
 cc_library(
     name = "tpu_on_demand_compiler",
     srcs = ["tpu_on_demand_compiler.cc"],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",
@@ -333,4 +333,17 @@ cc_library(
         "//tensorflow/stream_executor/tpu:tpu_executor",
         "//tensorflow/stream_executor/tpu:tpu_transfer_manager",
     ],
+)
+
+cc_library(
+    name = "tpu_ops_c_api_hdrs",
+    srcs = [],
+    hdrs = ["tpu_ops_c_api.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":libtftpu_header",
+        "//tensorflow/stream_executor/tpu:c_api_decl",
+        "//tensorflow/stream_executor/tpu:proto_helper",
+    ],
+    alwayslink = True,
 )

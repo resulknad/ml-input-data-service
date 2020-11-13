@@ -37,6 +37,8 @@ from tensorflow.python.keras import layers
 from tensorflow.python.keras import metrics
 from tensorflow.python.keras import Model
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.engine import base_layer
+from tensorflow.python.keras.engine import training as training_mod
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
@@ -189,7 +191,10 @@ class MeanTest(keras_parameterized.TestCase):
     self.assertEqual(self.evaluate(m.count), 1)
 
     # check update_state() and result() + state accumulation + tensor input
-    update_op = m.update_state(ops.convert_n_to_tensor([1, 5]))
+    update_op = m.update_state([
+        ops.convert_to_tensor_v2_with_dispatch(1),
+        ops.convert_to_tensor_v2_with_dispatch(5)
+    ])
     self.evaluate(update_op)
     self.assertAlmostEqual(self.evaluate(m.result()), 106 / 3, 2)
     self.assertEqual(self.evaluate(m.total), 106)  # 100 + 1 + 5
@@ -1412,7 +1417,10 @@ class MeanTensorTest(test.TestCase, parameterized.TestCase):
       self.assertAllClose(self.evaluate(m.count), [1, 1])
 
       # check update_state() and result() + state accumulation + tensor input
-      update_op = m.update_state(ops.convert_n_to_tensor([1, 5]))
+      update_op = m.update_state([
+          ops.convert_to_tensor_v2_with_dispatch(1),
+          ops.convert_to_tensor_v2_with_dispatch(5)
+      ])
       self.evaluate(update_op)
       self.assertAllClose(self.evaluate(m.result()), [50.5, 22.5])
       self.assertAllClose(self.evaluate(m.total), [101, 45])
@@ -2058,6 +2066,47 @@ class CustomMetricsTest(test.TestCase):
     self.assertAllClose(self.evaluate(metric_result), 10, 1e-2)
     metric_result = tf_functioned_metric_fn(sum_metric, y_true, y_pred)
     self.assertAllClose(self.evaluate(metric_result), 10, 1e-2)
+
+  def test_metric_not_tracked_as_sublayer_in_layer(self):
+
+    class MyLayer(base_layer.Layer):
+
+      def __init__(self, **kwargs):
+        super(MyLayer, self).__init__(**kwargs)
+        self.mean_obj = metrics.Mean(name='my_mean_obj')
+
+      def call(self, x):
+        self.add_metric(
+            math_ops.reduce_sum(x), aggregation='mean', name='my_mean_tensor')
+        self.add_metric(self.mean_obj(x))
+        return x
+
+    layer = MyLayer()
+    x = np.ones((1, 1))
+    layer(x)
+    self.assertLen(list(layer._flatten_layers(include_self=False)), 0)
+    self.assertLen(layer.metrics, 2)
+
+  def test_metric_not_tracked_as_sublayer_in_model(self):
+
+    class MyModel(training_mod.Model):
+
+      def __init__(self, **kwargs):
+        super(MyModel, self).__init__(**kwargs)
+        self.mean_obj = metrics.Mean(name='my_mean_obj')
+
+      def call(self, x):
+        self.add_metric(
+            math_ops.reduce_sum(x), aggregation='mean', name='my_mean_tensor')
+        self.add_metric(self.mean_obj(x))
+        return x
+
+    model = MyModel()
+    x = np.ones((1, 1))
+    model(x)
+    self.assertLen(list(model._flatten_layers(include_self=False)), 0)
+    self.assertLen(model.layers, 0)
+    self.assertLen(model.metrics, 2)
 
 
 def _get_model(compile_metrics):
