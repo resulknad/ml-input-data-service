@@ -30,11 +30,11 @@ Status MetadataStore::UpdateMetadata(const uint64& fingerprint, const int64& upd
 
 Status MetadataStore::MetadataFromFingerprint(
     uint64 fingerprint,
-    std::shared_ptr<const int64>& metadata) const {
+    std::shared_ptr<int64>& metadata) const {
 
   auto it = metadata_by_fingerprint_.find(fingerprint);
   if(it == metadata_by_fingerprint_.end()){
-    return errors::NotFound("Dataset fingerprint ", fingerprint, " not found")
+    return errors::NotFound("Dataset fingerprint ", fingerprint, " not found");
   }
 
   *metadata = it->second;
