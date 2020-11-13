@@ -126,6 +126,9 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
   // stored in `workers`.
   Status GetWorkers(std::vector<WorkerInfo>& workers);
 
+  // Updates the metadata for a particular dataset id to the dispatcher
+  Status UpdateMetadata(int64 id, int64 update);
+
  protected:
   Status EnsureInitialized() override;
 

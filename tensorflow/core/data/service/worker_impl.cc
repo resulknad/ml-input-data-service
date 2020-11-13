@@ -150,7 +150,7 @@ Status DataServiceWorkerImpl::EnsureTaskInitialized(
     case DISTRIBUTED_EPOCH: {
       auto split_provider = absl::make_unique<DataServiceSplitProvider>(
           config_.dispatcher_address(), config_.protocol(),
-          task.task_def.job_id());
+          task.task_def.job_id(), config_.dispatcher_timeout_ms());
       TF_RETURN_IF_ERROR(task.dataset->MakeIterator(std::move(split_provider),
                                                     &task.iterator));
       break;
@@ -285,7 +285,7 @@ Status DataServiceWorkerImpl::SendTaskUpdates() LOCKS_EXCLUDED(mu_) {
 
   // TODO (@damien-aymon) <metadata> we would need to recover metadata from
   // the iterator here.
-  TF_RETURN_IF_ERROR(dispatcher_->MetadataUpdate(42, 42));
+  TF_RETURN_IF_ERROR(dispatcher_->UpdateMetadata(42, 42));
 
   TF_RETURN_IF_ERROR(dispatcher_->WorkerUpdate(worker_address_, task_progress));
   mutex_lock l(mu_);
