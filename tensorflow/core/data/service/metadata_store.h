@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CORE_DATA_SERVICE_DISPATCHER_STATE_H_
-#define TENSORFLOW_CORE_DATA_SERVICE_DISPATCHER_STATE_H_
+#ifndef TENSORFLOW_CORE_DATA_SERVICE_METADATA_STORE_H_
+#define TENSORFLOW_CORE_DATA_SERVICE_METADATA_STORE_H_
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/data/service/common.pb.h"
@@ -49,4 +49,4 @@ class MetadataStore {
 }  // namespace data
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_DATA_SERVICE_DISPATCHER_STATE_H_
+#endif  // TENSORFLOW_CORE_DATA_SERVICE_METADATA_STORE_H_
