@@ -16,6 +16,8 @@ namespace grappler {
 namespace {
   // Define constants here
   constexpr char kFortyTwoDataset[] = "FortyTwoDataset";
+  constexpr char kOutputShapes[] = "output_shapes";
+  constexpr char kOutputTypes[] = "output_types";
 
 }
 
@@ -28,30 +30,41 @@ Status AppendFortyTwo::OptimizeAndCollectStats(Cluster* cluster,
   MutableGraphView graph(output);
 
   // For now, just be a no-op, we'll try to print things from here.
-  VLOG(1) << "Inside the append_forty_two optimization";
+  VLOG(1) << "Inside append_forty_two optimizer";
 
   NodeDef* sink_node;
   TF_RETURN_IF_ERROR(graph_utils::GetFetchNode(graph, item, &sink_node));
 
-  NodeDef* forty_two_input = graph_utils::GetInputNode(sink_node, graph);
+  NodeDef* forty_two_input = graph_utils::GetInputNode(*sink_node, graph);
   // Should never ever be null. Use assert instead?
   // assert(forty_two_input);
   if(!forty_two_input){
-    return errors::Unkown("The dataset graph sink node does not have"
+    return errors::Unknown("The dataset graph sink node does not have"
     "an input.");
   }
 
   NodeDef forty_two_node;
   // Give a unique name to our forty_two node and store it for later use
-  graph_utils::SetUniqueGraphNodeName("forty_two", output, &forty_two_node);
-  std::string forty_two_node_name = node.name();
+  graph_utils::SetUniqueGraphNodeName("forty_two_dataset", output, &forty_two_node);
+  std::string forty_two_node_name = forty_two_node.name();
   // Set its operation and input.
-  node.set_op(kFortyTwoDataset);
-  node.add_input(forty_two_input->name());
+  forty_two_node.set_op(kFortyTwoDataset);
+  *forty_two_node.mutable_input()->Add() = forty_two_input->name();
+
+  // Add output_type and output_shape attributes
+  (*(forty_two_node.mutable_attr()))[kOutputTypes].mutable_list()->add_type(
+          tensorflow::DataType::DT_INT32);
+
+  tensorflow::TensorShapeProto* shape =
+          (*(forty_two_node.mutable_attr()))[kOutputShapes]
+              .mutable_list()
+              ->add_shape();
+
   // Add the node to the graph.
-  graph_utils::AddNode(std::move(forty_two_node));
+  graph.AddNode(std::move(forty_two_node));
   // Modify the input of the sink node to be the forty_two node.
-  sink_node->set_input(forty_two_node_name);
+  sink_node->mutable_input()->Clear();
+  sink_node->add_input(forty_two_node_name); 
 
   // Hopefully at some point
   return Status::OK();
