@@ -53,6 +53,12 @@ monitoring::CounterCell* GetTFDataBytesReadCounter(const string& name);
 // The `name` argument identifies the Dataset type (e.g. "Batch" or "Map").
 monitoring::CounterCell* GetTFDataElementsCounter(const string& name);
 
+// Returns a counter than can be used to record the amount of time in ms spent
+// in the processing logic of a tf.data.Dataset.
+//
+// The `name` argument identifies the Dataset type (e.g. "Batch" or "Map").
+monitoring::CounterCell* GetTFDataProcessingTimeCounter(const string& name);
+
 // Records the number of bytes fetched from tf.data.Dataset iterator.
 void RecordTFDataBytesFetched(int64 num_bytes);
 
