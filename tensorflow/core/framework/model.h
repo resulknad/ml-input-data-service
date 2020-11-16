@@ -334,6 +334,9 @@ class Node {
   // Flushes the metrics recorded by this node.
   void FlushMetrics() TF_LOCKS_EXCLUDED(mu_);
 
+  // Flushes the metrics recorded by this node.
+  void PrintMetrics();
+
   // Returns the per-element output time for this node and if `gradients` is not
   // `nullptr`, collects the output time gradient w.r.t. tunable parameters of
   // the subtree rooted in this node.
@@ -367,7 +370,6 @@ class Node {
       absl::flat_hash_map<string, double>* processing_times)
       TF_LOCKS_EXCLUDED(mu_);
 
- protected:
   // Used for (incrementally) recording metrics. The class is thread-safe.
   class Metrics {
    public:
@@ -375,9 +377,12 @@ class Node {
         : bytes_consumed_counter_(metrics::GetTFDataBytesConsumedCounter(name)),
           bytes_produced_counter_(metrics::GetTFDataBytesProducedCounter(name)),
           num_elements_counter_(metrics::GetTFDataElementsCounter(name)),
+          computation_time_counter_(metrics::GetTFDataProcessingTimeCounter(
+              name)),
           recorded_bytes_consumed_(0),
           recorded_bytes_produced_(0),
-          recorded_num_elements_(0) {}
+          recorded_num_elements_(0),
+          recorded_computation_time_(0) {}
 
     // Expects the total number of bytes consumed and records the delta since
     // last invocation.
@@ -403,15 +408,27 @@ class Node {
       num_elements_counter_->IncrementBy(delta);
     }
 
-   private:
+    // Expects the total amount of time spent in computation by this node
+    void record_computation_time(int64 total_computation_time) {
+      int64 delta = total_computation_time -
+          recorded_computation_time_.exchange(total_computation_time);
+      computation_time_counter_->IncrementBy(delta);
+    }
+
+    // Default fields of the Metrics class
     monitoring::CounterCell* const bytes_consumed_counter_;
     monitoring::CounterCell* const bytes_produced_counter_;
     monitoring::CounterCell* const num_elements_counter_;
     std::atomic<int64> recorded_bytes_consumed_;
     std::atomic<int64> recorded_bytes_produced_;
     std::atomic<int64> recorded_num_elements_;
+
+    // Custom added fields of the Metrics class
+    monitoring::CounterCell* const computation_time_counter_;
+    std::atomic<int64> recorded_computation_time_;
   };
 
+ protected:
   // Returns the number of inputs.
   int64 num_inputs() const TF_SHARED_LOCKS_REQUIRED(mu_) {
     int64 num_inputs = 0;
@@ -559,6 +576,30 @@ class Node {
   // The reference to the output node is not owned so that deletion of a
   // node results in recursive deletion of the subtree rooted in the node.
   Node* const output_;
+
+  public:
+
+  class MetricDump {
+    const int64 bytes_consumed_;
+    const int64 bytes_produced_;
+    const int64 num_elements_;
+    const int64 computation_time_;
+    
+    public:
+      explicit MetricDump(const Node::Metrics& metrics)
+          : bytes_consumed_(metrics.recorded_bytes_consumed_), 
+            bytes_produced_(metrics.recorded_bytes_produced_), 
+            num_elements_(metrics.recorded_num_elements_), 
+            computation_time_(metrics.recorded_computation_time_) {}
+
+      const int64 bytes_consumed() const { return bytes_consumed_; }
+      const int64 bytes_produced() const { return bytes_produced_; }
+      const int64 num_elements() const { return num_elements_; }
+      const int64 computation_time() const { return computation_time_; }
+  };
+
+  // This creates a DumpMetrics object, which represents a snapshot of the metrics
+  Node::MetricDump SnapshotCurrentMetrics();
 };
 
 // InterleaveMany is used to model datasets whose inputs are used to create
@@ -618,6 +659,15 @@ class Model {
 
   // Flushes metrics record by the model.
   void FlushMetrics() TF_LOCKS_EXCLUDED(mu_);
+
+  // Flushes metrics record by the model.
+  void PrintMetrics() TF_LOCKS_EXCLUDED(mu_);
+
+  // TODO(DanGraur): Maybe return a tuple in the vlaue, with the prefix hash
+  // as the as the first entry and the flat_hash_map as the second
+  // Collects the metrics of the model as a map
+  absl::flat_hash_map<string, Node::MetricDump> 
+  CollectMetrics() TF_LOCKS_EXCLUDED(mu_);
 
   // Uses the given algorithm to perform the autotuning optimization.
   void Optimize(AutotuneAlgorithm algorithm, int64 cpu_budget, int64 ram_budget,

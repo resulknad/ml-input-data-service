@@ -73,6 +73,10 @@ auto* tf_data_bytes_read_counter = monitoring::Counter<1>::New(
     "/tensorflow/data/bytes_read",
     "The number of bytes read by tf.data Dataset sources.", "name");
 
+auto* tf_data_processing_time_counter = monitoring::Counter<1>::New(
+    "/tensorflow/data/processing_time",
+    "The cummulative time spen by a tf.data Dataset in computation.", "name");
+
 auto* tf_data_bytes_fetched_counter = monitoring::Counter<0>::New(
     "/tensorflow/data/bytes_fetched",
     "The number of bytes fetched from tf.data Dataset iterator.");
@@ -174,6 +178,11 @@ monitoring::CounterCell* GetTFDataBytesProducedCounter(const string& name) {
 
 monitoring::CounterCell* GetTFDataBytesReadCounter(const string& name) {
   return tf_data_bytes_read_counter->GetCell(name);
+}
+
+
+monitoring::CounterCell* GetTFDataProcessingTimeCounter(const string& name) {
+  return tf_data_processing_time_counter->GetCell(name);
 }
 
 monitoring::CounterCell* GetTFDataElementsCounter(const string& name) {

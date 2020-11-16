@@ -965,6 +965,23 @@ void Node::FlushMetrics() {
   metrics_.record_bytes_consumed(bytes_consumed_);
   metrics_.record_bytes_produced(bytes_produced_);
   metrics_.record_num_elements(num_elements_);
+  metrics_.record_computation_time(processing_time_);
+}
+
+void Node::PrintMetrics() {
+  if (!record_metrics_) {
+    return;
+  }
+
+  // Print the values of the metrics
+  VLOG(1) << "(" << name_ << ") Bytes Consumed "
+          << metrics::GetTFDataBytesConsumedCounter(name_)->value();
+  VLOG(1) << "(" << name_ << ") Bytes Produced "
+          << metrics::GetTFDataBytesProducedCounter(name_)->value();
+  VLOG(1) << "(" << name_ << ") Elements Produced "
+          << metrics::GetTFDataElementsCounter(name_)->value();
+  VLOG(1) << "(" << name_ << ") Processing Time "
+          << metrics::GetTFDataProcessingTimeCounter(name_)->value();
 }
 
 double Node::OutputTime(absl::flat_hash_map<string, double>* input_times,
@@ -1064,6 +1081,10 @@ double Node::TotalProcessingTime(
   TotalProcessingTimeLocked(processing_times, &total_processing_times);
 
   return total_processing_times[long_name()];
+}
+
+Node::MetricDump Node::SnapshotCurrentMetrics() {
+  return MetricDump(metrics_);
 }
 
 double Node::AverageBufferedElementSize() const {
@@ -1326,6 +1347,49 @@ void Model::FlushMetrics() {
       queue.push_back(input);
     }
   }
+}
+
+void Model::PrintMetrics() {
+  std::deque<std::shared_ptr<Node>> queue;
+  {
+    tf_shared_lock l(mu_);
+    if (output_) queue.push_back(output_);
+  }
+  while (!queue.empty()) {
+    auto node = queue.front();
+    queue.pop_front();
+    node->PrintMetrics();
+    for (auto input : node->inputs()) {
+      queue.push_back(input);
+    }
+  }
+}
+
+// TODO(DanGraur): Add const and references to make this safe and efficient
+absl::flat_hash_map<string, Node::MetricDump>
+Model::CollectMetrics() {
+  absl::flat_hash_map<string, Node::MetricDump> metrics;
+  std::deque<std::shared_ptr<Node>> queue;
+
+  {
+    tf_shared_lock l(mu_);
+    if (output_) queue.push_back(output_);
+  }
+
+  while (!queue.empty()) {
+    auto node = queue.front();
+    queue.pop_front();
+
+    // TODO(DanGraur): Should make this a smart pointer
+    metrics.insert({node->long_name(), node->SnapshotCurrentMetrics()});
+    
+    // Enqueue the other nodes
+    for (auto input : node->inputs()) {
+      queue.push_back(input);
+    }
+  }
+
+  return metrics;
 }
 
 void Model::Optimize(AutotuneAlgorithm algorithm, int64 cpu_budget,

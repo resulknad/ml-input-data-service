@@ -177,13 +177,72 @@ class ModelDatasetOp::Dataset : public DatasetBase {
    private:
     Status EnsureOptimizeThreadStarted(IteratorContext* ctx)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      // Start the optimization thread if necessary
       if (!model_thread_) {
         std::shared_ptr<IteratorContext> new_ctx =
             std::make_shared<IteratorContext>(*ctx);
         model_thread_ = ctx->StartThread(
             "tf_data_model", [this, new_ctx]() { ModelThread(new_ctx); });
       }
+      // Start the metrics thread if necessary
+      if (!metrics_thread_) {
+        std::shared_ptr<IteratorContext> new_ctx =
+            std::make_shared<IteratorContext>(*ctx);
+        metrics_thread_ = ctx->StartThread(
+            "tf_data_metrics", [this, new_ctx]() { MetricsThread(new_ctx); });
+      }
+
       return Status::OK();
+    }
+
+    // ML_Input_Pipeline: we define a new method for recording the cache
+    // metrics periodically, since the ModelThread method increases the
+    // optimization period exponentially, hence, metrics are dumped to
+    // the counters more rarely. In this method, the time to dump metrics
+    // is constant.
+    void MetricsThread(const std::shared_ptr<IteratorContext>& ctx) {
+      int64 last_recording_time_ms = 0;
+      int64 recording_period_ms = 10;
+      int64 current_time_ms = EnvTime::NowMicros() / EnvTime::kMillisToMicros;
+
+      while (true) {
+        {
+          // Should I use a different lock here?
+          mutex_lock l(mu_);
+          while (!cancelled_ && last_recording_time_ms + recording_period_ms >
+                  current_time_ms) {
+            int64 wait_period_ms =
+              last_recording_time_ms + recording_period_ms - current_time_ms;
+            VLOG(2) << "Waiting for " << wait_period_ms << "ms.";
+
+            // Wait until the next recording period takes place
+            cond_var_.wait_for(l, std::chrono::milliseconds(wait_period_ms));
+            current_time_ms = EnvTime::NowMicros() / EnvTime::kMillisToMicros;
+          }
+        }
+
+        // If this thread has been terminated, we return
+        if (cancelled_)
+          return;
+
+        // Otherwise flush the metrics, and record the current time
+        last_recording_time_ms =
+          current_time_ms = EnvTime::NowMicros() / EnvTime::kMillisToMicros;
+        model_->FlushMetrics();
+
+        // TODO(DanGraur): Temp call for debugging, should be removed
+        model_->PrintMetrics();
+
+        // TODO(DanGraur): Temp code for debugging, should be removed
+        VLOG(1) << "Printing all node metrics";
+        for (auto const x : model_->CollectMetrics())
+        {
+          VLOG(1) << x.first << " \n > " << x.second.bytes_consumed() 
+                  << " \n > " << x.second.bytes_produced() 
+                  << " \n > " << x.second.num_elements()
+                  << " \n > " << x.second.computation_time();
+        }
+      }
     }
 
     void ModelThread(const std::shared_ptr<IteratorContext>& ctx) {
@@ -246,6 +305,7 @@ class ModelDatasetOp::Dataset : public DatasetBase {
     condition_variable cond_var_;
     std::shared_ptr<model::Model> model_;
     std::unique_ptr<Thread> model_thread_ TF_GUARDED_BY(mu_);
+    std::unique_ptr<Thread> metrics_thread_ TF_GUARDED_BY(mu_);
     bool cancelled_ TF_GUARDED_BY(mu_) = false;
     std::unique_ptr<IteratorBase> input_impl_;
     int64 num_input_events_ TF_GUARDED_BY(mu_) = 0;
