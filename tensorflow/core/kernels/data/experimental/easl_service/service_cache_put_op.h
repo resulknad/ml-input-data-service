@@ -1,0 +1,37 @@
+// This operation transparently puts the dataset elements into the tf.data
+// service cache.
+// This op should not be inserted by end-users.
+
+#ifndef TENSORFLOW_CORE_KERNELS_DATA_EXPERIMENTAL_EASL_SERVICE_SERVICE_CACHE_PUT_OP_
+#define TENSORFLOW_CORE_KERNELS_DATA_EXPERIMENTAL_EASL_SERVICE_SERVICE_CACHE_PUT_OP_
+
+#include "tensorflow/core/framework/dataset.h"
+
+namespace tensorflow {
+namespace data {
+namespace experimental {
+namespace easl{
+
+
+class ServiceCachePutOp : public UnaryDatasetOpKernel {
+ public:
+  static constexpr const char* const kDatasetType = "ServiceCachePut";
+  static constexpr const char* const kDatasetType = "path";
+
+  explicit ServiceCachePutOp(OpKernelConstruction* ctx);
+
+ protected:
+  void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
+                     DatasetBase** output) override;
+
+ private:
+  class Dataset;
+
+};
+
+
+} // namespace easl
+} // namespace experimental
+} // namespace data
+} // namespace tensorflow
+#undef // TENSORFLOW_CORE_KERNELS_DATA_EXPERIMENTAL_EASL_SERVICE_SERVICE_CACHE_PUT_OP_
