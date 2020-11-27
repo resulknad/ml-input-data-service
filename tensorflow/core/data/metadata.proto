@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package tensorflow.data;
+
+//import "tensorflow/core/framework/tensor_shape.proto";
+//import "tensorflow/core/framework/types.proto";
+
+// This file contains protocol buffers for working with dataset metadata
+
+// Represents a metric dump for a dataset
+message Metrics {
+  int64 id = 1;
+  string timestamp = 2;
+  repeated NodeStats node_stats_list = 3;
+}
+
+// Represents a metric dump for a given node
+message NodeStats {
+  string name = 1;
+  string prefix_hash = 2;
+  repeated Metric metric_list = 3;
+}
+
+// Represent a dataset node metric.
+message Metric {
+  string name = 1;
+  optional int64 value = 2;
+}
