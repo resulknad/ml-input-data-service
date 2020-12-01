@@ -16,7 +16,7 @@ namespace easl{
 class ServiceCachePutOp : public UnaryDatasetOpKernel {
  public:
   static constexpr const char* const kDatasetType = "ServiceCachePut";
-  static constexpr const char* const kDatasetType = "path";
+  static constexpr const char* const kPath = "path";
 
   explicit ServiceCachePutOp(OpKernelConstruction* ctx);
 
@@ -34,4 +34,5 @@ class ServiceCachePutOp : public UnaryDatasetOpKernel {
 } // namespace experimental
 } // namespace data
 } // namespace tensorflow
-#undef // TENSORFLOW_CORE_KERNELS_DATA_EXPERIMENTAL_EASL_SERVICE_SERVICE_CACHE_PUT_OP_
+
+#endif // TENSORFLOW_CORE_KERNELS_DATA_EXPERIMENTAL_EASL_SERVICE_SERVICE_CACHE_PUT_OP_

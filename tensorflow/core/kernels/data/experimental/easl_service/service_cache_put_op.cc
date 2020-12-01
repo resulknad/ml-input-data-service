@@ -31,6 +31,10 @@ class ServiceCachePutOp::Dataset : public DatasetBase {
 
   string DebugString() const override;
 
+  int64 Cardinality() const override;
+
+  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override;
+
   Status CheckExternalState() const override;
 
  protected:
@@ -146,7 +150,7 @@ Status ServiceCachePutOp::Dataset::AsGraphDefInternal(
   return b->AddDataset(
       this,
       /*inputs=*/
-      {std::make_pair(0, input_graph_node), std::make_pair(1, path)},
+      {input_graph_node, path},
       output);
 }
 
@@ -155,8 +159,8 @@ Status ServiceCachePutOp::Dataset::AsGraphDefInternal(
 // Iterator
 // -----------------------------------------------------------------------------
 
-ServiceCachePutOp::Dataset::Iterator(const Params& params)
-    : DatasetIterator<Dataset>(params) {}
+ServiceCachePutOp::Dataset::Iterator::Iterator(const Params& params)
+    : DatasetIterator<Dataset>(params) {};
 
 Status ServiceCachePutOp::Dataset::Iterator::Initialize(
     IteratorContext* ctx) {
@@ -171,8 +175,7 @@ Status ServiceCachePutOp::Dataset::Iterator::SaveInternal(
 }
 
 Status ServiceCachePutOp::Dataset::Iterator::RestoreInternal(
-    IteratorContext* ctx,
-    IteratorStateReader* reader) override {
+    IteratorContext* ctx, IteratorStateReader* reader) override {
   return errors::Unimplemented("Checkpointing is currently not supported.");
 }
 
