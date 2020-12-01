@@ -45,7 +45,6 @@ class ServiceCachePutOp::Dataset : public DatasetBase {
     const DatasetBase* const input_;
     const tstring path_;
 
-
 };
 
 class ServiceCachePutOp::Dataset::Iterator : public DatasetIterator<Dataset> {
@@ -67,6 +66,7 @@ class ServiceCachePutOp::Dataset::Iterator : public DatasetIterator<Dataset> {
  private:
   mutex mu_;
   std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
+  std::unique_ptr<service_cache_util::Writer> writer_ TF_GUARDED_BY(mu_); 
 };
 
 // -----------------------------------------------------------------------------
@@ -160,27 +160,35 @@ ServiceCachePutOp::Dataset::Iterator(const Params& params)
 
 Status ServiceCachePutOp::Dataset::Iterator::Initialize(
     IteratorContext* ctx) {
+
+  writer_ = std::make_unique<service_cache_util::Writer>(dataset()->path_);
   return dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_);
 }
 
 Status ServiceCachePutOp::Dataset::Iterator::SaveInternal(
     SerializationContext* ctx, IteratorStateWriter* writer) {
-  mutex_lock l(mu_);
-  return SaveInput(ctx, writer, input_impl_);
+  return errors::Unimplemented("Checkpointing is currently not supported.");
 }
 
 Status ServiceCachePutOp::Dataset::Iterator::RestoreInternal(
-  // Nothing to restore for now
-  mutex_lock l(mu_);
-  return RestoreInput(ctx, reader, input_impl_);
+    IteratorContext* ctx,
+    IteratorStateReader* reader) override {
+  return errors::Unimplemented("Checkpointing is currently not supported.");
 }
 
 Status ServiceCachePutOp::Dataset::Iterator::GetNextInternal(
     IteratorContext* ctx, std::vector<Tensor>* out_tensors,
     bool* end_of_sequence) {
   mutex_lock l(mu_);
-  // (damien-aymon) make it transparent for now.
-  return input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
+
+  TF_RETURN_IF_ERROR(input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
+  
+  if(*end_of_sequence){
+    // (damien-aymon) will block until the underlying asyncWriter is done.
+    writer_.reset()
+    return Status::OK();
+  }
+  return writer_->Write(*out_tensors);
 }
 
 

@@ -1,9 +1,9 @@
+#ifndef TENSORFLOW_CORE_KERNELS_DATA_EXPERIMENTAL_EASL_SERVICE_SERVICE_CACHE_PUT_OP_
+#define TENSORFLOW_CORE_KERNELS_DATA_EXPERIMENTAL_EASL_SERVICE_SERVICE_CACHE_PUT_OP_
+
 // This operation transparently puts the dataset elements into the tf.data
 // service cache.
 // This op should not be inserted by end-users.
-
-#ifndef TENSORFLOW_CORE_KERNELS_DATA_EXPERIMENTAL_EASL_SERVICE_SERVICE_CACHE_PUT_OP_
-#define TENSORFLOW_CORE_KERNELS_DATA_EXPERIMENTAL_EASL_SERVICE_SERVICE_CACHE_PUT_OP_
 
 #include "tensorflow/core/framework/dataset.h"
 
