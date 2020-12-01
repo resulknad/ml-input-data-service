@@ -194,7 +194,10 @@ Status ServiceCachePutOp::Dataset::Iterator::GetNextInternal(
   return writer_->Write(*out_tensors);
 }
 
-
+namespace {
+REGISTER_KERNEL_BUILDER(Name("ServiceCachePut").Device(DEVICE_CPU),
+                        ServiceCachePutOp);
+}  // namespace
 
 
 } // namespace easl

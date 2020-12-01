@@ -743,11 +743,16 @@ tf_cc_test(
     ],
 )
 
+# ------------------------------------------------------------------------------
+# EASL
+# ------------------------------------------------------------------------------
+
 tf_kernel_library(
     name = "service_cache_put_op",
     srcs = ["easl_service/service_cache_put_op.cc"],
     hdrs = ["easl_service/service_cache_put_op.h"],
     deps = [
+        ":service_cache_util",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
@@ -759,6 +764,18 @@ tf_kernel_library(
         "@com_google_absl//absl/strings",
     ],
 )
+
+cc_library(
+    name = "service_cache_util",
+    srcs = ["easl_service/service_cache_util.cc"],
+    hdrs = ["easl_service/service_cache_util.h"],
+    deps = [
+        ":snapshot_util",
+    ],
+)
+
+# ------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 
 tf_kernel_library(
     # data service kernels depend on GRPC, so we package them separately

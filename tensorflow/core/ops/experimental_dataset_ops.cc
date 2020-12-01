@@ -1195,4 +1195,19 @@ REGISTER_OP("RegisterDataset")
     .Attr("external_state_policy: int")
     .SetShapeFn(shape_inference::ScalarShape);
 
+
+// -----------------------------------------------------------------------------
+// EASL
+// -----------------------------------------------------------------------------
+
+REGISTER_OP("ServiceCachePutDataset")
+    .Input("input_dataset: variant")
+    .Input("path: string")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle unused;
+      // `path` should be a scalar.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      return shape_inference::ScalarShape(c);
+    });
+
 }  // namespace tensorflow
