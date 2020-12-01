@@ -1,4 +1,4 @@
-#define TENSORFLOW_CORE_KERNELS_DATA_EXPERIMENTAL_EASL_SERVICE_SERVICE_CACHE_UTIL_
+#ifndef TENSORFLOW_CORE_KERNELS_DATA_EXPERIMENTAL_EASL_SERVICE_SERVICE_CACHE_UTIL_
 #define TENSORFLOW_CORE_KERNELS_DATA_EXPERIMENTAL_EASL_SERVICE_SERVICE_CACHE_UTIL_
 
 // This operation transparently puts the dataset elements into the tf.data
@@ -19,15 +19,14 @@ namespace service_cache_util {
 // For now, this class simply wraps a single snapshot_util::async writer using
 // a TFRecordWriter.
 class Writer {
-  public:
-  Writer(const std::string& target_dir);
+ public:
+  Writer(const std::string& target_dir, Env* env);
 
-  virtual Status Write(const std::vector<Tensor>& tensors) = 0;
+  Status Write(const std::vector<Tensor>& tensors);
 
-  virtual ~Writer() {}
+  ~Writer();
 
-
-  private:
+ private:
   const std::string target_dir_;
 
   std::unique_ptr<snapshot_util::AsyncWriter> async_writer_;
@@ -38,4 +37,4 @@ class Writer {
 } // namespace data
 } // namespace tensorflow
 
-#undef // TENSORFLOW_CORE_KERNELS_DATA_EXPERIMENTAL_EASL_SERVICE_SERVICE_CACHE_UTIL_
+#endif // TENSORFLOW_CORE_KERNELS_DATA_EXPERIMENTAL_EASL_SERVICE_SERVICE_CACHE_UTIL_

@@ -3,6 +3,7 @@
 #include "tensorflow/core/platform/tstring.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/core/kernels/data/name_utils.h"
+#include "tensorflow/core/kernels/data/experimental/easl_service/service_cache_util.h"
 
 
 namespace tensorflow {
@@ -70,7 +71,7 @@ class ServiceCachePutOp::Dataset::Iterator : public DatasetIterator<Dataset> {
  private:
   mutex mu_;
   std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
-  std::unique_ptr<service_cache_util::Writer> writer_ TF_GUARDED_BY(mu_); 
+  std::unique_ptr<tensorflow::data::easl::service_cache_util::Writer> writer_ TF_GUARDED_BY(mu_); 
 };
 
 // -----------------------------------------------------------------------------
@@ -164,8 +165,7 @@ ServiceCachePutOp::Dataset::Iterator::Iterator(const Params& params)
 
 Status ServiceCachePutOp::Dataset::Iterator::Initialize(
     IteratorContext* ctx) {
-
-  writer_ = std::make_unique<service_cache_util::Writer>(dataset()->path_);
+  writer_ = std::make_unique<tensorflow::data::easl::service_cache_util::Writer>(dataset()->path_, ctx->env());
   return dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_);
 }
 
@@ -175,7 +175,7 @@ Status ServiceCachePutOp::Dataset::Iterator::SaveInternal(
 }
 
 Status ServiceCachePutOp::Dataset::Iterator::RestoreInternal(
-    IteratorContext* ctx, IteratorStateReader* reader) override {
+    IteratorContext* ctx, IteratorStateReader* reader) {
   return errors::Unimplemented("Checkpointing is currently not supported.");
 }
 
@@ -188,7 +188,7 @@ Status ServiceCachePutOp::Dataset::Iterator::GetNextInternal(
   
   if(*end_of_sequence){
     // (damien-aymon) will block until the underlying asyncWriter is done.
-    writer_.reset()
+    writer_.reset();
     return Status::OK();
   }
   return writer_->Write(*out_tensors);
