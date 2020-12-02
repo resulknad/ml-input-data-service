@@ -34,13 +34,15 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
 
   explicit ModelDatasetOp(OpKernelConstruction* ctx);
 
+  // TODO(DanGraur): Code added by me 
+  // static constexpr const char* const kMetricsResourceName = "metrics_resource";
+  class Dataset;
+
  protected:
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override;
 
  private:
-  class Dataset;
-
   model::AutotuneAlgorithm algorithm_;
   int64 cpu_budget_;
   int64 ram_budget_;

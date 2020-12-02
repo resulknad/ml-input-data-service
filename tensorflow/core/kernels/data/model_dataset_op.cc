@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
+// #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/cpu_info.h"
@@ -106,7 +107,7 @@ class ModelDatasetOp::Dataset : public DatasetBase {
     return Status::OK();
   }
 
- private:
+ public:
   class Iterator : public DatasetIterator<Dataset> {
    public:
     explicit Iterator(const Params& params)
@@ -153,6 +154,10 @@ class ModelDatasetOp::Dataset : public DatasetBase {
       return s;
     }
 
+    absl::flat_hash_map<string, model::Node::MetricDump> GetMetrics() const {
+      return latest_metrics;
+    }
+
    protected:
     std::shared_ptr<model::Node> CreateNode(
         IteratorContext* ctx, model::Node::Args args) const override {
@@ -195,6 +200,22 @@ class ModelDatasetOp::Dataset : public DatasetBase {
       return Status::OK();
     }
 
+    // Status CreateHandle(const std::shared_ptr<IteratorContext>& ctx, 
+    //     absl::flat_hash_map<string, data::model::Node::MetricDump>* resource, 
+    //     const string& container_name, ResourceHandle* handle) {
+
+    //   static std::atomic<int64> resource_id_counter(0);
+    //   string unique_name =
+    //       strings::StrCat(container_name, resource_id_counter.fetch_add(1));
+    //   ResourceMgr* mgr = ctx->resource_mgr();
+    //   TF_RETURN_IF_ERROR(mgr->Create<data::model::Node::MetricDump>(container_name, unique_name, resource));
+
+    //   *handle = MakeResourceHandle(container_name, unique_name, *ctx->device(),
+    //                               TypeIndex::Make<T>());
+    //   return Status::OK();
+
+    // }
+
     // ML_Input_Pipeline: we define a new method for recording the cache
     // metrics periodically, since the ModelThread method increases the
     // optimization period exponentially, hence, metrics are dumped to
@@ -234,8 +255,15 @@ class ModelDatasetOp::Dataset : public DatasetBase {
         model_->PrintMetrics();
 
         // TODO(DanGraur): Temp code for debugging, should be removed
+        latest_metrics = model_->CollectMetrics();
+
+        // Wrap the results in a resource handle
+        // ResourceHandle handle;
+        // OP_REQUIRES_OK(ctx, CreateHandle(ctx, metrics, kMetricsResourceName, 
+        //     &handle));
+        
         VLOG(1) << "Printing all node metrics";
-        for (auto const x : model_->CollectMetrics())
+        for (auto const x : latest_metrics)
         {
           VLOG(1) << x.first << " \n > " << x.second.bytes_consumed() 
                   << " \n > " << x.second.bytes_produced() 
@@ -313,8 +341,12 @@ class ModelDatasetOp::Dataset : public DatasetBase {
     int64 last_output_time_ TF_GUARDED_BY(mu_) = 0;
     const int64 cpu_budget_;
     const int64 ram_budget_;
+
+    // TODO(DanGraur): Stores the latest metrics
+    absl::flat_hash_map<string, model::Node::MetricDump> latest_metrics;
   };
 
+  private:
   const DatasetBase* input_;
   const model::AutotuneAlgorithm algorithm_;
   const int64 cpu_budget_;
