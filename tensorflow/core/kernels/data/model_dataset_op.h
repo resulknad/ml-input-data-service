@@ -32,6 +32,10 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
   static constexpr const char* const kCpuBudget = "cpu_budget";
   static constexpr const char* const kRamBudget = "ram_budget";
 
+  // 
+  static constexpr const char* const kMetricContainer = "input_pipeline_stats";
+  static constexpr const char* const kMetricEntryName = "stats";
+
   explicit ModelDatasetOp(OpKernelConstruction* ctx);
 
   // TODO(DanGraur): Code added by me 

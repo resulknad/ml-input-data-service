@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
-// #include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/cpu_info.h"
@@ -42,6 +42,25 @@ constexpr double kRamBudgetShare = 0.5;
 /* static */ constexpr const char* const ModelDatasetOp::kAlgorithm;
 /* static */ constexpr const char* const ModelDatasetOp::kCpuBudget;
 /* static */ constexpr const char* const ModelDatasetOp::kRamBudget;
+
+
+class MetricDumpResource : public ResourceBase {
+  public:
+    explicit MetricDumpResource(
+      const absl::flat_hash_map<string, model::Node::MetricDump> &metrics) 
+      : metrics_(metrics) {}
+
+    std::string DebugString() const {
+      return "MetricDumpResource debug string.";
+    }
+
+    const absl::flat_hash_map<string, model::Node::MetricDump>& GetMetrics() {
+      return metrics_;
+    }
+
+  private:
+    const absl::flat_hash_map<string, model::Node::MetricDump> metrics_;
+};
 
 class ModelDatasetOp::Dataset : public DatasetBase {
  public:
@@ -200,22 +219,6 @@ class ModelDatasetOp::Dataset : public DatasetBase {
       return Status::OK();
     }
 
-    // Status CreateHandle(const std::shared_ptr<IteratorContext>& ctx, 
-    //     absl::flat_hash_map<string, data::model::Node::MetricDump>* resource, 
-    //     const string& container_name, ResourceHandle* handle) {
-
-    //   static std::atomic<int64> resource_id_counter(0);
-    //   string unique_name =
-    //       strings::StrCat(container_name, resource_id_counter.fetch_add(1));
-    //   ResourceMgr* mgr = ctx->resource_mgr();
-    //   TF_RETURN_IF_ERROR(mgr->Create<data::model::Node::MetricDump>(container_name, unique_name, resource));
-
-    //   *handle = MakeResourceHandle(container_name, unique_name, *ctx->device(),
-    //                               TypeIndex::Make<T>());
-    //   return Status::OK();
-
-    // }
-
     // ML_Input_Pipeline: we define a new method for recording the cache
     // metrics periodically, since the ModelThread method increases the
     // optimization period exponentially, hence, metrics are dumped to
@@ -251,25 +254,30 @@ class ModelDatasetOp::Dataset : public DatasetBase {
           current_time_ms = EnvTime::NowMicros() / EnvTime::kMillisToMicros;
         model_->FlushMetrics();
 
-        // TODO(DanGraur): Temp call for debugging, should be removed
-        model_->PrintMetrics();
-
-        // TODO(DanGraur): Temp code for debugging, should be removed
-        latest_metrics = model_->CollectMetrics();
-
-        // Wrap the results in a resource handle
-        // ResourceHandle handle;
-        // OP_REQUIRES_OK(ctx, CreateHandle(ctx, metrics, kMetricsResourceName, 
-        //     &handle));
+        // Try to retrieve the metrics
+        MetricDumpResource* retrieved_metrics = nullptr;
+        Status s = ctx->resource_mgr()->Lookup<MetricDumpResource>(
+          kMetricContainer, kMetricEntryName, &retrieved_metrics);
         
-        VLOG(1) << "Printing all node metrics";
-        for (auto const x : latest_metrics)
-        {
-          VLOG(1) << x.first << " \n > " << x.second.bytes_consumed() 
-                  << " \n > " << x.second.bytes_produced() 
-                  << " \n > " << x.second.num_elements()
-                  << " \n > " << x.second.computation_time();
+        if (s.ok()) {
+          VLOG(1) << "Printing all node metrics from ResourceMgr";
+          for (auto const x : retrieved_metrics->GetMetrics()) {
+            VLOG(1) << x.first << " \n > " << x.second.bytes_consumed() 
+                    << " \n > " << x.second.bytes_produced() 
+                    << " \n > " << x.second.num_elements()
+                    << " \n > " << x.second.computation_time();
+          }
+
+          // Delete the resource now, since we'll update it shortly
+          ctx->resource_mgr()->Delete<MetricDumpResource>(kMetricContainer, 
+              kMetricEntryName);
         }
+
+        // Update the metrics as a resource
+        MetricDumpResource* latest_metrics = new MetricDumpResource(
+            model_->CollectMetrics()); 
+        ctx->resource_mgr()->Create<MetricDumpResource>(kMetricContainer, 
+            kMetricEntryName, latest_metrics);
       }
     }
 

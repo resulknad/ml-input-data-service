@@ -586,12 +586,18 @@ class Node {
     const int64 computation_time_;
     
     public:
-      explicit MetricDump(const Node::Metrics& metrics)
+      explicit MetricDump(const Node::Metrics &metrics)
           : bytes_consumed_(metrics.recorded_bytes_consumed_), 
             bytes_produced_(metrics.recorded_bytes_produced_), 
             num_elements_(metrics.recorded_num_elements_), 
             computation_time_(metrics.recorded_computation_time_) {}
 
+      MetricDump(const MetricDump &metric_dump) 
+          : bytes_consumed_(metric_dump.bytes_consumed()), 
+            bytes_produced_(metric_dump.bytes_produced()),
+            num_elements_(metric_dump.num_elements()),
+            computation_time_(metric_dump.computation_time()) {}
+      
       const int64 bytes_consumed() const { return bytes_consumed_; }
       const int64 bytes_produced() const { return bytes_produced_; }
       const int64 num_elements() const { return num_elements_; }
