@@ -87,7 +87,7 @@ void ServiceCacheGetOp::MakeDataset(OpKernelContext* ctx,
   tstring path;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kPath, &path));
 
-  *output = new ServiceCacheGetOp::Dataset(ctx, input, path);
+  *output = new ServiceCacheGetOp::Dataset(ctx, path);
 }
 
 // -----------------------------------------------------------------------------

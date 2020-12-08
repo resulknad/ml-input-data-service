@@ -32,7 +32,7 @@ class Writer {
 
 class Reader {
  public:
-  Reader(const std::string &target_dir, DataTypeVector& dtypes, Env *env);
+  Reader(const std::string &target_dir, const DataTypeVector& dtypes, Env *env);
 
   Status Initialize();
 

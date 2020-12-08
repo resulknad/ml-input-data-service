@@ -39,7 +39,7 @@ Writer::~Writer() {
 // Reader
 // -----------------------------------------------------------------------------
 
-Reader::Reader(const std::string &target_dir, DataTypeVector& dtypes, Env *env)
+Reader::Reader(const std::string &target_dir, const DataTypeVector& dtypes, Env *env)
     : target_dir_(target_dir), dtypes_(dtypes), env_(env) {
   // TODO (damien-aymon) add constant for writer version.
 
@@ -59,6 +59,8 @@ Status Reader::Initialize(){
 Status Reader::Read(std::vector<Tensor>* &read_tensors) {
   return reader_->ReadTensors(read_tensors);
 }
+
+Reader::~Reader(){}
 
 
 } // namespace service_cache_util

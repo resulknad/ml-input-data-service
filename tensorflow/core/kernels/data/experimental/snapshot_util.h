@@ -206,7 +206,7 @@ class Reader {
 // Reads snapshots previously written with `TFRecordWriter`.
 class TFRecordReader : public Reader {
  public:
-  TFRecordReader(const std::string& filename, int compression_type,
+  TFRecordReader(const std::string& filename, const string& compression_type,
                  const DataTypeVector& dtypes);
 
   Status ReadTensors(std::vector<Tensor>* read_tensors) override;
