@@ -491,6 +491,24 @@ py_library(
     ],
 )
 
+################################################################################
+# EASL
+################################################################################
+
+py_library(
+    name = "service_cache_ops",
+    srcs = [
+        "service_cache_ops.py",
+    ],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/python:experimental_dataset_ops_gen",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/util:structure",
+    ],
+)
+
 py_library(
     name = "dataset_ops",
     deps = [
@@ -513,6 +531,7 @@ py_library(
         ":readers",
         ":resampling",
         ":scan_ops",
+        ":service_cache_ops",
         ":shuffle_ops",
         ":snapshot",
         ":stats_ops",
