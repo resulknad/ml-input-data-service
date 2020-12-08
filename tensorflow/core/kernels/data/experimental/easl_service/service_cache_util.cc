@@ -1,4 +1,5 @@
 #include "tensorflow/core/kernels/data/experimental/easl_service/service_cache_util.h"
+#include "tensorflow/core/platform/stringprintf.h"
 
 namespace tensorflow {
 namespace data {
@@ -34,7 +35,30 @@ Writer::~Writer() {
   async_writer_.reset();
 }
 
+// -----------------------------------------------------------------------------
+// Reader
+// -----------------------------------------------------------------------------
 
+Reader::Reader(const std::string &target_dir, DataTypeVector& dtypes, Env *env)
+    : target_dir_(target_dir), dtypes_(dtypes), env_(env) {
+  // TODO (damien-aymon) add constant for writer version.
+
+}
+
+Status Reader::Initialize(){
+  std::string filename = io::JoinPath(target_dir_,
+      strings::Printf("%08llu.snapshot",
+          static_cast<unsigned long long>(0)));
+
+  //  TODO (damien-aymon) constant for version number.
+  return snapshot_util::Reader::Create(
+      env_, filename,io::compression::kSnappy,
+      /*version*/ 2, dtypes_, &reader_);
+}
+
+Status Reader::Read(std::vector<Tensor>* &read_tensors) {
+  return reader_->ReadTensors(read_tensors);
+}
 
 
 } // namespace service_cache_util

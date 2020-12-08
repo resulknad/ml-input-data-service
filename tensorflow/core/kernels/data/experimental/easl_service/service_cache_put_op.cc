@@ -186,7 +186,7 @@ Status ServiceCachePutOp::Dataset::Iterator::GetNextInternal(
 
   TF_RETURN_IF_ERROR(input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
   
-  if(*end_of_sequence){
+  if(*end_of_sequence){ServiceCachePutDataset
     // (damien-aymon) will block until the underlying asyncWriter is done.
     writer_.reset();
     return Status::OK();
@@ -195,7 +195,7 @@ Status ServiceCachePutOp::Dataset::Iterator::GetNextInternal(
 }
 
 namespace {
-REGISTER_KERNEL_BUILDER(Name("ServiceCachePut").Device(DEVICE_CPU),
+REGISTER_KERNEL_BUILDER(Name("ServiceCachePutDataset").Device(DEVICE_CPU),
                         ServiceCachePutOp);
 }  // namespace
 

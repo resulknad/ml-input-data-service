@@ -597,7 +597,7 @@ Status Reader::MakeNestedDataset(Env* env,
 }
 
 TFRecordReader::TFRecordReader(const std::string& filename,
-                               const string& compression_type,
+                               int compression_type,
                                const DataTypeVector& dtypes)
     : filename_(filename),
       offset_(0),

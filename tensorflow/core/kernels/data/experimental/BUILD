@@ -765,6 +765,24 @@ tf_kernel_library(
     ],
 )
 
+tf_kernel_library(
+    name = "service_cache_get_op",
+    srcs = ["easl_service/service_cache_get_op.cc"],
+    hdrs = ["easl_service/service_cache_get_op.h"],
+    deps = [
+        ":service_cache_util",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/framework:op_requires",
+        "//tensorflow/core/kernels/data:name_utils",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
 cc_library(
     name = "service_cache_util",
     srcs = ["easl_service/service_cache_util.cc"],
@@ -815,6 +833,8 @@ tf_kernel_library(
         ":rebatch_dataset_op",
         ":sampling_dataset_op",
         ":scan_dataset_op",
+        ":service_cache_get_op",
+        ":service_cache_put_op",
         ":set_stats_aggregator_dataset_op",
         ":sleep_dataset_op",
         ":sliding_window_dataset_op",
@@ -827,6 +847,5 @@ tf_kernel_library(
         ":to_tf_record_op",
         ":unbatch_dataset_op",
         ":unique_dataset_op",
-        ":service_cache_put_op",
     ],
 )

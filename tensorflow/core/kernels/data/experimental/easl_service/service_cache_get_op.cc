@@ -172,7 +172,7 @@ Status ServiceCacheGetOp::Dataset::Iterator::GetNextInternal(
 }
 
 namespace {
-REGISTER_KERNEL_BUILDER(Name("ServiceCachePut").Device(DEVICE_CPU),
+REGISTER_KERNEL_BUILDER(Name("ServiceCacheGetDataset").Device(DEVICE_CPU),
                         ServiceCacheGetOp);
 }  // namespace
 

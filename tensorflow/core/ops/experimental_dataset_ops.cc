@@ -1210,4 +1210,13 @@ REGISTER_OP("ServiceCachePutDataset")
       return shape_inference::ScalarShape(c);
     });
 
+REGISTER_OP("ServiceCacheGetDataset")
+        .Input("input_dataset: variant")
+        .Input("path: string")
+        .SetShapeFn([](shape_inference::InferenceContext* c) {
+          shape_inference::ShapeHandle unused;
+          // `path` should be a scalar.
+          TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+          return shape_inference::ScalarShape(c);
+        });
 }  // namespace tensorflow

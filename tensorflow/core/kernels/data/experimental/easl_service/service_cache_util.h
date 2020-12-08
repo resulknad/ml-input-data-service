@@ -1,11 +1,9 @@
 #ifndef TENSORFLOW_CORE_KERNELS_DATA_EXPERIMENTAL_EASL_SERVICE_SERVICE_CACHE_UTIL_
 #define TENSORFLOW_CORE_KERNELS_DATA_EXPERIMENTAL_EASL_SERVICE_SERVICE_CACHE_UTIL_
 
-// This operation transparently puts the dataset elements into the tf.data
-// service cache.
-// This op should not be inserted by end-users.
 
 #include "tensorflow/core/kernels/data/experimental/snapshot_util.h"
+#include "tensorflow/core/framework/types.h"
 
 namespace tensorflow {
 namespace data {
@@ -30,6 +28,24 @@ class Writer {
   const std::string target_dir_;
 
   std::unique_ptr<snapshot_util::AsyncWriter> async_writer_;
+};
+
+class Reader {
+ public:
+  Reader(const std::string &target_dir, DataTypeVector& dtypes, Env *env);
+
+  Status Initialize();
+
+  Status Read(std::vector<Tensor>* &read_tensors);
+
+  ~Reader();
+
+ private:
+  const std::string target_dir_;
+  const DataTypeVector dtypes_;
+  Env* env_;
+
+  std::unique_ptr<snapshot_util::Reader> reader_;
 };
 
 } // namespace service_cache_util
