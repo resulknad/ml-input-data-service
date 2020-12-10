@@ -1213,13 +1213,8 @@ REGISTER_OP("ServiceCachePutDataset")
 
 
 REGISTER_OP("ServiceCacheGetDataset")
-        .Input("input_dataset: variant")
         .Input("path: string")
         .Output("handle: variant")
-        .SetShapeFn([](shape_inference::InferenceContext* c) {
-          shape_inference::ShapeHandle unused;
-          // `path` should be a scalar.
-          TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
-          return shape_inference::ScalarShape(c);
-        });
+        .SetDoNotOptimize()
+        .SetShapeFn(shape_inference::ScalarShape);
 }  // namespace tensorflow

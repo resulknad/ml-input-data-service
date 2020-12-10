@@ -157,6 +157,11 @@ from tensorflow.python.data.util.structure import _SparseTensorStructure as Spar
 from tensorflow.python.data.util.structure import _TensorArrayStructure as TensorArrayStructure
 from tensorflow.python.data.util.structure import _TensorStructure as TensorStructure
 from tensorflow.python.framework.type_spec import TypeSpec as Structure
+
+# EASL
+from tensorflow.python.data.experimental.ops.service_cache_ops import service_cache_get
+from tensorflow.python.data.experimental.ops.service_cache_ops import service_cache_put
+
 # pylint: enable=unused-import
 
 from tensorflow.python.util.all_util import remove_undocumented

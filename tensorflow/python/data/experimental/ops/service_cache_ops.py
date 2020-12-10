@@ -22,8 +22,8 @@ class _ServiceCachePutDataset(dataset_ops.UnaryUnchangedStructureDataset):
 
         variant_tensor = ged_ops.service_cache_put_dataset(
             input_dataset._variant_tensor,  # pylint: disable=protected-access
-            path,
-            **self._flat_structure)
+            path)
+            ##**self._flat_structure)
         super(_ServiceCachePutDataset, self).__init__(input_dataset, variant_tensor)
 
     def _functions(self):
@@ -33,7 +33,7 @@ class _ServiceCachePutDataset(dataset_ops.UnaryUnchangedStructureDataset):
         return "Dataset.serviceCachePutDataset"
 
 
-#@tf_export("data.experimental.service_cache_put")
+@tf_export("data.experimental.service_cache_put")
 def service_cache_put(path):
 
     def _apply_fn(dataset):
@@ -44,3 +44,25 @@ def service_cache_put(path):
         return dataset
 
     return _apply_fn
+
+class _ServiceCacheGetDataset(dataset_ops.DatasetSource):
+  """A dataset that gets data from the tf.data service cache. (for testing
+  only)"""
+
+  def __init__(self, path, element_spec):
+
+    self._path = path
+    self._element_spec = element_spec
+
+    variant_tensor = ged_ops.service_cache_get_dataset(path)
+
+    super(_ServiceCacheGetDataset, self).__init__(variant_tensor)
+
+  @property
+  def element_spec(self):
+    return self._element_spec
+
+@tf_export("data.experimental.serviceCacheGetDataset")
+def service_cache_get(path, element_spec=tensor_spec.TensorSpec(shape=(),
+                                                       dtype=dtypes.int32)):
+  return _ServiceCacheGetDataset(path, element_spec)

@@ -108,15 +108,15 @@ ServiceCacheGetOp::Dataset::MakeIteratorInternal(const string& prefix) const {
 
 const DataTypeVector& ServiceCacheGetOp::Dataset::output_dtypes() const {
   // TODO (damien-aymon) update this and read from metadata file
-  return DataTypeVector({DT_INT32});
+  static DataTypeVector* dtypes = new DataTypeVector({DT_INT32});
+  return *dtypes;
 }
 
 const std::vector<PartialTensorShape>&
 ServiceCacheGetOp::Dataset::output_shapes() const {
   // TODO (damien-aymon) update this and read from metadata file!!!
-  std::vector<PartialTensorShape> shapes = std::vector<PartialTensorShape>();
-  shapes.push_back(TensorShape());
-  return shapes;
+  static std::vector<PartialTensorShape>* shapes = new std::vector<PartialTensorShape>{TensorShape()};
+  return *shapes;
 }
 
 string ServiceCacheGetOp::Dataset::DebugString() const {
@@ -167,8 +167,7 @@ Status ServiceCacheGetOp::Dataset::Iterator::GetNextInternal(
     IteratorContext* ctx, std::vector<Tensor>* out_tensors,
     bool* end_of_sequence) {
   mutex_lock l(mu_);
-
-  return reader_->Read(out_tensors);
+  return reader_->Read(out_tensors, end_of_sequence);
 }
 
 namespace {

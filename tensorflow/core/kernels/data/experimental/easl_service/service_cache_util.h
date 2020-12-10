@@ -36,7 +36,7 @@ class Reader {
 
   Status Initialize();
 
-  Status Read(std::vector<Tensor>* &read_tensors);
+  Status Read(std::vector<Tensor>* &read_tensors, bool* end_of_sequence);
 
   ~Reader();
 

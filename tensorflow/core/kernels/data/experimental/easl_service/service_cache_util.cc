@@ -56,8 +56,23 @@ Status Reader::Initialize(){
       /*version*/ 2, dtypes_, &reader_);
 }
 
-Status Reader::Read(std::vector<Tensor>* &read_tensors) {
-  return reader_->ReadTensors(read_tensors);
+Status Reader::Read(std::vector<Tensor>* &read_tensors, bool* end_of_sequence) {
+  *end_of_sequence = false;
+  Status s = reader_->ReadTensors(read_tensors);
+  if (!errors::IsOutOfRange(s)) {
+    return s;
+  }
+      
+      //Status status = AdvanceToNextFile(ctx->env());
+      /*if (errors::IsNotFound(status)) {
+        *end_of_sequence = true;
+        return Status::OK();
+      } else {
+        return status;
+      }
+    }*/
+  *end_of_sequence = true;
+  return Status::OK();
 }
 
 Reader::~Reader(){}
