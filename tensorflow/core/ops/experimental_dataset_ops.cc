@@ -1203,6 +1203,7 @@ REGISTER_OP("RegisterDataset")
 REGISTER_OP("ServiceCachePutDataset")
     .Input("input_dataset: variant")
     .Input("path: string")
+    .Output("handle: variant")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
       // `path` should be a scalar.
@@ -1210,9 +1211,11 @@ REGISTER_OP("ServiceCachePutDataset")
       return shape_inference::ScalarShape(c);
     });
 
+
 REGISTER_OP("ServiceCacheGetDataset")
         .Input("input_dataset: variant")
         .Input("path: string")
+        .Output("handle: variant")
         .SetShapeFn([](shape_inference::InferenceContext* c) {
           shape_inference::ShapeHandle unused;
           // `path` should be a scalar.
