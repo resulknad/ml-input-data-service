@@ -108,7 +108,7 @@ ServiceCacheGetOp::Dataset::MakeIteratorInternal(const string& prefix) const {
 
 const DataTypeVector& ServiceCacheGetOp::Dataset::output_dtypes() const {
   // TODO (damien-aymon) update this and read from metadata file
-  return DataTypeVector({DT_INT64});
+  return DataTypeVector({DT_INT32});
 }
 
 const std::vector<PartialTensorShape>&

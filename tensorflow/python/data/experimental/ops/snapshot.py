@@ -392,3 +392,26 @@ def service_cache_put(path):
         return dataset
 
     return _apply_fn
+
+class _ServiceCacheGetDataset(dataset_ops.DatasetSource):
+  """A dataset that gets data from the tf.data service cache. (for testing
+  only)"""
+
+  def __init__(self, path, element_spec):
+
+    self._path = path
+    self._element_spec = element_spec
+
+    variant_tensor = gen_experimental_dataset_ops.service_cache_get_dataset(
+      path)
+
+    super(_ServiceCacheGetDataset, self).__init__(variant_tensor)
+
+  @property
+  def element_spec(self):
+    return self._element_spec
+
+@tf_export(data.experimental.serviceCacheGet)
+def service_cache_get(path, element_spec=tf.TensorSpec(shape=(),
+                                                       dtype=tf.int32)):
+  return _ServiceCacheGetDataset(path, element_spec)
