@@ -22,8 +22,8 @@ class _ServiceCachePutDataset(dataset_ops.UnaryUnchangedStructureDataset):
 
         variant_tensor = ged_ops.service_cache_put_dataset(
             input_dataset._variant_tensor,  # pylint: disable=protected-access
-            path)
-            ##**self._flat_structure)
+            path,
+            **self._flat_structure)
         super(_ServiceCachePutDataset, self).__init__(input_dataset, variant_tensor)
 
     def _functions(self):
@@ -54,7 +54,8 @@ class _ServiceCacheGetDataset(dataset_ops.DatasetSource):
     self._path = path
     self._element_spec = element_spec
 
-    variant_tensor = ged_ops.service_cache_get_dataset(path)
+    variant_tensor = ged_ops.service_cache_get_dataset(
+      path, **self._flat_structure)
 
     super(_ServiceCacheGetDataset, self).__init__(variant_tensor)
 

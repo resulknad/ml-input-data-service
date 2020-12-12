@@ -26,6 +26,8 @@ class ServiceCacheGetOp : public DatasetOpKernel {
  private:
   class Dataset;
 
+  DataTypeVector output_dtypes_;
+  std::vector<PartialTensorShape> output_shapes_;
 };
 
 } // namespace easl

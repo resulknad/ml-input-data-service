@@ -10,7 +10,8 @@ namespace data {
 namespace easl{
 namespace service_cache_util {
 
-// (damien-aymon)
+
+// EASL (damien-aymon)
 // Top-level writer that handles writes to the service cache.
 // In the future, this class should handle more complex logic on how and where
 // to distribute individual elements to cache files.
@@ -18,21 +19,36 @@ namespace service_cache_util {
 // a TFRecordWriter.
 class Writer {
  public:
-  Writer(const std::string& target_dir, Env* env);
+  Writer(Env* env,
+         const std::string& target_dir,
+         const DataTypeVector& output_dtypes,
+         const std::vector<PartialTensorShape>& output_shapes);
 
   Status Write(const std::vector<Tensor>& tensors);
 
+  Status Close();
+
   ~Writer();
 
- private:
-  const std::string target_dir_;
+  Status Initialize();
 
+ private:
+  Status WriteMetadataFile(
+      Env* env, const std::string& path, const DataTypeVector& output_dtypes,
+      const std::vector<PartialTensorShape>& output_shapes);
+
+  Env* env_;
+  const std::string target_dir_;
+  const DataTypeVector output_dtypes_;
+  const std::vector<PartialTensorShape> output_shapes_;
   std::unique_ptr<snapshot_util::AsyncWriter> async_writer_;
 };
 
 class Reader {
  public:
-  Reader(const std::string &target_dir, const DataTypeVector& dtypes, Env *env);
+  Reader(Env *env,
+         const std::string &target_dir,
+         const DataTypeVector& output_dtypes);
 
   Status Initialize();
 
@@ -41,8 +57,12 @@ class Reader {
   ~Reader();
 
  private:
+  Status ReadAndParseMetadataFile();
+
   const std::string target_dir_;
-  const DataTypeVector dtypes_;
+  int64 cache_file_version_;
+  DataTypeVector output_dtypes_;
+  std::vector<PartialTensorShape> output_shapes_;
   Env* env_;
 
   std::unique_ptr<snapshot_util::Reader> reader_;

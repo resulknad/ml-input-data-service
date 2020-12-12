@@ -138,6 +138,7 @@ exports_files(
         "control_flow.proto",
         # TODO(ebrevdo): Re-enable once CriticalSection is in core.
         # "critical_section.proto",
+        "data/experimental/service_cache.proto",
         "data/experimental/snapshot.proto",
         "data/experimental/service_config.proto",
         "debug_event.proto",
@@ -166,6 +167,7 @@ tf_proto_library(
         # "critical_section.proto",
         "data/experimental/snapshot.proto",
         "data/experimental/service_config.proto",
+        "data/experimental/service_cache.proto",
         "debug_event.proto",
         "meta_graph.proto",
         "named_tensor.proto",

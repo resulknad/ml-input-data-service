@@ -165,8 +165,13 @@ ServiceCachePutOp::Dataset::Iterator::Iterator(const Params& params)
 
 Status ServiceCachePutOp::Dataset::Iterator::Initialize(
     IteratorContext* ctx) {
-  writer_ = std::make_unique<tensorflow::data::easl::service_cache_util::Writer>(dataset()->path_, ctx->env());
-  return dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_);
+  writer_ =
+      std::make_unique<tensorflow::data::easl::service_cache_util::Writer>(
+          ctx->env(), dataset()->path_, dataset()->output_dtypes(),
+          dataset()->output_shapes());
+  writer_->Initialize();
+  return dataset()->input_->MakeIterator(
+      ctx, this, prefix(), &input_impl_);
 }
 
 Status ServiceCachePutOp::Dataset::Iterator::SaveInternal(

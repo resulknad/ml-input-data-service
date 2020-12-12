@@ -1204,6 +1204,8 @@ REGISTER_OP("ServiceCachePutDataset")
     .Input("input_dataset: variant")
     .Input("path: string")
     .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
       // `path` should be a scalar.
@@ -1211,10 +1213,11 @@ REGISTER_OP("ServiceCachePutDataset")
       return shape_inference::ScalarShape(c);
     });
 
-
 REGISTER_OP("ServiceCacheGetDataset")
         .Input("path: string")
         .Output("handle: variant")
+        .Attr("output_types: list(type) >= 1")
+        .Attr("output_shapes: list(shape) >= 1")
         .SetDoNotOptimize()
         .SetShapeFn(shape_inference::ScalarShape);
 }  // namespace tensorflow

@@ -19,7 +19,9 @@ namespace easl{
 
 class ServiceCacheGetOp::Dataset : public DatasetBase {
  public:
-  Dataset(OpKernelContext* ctx, const std::string& path);
+  Dataset(OpKernelContext* ctx, const std::string& path,
+          const DataTypeVector& output_types,
+          const std::vector<PartialTensorShape>& output_shapes);
 
   ~Dataset() override;
 
@@ -44,6 +46,8 @@ class ServiceCacheGetOp::Dataset : public DatasetBase {
   class Iterator;
 
   const tstring path_;
+  const DataTypeVector output_dtypes_;
+  const std::vector<PartialTensorShape> output_shapes_;
 
 };
 
@@ -76,10 +80,11 @@ class ServiceCacheGetOp::Dataset::Iterator : public DatasetIterator<Dataset> {
 ServiceCacheGetOp::ServiceCacheGetOp(OpKernelConstruction* ctx)
     : DatasetOpKernel(ctx) {
 
-  // TODO(damien-aymon) Why does the snapshot op have these attributes, they
-  // seem never to be used.
-  //OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputTypes, &output_types_));
-  //OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
+  // (damien-aymon)This op does not have access to the original input dataset
+  // it replaces. The dtypes and shapes must therefore be set as attributes
+  // of this op.
+  OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputTypes, &output_dtypes_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
 }
 
 void ServiceCacheGetOp::MakeDataset(OpKernelContext* ctx,
@@ -87,7 +92,8 @@ void ServiceCacheGetOp::MakeDataset(OpKernelContext* ctx,
   tstring path;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kPath, &path));
 
-  *output = new ServiceCacheGetOp::Dataset(ctx, path);
+  *output = new ServiceCacheGetOp::Dataset(
+      ctx, path, output_dtypes_, output_shapes_);
 }
 
 // -----------------------------------------------------------------------------
@@ -95,8 +101,14 @@ void ServiceCacheGetOp::MakeDataset(OpKernelContext* ctx,
 // -----------------------------------------------------------------------------
 
 ServiceCacheGetOp::Dataset::Dataset(
-    OpKernelContext* ctx, const std::string& path)
-    : DatasetBase(DatasetContext(ctx)), path_(path) {}
+    OpKernelContext* ctx,
+    const std::string& path,
+    const DataTypeVector& output_dtypes,
+    const std::vector<PartialTensorShape>& output_shapes)
+    : DatasetBase(DatasetContext(ctx)),
+    path_(path),
+    output_dtypes_(output_dtypes),
+    output_shapes_(output_shapes) {}
 
 ServiceCacheGetOp::Dataset::~Dataset() {}
 
@@ -107,16 +119,12 @@ ServiceCacheGetOp::Dataset::MakeIteratorInternal(const string& prefix) const {
 }
 
 const DataTypeVector& ServiceCacheGetOp::Dataset::output_dtypes() const {
-  // TODO (damien-aymon) update this and read from metadata file
-  static DataTypeVector* dtypes = new DataTypeVector({DT_INT32});
-  return *dtypes;
+  return output_dtypes_;
 }
 
 const std::vector<PartialTensorShape>&
 ServiceCacheGetOp::Dataset::output_shapes() const {
-  // TODO (damien-aymon) update this and read from metadata file!!!
-  static std::vector<PartialTensorShape>* shapes = new std::vector<PartialTensorShape>{TensorShape()};
-  return *shapes;
+  return output_shapes_;
 }
 
 string ServiceCacheGetOp::Dataset::DebugString() const {
@@ -148,7 +156,7 @@ Status ServiceCacheGetOp::Dataset::Iterator::Initialize(
     IteratorContext* ctx) {
   reader_ =
       std::make_unique<tensorflow::data::easl::service_cache_util::Reader>(
-          dataset()->path_, dataset()->output_dtypes(), ctx->env());
+          ctx->env(), dataset()->path_, dataset()->output_dtypes_);
 
   return reader_->Initialize();
 }
