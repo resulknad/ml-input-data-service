@@ -193,6 +193,7 @@ Status ServiceCachePutOp::Dataset::Iterator::GetNextInternal(
   
   if(*end_of_sequence){
     // (damien-aymon) will block until the underlying asyncWriter is done.
+    writer_->Close();
     writer_.reset();
     return Status::OK();
   }
