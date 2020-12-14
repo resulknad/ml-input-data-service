@@ -23,11 +23,12 @@ limitations under the License.
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/Shape/Transforms/Passes.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Dialect/StandardOps/Transforms/FuncConversions.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/Builders.h"
-#include "mlir/IR/Function.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
@@ -427,7 +428,7 @@ struct HloToLhloReturnOpConverter : public BaseOpConversion<mhlo::ReturnOp> {
       mhlo::ReturnOp op, ArrayRef<Value> operands,
       ConversionPatternRewriter& rewriter) const final {
     auto loc = op.getLoc();
-    auto& entry_block = op.getParentRegion()->front();
+    auto& entry_block = op->getParentRegion()->front();
     auto num_arguments = entry_block.getNumArguments();
     if (operands.size() > num_arguments) {
       return op.emitError(
@@ -555,11 +556,8 @@ struct HloLegalizeToLhlo
     ConversionTarget target(context);
     target.addLegalDialect<lmhlo::LmhloDialect>();
     target.addLegalDialect<StandardOpsDialect>();
-    target.addLegalOp<ModuleOp>();
     target.addIllegalOp<mlir::TensorLoadOp>();
     target.addIllegalOp<mlir::TensorStoreOp>();
-    target.addLegalOp<ModuleTerminatorOp>();
-    target.addLegalOp<TensorFromElementsOp>();
     target.addIllegalDialect<mhlo::MhloDialect>();
 
     BufferizeTypeConverter converter;
@@ -581,9 +579,11 @@ struct HloLegalizeToLhlo
     });
 
     populateHLOToLHLOConversionPattern(&context, &converter, &patterns);
-    populateWithBufferizeOpConversionPatterns<mlir::ReturnOp, mlir::ReturnOp,
-                                              lmhlo::CopyOp>(
-        &context, converter, patterns);
+    populateFuncOpTypeConversionPattern(patterns, &context, converter);
+    populateCallOpTypeConversionPattern(patterns, &context, converter);
+    populateBranchOpInterfaceAndReturnOpTypeConversionPattern(
+        patterns, &context, converter);
+
     populateShapeStructuralTypeConversionsAndLegality(&context, converter,
                                                       patterns, target);
     if (failed(applyPartialConversion(getOperation(), target,
@@ -629,11 +629,15 @@ void populateHLOToLHLOConversionPattern(MLIRContext* context,
       HloToLhloOpConverter<mhlo::MulOp>,
       HloToLhloOpConverter<mhlo::NegOp>,
       HloToLhloOpConverter<mhlo::NotOp>,
+      HloToLhloOpConverter<mhlo::OrOp>,
       HloToLhloOpConverter<mhlo::RealOp>,
       HloToLhloOpConverter<mhlo::RemOp>,
       HloToLhloOpConverter<mhlo::RsqrtOp>,
       HloToLhloOpConverter<mhlo::ReshapeOp>,
       HloToLhloOpConverter<mhlo::SelectOp>,
+      HloToLhloOpConverter<mhlo::ShiftLeftOp>,
+      HloToLhloOpConverter<mhlo::ShiftRightArithmeticOp>,
+      HloToLhloOpConverter<mhlo::ShiftRightLogicalOp>,
       HloToLhloOpConverter<mhlo::SignOp>,
       HloToLhloOpConverter<mhlo::SinOp>,
       HloToLhloOpConverter<mhlo::SliceOp>,
@@ -641,11 +645,12 @@ void populateHLOToLHLOConversionPattern(MLIRContext* context,
       HloToLhloOpConverter<mhlo::SubOp>,
       HloToLhloOpConverter<mhlo::TanhOp>,
       HloToLhloOpConverter<mhlo::TransposeOp>,
+      HloToLhloOpConverter<mhlo::XorOp>,
       HloToLhloReduceOpConverter,
       HloToLhloReturnOpConverter,
       HloToLhloTensorLoadOpConverter,
       HloToLhloTensorStoreOpConverter
-  >(context);
+  >(*converter, context);
   // clang-format on
 }
 

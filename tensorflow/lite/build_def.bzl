@@ -178,6 +178,7 @@ def tf_to_tflite(name, src, options, out):
 
     toco_cmdline = " ".join([
         "$(location //tensorflow/lite/python:tflite_convert)",
+        "--enable_v1_converter",
         "--experimental_new_converter",
         ("--graph_def_file=$(location %s)" % src),
         ("--output_file=$(location %s)" % out),
@@ -358,7 +359,6 @@ def generated_test_models():
         "resolve_constant_strided_slice",
         "reverse_sequence",
         "reverse_v2",
-        "rfft2d",
         "round",
         "rsqrt",
         "scatter_nd",
@@ -674,8 +674,7 @@ def gen_zipped_test_file(name, file, toco, flags):
         cmd = (("$(locations :generate_examples) --toco $(locations {0}) " +
                 " --zip_to_output {1} {2} $(@D)").format(toco, file, flags)),
         outs = [file],
-        # `exec_tools` is required for PY3 compatibility in place of `tools`.
-        exec_tools = [
+        tools = [
             ":generate_examples",
             toco,
         ],
@@ -801,7 +800,7 @@ def tflite_custom_cc_library(
             model = models,
         )
         real_srcs.append(":%s_registration" % name)
-        real_deps.append("//tensorflow/lite/java/src/main/native:selected_ops_jni")
+        real_srcs.append("//tensorflow/lite:create_op_resolver_with_selected_ops.cc")
     else:
         # Support all operators if `models` not specified.
         real_deps.append("//tensorflow/lite/java/src/main/native")
@@ -811,7 +810,7 @@ def tflite_custom_cc_library(
         srcs = real_srcs,
         hdrs = [
             # TODO(b/161323860) replace this by generated header.
-            "//tensorflow/lite/java/src/main/native:op_resolver.h",
+            "//tensorflow/lite:create_op_resolver.h",
         ],
         copts = tflite_copts(),
         linkopts = select({
@@ -856,8 +855,8 @@ def tflite_custom_android_library(
         name = "libtensorflowlite_jni.so",
         linkscript = "//tensorflow/lite/java:tflite_version_script.lds",
         deps = [
-            ":%s_cc" % name,
             "//tensorflow/lite/java/src/main/native:native_framework_only",
+            ":%s_cc" % name,  # Placed below native_framework_only to avoid backward reference error.
         ],
     )
 

@@ -497,6 +497,11 @@ Status DirectSession::RunInternal(
     CallFrameInterface* call_frame, ExecutorsAndKeys* executors_and_keys,
     RunMetadata* run_metadata,
     const thread::ThreadPoolOptions& threadpool_options) {
+  // This is a temporary flag for controlling whether to always track the kernel
+  // execution cost. We will remove this once the feature is validated.
+  if (run_options.experimental().always_track_kernel_execution_cost())
+    EnableAlwaysTrackKernelExecutionCost();
+
   const uint64 start_time_usecs = options_.env->NowMicros();
   const int64 executor_step_count = executors_and_keys->step_count.fetch_add(1);
   RunState run_state(step_id, &devices_);
@@ -1695,6 +1700,7 @@ Status DirectSession::CreateGraphs(
   for (auto& partition : partitions) {
     std::unique_ptr<Graph> device_graph(
         new Graph(client_graph->flib_def.get()));
+    device_graph->SetConstructionContext(ConstructionContext::kDirectSession);
     GraphConstructorOptions device_opts;
     // There are internal operations (e.g., send/recv) that we now allow.
     device_opts.allow_internal_ops = true;

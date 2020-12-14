@@ -1,6 +1,6 @@
 #include "tensorflow/core/kernels/data/experimental/easl_service/service_cache_util.h"
 #include "tensorflow/core/platform/stringprintf.h"
-#include "tensorflow/core/protobuf/data/experimental/service_cache.pb.h"
+#include "tensorflow/core/protobuf/service_cache.pb.h"
 
 namespace tensorflow {
 namespace data {

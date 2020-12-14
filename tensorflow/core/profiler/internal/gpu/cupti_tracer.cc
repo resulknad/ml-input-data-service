@@ -188,12 +188,12 @@ DecodeDriverMemcpy(CUpti_CallbackId cbid, const void *params) {
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemcpy: {
       const auto *p = reinterpret_cast<const cuMemcpy_params *>(params);
-      return std::make_tuple(p->ByteCount, CuptiTracerEventType::Unsupported,
+      return std::make_tuple(p->ByteCount, CuptiTracerEventType::MemcpyOther,
                              false);
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemcpyAsync: {
       const auto *p = reinterpret_cast<const cuMemcpyAsync_params *>(params);
-      return std::make_tuple(p->ByteCount, CuptiTracerEventType::Unsupported,
+      return std::make_tuple(p->ByteCount, CuptiTracerEventType::MemcpyOther,
                              true);
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemcpy2D_v2: {
@@ -291,7 +291,7 @@ void CUPTIAPI FreeCuptiActivityBuffer(CUcontext context, uint32_t stream_id,
 void AddKernelEventUponApiExit(CuptiTraceCollector *collector, uint32 device_id,
                                const CUpti_CallbackData *cbdata,
                                uint64 start_time, uint64 end_time) {
-  CuptiTracerEvent event;
+  CuptiTracerEvent event{};
   event.type = CuptiTracerEventType::Kernel;
   event.source = CuptiTracerEventSource::DriverCallback;
   event.name = cbdata->symbolName ? cbdata->symbolName : cbdata->functionName;
@@ -310,7 +310,7 @@ CuptiTracerEvent PopulateMemcpyCallbackEvent(
     CuptiTracerEventType type, const CUpti_CallbackData *cbdata,
     size_t num_bytes, uint32 src_device, uint32 dst_device, bool async,
     uint64 start_time, uint64 end_time) {
-  CuptiTracerEvent event;
+  CuptiTracerEvent event{};
   event.type = type;
   event.source = CuptiTracerEventSource::DriverCallback;
   event.start_time_ns = start_time;
@@ -373,7 +373,7 @@ void AddCudaMallocEventUponApiExit(CuptiTraceCollector *collector,
                                    uint64 start_time, uint64 end_time) {
   const cuMemAlloc_v2_params_st *params =
       reinterpret_cast<const cuMemAlloc_v2_params_st *>(cbdata->functionParams);
-  CuptiTracerEvent event;
+  CuptiTracerEvent event{};
   event.type = CuptiTracerEventType::MemoryAlloc;
   event.source = CuptiTracerEventSource::DriverCallback;
   event.name = cbdata->functionName;
@@ -384,7 +384,7 @@ void AddCudaMallocEventUponApiExit(CuptiTraceCollector *collector,
   event.context_id = cbdata->contextUid;
   event.correlation_id = cbdata->correlationId;
   event.memalloc_info.num_bytes = params->bytesize;
-  VLOG(3) << "Cuda Malloc/Free observed: " << params->bytesize;
+  VLOG(3) << "cudaMalloc observed: " << params->bytesize;
   collector->AddEvent(std::move(event));
 }
 
@@ -392,7 +392,7 @@ void AddGenericEventUponApiExit(CuptiTraceCollector *collector,
                                 uint32 device_id, CUpti_CallbackId cbid,
                                 const CUpti_CallbackData *cbdata,
                                 uint64 start_time, uint64 end_time) {
-  CuptiTracerEvent event;
+  CuptiTracerEvent event{};
   event.type = CuptiTracerEventType::Generic;
   event.source = CuptiTracerEventSource::DriverCallback;
   event.name = cbdata->functionName;
@@ -402,12 +402,13 @@ void AddGenericEventUponApiExit(CuptiTraceCollector *collector,
   event.device_id = device_id;
   event.context_id = cbdata->contextUid;
   event.correlation_id = cbdata->correlationId;
+  VLOG(3) << "Observed generic event " << cbdata->functionName;
   collector->AddEvent(std::move(event));
 }
 
 void AddKernelActivityEvent(CuptiTraceCollector *collector,
                             const CUpti_ActivityKernel4 *kernel) {
-  CuptiTracerEvent event;
+  CuptiTracerEvent event{};
   event.type = CuptiTracerEventType::Kernel;
   event.source = CuptiTracerEventSource::Activity;
   event.name = kernel->name;
@@ -433,7 +434,7 @@ void AddKernelActivityEvent(CuptiTraceCollector *collector,
 
 void AddMemcpyActivityEvent(CuptiTraceCollector *collector,
                             const CUpti_ActivityMemcpy *memcpy) {
-  CuptiTracerEvent event;
+  CuptiTracerEvent event{};
   switch (memcpy->copyKind) {
     case CUPTI_ACTIVITY_MEMCPY_KIND_HTOD:
       event.type = CuptiTracerEventType::MemcpyH2D;
@@ -477,7 +478,7 @@ void AddMemcpyActivityEvent(CuptiTraceCollector *collector,
 // Invokes callback upon peer-2-peer memcpy between different GPU devices.
 void AddMemcpy2ActivityEvent(CuptiTraceCollector *collector,
                              const CUpti_ActivityMemcpy2 *memcpy2) {
-  CuptiTracerEvent event;
+  CuptiTracerEvent event{};
   event.type = CuptiTracerEventType::MemcpyP2P;
   event.name = "MemcpyP2P";
   event.source = CuptiTracerEventSource::Activity;
@@ -500,7 +501,7 @@ void AddMemcpy2ActivityEvent(CuptiTraceCollector *collector,
 
 void AddCuptiOverheadActivityEvent(CuptiTraceCollector *collector,
                                    const CUpti_ActivityOverhead *overhead) {
-  CuptiTracerEvent event;
+  CuptiTracerEvent event{};
   event.type = CuptiTracerEventType::Overhead;
   event.name = getActivityOverheadKindString(overhead->overheadKind);
   event.source = CuptiTracerEventSource::Activity;
@@ -538,7 +539,7 @@ void AddUnifiedMemoryActivityEvent(
     const CUpti_ActivityUnifiedMemoryCounter2 *record) {
   VLOG(3) << "Cuda Unified Memory Activity, kind: " << record->counterKind
           << " src: " << record->srcId << " dst: " << record->dstId;
-  CuptiTracerEvent event;
+  CuptiTracerEvent event{};
   event.type = CuptiTracerEventType::UnifiedMemory;
   event.name = getActivityUnifiedMemoryKindString(record->counterKind);
   event.source = CuptiTracerEventSource::Activity;
@@ -935,7 +936,7 @@ class CudaEventRecorder {
 
     std::string annotation;
 
-    CuptiTracerEvent event;
+    CuptiTracerEvent event{};
     event.type = CuptiTracerEventType::Kernel;
     event.source = CuptiTracerEventSource::Activity;  // on gpu device.
     event.name = record.kernel_name;
@@ -963,7 +964,7 @@ class CudaEventRecorder {
         GetElapsedTimeUs(record.start_event, stream_info.ctx_info->end_event);
     auto elapsed_us = GetElapsedTimeUs(record.start_event, record.stop_event);
 
-    CuptiTracerEvent event;
+    CuptiTracerEvent event{};
     event.type = record.type;
     event.name = GetTraceEventTypeName(event.type);
     event.source = CuptiTracerEventSource::Activity;
@@ -1513,6 +1514,7 @@ Status CuptiTracer::HandleCallback(CUpti_CallbackDomain domain,
                                    CUpti_CallbackId cbid,
                                    const CUpti_CallbackData *cbdata) {
   if (!api_tracing_enabled_) return Status::OK();  // already unsubscribed.
+  if (!cupti_driver_api_hook_) return Status::OK();  // already unsubscribed.
   if (domain != CUPTI_CB_DOMAIN_DRIVER_API) return Status::OK();
   if (internalCuCall) return Status::OK();
 

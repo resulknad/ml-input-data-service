@@ -43,9 +43,10 @@ limitations under the License.
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
 #include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -53,7 +54,6 @@ limitations under the License.
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -157,19 +157,13 @@ void AssertOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 }
 
 //===----------------------------------------------------------------------===//
-// BatchMatMulOp
+// BatchMatMulV2Op & BatchMatMulOp
 //===----------------------------------------------------------------------===//
 
-void BatchMatMulOp::getCanonicalizationPatterns(
-    OwningRewritePatternList &results, MLIRContext *context) {
-  results.insert<BatchMatMulToMatMul>(context);
-}
-
-//===----------------------------------------------------------------------===//
-// BatchMatMulV2Op
-//===----------------------------------------------------------------------===//
-
-static LogicalResult Verify(BatchMatMulV2Op op) {
+template <typename OpT,
+          typename std::enable_if<llvm::is_one_of<
+              OpT, BatchMatMulOp, BatchMatMulV2Op>::value>::type * = nullptr>
+static LogicalResult Verify(OpT op) {
   if (!HasRankAtLeast(op.x(), 2)) {
     return op.emitOpError("requires lhs operand to have rank at least two");
   }
@@ -185,17 +179,34 @@ static LogicalResult Verify(BatchMatMulV2Op op) {
   ArrayRef<int64_t> x_shape = x_ty.getShape();
   ArrayRef<int64_t> y_shape = y_ty.getShape();
 
-  // Check broadcast compatibility if both input shapes are known.
+  llvm::SmallVector<int64_t, 4> result_batch_shape;
+  llvm::ArrayRef<int64_t> x_batches = x_shape.drop_back(2);
+  llvm::ArrayRef<int64_t> y_batches = y_shape.drop_back(2);
+
+  // Check compatibility of batch dimensions if both input shapes are known.
+  // BatchMatMul should have exactly the same batch dimensions and
+  // BatchMatMulV2 should have broadcastable batch dimensions.
   //
   // The last two dimensions are non-batch dimensions that don't need to
   // participate in batch dimension compatibility check.
-
-  llvm::SmallVector<int64_t, 4> result_batch_shape;
-  if (!OpTrait::util::getBroadcastedShape(
-          x_shape.drop_back(2), y_shape.drop_back(2), result_batch_shape))
-    return op.emitOpError()
-           << "found incompatible broadcast batch dimensions for lhs shape "
-           << x_ty << " and rhs shape " << y_ty;
+  if (std::is_same<OpT, BatchMatMulOp>()) {
+    for (const auto &dim_pairs : llvm::zip(x_batches, y_batches)) {
+      int64_t x_dim = std::get<0>(dim_pairs);
+      int64_t y_dim = std::get<1>(dim_pairs);
+      if (!ShapedType::isDynamic(x_dim) && !ShapedType::isDynamic(y_dim) &&
+          x_dim != y_dim) {
+        return op.emitOpError()
+               << "found mismatching batch dimensions for lhs shape " << x_ty
+               << " and rhs shape " << y_ty;
+      }
+    }
+  } else {
+    if (!OpTrait::util::getBroadcastedShape(x_batches, y_batches,
+                                            result_batch_shape))
+      return op.emitOpError()
+             << "found incompatible broadcast batch dimensions for lhs shape "
+             << x_ty << " and rhs shape " << y_ty;
+  }
 
   RankedTensorType output_ty = GetRankedTensorTypeForOperand(op.output());
   if (!output_ty) return success();
@@ -243,6 +254,11 @@ static LogicalResult Verify(BatchMatMulV2Op op) {
            << expected_out_col_dim << " but got " << out_col_dim;
 
   return success();
+}
+
+void BatchMatMulOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<BatchMatMulToV2>(context);
 }
 
 void BatchMatMulV2Op::getCanonicalizationPatterns(
@@ -609,6 +625,9 @@ void GetOutputShapeForBroadcastGradientArgs(ArrayRef<int64_t> bcasted_shape,
         r0.push_back(idx);
       else
         r1.push_back(idx);
+    } else if (s0_shape[s0_idx] == 1) {
+      r0.push_back(idx);
+      r1.push_back(idx);
     }
   }
 }
@@ -1399,7 +1418,7 @@ static LogicalResult Verify(OpT op) {
   // So, fetch attribute by string instead of the op.explicit_paddings()
   // attribute getter.
   if (op.padding() == "EXPLICIT") {
-    auto paddings = op.template getAttrOfType<ArrayAttr>("explicit_paddings");
+    auto paddings = op->template getAttrOfType<ArrayAttr>("explicit_paddings");
     if (!paddings)
       return op.emitOpError() << "requires attribute 'explicit_paddings' with "
                                  "'EXPLICIT' padding mode";
@@ -1460,9 +1479,10 @@ LogicalResult Conv2DOp::UpdateDataFormat(StringRef data_format) {
   if (failed(::mlir::TF::UpdateDataFormat(data_format, this))) return failure();
 
   // Update convolution attributes.
-  setAttr("dilations", ShuffleArrayAttr(dilations(), perm));
-  setAttr("strides", ShuffleArrayAttr(strides(), perm));
-  setAttr("explicit_paddings", ShuffleArrayAttr(explicit_paddings(), perm, 2));
+  (*this)->setAttr("dilations", ShuffleArrayAttr(dilations(), perm));
+  (*this)->setAttr("strides", ShuffleArrayAttr(strides(), perm));
+  (*this)->setAttr("explicit_paddings",
+                   ShuffleArrayAttr(explicit_paddings(), perm, 2));
 
   return success();
 }
@@ -1534,9 +1554,10 @@ LogicalResult Conv2DBackpropFilterOp::UpdateDataFormat(StringRef data_format) {
   if (failed(::mlir::TF::UpdateDataFormat(data_format, this))) return failure();
 
   // Update convolution attributes.
-  setAttr("dilations", ShuffleArrayAttr(dilations(), perm));
-  setAttr("strides", ShuffleArrayAttr(strides(), perm));
-  setAttr("explicit_paddings", ShuffleArrayAttr(explicit_paddings(), perm, 2));
+  (*this)->setAttr("dilations", ShuffleArrayAttr(dilations(), perm));
+  (*this)->setAttr("strides", ShuffleArrayAttr(strides(), perm));
+  (*this)->setAttr("explicit_paddings",
+                   ShuffleArrayAttr(explicit_paddings(), perm, 2));
 
   // Permute filter sizes operand.
   OpBuilder builder(getOperation());
@@ -1599,9 +1620,10 @@ LogicalResult Conv2DBackpropInputOp::UpdateDataFormat(StringRef data_format) {
   if (failed(::mlir::TF::UpdateDataFormat(data_format, this))) return failure();
 
   // Update convolution attributes.
-  setAttr("dilations", ShuffleArrayAttr(dilations(), perm));
-  setAttr("strides", ShuffleArrayAttr(strides(), perm));
-  setAttr("explicit_paddings", ShuffleArrayAttr(explicit_paddings(), perm, 2));
+  (*this)->setAttr("dilations", ShuffleArrayAttr(dilations(), perm));
+  (*this)->setAttr("strides", ShuffleArrayAttr(strides(), perm));
+  (*this)->setAttr("explicit_paddings",
+                   ShuffleArrayAttr(explicit_paddings(), perm, 2));
 
   // Permute input sizes operand.
   OpBuilder builder(getOperation());
@@ -2429,6 +2451,24 @@ static LogicalResult Verify(MatrixBandPartOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// MatrixSetDiagOp
+//===----------------------------------------------------------------------===//
+//
+void MatrixSetDiagOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<MatrixSetDiagToV3>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// MatrixSetDiagV2Op
+//===----------------------------------------------------------------------===//
+
+void MatrixSetDiagV2Op::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<MatrixSetDiagV2ToV3>(context);
+}
+
+//===----------------------------------------------------------------------===//
 // MaxOp
 //===----------------------------------------------------------------------===//
 
@@ -2447,6 +2487,33 @@ LogicalResult MaxPoolOp::FoldOperandsPermutation(
     ArrayRef<int64_t> permutation) {
   return ::mlir::TF::FoldOperandsPermutation(
       permutation, this, {{"strides", strides()}, {"ksize", ksize()}});
+}
+
+LogicalResult MaxPoolOp::UpdateDataFormat(StringRef new_data_format) {
+  StringRef src_data_format = data_format();
+
+  auto perm = GetDataFormatPermutation(src_data_format, new_data_format);
+  if (perm.empty()) return failure();
+
+  // Update data_format attribute and result types.
+  if (failed(::mlir::TF::UpdateDataFormat(new_data_format, this)))
+    return failure();
+
+  stridesAttr(ShuffleArrayAttr(strides(), perm));
+  explicit_paddingsAttr(ShuffleArrayAttr(explicit_paddings(), perm, 2));
+  ksizeAttr(ShuffleArrayAttr(ksize(), perm));
+
+  return success();
+}
+
+StringRef MaxPoolOp::GetOptimalLayout(const RuntimeDevices &devices) {
+  // Keep current data format if no GPUs are available or if explicit placement
+  // does not allow to use GPU for this operation.
+  if (!CanUseGpuDevice(devices) || !CanUseGpuDevice(getOperation()))
+    return data_format();
+
+  // Defaults to NCHW.
+  return "NCHW";
 }
 
 //===----------------------------------------------------------------------===//

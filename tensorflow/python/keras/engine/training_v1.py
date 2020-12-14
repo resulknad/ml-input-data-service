@@ -2753,7 +2753,7 @@ class Model(training_lib.Model):
   def _maybe_load_initial_epoch_from_ckpt(self, initial_epoch, mode):
     """Maybe load initial epoch from ckpt considering possible worker recovery.
 
-    Refer to tensorflow/python/keras/distribute/multi_worker_training_state.py
+    Refer to tensorflow/python/keras/distribute/worker_training_state.py
     for more information.
 
     Arguments:
@@ -2807,20 +2807,12 @@ class Model(training_lib.Model):
     Returns:
       Whether this model indicates it's working in multi-worker settings.
     """
-    strategy = self._get_distribution_strategy()
-    return strategy and strategy.extended._in_multi_worker_mode()  # pylint: disable=protected-access
-
-  def _get_distribution_strategy(self):
-    # If the model was compiled under the scope of a `tf.distribute.Strategy',
-    # `self._distribution_strategy` would have been set and model should infer
-    # that as the used strategy (even if it's out of strategy scope already).
     strategy = self._distribution_strategy
 
     # Otherwise, use the strategy whose scope this is in.
     if not strategy and distribution_strategy_context.has_strategy():
       strategy = distribution_strategy_context.get_strategy()
-
-    return strategy
+    return strategy and strategy.extended._in_multi_worker_mode()  # pylint: disable=protected-access
 
   @property
   def _trackable_saved_model_saver(self):

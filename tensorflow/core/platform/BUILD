@@ -181,6 +181,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":platform",
+        "@com_google_absl//absl/strings:cord",
     ] + tf_platform_deps("cord"),
 )
 
@@ -449,6 +450,7 @@ cc_library(
         ":strcat",
         ":stringpiece",
         ":types",
+        "@com_google_absl//absl/algorithm:container",
     ],
     alwayslink = True,
 )
@@ -1726,7 +1728,6 @@ bzl_library(
         "//learning/brain/google/xla/tests:__pkg__",
         "//learning/brain/tfrc/runtime/tpu_driver:__subpackages__",
         "//nlp/deleuze:__pkg__",
-        "//nlp/projects/minmt:__pkg__",
         "//tensorflow:__subpackages__",
     ],
 )
