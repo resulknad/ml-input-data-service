@@ -1,4 +1,3 @@
-// This is add_put_op.cc
 #include <queue>
 
 #include "absl/container/flat_hash_set.h"
@@ -9,7 +8,7 @@
 #include "tensorflow/core/grappler/mutable_graph_view.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/optimizers/custom_graph_optimizer_registry.h"
-#include "tensorflow/core/grappler/optimizers/data/easl_optimizers/add_put_op.h"
+#include "tensorflow/core/grappler/optimizers/data/easl_optimizers/add_get_op.h"
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -19,34 +18,43 @@ namespace grappler {
 namespace easl {
 namespace {
   // Define constants here
-  constexpr char kPutOpDataset[] = "ServiceCachePutDataset";
+  constexpr char kCacheLocation[] = 
+      "/mnt/local/easl/dan-mlid/scripts/python/outputs/00000000.snapshot";
+  constexpr char kPutOpDataset[] = "ServiceCacheGetDataset";
   constexpr char kOutputShapes[] = "output_shapes";
   constexpr char kOutputTypes[] = "output_types";
 
-  NodeDef CreatePutOpNode(MutableGraphView* graph, NodeDef* input) {
-    NodeDef put_op_node;
+  NodeDef CreateGetOpNode(MutableGraphView* graph, NodeDef* input) {
+    // TODO(DanGraur): Change the implementation here
+    NodeDef get_op_node;
 
     // Give a unique name to the op
-    graph_utils::SetUniqueGraphNodeName("put_op_dataset",
-        graph->graph(), &put_op_node);
+    graph_utils::SetUniqueGraphNodeName("get_op_dataset",
+        graph->graph(), &get_op_node);
 
     // Set the node's operation and input.
-    put_op_node.set_op(kPutOpDataset);
-    put_op_node.add_input(input->name());
+    get_op_node.set_op(kPutOpDataset);
+
+    NodeDef* location_node = graph_utils::AddScalarConstNode(kCacheLocation, 
+        graph); 
+    get_op_node.add_input(location_node->name());
+
+    // FIXME(DanGraur): Finish the implementation of this
 
     // Copy over the relevant attributes from root of the prefix
     for (auto key : {kOutputShapes, kOutputTypes})
-      graph_utils::CopyAttribute(key, *input, &put_op_node);
+      graph_utils::CopyAttribute(key, *input, &get_op_node);
 
-    return put_op_node;
+    return get_op_node;
   }
 } // namespace
 
-Status AddPutOp::OptimizeAndCollectStats(Cluster* cluster,
+Status AddGetOp::OptimizeAndCollectStats(Cluster* cluster,
                                          const GrapplerItem& item,
                                          GraphDef* output,
                                          OptimizationStats* stats) {
-  VLOG(1) << "In AddPutOp optimizer";
+  // TODO(DanGraur): Change the implementation here
+  VLOG(1) << "In AddGetOp optimizer";
   *output = item.graph;
   MutableGraphView graph(output);
 
@@ -115,13 +123,13 @@ Status AddPutOp::OptimizeAndCollectStats(Cluster* cluster,
   return Status::OK();
 }
 
-void AddPutOp::Feedback(Cluster* cluster, const GrapplerItem& item,
+void AddGetOp::Feedback(Cluster* cluster, const GrapplerItem& item,
                               const GraphDef& optimize_output,
                               double result) {
   // no-op
 }
 
-REGISTER_GRAPH_OPTIMIZER_AS(AddPutOp, "add_put_op");
+REGISTER_GRAPH_OPTIMIZER_AS(AddGetOp, "add_get_op");
 
 }  // namespace easl
 }  // namespace grappler
