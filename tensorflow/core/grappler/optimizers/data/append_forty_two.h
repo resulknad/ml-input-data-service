@@ -6,8 +6,8 @@
 namespace tensorflow {
 namespace grappler {
 
-// This optimization adds 'forty_two_dataset_op'
-// at the end of the tf.data pipeline.
+// This optimization adds 'forty_two_dataset_op' somewhere random in the 
+// input pipeline graph
 class AppendFortyTwo : public TFDataOptimizerBase {
   public:
   AppendFortyTwo() = default;
