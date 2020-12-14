@@ -171,10 +171,12 @@ cc_library(
         "dispatcher_impl.h",
     ],
     deps = [
+        ":cache_utils",
         ":common_proto_cc",
         ":credentials_factory",
         ":data_service",
         ":dataset_store",
+        ":dispatcher_cache_state",
         ":dispatcher_proto_cc",
         ":dispatcher_state",
         ":metadata_store",
@@ -226,21 +228,6 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/platform:errors",
-    ],
-)
-
-cc_library(
-    name = "metadata_store",
-    srcs = ["metadata_store.cc"],
-    hdrs = [
-        "metadata_store.h",
-    ],
-    deps = [
-        ":common_proto_cc",
-        ":data_service",
-        "//tensorflow/core:lib",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -522,5 +509,53 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         tf_grpc_cc_dependency(),
+    ],
+)
+
+################################################################################
+# EASL
+################################################################################
+
+cc_library(
+    name = "metadata_store",
+    srcs = ["easl/metadata_store.cc"],
+    hdrs = [
+        "easl/metadata_store.h",
+    ],
+    deps = [
+        ":common_proto_cc",
+        ":data_service",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/memory",
+    ],
+)
+
+cc_library(
+    name = "dispatcher_cache_state",
+    srcs = ["easl/dispatcher_cache_state.cc"],
+    hdrs = [
+        "easl/dispatcher_cache_state.h",
+    ],
+    deps = [
+        ":common_proto_cc",
+        ":data_service",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/memory",
+    ],
+)
+
+cc_library(
+    name = "cache_utils",
+    srcs = ["easl/cache_utils.cc"],
+    hdrs = [
+        "easl/cache_utils.h",
+    ],
+    deps = [
+        ":common_proto_cc",
+        ":data_service",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
     ],
 )

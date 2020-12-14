@@ -296,6 +296,8 @@ Status DataServiceDispatcherImpl::GetDatasetDef(
   mutex_lock l(mu_);
   std::shared_ptr<const Dataset> dataset;
   TF_RETURN_IF_ERROR(state_.DatasetFromId(request->dataset_id(), dataset));
+
+  // TODO (damien-aymon) Check if cached version available!
   std::shared_ptr<const DatasetDef> dataset_def;
   TF_RETURN_IF_ERROR(GetDatasetDef(*dataset, dataset_def));
   *response->mutable_dataset_def() = *dataset_def;
@@ -403,6 +405,7 @@ Status DataServiceDispatcherImpl::GetOrRegisterDataset(
   TF_RETURN_IF_ERROR(RegisterDataset(fingerprint, dataset_def, id));
   response->set_dataset_id(id);
   VLOG(3) << "Registered new dataset with id " << id;
+
   return Status::OK();
 }
 
@@ -415,6 +418,14 @@ Status DataServiceDispatcherImpl::RegisterDataset(uint64 fingerprint,
   RegisterDatasetUpdate* register_dataset = update.mutable_register_dataset();
   register_dataset->set_dataset_id(dataset_id);
   register_dataset->set_fingerprint(fingerprint);
+
+  // EASL cache
+  // TODO (damien-aymon) rewrite both put and get versions of the dataset e.g.
+  // DatasetDef put_dataset;
+  // easl::cache_rewrite_utils::GetCachePutVersion(DatasetDef& put_dataset);
+  // TF_RETURN_IF_ERROR(dataset_store_->Put(easl::cache_utils::DatasetPutKey
+  // (fingerprint),
+  // put_dataset));
   TF_RETURN_IF_ERROR(
       dataset_store_->Put(DatasetKey(dataset_id, fingerprint), dataset));
   return Apply(update);
@@ -594,6 +605,21 @@ Status DataServiceDispatcherImpl::CreateTask(std::shared_ptr<const Job> job,
   create_task->set_worker_address(worker_address);
   TF_RETURN_IF_ERROR(Apply(update));
   TF_RETURN_IF_ERROR(state_.TaskFromId(task_id, task));
+
+  // EASL - Check if this task should cache the dataset.
+  std::shared_ptr<const Dataset> dataset;
+  TF_RETURN_IF_ERROR(state_.DatasetFromId(task->job->dataset_id, dataset));
+  if(!cache_state_.IsDatasetCached(dataset->fingerprint, worker_address)){
+    int64 caching_task_id;
+    Status s = cache_state_.GetCachingTaskId(dataset->fingerprint,
+                                             worker_address, caching_task_id);
+    if(errors::IsNotFound(s)){
+      cache_state_.RegisterCachingTask(
+          dataset->fingerprint, worker_address, task_id);
+    }
+    return s;
+  }
+
   return Status::OK();
 }
 
