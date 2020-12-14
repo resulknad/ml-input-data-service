@@ -33,7 +33,7 @@ namespace {
     forty_two_node.set_op(kFortyTwoDataset);
     forty_two_node.add_input(input->name());
 
-    // Add output_type and output_shape attributes
+    // Add output_type and empty output_shape attributes
     (*forty_two_node.mutable_attr())[kOutputTypes].mutable_list()->add_type(
             tensorflow::DataType::DT_INT32);
     (*forty_two_node.mutable_attr())[kOutputShapes].mutable_list()->add_shape();
@@ -106,13 +106,14 @@ Status AppendFortyTwo::OptimizeAndCollectStats(Cluster* cluster,
   
   // Create the forty_two op node, then add it to the graph
   NodeDef forty_two_node = CreateFortyTwoOpNode(&graph, forty_two_input);
-  std::string forty_two_node_name = forty_two_node.name();
+
+  // Copy over the relevant attributes
+  (*target->mutable_input())[0] = forty_two_node.name();
+  graph_utils::CopyAttribute(kOutputTypes, forty_two_node, target);
+
+  // Add the node to the graph
   graph.AddNode(std::move(forty_two_node));
 
-  // We make the strong assumption here that 'input_dataset' input is first
-  (*target->mutable_input())[0] = forty_two_node_name;
-
-  // If we've reached this point, we're successful
   return Status::OK();
 }
 
