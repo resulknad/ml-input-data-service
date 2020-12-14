@@ -1,4 +1,4 @@
-
+// This is add_put_op.cc
 #include <queue>
 
 #include "absl/container/flat_hash_set.h"
@@ -9,7 +9,7 @@
 #include "tensorflow/core/grappler/mutable_graph_view.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/optimizers/custom_graph_optimizer_registry.h"
-#include "tensorflow/core/grappler/optimizers/data/append_forty_two.h"
+#include "tensorflow/core/grappler/optimizers/easl_optimizers/add_put_op.cc"
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -24,48 +24,42 @@ namespace {
   constexpr char kOutputTypes[] = "output_types";
 
   NodeDef CreatePutOpNode(MutableGraphView* graph, NodeDef* input) {
-    // TODO(DanGraur): Modify the logic here
-    NodeDef forty_two_node;
+    NodeDef put_op_node;
 
-    // Give a unique name to our forty_two node and store it for later use
-    graph_utils::SetUniqueGraphNodeName("forty_two_dataset",
-        graph->graph(), &forty_two_node);
+    // Give a unique name to the op
+    graph_utils::SetUniqueGraphNodeName("put_op_dataset",
+        graph->graph(), &put_op_node);
 
-    // Set its operation and input.
-    forty_two_node.set_op(kFortyTwoDataset);
-    forty_two_node.add_input(input->name());
+    // Set the node's operation and input.
+    put_op_node.set_op(kPutOpDataset);
+    put_op_node.add_input(input->name());
 
-    // Add output_type and empty output_shape attributes
-    (*forty_two_node.mutable_attr())[kOutputTypes].mutable_list()->add_type(
-            tensorflow::DataType::DT_INT32);
-    (*forty_two_node.mutable_attr())[kOutputShapes].mutable_list()->add_shape();
+    // Copy over the relevant attributes from root of the prefix
+    for (auto key : {kOutputShapes, kOutputTypes})
+      graph_utils::CopyAttribute(key, *input, &put_op_node);
 
-    return forty_two_node;
+    return put_op_node;
   }
-
-}
+} // namespace
 
 Status AddPutOp::OptimizeAndCollectStats(Cluster* cluster,
-                                               const GrapplerItem& item,
-                                               GraphDef* output,
-                                               OptimizationStats* stats) {
-  // TODO(DanGraur): Modify the logic here
+                                         const GrapplerItem& item,
+                                         GraphDef* output,
+                                         OptimizationStats* stats) {
   VLOG(1) << "In AddPutOp optimizer";
   *output = item.graph;
   MutableGraphView graph(output);
 
-  // Define a filtering function which identifies batch ops
-  auto is_batch_op = [](const NodeDef* node) -> bool {
-    // VLOG(1) << "The name of the node is " << node->op() << " and inp size is " << node->input_size();
-    return node->op() == "BatchDataset" && node->input_size() == 2 
-        || node->op() == "BatchDatasetV2" && node->input_size() == 3;
+  // Define a filtering function which identifies target node
+  auto is_target_node = [](const NodeDef* node) -> bool {
+    return node->op() == "ModelDataset" && node->input_size() == 1;  
   };
 
   // Get the output of the graph
   NodeDef* sink_node;
   TF_RETURN_IF_ERROR(graph_utils::GetFetchNode(graph, item, &sink_node));
 
-  // Find the first batch op by applying BFS
+  // Find the first target op by applying BFS
   absl::flat_hash_set<std::string> visited;
   std::queue<NodeDef*> bfs_queue;
   bfs_queue.push(sink_node);
@@ -78,8 +72,8 @@ Status AddPutOp::OptimizeAndCollectStats(Cluster* cluster,
 
     // TODO(DanGraur): Add logic here to skip certain nodes (e.g. control)
 
-    // Check to see if this node is a batch op
-    if (is_batch_op(current_node)) {
+    // Check to see if this node is a target op
+    if (is_target_node(current_node)) {
       target = current_node;
       break;
     }
@@ -95,27 +89,28 @@ Status AddPutOp::OptimizeAndCollectStats(Cluster* cluster,
     }
   }
 
-  // We return if we found no batch op
+  // We return if we found no target op
   if (!target) {
     VLOG(1) << "Could not find target";
     return Status::OK();
   }
+
   // Find the input of the target node
-  NodeDef* forty_two_input = graph_utils::GetInputNode(*target, graph);
-  if(!forty_two_input){
+  NodeDef* target_input = graph_utils::GetInputNode(*target, graph);
+  if(!target_input){
     return errors::Unknown("The dataset graph sink node does not have"
     "an input.");
   }
   
-  // Create the forty_two op node, then add it to the graph
-  NodeDef forty_two_node = CreateFortyTwoOpNode(&graph, forty_two_input);
+  // Create the put_op_node op node, then add it to the graph
+  NodeDef put_op_node = CreatePutOpNode(&graph, target_input);
 
   // Copy over the relevant attributes
-  (*target->mutable_input())[0] = forty_two_node.name();
-  graph_utils::CopyAttribute(kOutputTypes, forty_two_node, target);
+  (*target->mutable_input())[0] = put_op_node.name();
+  graph_utils::CopyAttribute(kOutputTypes, put_op_node, target);
 
   // Add the node to the graph
-  graph.AddNode(std::move(forty_two_node));
+  graph.AddNode(std::move(put_op_node));
 
   return Status::OK();
 }
