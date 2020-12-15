@@ -19,6 +19,8 @@ namespace grappler {
 namespace easl {
 namespace {
   // Define constants here
+  constexpr char kCacheLocation[] = 
+      "/mnt/local/easl/dan-mlid/scripts/python/outputs/00000000.snapshot";
   constexpr char kPutOpDataset[] = "ServiceCachePutDataset";
   constexpr char kOutputShapes[] = "output_shapes";
   constexpr char kOutputTypes[] = "output_types";
@@ -32,9 +34,12 @@ namespace {
     graph_utils::SetUniqueGraphNodeName("put_op_dataset",
         graph->graph(), &put_op_node);
 
-    // Set the node's operation and input.
+    // Set the node's operation and inputs.
     put_op_node.set_op(kPutOpDataset);
     put_op_node.add_input(input->name());
+    NodeDef* location_node = graph_utils::AddScalarConstNode<StringPiece>(
+        kCacheLocation, graph); 
+    put_op_node.add_input(location_node->name());
 
     // Copy over the relevant attributes from root of the prefix
     for (auto key : {kOutputShapes, kOutputTypes})
@@ -71,6 +76,8 @@ Status AddPutOp::OptimizeAndCollectStats(Cluster* cluster,
     NodeDef* current_node = bfs_queue.front();
     bfs_queue.pop();
     visited.insert(current_node->name());
+
+    VLOG(1) << "@ current_node: " << current_node->op();
 
     // TODO(DanGraur): Add logic here to skip certain nodes (e.g. control)
 

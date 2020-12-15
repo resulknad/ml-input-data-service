@@ -221,6 +221,20 @@ class OptimizationOptions(options.OptionsBase):
       "of the pipeline. If None, defaults to false."
   )
 
+  add_put_op = options.create_option(
+      name="add_put_op",
+      ty=bool,
+      docstring="Wether to append the custom add_put_op after the "
+      "ModelDatasetOp node."
+  )
+
+  add_get_op = options.create_option(
+      name="add_get_op",
+      ty=bool,
+      docstring="Wether to append the custom add_get_op after the "
+      "ModelDatasetOp node."
+  )
+
   def _autotune_buffers(self):
     if self.autotune_buffers is not None:
       return self.autotune_buffers
@@ -275,11 +289,16 @@ class OptimizationOptions(options.OptionsBase):
     ]
 
     # If append_forty_two option is set to True, only set all options to disable and return.
-    if self.append_forty_two is True:
+    if self.append_forty_two or self.add_get_op or self.add_put_op:
       # disables mapVectorization
       result = MapVectorizationOptions()._graph_rewrites()  # pylint: disable=protected-access
-      # enable append_forty_two
-      result.enabled.append("append_forty_two")
+      
+      if self.append_forty_two:
+        result.enabled.append("append_forty_two")
+      elif self.add_get_op:
+        result.enabled.append("add_get_op")
+      else:
+        result.enabled.append("add_put_op")
       
       # Explicitly disable all other optimizations
       # @damien-aymon note: may not be needed.

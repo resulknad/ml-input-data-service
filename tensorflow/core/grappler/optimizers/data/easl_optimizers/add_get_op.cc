@@ -42,8 +42,11 @@ namespace {
     get_op_node.add_input(location_node->name());
 
     // Copy over the relevant attributes from root of the prefix
-    for (auto key : {kOutputShapes, kOutputTypes})
+    // VLOG(1) << "(CreateGetOpNode) Copying over the attributes";
+    for (auto key : {kOutputShapes, kOutputTypes}) {
+      // VLOG(1) << "(CreateGetOpNode) Copying over the attribute: " << key;
       graph_utils::CopyAttribute(key, *input, &get_op_node);
+    }
 
     return get_op_node;
   }
@@ -114,8 +117,11 @@ Status AddGetOp::OptimizeAndCollectStats(Cluster* cluster,
 
   // Copy over the relevant attributes
   (*target->mutable_input())[0] = get_op_node.name();
-  for (auto key : {kOutputShapes, kOutputTypes})
+  // VLOG(1) << "(OptimizeAndCollectStats) Copying over the attributes";
+  for (auto key : {kOutputShapes, kOutputTypes}) {
+    // VLOG(1) << "(OptimizeAndCollectStats) Copying over the attribute: " << key;
     graph_utils::CopyAttribute(key, get_op_node, target);
+  }
 
   // Add the node to the graph
   graph.AddNode(std::move(get_op_node));
