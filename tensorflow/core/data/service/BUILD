@@ -555,6 +555,7 @@ cc_library(
     deps = [
         ":common_proto_cc",
         ":data_service",
+        ":dispatcher_cache_state",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
     ],

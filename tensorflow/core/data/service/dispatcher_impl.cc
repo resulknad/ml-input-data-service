@@ -640,6 +640,7 @@ Status DataServiceDispatcherImpl::CreateTask(std::shared_ptr<const Job> job,
     if(errors::IsNotFound(s)){
       cache_state_.RegisterCachingTask(
           dataset->fingerprint, worker_address, task_id);
+      return Status::OK();
     }
     return s;
   }
