@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/grpc_util.h"
 #include "tensorflow/core/data/service/journal.h"
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
+#include "tensorflow/core/data/service/easl/cache_utils.h"
 #include "tensorflow/core/data/standalone.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
@@ -235,8 +236,11 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
     TaskDef* task_def = response->add_new_tasks();
     std::shared_ptr<const Dataset> dataset;
     TF_RETURN_IF_ERROR(state_.DatasetFromId(task->job->dataset_id, dataset));
-    std::string dataset_key =
-        DatasetKey(dataset->dataset_id, dataset->fingerprint);
+    // EASL - Get correct dataset key.
+    std::string dataset_key;
+    TF_RETURN_IF_ERROR(service::easl::cache_utils::DatasetKey(
+        cache_state_, dataset->dataset_id, dataset->fingerprint,
+        worker_address, task->task_id, dataset_key));
     if (config_.work_dir().empty()) {
       std::shared_ptr<const DatasetDef> dataset_def;
       TF_RETURN_IF_ERROR(dataset_store_->Get(dataset_key, dataset_def));
@@ -283,6 +287,18 @@ Status DataServiceDispatcherImpl::WorkerUpdate(
       Update update;
       update.mutable_finish_task()->set_task_id(task_id);
       TF_RETURN_IF_ERROR(Apply(update));
+      // EASL - Set dataset as cached if this was a caching task.
+      std::shared_ptr<const Dataset> dataset;
+      TF_RETURN_IF_ERROR(state_.DatasetFromId(task->job->dataset_id, dataset));
+      int64 caching_task;
+      TF_RETURN_IF_ERROR(cache_state_.GetCachingTaskId(dataset->fingerprint,
+          request->worker_address(), caching_task));
+      if(caching_task == task_id){
+        cache_state_.SetDatasetCached(
+            dataset->fingerprint, request->worker_address());
+        VLOG(0) << "Dataset with fingerprint " << dataset->fingerprint
+                     << "has been added to cache.";
+      }
       VLOG(3) << "Task " << task_id << " from job " << task->job->job_id
               << " completed";
     }
@@ -296,6 +312,8 @@ Status DataServiceDispatcherImpl::GetDatasetDef(
   mutex_lock l(mu_);
   std::shared_ptr<const Dataset> dataset;
   TF_RETURN_IF_ERROR(state_.DatasetFromId(request->dataset_id(), dataset));
+
+  // TODO (damien-aymon) Check if cached version available!
   std::shared_ptr<const DatasetDef> dataset_def;
   TF_RETURN_IF_ERROR(GetDatasetDef(*dataset, dataset_def));
   *response->mutable_dataset_def() = *dataset_def;
@@ -403,6 +421,7 @@ Status DataServiceDispatcherImpl::GetOrRegisterDataset(
   TF_RETURN_IF_ERROR(RegisterDataset(fingerprint, dataset_def, id));
   response->set_dataset_id(id);
   VLOG(3) << "Registered new dataset with id " << id;
+
   return Status::OK();
 }
 
@@ -415,6 +434,22 @@ Status DataServiceDispatcherImpl::RegisterDataset(uint64 fingerprint,
   RegisterDatasetUpdate* register_dataset = update.mutable_register_dataset();
   register_dataset->set_dataset_id(dataset_id);
   register_dataset->set_fingerprint(fingerprint);
+
+  // EASL - Create and store put/get versions of this dataset def.
+  DatasetDef put_dataset;
+  TF_RETURN_IF_ERROR(
+      service::easl::cache_utils::AddPutOperator(dataset, put_dataset));
+  TF_RETURN_IF_ERROR(dataset_store_->Put(
+  service::easl::cache_utils::DatasetPutKey(dataset_id, fingerprint),
+      put_dataset));
+  DatasetDef get_dataset;
+  TF_RETURN_IF_ERROR(
+      service::easl::cache_utils::AddGetOperator(dataset, get_dataset));
+  TF_RETURN_IF_ERROR(dataset_store_->Put(
+      service::easl::cache_utils::DatasetGetKey(dataset_id, fingerprint),
+      get_dataset));
+  VLOG(0) << "Added put/get versions for dataset fingerprint" << fingerprint;
+
   TF_RETURN_IF_ERROR(
       dataset_store_->Put(DatasetKey(dataset_id, fingerprint), dataset));
   return Apply(update);
@@ -594,6 +629,22 @@ Status DataServiceDispatcherImpl::CreateTask(std::shared_ptr<const Job> job,
   create_task->set_worker_address(worker_address);
   TF_RETURN_IF_ERROR(Apply(update));
   TF_RETURN_IF_ERROR(state_.TaskFromId(task_id, task));
+
+  // EASL - Check if this task should cache the dataset.
+  std::shared_ptr<const Dataset> dataset;
+  TF_RETURN_IF_ERROR(state_.DatasetFromId(task->job->dataset_id, dataset));
+  if(!cache_state_.IsDatasetCached(dataset->fingerprint, worker_address)){
+    int64 caching_task_id;
+    Status s = cache_state_.GetCachingTaskId(dataset->fingerprint,
+                                             worker_address, caching_task_id);
+    if(errors::IsNotFound(s)){
+      cache_state_.RegisterCachingTask(
+          dataset->fingerprint, worker_address, task_id);
+      return Status::OK();
+    }
+    return s;
+  }
+
   return Status::OK();
 }
 
@@ -644,8 +695,11 @@ Status DataServiceDispatcherImpl::AssignTask(std::shared_ptr<const Task> task)
     mutex_lock l(mu_);
     std::shared_ptr<const Dataset> dataset;
     TF_RETURN_IF_ERROR(state_.DatasetFromId(task->job->dataset_id, dataset));
-    std::string dataset_key =
-        DatasetKey(dataset->dataset_id, dataset->fingerprint);
+    // EASL - Get correct dataset key.
+    std::string dataset_key;
+    TF_RETURN_IF_ERROR(service::easl::cache_utils::DatasetKey(
+        cache_state_, dataset->dataset_id, dataset->fingerprint,
+        task->worker_address, task->task_id, dataset_key));
     if (config_.work_dir().empty()) {
       std::shared_ptr<const DatasetDef> dataset_def;
       TF_RETURN_IF_ERROR(dataset_store_->Get(dataset_key, dataset_def));
@@ -806,7 +860,11 @@ Status DataServiceDispatcherImpl::GetDatasetDef(
     const Dataset& dataset, std::shared_ptr<const DatasetDef>& dataset_def)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   std::string key = DatasetKey(dataset.dataset_id, dataset.fingerprint);
-  return dataset_store_->Get(key, dataset_def);
+  // TODO (damien-aymon) update this function to take into account the worker
+  //  and task_id from which the request is from in order to serve the
+  //  correct version of the dataset.
+  return errors::PermissionDenied("Should not enter here for now...");
+  //return dataset_store_->Get(key, dataset_def);
 }
 
 }  // namespace data
