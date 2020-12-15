@@ -444,7 +444,7 @@ Status DataServiceDispatcherImpl::RegisterDataset(uint64 fingerprint,
       put_dataset));
   DatasetDef get_dataset;
   TF_RETURN_IF_ERROR(
-      service::easl::cache_utils::AddPutOperator(dataset, get_dataset));
+      service::easl::cache_utils::AddGetOperator(dataset, get_dataset));
   TF_RETURN_IF_ERROR(dataset_store_->Put(
       service::easl::cache_utils::DatasetGetKey(dataset_id, fingerprint),
       get_dataset));
