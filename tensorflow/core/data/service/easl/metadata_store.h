@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CORE_DATA_SERVICE_METADATA_STORE_H_
-#define TENSORFLOW_CORE_DATA_SERVICE_METADATA_STORE_H_
+#ifndef TENSORFLOW_CORE_DATA_SERVICE_EASL_METADATA_STORE_H_
+#define TENSORFLOW_CORE_DATA_SERVICE_EASL_METADATA_STORE_H_
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/data/service/common.pb.h"
@@ -22,6 +22,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace easl {
 
 // A class encapsulating the metadata store of the tf.data service.
 // TODO(damien-aymon)
@@ -31,22 +32,23 @@ namespace data {
 class MetadataStore {
  public:
   MetadataStore();
-  MetadataStore(const MetadataStore&) = delete;
-  MetadataStore& operator=(const MetadataStore&) = delete;
+  MetadataStore(const MetadataStore &) = delete;
+  MetadataStore &operator=(const MetadataStore &) = delete;
 
   // Sets the metadata for this fingerprint.
-  Status UpdateMetadata(const uint64& fingerprint, const int64& update);
+  Status UpdateMetadata(const uint64 &fingerprint, const int64 &update);
   // Returns the (dummy for now) metadata by fingerprint.
   Status MetadataFromFingerprint(uint64 fingerprint,
-                                 std::shared_ptr<int64>& metadata) const;
-  
-  private:
+                                 std::shared_ptr<int64> &metadata) const;
+
+ private:
   // Some dummy metadata.
   absl::flat_hash_map<uint64, int64> metadata_by_fingerprint_;
 
 };
 
-}  // namespace data
-}  // namespace tensorflow
+} // namespace easl
+} // namespace data
+} // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_DATA_SERVICE_METADATA_STORE_H_
+#endif  // TENSORFLOW_CORE_DATA_SERVICE_EASL_METADATA_STORE_H_

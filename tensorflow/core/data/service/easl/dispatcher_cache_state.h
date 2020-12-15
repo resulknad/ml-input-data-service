@@ -22,6 +22,9 @@ class CacheState {
   bool IsDatasetCached( const uint64 fingerprint,
                         const std::string& worker_address) const;
 
+  void SetDatasetCached(const uint64 fingerprint,
+                        const std::string& worker_address);
+
   // Sets the task_id responsible for caching the dataset with this
   // fingerprint at this worker.
   // Returns an error if the task_id is not found.

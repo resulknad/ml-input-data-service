@@ -20,7 +20,12 @@ bool CacheState::IsDatasetCached(
     return false;
   }
 
-  return true;
+  return is_cached_it->second;
+}
+
+void CacheState::SetDatasetCached(const uint64 fingerprint,
+                                  const std::string& worker_address){
+  is_cached_at_worker_[fingerprint][worker_address] = true;
 }
 
 Status CacheState::GetCachingTaskId(const uint64 fingerprint,

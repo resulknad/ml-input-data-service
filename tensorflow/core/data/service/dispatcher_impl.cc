@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/grpc_util.h"
 #include "tensorflow/core/data/service/journal.h"
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
+#include "tensorflow/core/data/service/easl/cache_utils.h"
 #include "tensorflow/core/data/standalone.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
@@ -235,8 +236,11 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
     TaskDef* task_def = response->add_new_tasks();
     std::shared_ptr<const Dataset> dataset;
     TF_RETURN_IF_ERROR(state_.DatasetFromId(task->job->dataset_id, dataset));
-    std::string dataset_key =
-        DatasetKey(dataset->dataset_id, dataset->fingerprint);
+    // EASL - Get correct dataset key.
+    std::string dataset_key;
+    TF_RETURN_IF_ERROR(service::easl::cache_utils::DatasetKey(
+        cache_state_, dataset->dataset_id, dataset->fingerprint,
+        worker_address, task->task_id, dataset_key));
     if (config_.work_dir().empty()) {
       std::shared_ptr<const DatasetDef> dataset_def;
       TF_RETURN_IF_ERROR(dataset_store_->Get(dataset_key, dataset_def));
@@ -283,6 +287,18 @@ Status DataServiceDispatcherImpl::WorkerUpdate(
       Update update;
       update.mutable_finish_task()->set_task_id(task_id);
       TF_RETURN_IF_ERROR(Apply(update));
+      // EASL - Set dataset as cached if this was a caching task.
+      std::shared_ptr<const Dataset> dataset;
+      TF_RETURN_IF_ERROR(state_.DatasetFromId(task->job->dataset_id, dataset));
+      int64 caching_task;
+      TF_RETURN_IF_ERROR(cache_state_.GetCachingTaskId(dataset->fingerprint,
+          request->worker_address(), caching_task));
+      if(caching_task == task_id){
+        cache_state_.SetDatasetCached(
+            dataset->fingerprint, request->worker_address());
+        VLOG(0) << "Dataset with fingerprint " << dataset->fingerprint
+                     << "has been added to cache.";
+      }
       VLOG(3) << "Task " << task_id << " from job " << task->job->job_id
               << " completed";
     }
@@ -419,13 +435,21 @@ Status DataServiceDispatcherImpl::RegisterDataset(uint64 fingerprint,
   register_dataset->set_dataset_id(dataset_id);
   register_dataset->set_fingerprint(fingerprint);
 
-  // EASL cache
-  // TODO (damien-aymon) rewrite both put and get versions of the dataset e.g.
-  // DatasetDef put_dataset;
-  // easl::cache_rewrite_utils::GetCachePutVersion(DatasetDef& put_dataset);
-  // TF_RETURN_IF_ERROR(dataset_store_->Put(easl::cache_utils::DatasetPutKey
-  // (fingerprint),
-  // put_dataset));
+  // EASL - Create and store put/get versions of this dataset def.
+  DatasetDef put_dataset;
+  TF_RETURN_IF_ERROR(
+      service::easl::cache_utils::AddPutOperator(dataset, put_dataset));
+  TF_RETURN_IF_ERROR(dataset_store_->Put(
+  service::easl::cache_utils::DatasetPutKey(dataset_id, fingerprint),
+      put_dataset));
+  DatasetDef get_dataset;
+  TF_RETURN_IF_ERROR(
+      service::easl::cache_utils::AddPutOperator(dataset, get_dataset));
+  TF_RETURN_IF_ERROR(dataset_store_->Put(
+      service::easl::cache_utils::DatasetGetKey(dataset_id, fingerprint),
+      get_dataset));
+  VLOG(0) << "Added put/get versions for dataset fingerprint" << fingerprint;
+
   TF_RETURN_IF_ERROR(
       dataset_store_->Put(DatasetKey(dataset_id, fingerprint), dataset));
   return Apply(update);
@@ -670,8 +694,11 @@ Status DataServiceDispatcherImpl::AssignTask(std::shared_ptr<const Task> task)
     mutex_lock l(mu_);
     std::shared_ptr<const Dataset> dataset;
     TF_RETURN_IF_ERROR(state_.DatasetFromId(task->job->dataset_id, dataset));
-    std::string dataset_key =
-        DatasetKey(dataset->dataset_id, dataset->fingerprint);
+    // EASL - Get correct dataset key.
+    std::string dataset_key;
+    TF_RETURN_IF_ERROR(service::easl::cache_utils::DatasetKey(
+        cache_state_, dataset->dataset_id, dataset->fingerprint,
+        task->worker_address, task->task_id, dataset_key));
     if (config_.work_dir().empty()) {
       std::shared_ptr<const DatasetDef> dataset_def;
       TF_RETURN_IF_ERROR(dataset_store_->Get(dataset_key, dataset_def));
@@ -832,7 +859,11 @@ Status DataServiceDispatcherImpl::GetDatasetDef(
     const Dataset& dataset, std::shared_ptr<const DatasetDef>& dataset_def)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   std::string key = DatasetKey(dataset.dataset_id, dataset.fingerprint);
-  return dataset_store_->Get(key, dataset_def);
+  // TODO (damien-aymon) update this function to take into account the worker
+  //  and task_id from which the request is from in order to serve the
+  //  correct version of the dataset.
+  return errors::PermissionDenied("Should not enter here for now...");
+  //return dataset_store_->Get(key, dataset_def);
 }
 
 }  // namespace data
