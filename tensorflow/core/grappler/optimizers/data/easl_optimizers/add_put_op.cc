@@ -22,6 +22,8 @@ namespace {
   constexpr char kPutOpDataset[] = "ServiceCachePutDataset";
   constexpr char kOutputShapes[] = "output_shapes";
   constexpr char kOutputTypes[] = "output_types";
+  constexpr char kTargetNode[] = "ModelDataset";
+  constexpr int kTargetInputSize = 1;
 
   NodeDef CreatePutOpNode(MutableGraphView* graph, NodeDef* input) {
     NodeDef put_op_node;
@@ -52,7 +54,7 @@ Status AddPutOp::OptimizeAndCollectStats(Cluster* cluster,
 
   // Define a filtering function which identifies target node
   auto is_target_node = [](const NodeDef* node) -> bool {
-    return node->op() == "ModelDataset" && node->input_size() == 1;  
+    return node->op() == kTargetNode && node->input_size() == kTargetInputSize;
   };
 
   // Get the output of the graph
@@ -91,15 +93,14 @@ Status AddPutOp::OptimizeAndCollectStats(Cluster* cluster,
 
   // We return if we found no target op
   if (!target) {
-    VLOG(1) << "Could not find target";
+    VLOG(1) << "Could not find target " << kTargetNode;
     return Status::OK();
   }
 
   // Find the input of the target node
   NodeDef* target_input = graph_utils::GetInputNode(*target, graph);
   if(!target_input){
-    return errors::Unknown("The dataset graph sink node does not have"
-    "an input.");
+    return errors::Unknown("The target has no inputs.");
   }
   
   // Create the put_op_node op node, then add it to the graph

@@ -5,6 +5,7 @@
 
 namespace tensorflow {
 namespace grappler {
+namespace easl {
 
 // This optimization adds 'forty_two_dataset_op' somewhere random in the 
 // input pipeline graph
@@ -32,6 +33,7 @@ class AppendFortyTwo : public TFDataOptimizerBase {
 
 };
 
+} // namespace easl
 } // namespace grappler
 } // namespace tensorflow
 

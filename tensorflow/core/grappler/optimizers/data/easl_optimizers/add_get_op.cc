@@ -23,6 +23,8 @@ namespace {
   constexpr char kPutOpDataset[] = "ServiceCacheGetDataset";
   constexpr char kOutputShapes[] = "output_shapes";
   constexpr char kOutputTypes[] = "output_types";
+  constexpr char kTargetNode[] = "ModelDataset";
+  constexpr int kTargetInputSize = 1;
 
   NodeDef CreateGetOpNode(MutableGraphView* graph, NodeDef* input) {
     // TODO(DanGraur): Change the implementation here
@@ -35,11 +37,9 @@ namespace {
     // Set the node's operation and input.
     get_op_node.set_op(kPutOpDataset);
 
-    NodeDef* location_node = graph_utils::AddScalarConstNode(kCacheLocation, 
-        graph); 
+    NodeDef* location_node = graph_utils::AddScalarConstNode<StringPiece>(
+        kCacheLocation, graph); 
     get_op_node.add_input(location_node->name());
-
-    // FIXME(DanGraur): Finish the implementation of this
 
     // Copy over the relevant attributes from root of the prefix
     for (auto key : {kOutputShapes, kOutputTypes})
@@ -60,7 +60,7 @@ Status AddGetOp::OptimizeAndCollectStats(Cluster* cluster,
 
   // Define a filtering function which identifies target node
   auto is_target_node = [](const NodeDef* node) -> bool {
-    return node->op() == "ModelDataset" && node->input_size() == 1;  
+    return node->op() == kTargetNode && node->input_size() == kTargetInputSize;  
   };
 
   // Get the output of the graph
@@ -99,26 +99,26 @@ Status AddGetOp::OptimizeAndCollectStats(Cluster* cluster,
 
   // We return if we found no target op
   if (!target) {
-    VLOG(1) << "Could not find target";
+    VLOG(1) << "Could not find target " << kTargetNode;
     return Status::OK();
   }
 
   // Find the input of the target node
   NodeDef* target_input = graph_utils::GetInputNode(*target, graph);
   if(!target_input){
-    return errors::Unknown("The dataset graph sink node does not have"
-    "an input.");
+    return errors::Unknown("The target has no inputs.");
   }
   
-  // Create the put_op_node op node, then add it to the graph
-  NodeDef put_op_node = CreatePutOpNode(&graph, target_input);
+  // Create the get_op_node op node, then add it to the graph
+  NodeDef get_op_node = CreateGetOpNode(&graph, target_input);
 
   // Copy over the relevant attributes
-  (*target->mutable_input())[0] = put_op_node.name();
-  graph_utils::CopyAttribute(kOutputTypes, put_op_node, target);
+  (*target->mutable_input())[0] = get_op_node.name();
+  for (auto key : {kOutputShapes, kOutputTypes})
+    graph_utils::CopyAttribute(key, get_op_node, target);
 
   // Add the node to the graph
-  graph.AddNode(std::move(put_op_node));
+  graph.AddNode(std::move(get_op_node));
 
   return Status::OK();
 }

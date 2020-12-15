@@ -16,6 +16,7 @@
 
 namespace tensorflow {
 namespace grappler {
+namespace easl {
 namespace {
   // Define constants here
   constexpr char kFortyTwoDataset[] = "FortyTwoDataset";
@@ -100,8 +101,7 @@ Status AppendFortyTwo::OptimizeAndCollectStats(Cluster* cluster,
   // Find the input of the target node
   NodeDef* forty_two_input = graph_utils::GetInputNode(*target, graph);
   if(!forty_two_input){
-    return errors::Unknown("The dataset graph sink node does not have"
-    "an input.");
+    return errors::Unknown("The target has no inputs.");
   }
   
   // Create the forty_two op node, then add it to the graph
@@ -125,5 +125,6 @@ void AppendFortyTwo::Feedback(Cluster* cluster, const GrapplerItem& item,
 
 REGISTER_GRAPH_OPTIMIZER_AS(AppendFortyTwo, "append_forty_two");
 
+}  // namespace easl
 }  // namespace grappler
 }  // namespace tensorflow
