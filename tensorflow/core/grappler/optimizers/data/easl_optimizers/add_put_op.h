@@ -1,7 +1,7 @@
-// This is add_put_op.h
 #ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_ADD_PUT_OP_H_
 #define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_ADD_PUT_OP_H_
 
+#include "tensorflow/core/grappler/mutable_graph_view.h"
 #include "tensorflow/core/grappler/optimizers/data/optimizer_base.h"
 
 namespace tensorflow {
@@ -23,6 +23,9 @@ class AddPutOp : public TFDataOptimizerBase {
     // Ignore configuration
     return Status::OK();
   }
+  
+  Status ApplyOptimization(MutableGraphView &graph, NodeDef *sink_node, 
+                           GraphDef *output);
 
   Status OptimizeAndCollectStats(Cluster* cluster, const GrapplerItem& item,
                                  GraphDef* output,

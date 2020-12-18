@@ -1,4 +1,3 @@
-// This is add_put_op.cc
 #include <queue>
 
 #include "absl/container/flat_hash_set.h"
@@ -49,22 +48,14 @@ namespace {
   }
 } // namespace
 
-Status AddPutOp::OptimizeAndCollectStats(Cluster* cluster,
-                                         const GrapplerItem& item,
-                                         GraphDef* output,
-                                         OptimizationStats* stats) {
+Status AddPutOp::ApplyOptimization(MutableGraphView &graph, NodeDef *sink_node,
+                                   GraphDef *output) {
   VLOG(1) << "In AddPutOp optimizer";
-  *output = item.graph;
-  MutableGraphView graph(output);
 
   // Define a filtering function which identifies target node
   auto is_target_node = [](const NodeDef* node) -> bool {
     return node->op() == kTargetNode && node->input_size() == kTargetInputSize;
   };
-
-  // Get the output of the graph
-  NodeDef* sink_node;
-  TF_RETURN_IF_ERROR(graph_utils::GetFetchNode(graph, item, &sink_node));
 
   // Find the first target op by applying BFS
   absl::flat_hash_set<std::string> visited;
@@ -121,6 +112,22 @@ Status AddPutOp::OptimizeAndCollectStats(Cluster* cluster,
   graph.AddNode(std::move(put_op_node));
 
   return Status::OK();
+}
+
+Status AddPutOp::OptimizeAndCollectStats(Cluster* cluster,
+                                         const GrapplerItem& item,
+                                         GraphDef* output,
+                                         OptimizationStats* stats) {
+  // Initializations
+  *output = item.graph;
+  MutableGraphView graph(output);
+
+  // Get the sink node
+  NodeDef* sink_node;
+  TF_RETURN_IF_ERROR(graph_utils::GetFetchNode(graph, item, &sink_node));
+
+  // Apply the transformation
+  return ApplyOptimization(graph, sink_node, output);
 }
 
 void AddPutOp::Feedback(Cluster* cluster, const GrapplerItem& item,

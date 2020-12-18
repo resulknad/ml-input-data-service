@@ -1010,6 +1010,7 @@ cc_library(
     name = "add_put_op",
     srcs = ["easl_optimizers/add_put_op.cc"],
     hdrs = ["easl_optimizers/add_put_op.h"],
+    visibility = ["//visibility:public"],
     deps = [
         ":graph_utils",
         ":optimizer_base",
@@ -1031,6 +1032,7 @@ cc_library(
     name = "add_get_op",
     srcs = ["easl_optimizers/add_get_op.cc"],
     hdrs = ["easl_optimizers/add_get_op.h"],
+    visibility = ["//visibility:public"],
     deps = [
         ":graph_utils",
         ":optimizer_base",

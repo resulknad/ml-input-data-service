@@ -22,6 +22,9 @@ class AddGetOp : public TFDataOptimizerBase {
     // Ignore configuration
     return Status::OK();
   }
+  
+  Status ApplyOptimization(MutableGraphView &graph, NodeDef *sink_node, 
+                           GraphDef *output);
 
   Status OptimizeAndCollectStats(Cluster* cluster, const GrapplerItem& item,
                                  GraphDef* output,
