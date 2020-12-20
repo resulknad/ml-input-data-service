@@ -56,6 +56,7 @@ Status DatasetKey(const ::tensorflow::data::easl::CacheState& cache_state,
 }
 
 Status AddPutOperator(const DatasetDef& dataset, DatasetDef& updated_dataset) {
+  VLOG(1) << "(AddPutOperator) At the start of the method";
   // Copy over the original dataset
   updated_dataset = dataset; 
 
@@ -64,35 +65,37 @@ Status AddPutOperator(const DatasetDef& dataset, DatasetDef& updated_dataset) {
   optimizer.Init(nullptr);
 
   // Get the graph def and wrap it in a GrapplerItem
-  GraphDef graph_def = updated_dataset.graph();
+  GraphDef* graph_def = updated_dataset.mutable_graph();
   std::string output_node;
 
   // Find the output node; the one before '_Retval'
-  for (const auto& node : graph_def.node()) {
+  for (const auto& node : graph_def->node()) {
     if (node.op() == "_Retval") {
       output_node = node.input(0);
     }
   }
 
   // Create a 'Sink' node and attatch it to the real output
-  NodeDef* sink = graph_def.mutable_node()->Add();
-  tensorflow::grappler::graph_utils::SetUniqueGraphNodeName("Sink", &graph_def,
+  NodeDef* sink = graph_def->mutable_node()->Add();
+  tensorflow::grappler::graph_utils::SetUniqueGraphNodeName("Sink", graph_def,
                                                             sink);
   sink->set_op("Identity");
   sink->add_input(output_node);
   (*sink->mutable_attr())["T"].set_type(DT_VARIANT);
 
   // Create the MuttableGraphView
-  tensorflow::grappler::MutableGraphView graph(&graph_def);
-  optimizer.ApplyOptimization(graph, sink, &graph_def);
+  tensorflow::grappler::MutableGraphView graph(graph_def);
+  optimizer.ApplyOptimization(graph, sink, graph_def);
 
   // Disconnect the 'Sink' node
   sink->mutable_input()->Clear();
 
+  VLOG(1) << "(AddPutOperator) At the end of the method";
   return Status::OK();
 }
 
 Status AddGetOperator(const DatasetDef& dataset, DatasetDef& updated_dataset){
+  VLOG(1) << "(AddGetOperator) At the start of the method";
   // Copy over the original dataset
   updated_dataset = dataset; 
 
@@ -101,30 +104,31 @@ Status AddGetOperator(const DatasetDef& dataset, DatasetDef& updated_dataset){
   optimizer.Init(nullptr);
 
   // Get the graph def and wrap it in a GrapplerItem
-  GraphDef graph_def = updated_dataset.graph();
+  GraphDef* graph_def = updated_dataset.mutable_graph();
   std::string output_node;
 
   // Find the output node; the one before '_Retval'
-  for (const auto& node : graph_def.node()) {
+  for (const auto& node : graph_def->node()) {
     if (node.op() == "_Retval") {
       output_node = node.input(0);
     }
   }
 
   // Create a 'Sink' node and attatch it to the real output
-  NodeDef* sink = graph_def.mutable_node()->Add();
-  tensorflow::grappler::graph_utils::SetUniqueGraphNodeName("Sink", &graph_def,
+  NodeDef* sink = graph_def->mutable_node()->Add();
+  tensorflow::grappler::graph_utils::SetUniqueGraphNodeName("Sink", graph_def,
                                                             sink);
   sink->set_op("Identity");
   sink->add_input(output_node);
   (*sink->mutable_attr())["T"].set_type(DT_VARIANT);
 
   // Create the MuttableGraphView
-  tensorflow::grappler::MutableGraphView graph(&graph_def);
-  optimizer.ApplyOptimization(graph, sink, &graph_def);
+  tensorflow::grappler::MutableGraphView graph(graph_def);
+  optimizer.ApplyOptimization(graph, sink, graph_def);
 
   // Disconnect the 'Sink' node
   sink->mutable_input()->Clear();
+  VLOG(1) << "(AddGetOperator) At the end of the method";
 
   return Status::OK();
 }
