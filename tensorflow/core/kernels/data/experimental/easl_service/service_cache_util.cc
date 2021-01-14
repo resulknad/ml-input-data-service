@@ -8,6 +8,7 @@ namespace easl{
 namespace service_cache_util {
 
 constexpr const char* const kMetadataFilename = "service_cache.metadata";
+const int kWriterVersion = 2;
 
 Writer::Writer(Env* env,
     const std::string& target_dir, const DataTypeVector& output_dtypes,
@@ -21,10 +22,12 @@ Status Writer::Initialize(){
   // TODO (damien-aymon) add constant for writer version.
   async_writer_ = std::make_unique<snapshot_util::AsyncWriter>(
       env_, /*file_index*/ 0, target_dir_, /*checkpoint_id*/ 0,
-      io::compression::kSnappy, /*version*/ 2, output_dtypes_,
+      io::compression::kNone, kWriterVersion, output_dtypes_,
       /*done*/ [this](Status s){
         // TODO (damien-aymon) check and propagate errors here!
-        //if (!s.ok()) {
+        if (!s.ok()) {
+          VLOG(0) << "EASL - writer error: "<< s.ToString();
+        }
         //LOG(ERROR) << "AsyncWriter in snapshot writer failed: " << s;
         //mutex_lock l(writer_status_mu_);
         //writer_status_ = s;
@@ -55,7 +58,7 @@ Status Writer::WriteMetadataFile(
     const std::vector<PartialTensorShape>& output_shapes){
   experimental::CacheMetadataRecord metadata;
   metadata.set_creation_timestamp(EnvTime::NowMicros());
-  metadata.set_version(2);
+  metadata.set_version(kWriterVersion);
   for (const auto& output_dtype : output_dtypes) {
     metadata.add_dtype(output_dtype);
   }
@@ -95,7 +98,7 @@ Status Reader::Initialize() {
           static_cast<unsigned long long>(0)));
 
   return snapshot_util::Reader::Create(
-      env_, filename,io::compression::kSnappy,
+      env_, filename,io::compression::kNone,
       /*version*/ cache_file_version_, output_dtypes_, &reader_);
 }
 

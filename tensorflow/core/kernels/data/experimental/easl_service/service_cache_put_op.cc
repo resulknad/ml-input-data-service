@@ -109,6 +109,7 @@ ServiceCachePutOp::Dataset::~Dataset() { input_->Unref(); }
 
 std::unique_ptr<IteratorBase>
 ServiceCachePutOp::Dataset::MakeIteratorInternal(const string& prefix) const {
+  VLOG(0) << "EASL - prefix to put op: " << prefix;
   return absl::make_unique<Iterator>(
       Iterator::Params{this, absl::StrCat(prefix, "::ServiceCachePut")});
 }
@@ -170,6 +171,7 @@ Status ServiceCachePutOp::Dataset::Iterator::Initialize(
           ctx->env(), dataset()->path_, dataset()->output_dtypes(),
           dataset()->output_shapes());
   writer_->Initialize();
+
   return dataset()->input_->MakeIterator(
       ctx, this, prefix(), &input_impl_);
 }
@@ -187,17 +189,22 @@ Status ServiceCachePutOp::Dataset::Iterator::RestoreInternal(
 Status ServiceCachePutOp::Dataset::Iterator::GetNextInternal(
     IteratorContext* ctx, std::vector<Tensor>* out_tensors,
     bool* end_of_sequence) {
+  VLOG(0) << "EASL - enter cache put get next";
   mutex_lock l(mu_);
 
   TF_RETURN_IF_ERROR(input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
   
   if(*end_of_sequence){
-    // (damien-aymon) will block until the underlying asyncWriter is done.
-    writer_->Close();
-    writer_.reset();
+    if(writer_ != nullptr){
+      // (damien-aymon) will block until the underlying asyncWriter is done.
+      writer_->Close();
+      writer_.reset();
+    }
+    
     return Status::OK();
   }
-  return writer_->Write(*out_tensors);
+  std::vector<Tensor> tensors = *out_tensors;
+  return writer_->Write(tensors);
 }
 
 namespace {

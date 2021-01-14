@@ -18,7 +18,7 @@ namespace grappler {
 namespace easl {
 namespace {
   // Define constants here
-  constexpr char kCacheLocation[] = "./outputs/00000000.snapshot";
+  constexpr char kCacheLocation[] = "./outputs/";
   constexpr char kPutOpDataset[] = "ServiceCacheGetDataset";
   constexpr char kOutputShapes[] = "output_shapes";
   constexpr char kOutputTypes[] = "output_types";
