@@ -22,8 +22,9 @@ namespace {
   constexpr char kPutOpDataset[] = "ServiceCacheGetDataset";
   constexpr char kOutputShapes[] = "output_shapes";
   constexpr char kOutputTypes[] = "output_types";
-  constexpr char kTargetNode[] = "ModelDataset";
-  constexpr int kTargetInputSize = 1;
+  // constexpr char kTargetNode[] = "ModelDataset";
+  constexpr char kTargetNode[] = "ParallelMapDatasetV2";
+  constexpr int kTargetInputSize = 2;
 
   NodeDef CreateGetOpNode(MutableGraphView* graph, NodeDef* input) {
     NodeDef get_op_node;
@@ -106,11 +107,9 @@ Status AddGetOp::ApplyOptimization(MutableGraphView &graph, NodeDef *sink_node,
 
   // Copy over the relevant attributes
   (*target->mutable_input())[0] = get_op_node.name();
-  // VLOG(1) << "(OptimizeAndCollectStats) Copying over the attributes";
-  for (auto key : {kOutputShapes, kOutputTypes}) {
-    // VLOG(1) << "(OptimizeAndCollectStats) Copying over the attribute: " << key;
-    graph_utils::CopyAttribute(key, get_op_node, target);
-  }
+  // for (auto key : {kOutputShapes, kOutputTypes}) {
+  //   graph_utils::CopyAttribute(key, get_op_node, target);
+  // }
 
   // Add the node to the graph
   graph.AddNode(std::move(get_op_node));

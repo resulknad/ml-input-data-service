@@ -22,8 +22,9 @@ namespace {
   constexpr char kPutOpDataset[] = "ServiceCachePutDataset";
   constexpr char kOutputShapes[] = "output_shapes";
   constexpr char kOutputTypes[] = "output_types";
-  constexpr char kTargetNode[] = "ModelDataset";
-  constexpr int kTargetInputSize = 1;
+  // constexpr char kTargetNode[] = "ModelDataset";
+  constexpr char kTargetNode[] = "ParallelMapDatasetV2";
+  constexpr int kTargetInputSize = 2;
 
   NodeDef CreatePutOpNode(MutableGraphView* graph, NodeDef* input) {
     NodeDef put_op_node;
@@ -105,7 +106,7 @@ Status AddPutOp::ApplyOptimization(MutableGraphView &graph, NodeDef *sink_node,
 
   // Copy over the relevant attributes
   (*target->mutable_input())[0] = put_op_node.name();
-  graph_utils::CopyAttribute(kOutputTypes, put_op_node, target);
+  // graph_utils::CopyAttribute(kOutputTypes, put_op_node, target);
 
   // Add the node to the graph
   graph.AddNode(std::move(put_op_node));

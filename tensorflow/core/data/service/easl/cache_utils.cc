@@ -4,6 +4,7 @@
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/grappler/mutable_graph_view.h"
 #include "tensorflow/core/grappler/optimizers/data/easl_optimizers/add_put_op.h"
 #include "tensorflow/core/grappler/optimizers/data/easl_optimizers/add_get_op.h"
@@ -40,7 +41,8 @@ Status DoBFS(NodeDef* sink_node, GraphDef& graph_def, string prefix) {
         bfs_queue.push(neighbor_node);
 
         VLOG(1) << "(" << prefix << ") BFS @ current_node: " 
-                << current_node->op() << " --> " << neighbor_node->op();
+                << SummarizeNodeDef(*current_node) << " --> " 
+                << SummarizeNodeDef(*neighbor_node);
       }
     }
   }
@@ -123,6 +125,9 @@ Status AddPutOperator(const DatasetDef& dataset, DatasetDef& updated_dataset) {
   tensorflow::grappler::MutableGraphView graph(graph_def);
   optimizer.ApplyOptimization(graph, sink, graph_def);
 
+  // Do BFS
+  DoBFS(sink, *graph_def, "AfterAddPutOperator");
+
   // Disconnect the 'Sink' node
   // sink->mutable_input()->Clear();
   VLOG(1) << "(AddPutOperator) At the end of the method";
@@ -164,6 +169,9 @@ Status AddGetOperator(const DatasetDef& dataset, DatasetDef& updated_dataset){
   // Create the MuttableGraphView
   tensorflow::grappler::MutableGraphView graph(graph_def);
   optimizer.ApplyOptimization(graph, sink, graph_def);
+
+  // Do BFS
+  DoBFS(sink, *graph_def, "AfterAddGetOperator");
 
   // Disconnect the 'Sink' node
   // sink->mutable_input()->Clear();
