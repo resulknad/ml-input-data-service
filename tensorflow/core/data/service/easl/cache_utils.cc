@@ -1,5 +1,8 @@
+#include <queue>
+
 #include "tensorflow/core/data/service/easl/cache_utils.h"
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/grappler/mutable_graph_view.h"
 #include "tensorflow/core/grappler/optimizers/data/easl_optimizers/add_put_op.h"
@@ -14,6 +17,36 @@ namespace data {
 namespace service {
 namespace easl{
 namespace cache_utils {
+
+Status DoBFS(NodeDef* sink_node, GraphDef& graph_def, string prefix) {
+  absl::flat_hash_set<std::string> visited;
+  std::queue<NodeDef*> bfs_queue;
+  bfs_queue.push(sink_node);
+
+  VLOG(1) << "(" << prefix << ") BFS @ current_node: " 
+          << "Root --> " << sink_node->op();
+  
+  while (!bfs_queue.empty()) {
+    NodeDef* current_node = bfs_queue.front();
+    bfs_queue.pop();
+    visited.insert(current_node->name());
+
+    // Iterate throught the neighbors
+    for (int i = 0; i < current_node->input_size(); ++i) {
+      if (!visited.contains(current_node->input(i))) {
+        int idx = tensorflow::grappler::graph_utils::FindGraphNodeWithName(
+          current_node->input(i), graph_def);
+        NodeDef* neighbor_node = graph_def.mutable_node(idx);
+        bfs_queue.push(neighbor_node);
+
+        VLOG(1) << "(" << prefix << ") BFS @ current_node: " 
+                << current_node->op() << " --> " << neighbor_node->op();
+      }
+    }
+  }
+
+  return Status::OK();
+}
 
 std::string DatasetPutKey(const int64 id, const uint64 fingerprint) {
   return absl::StrCat("id_", id, "_fp_", fingerprint, "_put");
@@ -83,6 +116,9 @@ Status AddPutOperator(const DatasetDef& dataset, DatasetDef& updated_dataset) {
   sink->add_input(output_node);
   (*sink->mutable_attr())["T"].set_type(DT_VARIANT);
 
+  // Do BFS
+  DoBFS(sink, *graph_def, "AddPutOperator");
+  
   // Create the MuttableGraphView
   tensorflow::grappler::MutableGraphView graph(graph_def);
   optimizer.ApplyOptimization(graph, sink, graph_def);
@@ -121,6 +157,9 @@ Status AddGetOperator(const DatasetDef& dataset, DatasetDef& updated_dataset){
   sink->set_op("Identity");
   sink->add_input(output_node);
   (*sink->mutable_attr())["T"].set_type(DT_VARIANT);
+
+  // Do BFS
+  DoBFS(sink, *graph_def, "AddGetOperator");
 
   // Create the MuttableGraphView
   tensorflow::grappler::MutableGraphView graph(graph_def);
