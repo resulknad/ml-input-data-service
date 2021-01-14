@@ -88,9 +88,9 @@ Status AddPutOperator(const DatasetDef& dataset, DatasetDef& updated_dataset) {
   optimizer.ApplyOptimization(graph, sink, graph_def);
 
   // Disconnect the 'Sink' node
-  //sink->mutable_input()->Clear();
-
+  // sink->mutable_input()->Clear();
   VLOG(1) << "(AddPutOperator) At the end of the method";
+  
   return Status::OK();
 }
 
@@ -127,7 +127,7 @@ Status AddGetOperator(const DatasetDef& dataset, DatasetDef& updated_dataset){
   optimizer.ApplyOptimization(graph, sink, graph_def);
 
   // Disconnect the 'Sink' node
-  //sink->mutable_input()->Clear();
+  // sink->mutable_input()->Clear();
   VLOG(1) << "(AddGetOperator) At the end of the method";
 
   return Status::OK();
