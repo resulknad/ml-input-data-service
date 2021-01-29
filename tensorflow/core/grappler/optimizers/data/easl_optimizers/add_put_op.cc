@@ -41,8 +41,27 @@ namespace {
     put_op_node.add_input(location_node->name());
 
     // Copy over the relevant attributes from root of the prefix
-    for (auto key : {kOutputShapes, kOutputTypes})
+    // TODO cleanup dirty hack: output_types can also be Toutput_types.
+    VLOG(0) << "before copying attribures";
+    graph_utils::CopyAttribute(kOutputShapes, *input, &put_op_node);
+    auto it = input->attr().find(kOutputTypes);
+    if(it != input->attr().end()){
+      (*put_op_node.mutable_attr())[kOutputTypes] = it->second;
+    } else {
+      it = input->attr().find("Toutput_types");
+      (*put_op_node.mutable_attr())[kOutputTypes] = it->second;
+    }
+
+/*
+    for (auto key : {kOutputShapes, kOutputTypes}){
+      VLOG(0) << "before copying attribures";
+      VLOG(0) << "copying from " << input->name();
       graph_utils::CopyAttribute(key, *input, &put_op_node);
+      
+      *to_node->mutable_attr())[attribute_name] = from.attr().at(attribute_name);*/
+      VLOG(0) << "after copying attribures";
+    
+
 
     return put_op_node;
   }

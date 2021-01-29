@@ -41,11 +41,21 @@ namespace {
     get_op_node.add_input(location_node->name());
 
     // Copy over the relevant attributes from root of the prefix
-    // VLOG(1) << "(CreateGetOpNode) Copying over the attributes";
+    // TODO cleanup dirty hack (see add-put-op)
+    VLOG(0) << "before copying attribures";
+    graph_utils::CopyAttribute(kOutputShapes, *input, &get_op_node);
+    auto it = input->attr().find(kOutputTypes);
+    if(it != input->attr().end()){
+      (*get_op_node.mutable_attr())[kOutputTypes] = it->second;
+    } else {
+      it = input->attr().find("Toutput_types");
+      (*get_op_node.mutable_attr())[kOutputTypes] = it->second;
+    }
+    /*// VLOG(1) << "(CreateGetOpNode) Copying over the attributes";
     for (auto key : {kOutputShapes, kOutputTypes}) {
       // VLOG(1) << "(CreateGetOpNode) Copying over the attribute: " << key;
       graph_utils::CopyAttribute(key, *input, &get_op_node);
-    }
+    }*/
 
     return get_op_node;
   }
