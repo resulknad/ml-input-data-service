@@ -100,11 +100,6 @@ Status DatasetKey(const ::tensorflow::data::easl::CacheState& cache_state,
   return Status::OK();
 }
 
-<<<<<<< HEAD
-Status AddPutOperator(const DatasetDef& dataset, DatasetDef& updated_dataset){
-  // TODO (damien-aymon) update this to actual implementation.
-  updated_dataset = dataset;
-=======
 Status AddPutOperator(const DatasetDef& dataset, DatasetDef& updated_dataset) {
   VLOG(1) << "(AddPutOperator) At the start of the method";
   // Copy over the original dataset
@@ -147,15 +142,10 @@ Status AddPutOperator(const DatasetDef& dataset, DatasetDef& updated_dataset) {
   // sink->mutable_input()->Clear();
   VLOG(1) << "(AddPutOperator) At the end of the method";
   
->>>>>>> rebase-test
   return Status::OK();
 }
 
 Status AddGetOperator(const DatasetDef& dataset, DatasetDef& updated_dataset){
-<<<<<<< HEAD
-  // TODO (damien-aymon) update this to actual implementation.
-  updated_dataset = dataset;
-=======
   VLOG(1) << "(AddGetOperator) At the start of the method";
   // Copy over the original dataset
   updated_dataset = dataset; 
@@ -197,7 +187,6 @@ Status AddGetOperator(const DatasetDef& dataset, DatasetDef& updated_dataset){
   // sink->mutable_input()->Clear();
   VLOG(1) << "(AddGetOperator) At the end of the method";
 
->>>>>>> rebase-test
   return Status::OK();
 }
 
