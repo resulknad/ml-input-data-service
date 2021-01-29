@@ -15,6 +15,8 @@ cc_library(
     name = "data",
     visibility = ["//visibility:public"],
     deps = [
+        ":add_get_op",
+        ":add_put_op",
         ":append_forty_two",
         ":autotune_buffer_sizes",
         ":disable_intra_op_parallelism",
@@ -58,27 +60,6 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/grappler/utils:functions",
         "//tensorflow/core/kernels/data:dataset_utils",
-    ] + tf_protos_all(),
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "append_forty_two",
-    srcs = ["append_forty_two.cc"],
-    hdrs = ["append_forty_two.h"],
-    deps = [
-        ":graph_utils",
-        ":optimizer_base",
-        "//tensorflow/core/grappler:mutable_graph_view",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-        "//tensorflow/core/grappler:grappler_item",
-        "//tensorflow/core/grappler:op_types",
-        "//tensorflow/core/grappler:utils",
-        "//tensorflow/core/grappler/clusters:cluster",
-        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
-        "//tensorflow/core:lib_internal",
     ] + tf_protos_all(),
     alwayslink = 1,
 )
@@ -998,3 +979,77 @@ tf_cc_test(
         "//tensorflow/tools/graph_transforms:transform_utils",
     ] + tf_protos_all(),
 )
+
+
+# ------------------------------------------------------------------------------
+# EASL 
+# ------------------------------------------------------------------------------
+
+cc_library(
+    name = "append_forty_two",
+    srcs = ["easl_optimizers/append_forty_two.cc"],
+    hdrs = ["easl_optimizers/append_forty_two.h"],
+    deps = [
+        ":graph_utils",
+        ":optimizer_base",
+        "//tensorflow/core/grappler:mutable_graph_view",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+        "//tensorflow/core:lib_internal",
+    ] + tf_protos_all(),
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "add_put_op",
+    srcs = ["easl_optimizers/add_put_op.cc"],
+    hdrs = ["easl_optimizers/add_put_op.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":graph_utils",
+        ":optimizer_base",
+        "//tensorflow/core/grappler:mutable_graph_view",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+        "//tensorflow/core:lib_internal",
+    ] + tf_protos_all(),
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "add_get_op",
+    srcs = ["easl_optimizers/add_get_op.cc"],
+    hdrs = ["easl_optimizers/add_get_op.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":graph_utils",
+        ":optimizer_base",
+        "//tensorflow/core/grappler:mutable_graph_view",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+        "//tensorflow/core:lib_internal",
+    ] + tf_protos_all(),
+    alwayslink = 1,
+)
+
+# ------------------------------------------------------------------------------
+# EASL 
+# ------------------------------------------------------------------------------
