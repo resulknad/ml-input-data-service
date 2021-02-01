@@ -1,9 +1,3 @@
-<<<<<<< HEAD
-#include "tensorflow/core/data/service/easl/cache_utils.h"
-
-#include "absl/strings/str_cat.h"
-#include "tensorflow/core/platform/errors.h"
-=======
 #include <queue>
 
 #include "tensorflow/core/data/service/easl/cache_utils.h"
@@ -18,7 +12,6 @@
 #include "tensorflow/core/grappler/utils/graph_view.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
->>>>>>> rebase-test
 
 namespace tensorflow {
 namespace data {
@@ -26,8 +19,6 @@ namespace service {
 namespace easl{
 namespace cache_utils {
 
-<<<<<<< HEAD
-=======
 Status DoBFS(NodeDef* sink_node, GraphDef& graph_def, string prefix) {
   absl::flat_hash_set<std::string> visited;
   std::queue<NodeDef*> bfs_queue;
@@ -59,7 +50,6 @@ Status DoBFS(NodeDef* sink_node, GraphDef& graph_def, string prefix) {
   return Status::OK();
 }
 
->>>>>>> rebase-test
 std::string DatasetPutKey(const int64 id, const uint64 fingerprint) {
   return absl::StrCat("id_", id, "_fp_", fingerprint, "_put");
 }
