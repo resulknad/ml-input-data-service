@@ -7,29 +7,46 @@ namespace data {
 namespace easl{
 namespace service_cache_util {
 
+namespace {
+
+std::string GetFileName(const std::string& shard_directory,
+                                uint64 file_id) {
+return io::JoinPath(
+    shard_directory,
+    strings::Printf("%08llu.easl",
+                    static_cast<unsigned long long>(file_id)));
+}
+
+}
+
 constexpr const char* const kMetadataFilename = "service_cache.metadata";
+const int kWriterVersion = 2;
 
 Writer::Writer(Env* env,
     const std::string& target_dir, const DataTypeVector& output_dtypes,
-    const std::vector<PartialTensorShape>& output_shapes)
-    : env_(env), target_dir_(target_dir), output_dtypes_(output_dtypes),
-    output_shapes_(output_shapes) {}
+    const std::vector<PartialTensorShape>& output_shapes, 
+    const int writer_count) : env_(env), target_dir_(target_dir), 
+    output_dtypes_(output_dtypes), output_shapes_(output_shapes), 
+    writer_count_(writer_count) {}
 
 Writer::~Writer() {}
 
 Status Writer::Initialize(){
   // TODO (damien-aymon) add constant for writer version.
-  async_writer_ = std::make_unique<snapshot_util::AsyncWriter>(
+  async_writer_ = std::make_unique<MultiThreadedAsyncWriter>(
       env_, /*file_index*/ 0, target_dir_, /*checkpoint_id*/ 0,
-      io::compression::kSnappy, /*version*/ 2, output_dtypes_,
+      io::compression::kNone, kWriterVersion, output_dtypes_,
       /*done*/ [this](Status s){
         // TODO (damien-aymon) check and propagate errors here!
-        //if (!s.ok()) {
-        //LOG(ERROR) << "AsyncWriter in snapshot writer failed: " << s;
+        if (!s.ok()) {
+          VLOG(0) << "EASL - writer error: "<< s.ToString();
+        }
+        //LOG(ERROR) << "MultiThreadedAsyncWriter in snapshot writer failed: " << s;
         //mutex_lock l(writer_status_mu_);
         //writer_status_ = s;
         return;
-      }
+      },
+      writer_count_
   );
 
   return WriteMetadataFile(env_, target_dir_, output_dtypes_, output_shapes_);
@@ -55,7 +72,7 @@ Status Writer::WriteMetadataFile(
     const std::vector<PartialTensorShape>& output_shapes){
   experimental::CacheMetadataRecord metadata;
   metadata.set_creation_timestamp(EnvTime::NowMicros());
-  metadata.set_version(2);
+  metadata.set_version(kWriterVersion);
   for (const auto& output_dtype : output_dtypes) {
     metadata.add_dtype(output_dtype);
   }
@@ -91,11 +108,11 @@ Status Reader::Initialize() {
   TF_RETURN_IF_ERROR(ReadAndParseMetadataFile());
 
   std::string filename = io::JoinPath(target_dir_,
-      strings::Printf("%08llu.snapshot",
+      strings::Printf("%08llu.easl",
           static_cast<unsigned long long>(0)));
 
   return snapshot_util::Reader::Create(
-      env_, filename,io::compression::kSnappy,
+      env_, filename,io::compression::kNone,
       /*version*/ cache_file_version_, output_dtypes_, &reader_);
 }
 
@@ -138,6 +155,92 @@ Status Reader::ReadAndParseMetadataFile() {
     output_shapes_.push_back(PartialTensorShape(shape));
   }
 
+  return Status::OK();
+}
+
+MultiThreadedAsyncWriter::MultiThreadedAsyncWriter(Env* env, int64 file_index,
+                         const std::string& shard_directory,
+                         uint64 checkpoint_id, const std::string& compression,
+                         int64 version, const DataTypeVector& output_types,
+                         std::function<void(Status)> done,
+                         const int writer_count) : writer_count_(writer_count) {
+  thread_pool_ = absl::make_unique<thread::ThreadPool>(env, ThreadOptions(),  
+      absl::StrCat("thread_pool_", file_index), writer_count_, false);
+
+  LOG(INFO) << "(MultiThreadedAsyncWriter) Starting ThreadPool"; 
+  for (int i = 0; i < writer_count_; ++i) {
+    thread_pool_->Schedule(
+      [this, env, shard_directory, checkpoint_id, compression, version,
+        &output_types, done = std::move(done), i] {
+        done(WriterThread(env, shard_directory, i, compression, version, 
+            output_types));
+        }
+    );
+  }
+  LOG(INFO) << "(MultiThreadedAsyncWriter) Finished Starting ThreadPool";
+}
+
+void MultiThreadedAsyncWriter::Write(const std::vector<Tensor>& tensors) {
+  mutex_lock l(mu_);
+  snapshot_util::ElementOrEOF element;
+  element.value = tensors;
+  deque_.push_back(std::move(element));
+}
+
+void MultiThreadedAsyncWriter::SignalEOF() {
+  mutex_lock l(mu_);
+  
+  for (int i = 0; i < writer_count_; ++i) {
+    snapshot_util::ElementOrEOF be;
+    be.end_of_sequence = true;
+    deque_.push_back(std::move(be));
+  }
+}
+
+void MultiThreadedAsyncWriter::Consume(snapshot_util::ElementOrEOF* be) {
+  mutex_lock l(mu_);
+  mu_.Await(tensorflow::Condition(this, 
+      &MultiThreadedAsyncWriter::ElementAvailable));
+  *be = deque_.front();
+  deque_.pop_front();
+}
+
+bool MultiThreadedAsyncWriter::ElementAvailable() { return !deque_.empty(); }
+
+Status MultiThreadedAsyncWriter::WriterThread(Env* env, 
+                                 const std::string& shard_directory,
+                                 uint64 writer_id,
+                                 const std::string& compression, int64 version,
+                                 DataTypeVector output_types) { 
+  std::unique_ptr<snapshot_util::Writer> writer;
+  // TODO (damien-aymon) Push this to the specific writers, so that we can make
+  // the async writer more general (e.g. different file system, gs://, etc...)
+  TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(shard_directory));
+
+  LOG(INFO) << "(Writer_" << writer_id << ") Created Dir "; 
+
+  TF_RETURN_IF_ERROR(snapshot_util::Writer::Create(
+      env, GetFileName(shard_directory, writer_id), 
+      compression, version, std::move(output_types), &writer));
+  
+  int count = 0;
+  LOG(INFO) << "(Writer_" << writer_id << ") Starting to write "; 
+
+  while (true) {
+    snapshot_util::ElementOrEOF be;
+    Consume(&be);
+
+    LOG(INFO) << "(Writer_" << writer_id << ") Read - " 
+      << be.end_of_sequence << " - Total: " << ++count;
+    if (be.end_of_sequence) {
+      LOG(INFO) << "(Writer_" << writer_id << ") Closing w/ total read " << count << "...";
+      TF_RETURN_IF_ERROR(writer->Close());
+      LOG(INFO) << "(Writer_" << writer_id << ") Closed w/ total read " << count;
+      break;
+    }
+
+    TF_RETURN_IF_ERROR(writer->WriteTensors(be.value));
+  }
   return Status::OK();
 }
 

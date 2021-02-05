@@ -558,5 +558,7 @@ cc_library(
         ":dispatcher_cache_state",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
+        "//tensorflow/core/grappler/optimizers/data:add_put_op",
+        "//tensorflow/core/grappler/optimizers/data:add_get_op"
     ],
 )

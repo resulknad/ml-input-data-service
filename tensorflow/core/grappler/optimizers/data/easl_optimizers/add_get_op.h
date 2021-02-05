@@ -1,19 +1,19 @@
-#ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_APPEND_FORTY_TWO_H_
-#define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_APPEND_FORTY_TWO_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_ADD_GET_OP_H_
+#define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_ADD_GET_OP_H_
 
 #include "tensorflow/core/grappler/optimizers/data/optimizer_base.h"
 
 namespace tensorflow {
 namespace grappler {
+namespace easl {
 
-// This optimization adds 'forty_two_dataset_op'
-// at the end of the tf.data pipeline.
-class AppendFortyTwo : public TFDataOptimizerBase {
+// Appends the cache Get op before the ModelDatasetOp node 
+class AddGetOp : public TFDataOptimizerBase {
   public:
-  AppendFortyTwo() = default;
-  ~AppendFortyTwo() override = default;
+  AddGetOp() = default;
+  ~AddGetOp() override = default;
 
-  string name() const override { return "append_forty_two"; };
+  string name() const override { return "add_get_op"; };
 
   bool UsesFunctionLibrary() const override { return false; };
 
@@ -22,6 +22,9 @@ class AppendFortyTwo : public TFDataOptimizerBase {
     // Ignore configuration
     return Status::OK();
   }
+  
+  Status ApplyOptimization(MutableGraphView &graph, NodeDef *sink_node, 
+                           GraphDef *output);
 
   Status OptimizeAndCollectStats(Cluster* cluster, const GrapplerItem& item,
                                  GraphDef* output,
@@ -32,7 +35,8 @@ class AppendFortyTwo : public TFDataOptimizerBase {
 
 };
 
+} // namespace easl
 } // namespace grappler
 } // namespace tensorflow
 
-#endif // TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_APPEND_FORTY_TWO_H_
+#endif // TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_ADD_GET_OP_H_

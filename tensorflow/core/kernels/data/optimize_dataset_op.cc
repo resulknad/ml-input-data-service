@@ -124,6 +124,7 @@ void OptimizeDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
     VLOG(1) << "The graduated experiment \"" << experiment << "\" is applied.";
   }
 
+
   // If there are no optimizations to be applied, directly return the input.
   if (optimizations.empty()) {
     *output = input;

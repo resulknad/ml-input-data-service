@@ -196,12 +196,12 @@ class ModelDatasetOp::Dataset : public DatasetBase {
             ctx->StartThread("tf_data_model", [this]() { ModelThread(); });
       }
       // Start the metrics thread if necessary
-      if (!metrics_thread_) {
-        std::shared_ptr<IteratorContext> new_ctx =
-            std::make_shared<IteratorContext>(*ctx);
-        metrics_thread_ = ctx->StartThread(
-            "tf_data_metrics", [this, new_ctx]() { MetricsThread(new_ctx); });
-      }
+      // if (!metrics_thread_) {
+      //   std::shared_ptr<IteratorContext> new_ctx =
+      //       std::make_shared<IteratorContext>(*ctx);
+      //   metrics_thread_ = ctx->StartThread(
+      //       "tf_data_metrics", [this, new_ctx]() { MetricsThread(new_ctx); });
+      // }
 
       return Status::OK();
     }
