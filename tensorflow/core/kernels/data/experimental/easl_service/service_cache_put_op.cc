@@ -166,6 +166,8 @@ ServiceCachePutOp::Dataset::Iterator::Iterator(const Params& params)
 
 Status ServiceCachePutOp::Dataset::Iterator::Initialize(
     IteratorContext* ctx) {
+  VLOG(0) << "EASL - Initializing ServiceCachePutOp iterator";
+
   writer_ =
       std::make_unique<tensorflow::data::easl::service_cache_util::Writer>(
           ctx->env(), dataset()->path_, dataset()->output_dtypes(),
@@ -189,7 +191,6 @@ Status ServiceCachePutOp::Dataset::Iterator::RestoreInternal(
 Status ServiceCachePutOp::Dataset::Iterator::GetNextInternal(
     IteratorContext* ctx, std::vector<Tensor>* out_tensors,
     bool* end_of_sequence) {
-  VLOG(0) << "EASL - enter cache put get next";
   mutex_lock l(mu_);
 
   TF_RETURN_IF_ERROR(input_impl_->GetNext(ctx, out_tensors, end_of_sequence));

@@ -8,7 +8,9 @@ namespace easl{
 namespace service_cache_util {
 
 constexpr const char* const kMetadataFilename = "service_cache.metadata";
-const int kWriterVersion = 2;
+const int kWriterVersion = 1;
+const char kCompression[] = "SNAPPY"; // can be SNAPPY, GZIP, ZLIB, "" for none.
+
 
 Writer::Writer(Env* env,
     const std::string& target_dir, const DataTypeVector& output_dtypes,
@@ -22,7 +24,7 @@ Status Writer::Initialize(){
   // TODO (damien-aymon) add constant for writer version.
   async_writer_ = std::make_unique<snapshot_util::AsyncWriter>(
       env_, /*file_index*/ 0, target_dir_, /*checkpoint_id*/ 0,
-      io::compression::kNone, kWriterVersion, output_dtypes_,
+      kCompression, kWriterVersion, output_dtypes_,
       /*done*/ [this](Status s){
         // TODO (damien-aymon) check and propagate errors here!
         if (!s.ok()) {
@@ -98,7 +100,7 @@ Status Reader::Initialize() {
           static_cast<unsigned long long>(0)));
 
   return snapshot_util::Reader::Create(
-      env_, filename,io::compression::kNone,
+      env_, filename, kCompression,
       /*version*/ cache_file_version_, output_dtypes_, &reader_);
 }
 
