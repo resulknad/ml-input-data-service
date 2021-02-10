@@ -76,6 +76,7 @@ Status Writer::WriteMetadataFile(
     TensorShapeProto* shape_proto = metadata.add_tensor_shape();
     output_shape.AsProto(shape_proto);
   }
+  metadata.set_num_writers(writer_count_);
 
   string metadata_filename = io::JoinPath(target_dir_, kMetadataFilename);
   TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(target_dir_));
@@ -86,73 +87,8 @@ Status Writer::WriteMetadataFile(
 }
 
 // -----------------------------------------------------------------------------
-// Reader
+// MultiThreadedAsyncWriter
 // -----------------------------------------------------------------------------
-
-Reader::Reader(Env *env,
-               const std::string &target_dir,
-               const DataTypeVector& output_dtypes)
-    : target_dir_(target_dir), env_(env), output_dtypes_(output_dtypes) {
-  // TODO (damien-aymon) add constant for writer version.
-
-}
-
-Status Reader::Initialize() {
-
-  // Read metadata first:
-  // TODO (damien-aymon) not really useful anymore until more info in there
-  TF_RETURN_IF_ERROR(ReadAndParseMetadataFile());
-
-  std::string filename = io::JoinPath(target_dir_,
-      strings::Printf("%08llu.easl",
-          static_cast<unsigned long long>(0)));
-
-  return snapshot_util::Reader::Create(
-      env_, filename,io::compression::kNone,
-      /*version*/ cache_file_version_, output_dtypes_, &reader_);
-}
-
-Status Reader::Read(std::vector<Tensor>* &read_tensors, bool* end_of_sequence) {
-  *end_of_sequence = false;
-  Status s = reader_->ReadTensors(read_tensors);
-  if (!errors::IsOutOfRange(s)) {
-    return s;
-  }
-      //Status status = AdvanceToNextFile(ctx->env());
-      /*if (errors::IsNotFound(status)) {
-        *end_of_sequence = true;
-        return Status::OK();
-      } else {
-        return status;
-      }
-    }*/
-  *end_of_sequence = true;
-  return Status::OK();
-}
-
-Reader::~Reader(){}
-
-Status Reader::ReadAndParseMetadataFile() {
-  string metadata_filename = io::JoinPath(target_dir_, kMetadataFilename);
-  TF_RETURN_IF_ERROR(env_->FileExists(metadata_filename));
-
-  experimental::CacheMetadataRecord metadata;
-  TF_RETURN_IF_ERROR(ReadBinaryProto(env_, metadata_filename, &metadata));
-
-  cache_file_version_ = metadata.version();
-
-  output_dtypes_ = DataTypeVector();
-  for(auto dtype : metadata.dtype()){
-    output_dtypes_.push_back(static_cast<DataType>(dtype));
-  }
-
-  output_shapes_ = std::vector<PartialTensorShape>();
-  for(auto shape : metadata.tensor_shape()){
-    output_shapes_.push_back(PartialTensorShape(shape));
-  }
-
-  return Status::OK();
-}
 
 MultiThreadedAsyncWriter::MultiThreadedAsyncWriter(Env* env, int64 file_index,
                          const std::string& shard_directory,
@@ -230,14 +166,84 @@ Status MultiThreadedAsyncWriter::WriterThread(Env* env,
     LOG(INFO) << "(Writer_" << writer_id << ") Read - " 
       << be.end_of_sequence << " - Total: " << ++count;
     if (be.end_of_sequence) {
-      LOG(INFO) << "(Writer_" << writer_id << ") Closing w/ total read " << count << "...";
       TF_RETURN_IF_ERROR(writer->Close());
-      LOG(INFO) << "(Writer_" << writer_id << ") Closed w/ total read " << count;
+      LOG(INFO) << "(Writer_" << writer_id << ") Closed w/ total read " 
+                << count;
       break;
     }
 
     TF_RETURN_IF_ERROR(writer->WriteTensors(be.value));
   }
+  return Status::OK();
+}
+
+// -----------------------------------------------------------------------------
+// Reader
+// -----------------------------------------------------------------------------
+
+Reader::Reader(Env *env,
+               const std::string &target_dir,
+               const DataTypeVector& output_dtypes)
+    : target_dir_(target_dir), env_(env), output_dtypes_(output_dtypes), 
+    reader_count_(1) {
+  // TODO (damien-aymon) add constant for writer version.
+}
+
+Status Reader::Initialize() {
+
+  // Read metadata first:
+  // TODO (damien-aymon) not really useful anymore until more info in there
+  TF_RETURN_IF_ERROR(ReadAndParseMetadataFile());
+
+  std::string filename = io::JoinPath(target_dir_,
+      strings::Printf("%08llu.easl",
+          static_cast<unsigned long long>(0)));
+
+  return snapshot_util::Reader::Create(
+      env_, filename,io::compression::kNone,
+      /*version*/ cache_file_version_, output_dtypes_, &reader_);
+}
+
+Status Reader::Read(std::vector<Tensor>* &read_tensors, bool* end_of_sequence) {
+  *end_of_sequence = false;
+  Status s = reader_->ReadTensors(read_tensors);
+  if (!errors::IsOutOfRange(s)) {
+    return s;
+  }
+      //Status status = AdvanceToNextFile(ctx->env());
+      /*if (errors::IsNotFound(status)) {
+        *end_of_sequence = true;
+        return Status::OK();
+      } else {
+        return status;
+      }
+    }*/
+  *end_of_sequence = true;
+  return Status::OK();
+}
+
+Reader::~Reader(){}
+
+Status Reader::ReadAndParseMetadataFile() {
+  string metadata_filename = io::JoinPath(target_dir_, kMetadataFilename);
+  TF_RETURN_IF_ERROR(env_->FileExists(metadata_filename));
+
+  experimental::CacheMetadataRecord metadata;
+  TF_RETURN_IF_ERROR(ReadBinaryProto(env_, metadata_filename, &metadata));
+
+  cache_file_version_ = metadata.version();
+  reader_count_ = metadata.num_writers();
+
+  output_dtypes_ = DataTypeVector();
+  for(auto dtype : metadata.dtype()){
+    output_dtypes_.push_back(static_cast<DataType>(dtype));
+  }
+
+  output_shapes_ = std::vector<PartialTensorShape>();
+  for(auto shape : metadata.tensor_shape()){
+    output_shapes_.push_back(PartialTensorShape(shape));
+  }
+
   return Status::OK();
 }
 

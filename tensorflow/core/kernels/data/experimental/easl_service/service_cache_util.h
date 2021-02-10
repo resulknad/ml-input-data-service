@@ -109,6 +109,7 @@ class Reader {
   ~Reader();
 
  private:
+  int reader_count_;
   Status ReadAndParseMetadataFile();
 
   const std::string target_dir_;

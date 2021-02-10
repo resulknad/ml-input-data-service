@@ -32,4 +32,7 @@ message CacheMetadataRecord {
   //int64 num_elements = 7;
   //repeated
       //bool finalized = 1000;
+
+  // How many writers were used to write the cached data
+  int64 num_writers = 8; 
 }
