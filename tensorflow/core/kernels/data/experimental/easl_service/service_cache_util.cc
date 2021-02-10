@@ -36,14 +36,10 @@ Status Writer::Initialize(){
   async_writer_ = std::make_unique<MultiThreadedAsyncWriter>(
       env_, /*file_index*/ 0, target_dir_, /*checkpoint_id*/ 0,
       io::compression::kNone, kWriterVersion, output_dtypes_,
-      /*done*/ [this](Status s){
-        // TODO (damien-aymon) check and propagate errors here!
+      [this](Status s){
         if (!s.ok()) {
           VLOG(0) << "EASL - writer error: "<< s.ToString();
         }
-        //LOG(ERROR) << "MultiThreadedAsyncWriter in snapshot writer failed: " << s;
-        //mutex_lock l(writer_status_mu_);
-        //writer_status_ = s;
         return;
       },
       writer_count_
@@ -172,8 +168,9 @@ MultiThreadedAsyncWriter::MultiThreadedAsyncWriter(Env* env, int64 file_index,
     thread_pool_->Schedule(
       [this, env, shard_directory, checkpoint_id, compression, version,
         &output_types, done = std::move(done), i] {
-        done(WriterThread(env, shard_directory, i, compression, version, 
-            output_types));
+        // Note that `done` is not used since it causes a bug here 
+        WriterThread(env, shard_directory, i, compression, version, 
+            output_types);
         }
     );
   }
