@@ -110,6 +110,7 @@ class Reader {
   ~Reader();
 
  private:
+  int file_count_;
   const int reader_count_;
   mutex mu_;
   mutex mu_add_;
@@ -117,6 +118,7 @@ class Reader {
   Status ReadAndParseMetadataFile();
   void Consume(string* s, bool* end_of_sequence) TF_LOCKS_EXCLUDED(mu_);
   void Add(std::vector<Tensor>& tensors) TF_LOCKS_EXCLUDED(mu_add_);
+  bool AllFilesRead() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_add_);
   Status ReaderThread(Env *env, uint64 writer_id, int64 version, 
       DataTypeVector output_types);
 

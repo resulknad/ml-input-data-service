@@ -197,6 +197,7 @@ Status Reader::Initialize() {
   std::vector<string> files;
   TF_CHECK_OK(env_->GetMatchingPaths(io::JoinPath(target_dir_, "*\\.easl"), 
       &files));
+  file_count_ = files.size();
 
   { 
     mutex_lock l(mu_);
@@ -237,14 +238,17 @@ void Reader::Add(std::vector<Tensor>& tensors) {
 }
 
 Status Reader::ReaderThread(Env *env, uint64 writer_id, int64 version, 
-  DataTypeVector output_types) { 
+  DataTypeVector output_types) {
+  LOG(INFO) << "(Reader_" << writer_id << ") Starting reading task";
   bool end_of_sequence = false; 
 
   while (!end_of_sequence) {
     std::string file_path;
     Consume(&file_path, &end_of_sequence);
+    LOG(INFO) << "(Reader_" << writer_id << ") Got file " << file_path;
 
     if (!end_of_sequence) {
+      LOG(INFO) << "(Reader_" << writer_id << ") Reading file " << file_path;
       std::unique_ptr<snapshot_util::Reader> reader;
       snapshot_util::Reader::Create(env, file_path, io::compression::kNone, 
           version, output_types, &reader);
@@ -253,14 +257,34 @@ Status Reader::ReaderThread(Env *env, uint64 writer_id, int64 version,
       std::vector<Tensor> tensors;
       Status s = reader->ReadTensors(&tensors);
       Add(tensors);
+      LOG(INFO) << "(Reader_" << writer_id << ") Done reading file " << file_path;
     }
   }
-
+  LOG(INFO) << "(Reader_" << writer_id << ") Finishing reading task";
   return Status::OK();
 }
 
+bool Reader::AllFilesRead() { return file_count_ == read_pieces_.size(); }
+
 Status Reader::Read(std::vector<Tensor>* &read_tensors, bool* end_of_sequence) {
-  *end_of_sequence = false;
+  mutex_lock l(mu_add_);
+  LOG(INFO) << "(Reader) Waiting for all files to be read";
+  mu_add_.Await(tensorflow::Condition(this, &Reader::AllFilesRead));
+
+  // Copy over all the read parts to the tensor vector
+  LOG(INFO) << "(Reader) All files read and now composing final Tensor";
+  while (!read_pieces_.empty()) {
+    LOG(INFO) << "(Reader) Composing final tensor: getting a new part";
+    std::vector<Tensor> part = read_pieces_.front();
+    read_pieces_.pop_front();
+
+    read_tensors->resize(read_tensors->size() + distance(part.begin(),
+      part.end()));
+    read_tensors->insert(read_tensors->end(), part.begin(), part.end());
+  } 
+  LOG(INFO) << "(Reader) Finished composing final tensor";
+
+  file_count_ = 0;
   *end_of_sequence = true;
   return Status::OK();
 }
