@@ -8,13 +8,12 @@ namespace easl{
 namespace service_cache_util {
 
 namespace {
+static constexpr const char *const kCacheLocation = "";
 
 std::string GetFileName(const std::string& shard_directory,
                                 uint64 file_id) {
-return io::JoinPath(
-    shard_directory,
-    strings::Printf("%08llu.easl",
-                    static_cast<unsigned long long>(file_id)));
+  return io::JoinPath(shard_directory, strings::Printf("%08llu.easl",
+                      static_cast<unsigned long long>(file_id)));
 }
 
 }
@@ -183,41 +182,85 @@ Status MultiThreadedAsyncWriter::WriterThread(Env* env,
 
 Reader::Reader(Env *env,
                const std::string &target_dir,
-               const DataTypeVector& output_dtypes)
+               const DataTypeVector& output_dtypes, const int reader_count)
     : target_dir_(target_dir), env_(env), output_dtypes_(output_dtypes), 
-    reader_count_(1) {
+    reader_count_(reader_count), read_pieces_() {
   // TODO (damien-aymon) add constant for writer version.
 }
 
 Status Reader::Initialize() {
-
   // Read metadata first:
   // TODO (damien-aymon) not really useful anymore until more info in there
   TF_RETURN_IF_ERROR(ReadAndParseMetadataFile());
+  
+  // Find all the files of this dataset
+  std::vector<string> files;
+  TF_CHECK_OK(env_->GetMatchingPaths(io::JoinPath(target_dir_, "*\\.easl"), 
+      &files));
 
-  std::string filename = io::JoinPath(target_dir_,
-      strings::Printf("%08llu.easl",
-          static_cast<unsigned long long>(0)));
+  { 
+    mutex_lock l(mu_);
+    for (const auto& f : files)
+      file_names_.push_back(f);
+  }
 
-  return snapshot_util::Reader::Create(
-      env_, filename,io::compression::kNone,
-      /*version*/ cache_file_version_, output_dtypes_, &reader_);
+  // Spawn the threadpool, and start reading from the files
+  thread_pool_ = absl::make_unique<thread::ThreadPool>(env_, ThreadOptions(),  
+      absl::StrCat("reader_thread_pool", reader_count_), reader_count_, false);
+
+  LOG(INFO) << "(Reader) Starting ThreadPool"; 
+  for (int i = 0; i < reader_count_; ++i) {
+    thread_pool_->Schedule(
+      [this, i] {
+        ReaderThread(env_, i, cache_file_version_, output_dtypes_);
+        }
+    );
+  }
+  LOG(INFO) << "(Reader) Finished Starting ThreadPool";
+}
+
+void Reader::Consume(string* s, bool* end_of_sequence) {
+  mutex_lock l(mu_);
+  if (file_names_.empty()) {
+    *s = ""; 
+    *end_of_sequence = true;
+  } else {
+    *s = file_names_.front();
+    file_names_.pop_front();
+    *end_of_sequence = false;
+  }
+}
+
+void Reader::Add(std::vector<Tensor>& tensors) {
+  mutex_lock l(mu_add_);
+  read_pieces_.push_back(tensors);
+}
+
+Status Reader::ReaderThread(Env *env, uint64 writer_id, int64 version, 
+  DataTypeVector output_types) { 
+  bool end_of_sequence = false; 
+
+  while (!end_of_sequence) {
+    std::string file_path;
+    Consume(&file_path, &end_of_sequence);
+
+    if (!end_of_sequence) {
+      std::unique_ptr<snapshot_util::Reader> reader;
+      snapshot_util::Reader::Create(env, file_path, io::compression::kNone, 
+          version, output_types, &reader);
+
+      // TODO(DanGraur): Finish reading the tensors
+      std::vector<Tensor> tensors;
+      Status s = reader->ReadTensors(&tensors);
+      Add(tensors);
+    }
+  }
+
+  return Status::OK();
 }
 
 Status Reader::Read(std::vector<Tensor>* &read_tensors, bool* end_of_sequence) {
   *end_of_sequence = false;
-  Status s = reader_->ReadTensors(read_tensors);
-  if (!errors::IsOutOfRange(s)) {
-    return s;
-  }
-      //Status status = AdvanceToNextFile(ctx->env());
-      /*if (errors::IsNotFound(status)) {
-        *end_of_sequence = true;
-        return Status::OK();
-      } else {
-        return status;
-      }
-    }*/
   *end_of_sequence = true;
   return Status::OK();
 }
@@ -232,7 +275,6 @@ Status Reader::ReadAndParseMetadataFile() {
   TF_RETURN_IF_ERROR(ReadBinaryProto(env_, metadata_filename, &metadata));
 
   cache_file_version_ = metadata.version();
-  reader_count_ = metadata.num_writers();
 
   output_dtypes_ = DataTypeVector();
   for(auto dtype : metadata.dtype()){
