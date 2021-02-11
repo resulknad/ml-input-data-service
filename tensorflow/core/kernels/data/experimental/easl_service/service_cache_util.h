@@ -101,7 +101,7 @@ class Reader {
   Reader(Env *env,
          const std::string &target_dir,
          const DataTypeVector& output_dtypes,
-         const int reader_count = 1);
+         const int reader_count = 2);
 
   Status Initialize();
 
@@ -117,7 +117,7 @@ class Reader {
 
   Status ReadAndParseMetadataFile();
   void Consume(string* s, bool* end_of_sequence) TF_LOCKS_EXCLUDED(mu_);
-  void Add(std::vector<Tensor>& tensors) TF_LOCKS_EXCLUDED(mu_add_);
+  void Add(std::vector<Tensor>& tensors)  TF_LOCKS_EXCLUDED(mu_add_);
   bool AllFilesRead() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_add_);
   Status ReaderThread(Env *env, uint64 writer_id, int64 version, 
       DataTypeVector output_types);
@@ -130,7 +130,7 @@ class Reader {
 
 //   std::unique_ptr<snapshot_util::Reader> reader_;
   std::deque<string> file_names_; TF_GUARDED_BY(mu_);
-  std::deque<std::vector<Tensor>> read_pieces_ TF_GUARDED_BY(mu_add_);
+  std::deque<Tensor> tensors_ TF_GUARDED_BY(mu_add_);
   std::unique_ptr<thread::ThreadPool> thread_pool_;
 };
 

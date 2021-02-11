@@ -184,7 +184,7 @@ Reader::Reader(Env *env,
                const std::string &target_dir,
                const DataTypeVector& output_dtypes, const int reader_count)
     : target_dir_(target_dir), env_(env), output_dtypes_(output_dtypes), 
-    reader_count_(reader_count), read_pieces_() {
+    reader_count_(reader_count), tensors_() {
   // TODO (damien-aymon) add constant for writer version.
 }
 
@@ -234,12 +234,14 @@ void Reader::Consume(string* s, bool* end_of_sequence) {
 
 void Reader::Add(std::vector<Tensor>& tensors) {
   mutex_lock l(mu_add_);
-  read_pieces_.push_back(tensors);
+  for (const auto& t : tensors)
+    tensors_.push_back(t);
 }
 
 Status Reader::ReaderThread(Env *env, uint64 writer_id, int64 version, 
   DataTypeVector output_types) {
   LOG(INFO) << "(Reader_" << writer_id << ") Starting reading task";
+  
   bool end_of_sequence = false; 
 
   while (!end_of_sequence) {
@@ -253,39 +255,39 @@ Status Reader::ReaderThread(Env *env, uint64 writer_id, int64 version,
       snapshot_util::Reader::Create(env, file_path, io::compression::kNone, 
           version, output_types, &reader);
 
-      // TODO(DanGraur): Finish reading the tensors
-      std::vector<Tensor> tensors;
-      Status s = reader->ReadTensors(&tensors);
-      Add(tensors);
-      LOG(INFO) << "(Reader_" << writer_id << ") Done reading file " << file_path;
+      LOG(INFO) << "(Reader_" << writer_id << ") Starting to read file " << file_path;
+      bool eof = false;
+      while (!eof) {
+        std::vector<Tensor> tensors;
+        Status s = reader->ReadTensors(&tensors);
+        Add(tensors);
+        if (errors::IsOutOfRange(s)) {
+          eof = true;
+        }        
+      }
+      LOG(INFO) << "(Reader_" << writer_id << ") Finished reading file " << file_path;
     }
   }
   LOG(INFO) << "(Reader_" << writer_id << ") Finishing reading task";
   return Status::OK();
 }
 
-bool Reader::AllFilesRead() { return file_count_ == read_pieces_.size(); }
-
 Status Reader::Read(std::vector<Tensor>* &read_tensors, bool* end_of_sequence) {
   mutex_lock l(mu_add_);
-  LOG(INFO) << "(Reader) Waiting for all files to be read";
-  mu_add_.Await(tensorflow::Condition(this, &Reader::AllFilesRead));
+  *end_of_sequence = false;
+  int64 n = output_dtypes_.size();
 
-  // Copy over all the read parts to the tensor vector
-  LOG(INFO) << "(Reader) All files read and now composing final Tensor";
-  while (!read_pieces_.empty()) {
-    LOG(INFO) << "(Reader) Composing final tensor: getting a new part";
-    std::vector<Tensor> part = read_pieces_.front();
-    read_pieces_.pop_front();
+  LOG(INFO) << "(Reader) Task is getting invoked... Reading " << n;
+  while (n-- > 0 && !tensors_.empty()) {
+    read_tensors->push_back(tensors_.front());
+    tensors_.pop_front();
+  }
 
-    read_tensors->resize(read_tensors->size() + distance(part.begin(),
-      part.end()));
-    read_tensors->insert(read_tensors->end(), part.begin(), part.end());
-  } 
-  LOG(INFO) << "(Reader) Finished composing final tensor";
-
-  file_count_ = 0;
-  *end_of_sequence = true;
+  LOG(INFO) << "(Reader) Task have read " << n;
+  if (tensors_.empty() && file_names_.empty()) {
+    *end_of_sequence = true;
+  }
+  LOG(INFO) << "(Reader) Still have some to read... Waiting... ";
   return Status::OK();
 }
 
