@@ -39,7 +39,7 @@ def service_cache_put(path):
     def _apply_fn(dataset):
         """Actual dataset transformation."""
         project_func = None
-        dataset = _ServiceCachePutDataset( input_dataset=dataset, path=path)
+        dataset = _ServiceCachePutDataset(input_dataset=dataset, path=path)
 
         return dataset
 

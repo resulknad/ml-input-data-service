@@ -63,6 +63,7 @@ namespace data {
 namespace {
 // Default interval between task list refreshes.
 const int64 kDefaultTaskRefreshIntervalMs = 1000;  // 1 second.
+const int8  kMaxParallelCallsPerTask = 4;
 }  // namespace
 
 // Dataset for reading data from the tf.data service non-deterministically.
@@ -229,6 +230,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       }
       TF_RETURN_IF_ERROR(grpc_util::Retry(
           [&]() {
+            // TODO(dada) remove vlog;
+            VLOG(0) << "EASL - Try to get or create job in Initialize";
             return dispatcher_->GetOrCreateJob(dataset()->dataset_id_,
                                                dataset()->processing_mode_, key,
                                                job_client_id_);
@@ -245,7 +248,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
-      VLOG(3) << "Calling GetNext in data service dataset op";
+      //TODO(dada) set back to 3.
+      VLOG(0) << "Calling GetNext in data service dataset op";
       mutex_lock l(mu_);
       if (!task_thread_manager_ && !cancelled_) {
         task_thread_manager_ =
@@ -330,6 +334,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       bool in_use TF_GUARDED_BY(&Iterator::mu_) = false;
       // Indicates whether the worker has returned end_of_sequence for the task.
       bool end_of_sequence TF_GUARDED_BY(&Iterator::mu_) = false;
+
+      // EASL - Indicates how many workers are querrying for the same taks.
+      int8 num_outstanding_requests TF_GUARDED_BY(&Iterator::mu_) = 0;
     };
 
     // Periodically refresh the task list.
@@ -347,11 +354,13 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           // All units are microseconds.
           while (!cancelled_ && Env::Default()->NowMicros() < next_check) {
             int64 remaining_time = next_check - Env::Default()->NowMicros();
-            VLOG(3) << "Task thread manager waiting for " << remaining_time
+            // TODO(dada) set back to 3
+            VLOG(0) << "Task thread manager waiting for " << remaining_time
                     << "us";
             manager_thread_cv_.wait_for(
                 l, std::chrono::microseconds(remaining_time));
           }
+          VLOG(0) << "EASL - Task manager exited waiting loop";
           if (cancelled_) {
             VLOG(3) << "Task thread manager finished";
             return;
@@ -365,7 +374,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     }
 
     void UpdateTasks() TF_LOCKS_EXCLUDED(mu_) {
-      VLOG(3) << "Updating tasks";
+      // TODO (dada) back to 3.
+      VLOG(0) << "Updating tasks";
       std::vector<TaskInfo> tasks;
       bool job_finished;
       Status s = dispatcher_->GetTasks(job_client_id_, tasks, job_finished);
@@ -378,6 +388,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       for (auto& task : tasks) {
         task_id_to_task[task.task_id()] = task;
       }
+
+      VLOG(0) << "EASL - updateTasks: number of dispatcher tasks" << task_id_to_task.size();
+      VLOG(0) << "EASL - updateTasks: number ot tasks_" << tasks_.size();
       mutex_lock l(mu_);
       job_finished_ = job_finished;
       if (job_finished) {
@@ -405,6 +418,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         std::unique_ptr<DataServiceWorkerClient> worker;
         Status s = CreateDataServiceWorkerClient(task_info.worker_address(),
                                                  dataset()->protocol_, worker);
+        VLOG(0) << "EASL - created data service client";
         if (!s.ok()) {
           status_ = s;
           get_next_cv_.notify_all();
@@ -413,6 +427,11 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         tasks_.push_back(std::make_shared<Task>(task_info.task_id(),
                                                 task_info.worker_address(),
                                                 std::move(worker)));
+        // (damien-aymon) Notify worker threads that a new task is ready
+        for (int i=0; i++; i<kMaxParallelCallsPerTask){
+          VLOG(0) << "EASL - Notifying workers for newly created task.";
+          worker_thread_cv_.notify_one();
+        }
       }
       if (dataset()->max_outstanding_requests_ == model::kAutotune) {
         // Adjust max_outstanding_requests to account for newly added tasks.
@@ -443,21 +462,26 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         done();
         VLOG(1) << "Worker thread exiting";
       });
-      VLOG(1) << "Starting worker thread";
+      // TODO(dada) revert to 1.
+      VLOG(0) << "Starting worker thread";
       std::shared_ptr<Task> task_to_process;
       while (true) {
         {
           mutex_lock l(mu_);
           if (task_to_process) {
             task_to_process->in_use = false;
-            task_to_process = nullptr;
+            task_to_process->num_outstanding_requests--;
+            // (damien-aymon) task_to_process is a shared_ptr...
+            //task_to_process = nullptr;
+            task_to_process.reset();
             worker_thread_cv_.notify_one();
           }
           outstanding_requests_--;
           while (!cancelled_ && !(SpaceInBuffer() && TaskAvailable()) &&
                  !job_finished_) {
-            if (VLOG_IS_ON(3)) {
-              VLOG(3) << "Sleeping with results_.size=" << results_.size()
+            // TODO(dada) revert to 3.
+            if (VLOG_IS_ON(0)) {
+              VLOG(0) << "Sleeping with results_.size=" << results_.size()
                       << ", outstanding_requests_=" << outstanding_requests_
                       << ", max_oustanding_requests="
                       << max_outstanding_requests_
@@ -475,23 +499,36 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           for (int i = 0; i < num_tasks; ++i) {
             int index = (next_task_index_ + i) % num_tasks;
             std::shared_ptr<Task>& task = tasks_[index];
-            if (!task->in_use && !task->end_of_sequence) {
-              task->in_use = true;
+            // EASL
+            //if (!task->in_use && !task->end_of_sequence) {
+              //task->in_use = true;
+            if ((task->num_outstanding_requests < kMaxParallelCallsPerTask) &&
+                !task->end_of_sequence){
+              task->num_outstanding_requests++;
               task_to_process = task;
               next_task_index_ = (index + 1) % num_tasks;
+              VLOG(0) << "been here, this is the task " << task_to_process->task_id;
               break;
             }
           }
-          DCHECK(task_to_process != nullptr);
-          VLOG(3) << "Processing task " << task_to_process->task_id;
+          // (damien-aymon) this is not a great check...
+          //DCHECK(task_to_process != nullptr);
+          DCHECK(task_to_process);
+          //TODO(dada) put back to 3, segfault here... But...
+          VLOG(0) << "Processing task ";
+          VLOG(0) << task_to_process->task_id;
         }
         int64 deadline_micros = kint64max;
         Status s = GetElement(task_to_process.get(), deadline_micros);
         if (!s.ok()) {
           mutex_lock l(mu_);
-          VLOG(1) << "Failed to get element from worker "
+          // EASL - TODO(dada) revert to 1
+          VLOG(0) << "Failed to get element from worker "
                   << task_to_process->address << ": " << s;
-          task_to_process->in_use = false;
+          // EASL
+          //task_to_process->in_use = false;
+          task_to_process->num_outstanding_requests--;
+
           status_ = Status(
               s.code(),
               absl::StrCat("Failed to get element from worker ",
@@ -509,7 +546,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     // `results_`.
     Status GetElement(Task* task, int64 deadline_micros)
         TF_LOCKS_EXCLUDED(mu_) {
-      VLOG(3) << "Getting an element for task id " << task->task_id;
+      // TODO(dada) back to 3.
+      VLOG(0) << "Getting an element for task id " << task->task_id;
       tensorflow::profiler::TraceMe activity(
           "GetDataServiceElement", tensorflow::profiler::TraceMeLevel::kInfo);
       CompressedElement compressed;
@@ -529,7 +567,11 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           mutex_lock l(mu_);
           // If `UpdateTaskThreads` finds that the task has been cancelled, it
           // will set end_of_sequence to `true`.
-          if (task->end_of_sequence || cancelled_) {
+          // EASL - only cancel if task reaches eos AND this is the only request for the task
+          //        if there is requests reordering, one thread could see eos before
+          //        others have the chance to transfer the element.
+          //        It does not hurt to retry...
+          if ((task->end_of_sequence && task->num_outstanding_requests < 2) || cancelled_) {
             return Status::OK();
           }
         }
@@ -546,7 +588,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             (deadline_micros > deadline_with_backoff_micros)
                 ? deadline_with_backoff_micros
                 : deadline_micros;
-        VLOG(1) << "Failed to get an element from worker " << task->address
+        // TODO(dada) back to 1.
+        VLOG(0) << "Failed to get an element from worker " << task->address
                 << ": " << s << ". Will retry in "
                 << (backoff_until - now_micros) << " microseconds";
         Env::Default()->SleepForMicroseconds(backoff_until - now_micros);
@@ -560,13 +603,17 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       }
       mutex_lock l(mu_);
       if (end_of_sequence) {
-        task->end_of_sequence = true;
-        finished_tasks_++;
+        // Only increase counter if task has not been marked as finished yet.
+        if(!task->end_of_sequence){
+          task->end_of_sequence = true;
+          finished_tasks_++;
+        }
         return Status::OK();
       }
       results_.push(std::move(element));
       get_next_cv_.notify_all();
-      VLOG(3) << "Got an element for task id " << task->task_id;
+      // TODO (dada) back to 3.
+      VLOG(0) << "Got an element for task id " << task->task_id;
       return Status::OK();
     }
 
@@ -576,7 +623,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     }
 
     bool TaskAvailable() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-      return finished_tasks_ + outstanding_requests_ < tasks_.size();
+      // EASL - Allow kMaxParallelCallsPerTask per task.
+      //return finished_tasks_ + outstanding_requests_ < tasks_.size();
+      return outstanding_requests_ < kMaxParallelCallsPerTask * (tasks_.size() - finished_tasks_);
     }
 
     const int64 iterator_index_;

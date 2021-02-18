@@ -105,7 +105,8 @@ TFRecordWriter::TFRecordWriter(const std::string& filename,
     : filename_(filename), compression_type_(compression_type) {}
 
 Status TFRecordWriter::Initialize(tensorflow::Env* env) {
-  TF_RETURN_IF_ERROR(env->NewAppendableFile(filename_, &dest_));
+  // TODO revert change. EASL (damien-aymon) replaced from newAppendableFile.
+  TF_RETURN_IF_ERROR(env->NewWritableFile(filename_, &dest_));
 
   record_writer_ = absl::make_unique<io::RecordWriter>(
       dest_.get(), io::RecordWriterOptions::CreateRecordWriterOptions(

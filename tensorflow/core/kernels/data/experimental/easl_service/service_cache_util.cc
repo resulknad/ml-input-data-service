@@ -9,7 +9,7 @@ namespace service_cache_util {
 
 constexpr const char* const kMetadataFilename = "service_cache.metadata";
 const int kWriterVersion = 2;
-const char kCompression[] = "SNAPPY"; // can be SNAPPY, GZIP, ZLIB, "" for none.
+const char kCompression[] = ""; // can be SNAPPY, GZIP, ZLIB, "" for none.
 
 
 Writer::Writer(Env* env,
