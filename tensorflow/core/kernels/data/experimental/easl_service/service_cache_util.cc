@@ -8,28 +8,20 @@ namespace easl{
 namespace service_cache_util {
 
 namespace {
+static constexpr const char *const kCacheLocation = "";
 
 std::string GetFileName(const std::string& shard_directory,
                                 uint64 file_id) {
-return io::JoinPath(
-    shard_directory,
-    strings::Printf("%08llu.easl",
-                    static_cast<unsigned long long>(file_id)));
+  return io::JoinPath(shard_directory, strings::Printf("%08llu.easl",
+                      static_cast<unsigned long long>(file_id)));
 }
 
 }
 
 constexpr const char* const kMetadataFilename = "service_cache.metadata";
 const int kWriterVersion = 2;
-<<<<<<< HEAD
 const char kCompression[] = ""; // can be SNAPPY, GZIP, ZLIB, "" for none.
-=======
-<<<<<<< HEAD
-const char kCompression[] = "SNAPPY"; // can be SNAPPY, GZIP, ZLIB, "" for none.
->>>>>>> c1c26be59660118577fe87a45a672d6284e71cd3
 
-=======
->>>>>>> a1c9095d65834276e33a3cef271c81cf15bd14ed
 
 Writer::Writer(Env* env,
     const std::string& target_dir, const DataTypeVector& output_dtypes,
@@ -44,21 +36,13 @@ Status Writer::Initialize(){
   // TODO (damien-aymon) add constant for writer version.
   async_writer_ = std::make_unique<MultiThreadedAsyncWriter>(
       env_, /*file_index*/ 0, target_dir_, /*checkpoint_id*/ 0,
-<<<<<<< HEAD
       kCompression, kWriterVersion, output_dtypes_,
-=======
-      io::compression::kNone, kWriterVersion, output_dtypes_,
->>>>>>> a1c9095d65834276e33a3cef271c81cf15bd14ed
       /*done*/ [this](Status s){
         // TODO (damien-aymon) check and propagate errors here!
         if (!s.ok()) {
           VLOG(0) << "EASL - writer error: "<< s.ToString();
         }
-<<<<<<< HEAD
-        //LOG(ERROR) << "AsyncWriter in snapshot writer failed: " << s;
-=======
         //LOG(ERROR) << "MultiThreadedAsyncWriter in snapshot writer failed: " << s;
->>>>>>> a1c9095d65834276e33a3cef271c81cf15bd14ed
         //mutex_lock l(writer_status_mu_);
         //writer_status_ = s;
         return;
@@ -97,6 +81,7 @@ Status Writer::WriteMetadataFile(
     TensorShapeProto* shape_proto = metadata.add_tensor_shape();
     output_shape.AsProto(shape_proto);
   }
+  metadata.set_num_writers(writer_count_);
 
   string metadata_filename = io::JoinPath(target_dir_, kMetadataFilename);
   TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(target_dir_));
@@ -107,77 +92,8 @@ Status Writer::WriteMetadataFile(
 }
 
 // -----------------------------------------------------------------------------
-// Reader
+// MultiThreadedAsyncWriter
 // -----------------------------------------------------------------------------
-
-Reader::Reader(Env *env,
-               const std::string &target_dir,
-               const DataTypeVector& output_dtypes)
-    : target_dir_(target_dir), env_(env), output_dtypes_(output_dtypes) {
-  // TODO (damien-aymon) add constant for writer version.
-
-}
-
-Status Reader::Initialize() {
-
-  // Read metadata first:
-  // TODO (damien-aymon) not really useful anymore until more info in there
-  TF_RETURN_IF_ERROR(ReadAndParseMetadataFile());
-
-  std::string filename = io::JoinPath(target_dir_,
-      strings::Printf("%08llu.easl",
-          static_cast<unsigned long long>(0)));
-
-  return snapshot_util::Reader::Create(
-<<<<<<< HEAD
-      env_, filename, kCompression,
-=======
-      env_, filename,io::compression::kNone,
->>>>>>> a1c9095d65834276e33a3cef271c81cf15bd14ed
-      /*version*/ cache_file_version_, output_dtypes_, &reader_);
-}
-
-Status Reader::Read(std::vector<Tensor>* &read_tensors, bool* end_of_sequence) {
-  *end_of_sequence = false;
-  Status s = reader_->ReadTensors(read_tensors);
-  if (!errors::IsOutOfRange(s)) {
-    return s;
-  }
-      //Status status = AdvanceToNextFile(ctx->env());
-      /*if (errors::IsNotFound(status)) {
-        *end_of_sequence = true;
-        return Status::OK();
-      } else {
-        return status;
-      }
-    }*/
-  *end_of_sequence = true;
-  return Status::OK();
-}
-
-Reader::~Reader(){}
-
-Status Reader::ReadAndParseMetadataFile() {
-  string metadata_filename = io::JoinPath(target_dir_, kMetadataFilename);
-  TF_RETURN_IF_ERROR(env_->FileExists(metadata_filename));
-
-  experimental::CacheMetadataRecord metadata;
-  TF_RETURN_IF_ERROR(ReadBinaryProto(env_, metadata_filename, &metadata));
-
-  cache_file_version_ = metadata.version();
-
-  output_dtypes_ = DataTypeVector();
-  for(auto dtype : metadata.dtype()){
-    output_dtypes_.push_back(static_cast<DataType>(dtype));
-  }
-
-  output_shapes_ = std::vector<PartialTensorShape>();
-  for(auto shape : metadata.tensor_shape()){
-    output_shapes_.push_back(PartialTensorShape(shape));
-  }
-
-  return Status::OK();
-}
 
 MultiThreadedAsyncWriter::MultiThreadedAsyncWriter(Env* env, int64 file_index,
                          const std::string& shard_directory,
@@ -193,8 +109,9 @@ MultiThreadedAsyncWriter::MultiThreadedAsyncWriter(Env* env, int64 file_index,
     thread_pool_->Schedule(
       [this, env, shard_directory, checkpoint_id, compression, version,
         &output_types, done = std::move(done), i] {
-        done(WriterThread(env, shard_directory, i, compression, version, 
-            output_types));
+        // Note that `done` is not used since it causes a bug here 
+        WriterThread(env, shard_directory, i, compression, version, 
+            output_types);
         }
     );
   }
@@ -254,14 +171,153 @@ Status MultiThreadedAsyncWriter::WriterThread(Env* env,
     LOG(INFO) << "(Writer_" << writer_id << ") Read - " 
       << be.end_of_sequence << " - Total: " << ++count;
     if (be.end_of_sequence) {
-      LOG(INFO) << "(Writer_" << writer_id << ") Closing w/ total read " << count << "...";
       TF_RETURN_IF_ERROR(writer->Close());
-      LOG(INFO) << "(Writer_" << writer_id << ") Closed w/ total read " << count;
+      LOG(INFO) << "(Writer_" << writer_id << ") Closed w/ total read " 
+                << count;
       break;
     }
 
     TF_RETURN_IF_ERROR(writer->WriteTensors(be.value));
   }
+  return Status::OK();
+}
+
+// -----------------------------------------------------------------------------
+// Reader
+// -----------------------------------------------------------------------------
+
+Reader::Reader(Env *env,
+               const std::string &target_dir,
+               const DataTypeVector& output_dtypes, const int reader_count)
+    : target_dir_(target_dir), env_(env), output_dtypes_(output_dtypes), 
+    reader_count_(reader_count), tensors_() {
+  // TODO (damien-aymon) add constant for writer version.
+}
+
+Status Reader::Initialize() {
+  // Read metadata first:
+  // TODO (damien-aymon) not really useful anymore until more info in there
+  TF_RETURN_IF_ERROR(ReadAndParseMetadataFile());
+  
+  // Find all the files of this dataset
+  std::vector<string> files;
+  TF_CHECK_OK(env_->GetMatchingPaths(io::JoinPath(target_dir_, "*\\.easl"), 
+      &files));
+  file_count_ = files.size();
+
+  { 
+    mutex_lock l(mu_);
+    for (const auto& f : files)
+      file_names_.push_back(f);
+  }
+
+  // Spawn the threadpool, and start reading from the files
+  thread_pool_ = absl::make_unique<thread::ThreadPool>(env_, ThreadOptions(),  
+      absl::StrCat("reader_thread_pool", reader_count_), reader_count_, false);
+
+  LOG(INFO) << "(Reader) Starting ThreadPool"; 
+  for (int i = 0; i < reader_count_; ++i) {
+    thread_pool_->Schedule(
+      [this, i] {
+        ReaderThread(env_, i, cache_file_version_, output_dtypes_);
+        }
+    );
+  }
+  LOG(INFO) << "(Reader) Finished Starting ThreadPool";
+}
+
+void Reader::Consume(string* s, bool* end_of_sequence) {
+  mutex_lock l(mu_);
+  if (file_names_.empty()) {
+    *s = ""; 
+    *end_of_sequence = true;
+  } else {
+    *s = file_names_.front();
+    file_names_.pop_front();
+    *end_of_sequence = false;
+  }
+}
+
+void Reader::Add(std::vector<Tensor>& tensors) {
+  mutex_lock l(mu_add_);
+  for (const auto& t : tensors)
+    tensors_.push_back(t);
+}
+
+Status Reader::ReaderThread(Env *env, uint64 writer_id, int64 version, 
+  DataTypeVector output_types) {
+  LOG(INFO) << "(Reader_" << writer_id << ") Starting reading task";
+  
+  bool end_of_sequence = false; 
+
+  while (!end_of_sequence) {
+    std::string file_path;
+    Consume(&file_path, &end_of_sequence);
+    LOG(INFO) << "(Reader_" << writer_id << ") Got file " << file_path;
+
+    if (!end_of_sequence) {
+      LOG(INFO) << "(Reader_" << writer_id << ") Reading file " << file_path;
+      std::unique_ptr<snapshot_util::Reader> reader;
+      snapshot_util::Reader::Create(env, file_path, io::compression::kNone, 
+          version, output_types, &reader);
+
+      LOG(INFO) << "(Reader_" << writer_id << ") Starting to read file " << file_path;
+      bool eof = false;
+      while (!eof) {
+        std::vector<Tensor> tensors;
+        Status s = reader->ReadTensors(&tensors);
+        Add(tensors);
+        if (errors::IsOutOfRange(s)) {
+          eof = true;
+        }        
+      }
+      LOG(INFO) << "(Reader_" << writer_id << ") Finished reading file " << file_path;
+    }
+  }
+  LOG(INFO) << "(Reader_" << writer_id << ") Finishing reading task";
+  return Status::OK();
+}
+
+Status Reader::Read(std::vector<Tensor>* &read_tensors, bool* end_of_sequence) {
+  mutex_lock l(mu_add_);
+  *end_of_sequence = false;
+  int64 n = output_dtypes_.size();
+
+  LOG(INFO) << "(Reader) Task is getting invoked... Reading " << n;
+  while (n-- > 0 && !tensors_.empty()) {
+    read_tensors->push_back(tensors_.front());
+    tensors_.pop_front();
+  }
+
+  LOG(INFO) << "(Reader) Task have read " << n;
+  if (tensors_.empty() && file_names_.empty()) {
+    *end_of_sequence = true;
+  }
+  LOG(INFO) << "(Reader) Still have some to read... Waiting... ";
+  return Status::OK();
+}
+
+Reader::~Reader(){}
+
+Status Reader::ReadAndParseMetadataFile() {
+  string metadata_filename = io::JoinPath(target_dir_, kMetadataFilename);
+  TF_RETURN_IF_ERROR(env_->FileExists(metadata_filename));
+
+  experimental::CacheMetadataRecord metadata;
+  TF_RETURN_IF_ERROR(ReadBinaryProto(env_, metadata_filename, &metadata));
+
+  cache_file_version_ = metadata.version();
+
+  output_dtypes_ = DataTypeVector();
+  for(auto dtype : metadata.dtype()){
+    output_dtypes_.push_back(static_cast<DataType>(dtype));
+  }
+
+  output_shapes_ = std::vector<PartialTensorShape>();
+  for(auto shape : metadata.tensor_shape()){
+    output_shapes_.push_back(PartialTensorShape(shape));
+  }
+
   return Status::OK();
 }
 
