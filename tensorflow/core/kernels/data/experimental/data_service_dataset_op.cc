@@ -413,6 +413,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           tasks_.pop_back();
         }
       }
+
+      VLOG(0) << "EASL - updateTask: new_task_entries: " << task_id_to_task.size();
       for (auto& new_task_entry : task_id_to_task) {
         TaskInfo& task_info = new_task_entry.second;
         std::unique_ptr<DataServiceWorkerClient> worker;
