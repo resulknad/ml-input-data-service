@@ -155,7 +155,10 @@ ServiceCacheGetOp::Dataset::Iterator::Iterator(const Params& params)
 
 Status ServiceCacheGetOp::Dataset::Iterator::Initialize(
     IteratorContext* ctx) {
+<<<<<<< HEAD
   VLOG(0) << "EASL - Initializing ServiceCacheGet iterator";
+=======
+>>>>>>> a1c9095d65834276e33a3cef271c81cf15bd14ed
   for(auto dt: dataset()->output_dtypes_){
     VLOG(0) << DataTypeString(dt);
   }
@@ -180,6 +183,7 @@ Status ServiceCacheGetOp::Dataset::Iterator::GetNextInternal(
     IteratorContext* ctx, std::vector<Tensor>* out_tensors,
     bool* end_of_sequence) {
   mutex_lock l(mu_);
+  VLOG(0) << "EASL - entered cache get GetNextInternal";
   return reader_->Read(out_tensors, end_of_sequence);
 }
 

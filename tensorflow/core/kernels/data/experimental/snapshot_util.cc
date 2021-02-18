@@ -982,8 +982,6 @@ Status AsyncWriter::WriterThread(Env* env, const std::string& shard_directory,
                                  const std::string& compression, int64 version,
                                  DataTypeVector output_types) {
   std::unique_ptr<snapshot_util::Writer> writer;
-  // TODO (damien-aymon) Push this to the specific writers, so that we can make
-  // the async writer more general (e.g. different file system, gs://, etc...)
   TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(shard_directory));
 
   TF_RETURN_IF_ERROR(snapshot_util::Writer::Create(
