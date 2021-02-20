@@ -242,6 +242,8 @@ void Reader::Add(std::vector<Tensor>& tensors) {
   mutex_lock l(mu_add_);
   for (const auto& t : tensors)
     tensors_.push_back(t);
+
+  read_cv_.notify_one();
 }
 
 Status Reader::ReaderThread(Env *env, uint64 writer_id, int64 version, 
@@ -262,18 +264,27 @@ Status Reader::ReaderThread(Env *env, uint64 writer_id, int64 version,
           version, output_types, &reader);
 
       LOG(INFO) << "(Reader_" << writer_id << ") Starting to read file " << file_path;
+      int64 count = 0;
       bool eof = false;
       while (!eof) {
         std::vector<Tensor> tensors;
         Status s = reader->ReadTensors(&tensors);
-        Add(tensors);
         if (errors::IsOutOfRange(s)) {
           eof = true;
-        }        
+          break;
+        } 
+        Add(tensors);
+        count++;
       }
-      LOG(INFO) << "(Reader_" << writer_id << ") Finished reading file " << file_path;
+      LOG(INFO) << "(Reader_" << writer_id << ") Finished reading file " << file_path
+      << " with " << count << " elements.";
     }
   }
+
+  mutex_lock l(mu_add_);
+  num_readers_done_++;
+  read_cv_.notify_one();
+
   LOG(INFO) << "(Reader_" << writer_id << ") Finishing reading task";
   return Status::OK();
 }
@@ -284,14 +295,33 @@ Status Reader::Read(std::vector<Tensor>* &read_tensors, bool* end_of_sequence) {
   int64 n = output_dtypes_.size();
 
   LOG(INFO) << "(Reader) Task is getting invoked... Reading " << n;
-  while (n-- > 0 && !tensors_.empty()) {
-    read_tensors->push_back(tensors_.front());
-    tensors_.pop_front();
+  while(true){
+    if(!tensors_.empty()){
+      while (n-- > 0) {
+        read_tensors->push_back(tensors_.front());
+        tensors_.pop_front();
+      }
+      LOG(INFO) << "(Reader) Task have read " << n;
+      return Status::OK();
+    } else {
+      if(num_readers_done_ == reader_count_){
+        *end_of_sequence = true;
+        
+        LOG(INFO) << "(Reader) Still have some to read... Waiting... ";
+        return Status::OK();
+      }
+      // Readers are not done, waiting on data...
+      LOG(INFO) << "(Reader) Task could not read, waiting... ";
+      read_cv_.wait(l); 
+    }
   }
-
-  LOG(INFO) << "(Reader) Task have read " << n;
-  if (tensors_.empty() && file_names_.empty()) {
+  
+  
+  // TODO (damien-aymon) if the reader does not have the chance to fill tensors_
+  // i.e. iteration is faster than reading, this will set end_of_sequence.
+  if (num_readers_done_ == reader_count_) {
     *end_of_sequence = true;
+    return Status::OK();
   }
   LOG(INFO) << "(Reader) Still have some to read... Waiting... ";
   return Status::OK();

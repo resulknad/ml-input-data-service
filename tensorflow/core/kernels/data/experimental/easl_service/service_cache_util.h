@@ -73,7 +73,7 @@ class Writer {
          const std::string& target_dir,
          const DataTypeVector& output_dtypes,
          const std::vector<PartialTensorShape>& output_shapes,
-         const int writer_count = 2);
+         const int writer_count = 8);
 
   Status Write(const std::vector<Tensor>& tensors);
 
@@ -101,7 +101,7 @@ class Reader {
   Reader(Env *env,
          const std::string &target_dir,
          const DataTypeVector& output_dtypes,
-         const int reader_count = 2);
+         const int reader_count = 8);
 
   Status Initialize();
 
@@ -110,10 +110,13 @@ class Reader {
   ~Reader();
 
  private:
-  int file_count_;
-  const int reader_count_;
   mutex mu_;
   mutex mu_add_;
+  condition_variable read_cv_ TF_GUARDED_BY(mu_);
+  int file_count_;
+  const int reader_count_;
+  int8 num_readers_done_ = 0 TF_GUARDED_BY(mu_add);
+  
 
   Status ReadAndParseMetadataFile();
   void Consume(string* s, bool* end_of_sequence) TF_LOCKS_EXCLUDED(mu_);
@@ -129,7 +132,7 @@ class Reader {
   Env* env_;
 
 //   std::unique_ptr<snapshot_util::Reader> reader_;
-  std::deque<string> file_names_; TF_GUARDED_BY(mu_);
+  std::deque<string> file_names_ TF_GUARDED_BY(mu_);
   std::deque<Tensor> tensors_ TF_GUARDED_BY(mu_add_);
   std::unique_ptr<thread::ThreadPool> thread_pool_;
 };

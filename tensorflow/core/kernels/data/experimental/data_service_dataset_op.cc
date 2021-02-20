@@ -63,7 +63,7 @@ namespace data {
 namespace {
 // Default interval between task list refreshes.
 const int64 kDefaultTaskRefreshIntervalMs = 1000;  // 1 second.
-const int8  kMaxParallelCallsPerTask = 4;
+const int8  kMaxParallelCallsPerTask = 16;
 }  // namespace
 
 // Dataset for reading data from the tf.data service non-deterministically.
@@ -248,8 +248,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
-      //TODO(dada) set back to 3.
-      VLOG(0) << "Calling GetNext in data service dataset op";
+      VLOG(3) << "Calling GetNext in data service dataset op";
       mutex_lock l(mu_);
       if (!task_thread_manager_ && !cancelled_) {
         task_thread_manager_ =
@@ -261,6 +260,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       while (results_.empty() &&
              !(job_finished_ && num_running_worker_threads_ == 0) &&
              !cancelled_ && status_.ok()) {
+        VLOG(0) << "EASL - GetNextInternal waiting...";
         get_next_cv_.wait(l);
       }
       if (cancelled_) {
@@ -277,6 +277,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       *end_of_sequence = false;
       out_tensors->swap(results_.front());
       results_.pop();
+      VLOG(0) << "EASL - GetNextInternal client buffer size after read: " << results_.size();
       worker_thread_cv_.notify_one();
 
       return Status::OK();
@@ -360,7 +361,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             manager_thread_cv_.wait_for(
                 l, std::chrono::microseconds(remaining_time));
           }
-          VLOG(0) << "EASL - Task manager exited waiting loop";
+          //VLOG(0) << "EASL - Task manager exited waiting loop";
           if (cancelled_) {
             VLOG(3) << "Task thread manager finished";
             return;
@@ -389,8 +390,6 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         task_id_to_task[task.task_id()] = task;
       }
 
-      VLOG(0) << "EASL - updateTasks: number of dispatcher tasks" << task_id_to_task.size();
-      VLOG(0) << "EASL - updateTasks: number ot tasks_" << tasks_.size();
       mutex_lock l(mu_);
       job_finished_ = job_finished;
       if (job_finished) {
@@ -431,7 +430,6 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
                                                 std::move(worker)));
         // (damien-aymon) Notify worker threads that a new task is ready
         for (int i=0; i++; i<kMaxParallelCallsPerTask){
-          VLOG(0) << "EASL - Notifying workers for newly created task.";
           worker_thread_cv_.notify_one();
         }
       }
@@ -485,9 +483,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             if (VLOG_IS_ON(0)) {
               VLOG(0) << "Sleeping with results_.size=" << results_.size()
                       << ", outstanding_requests_=" << outstanding_requests_
-                      << ", max_oustanding_requests="
+                      << ", max_oustanding_requests_="
                       << max_outstanding_requests_
-                      << " finished_tasks=" << finished_tasks_
+                      << " finished_tasks_=" << finished_tasks_
                       << " tasks_.size()=" << tasks_.size();
             }
             worker_thread_cv_.wait(l);
@@ -509,7 +507,6 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
               task->num_outstanding_requests++;
               task_to_process = task;
               next_task_index_ = (index + 1) % num_tasks;
-              VLOG(0) << "been here, this is the task " << task_to_process->task_id;
               break;
             }
           }
@@ -524,8 +521,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         Status s = GetElement(task_to_process.get(), deadline_micros);
         if (!s.ok()) {
           mutex_lock l(mu_);
-          // EASL - TODO(dada) revert to 1
-          VLOG(0) << "Failed to get element from worker "
+          VLOG(1) << "Failed to get element from worker "
                   << task_to_process->address << ": " << s;
           // EASL
           //task_to_process->in_use = false;

@@ -155,10 +155,7 @@ ServiceCacheGetOp::Dataset::Iterator::Iterator(const Params& params)
 
 Status ServiceCacheGetOp::Dataset::Iterator::Initialize(
     IteratorContext* ctx) {
-<<<<<<< HEAD
   VLOG(0) << "EASL - Initializing ServiceCacheGet iterator";
-=======
->>>>>>> a1c9095d65834276e33a3cef271c81cf15bd14ed
   for(auto dt: dataset()->output_dtypes_){
     VLOG(0) << DataTypeString(dt);
   }
