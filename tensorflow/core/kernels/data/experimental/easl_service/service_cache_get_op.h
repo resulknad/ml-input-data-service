@@ -18,6 +18,7 @@ class ServiceCacheGetOp : public DatasetOpKernel {
   static constexpr const char* const kOutputTypes = "output_types";
   static constexpr const char* const kOutputShapes = "output_shapes";
   static constexpr const char *const kPath = "path";
+  static constexpr const char* const kParallelism = "parallelism";
 
   explicit ServiceCacheGetOp(OpKernelConstruction *ctx);
 

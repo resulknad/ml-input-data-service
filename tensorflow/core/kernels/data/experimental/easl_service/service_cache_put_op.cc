@@ -13,13 +13,15 @@ namespace easl{
 
 /* static */ constexpr const char* const ServiceCachePutOp::kDatasetType;
 /* static */ constexpr const char* const ServiceCachePutOp::kPath;
+/* static */ constexpr const char* const ServiceCachePutOp::kParallelism;
+
 
 
 
 class ServiceCachePutOp::Dataset : public DatasetBase {
  public:
    Dataset(OpKernelContext* ctx, const DatasetBase* input,
-                          const std::string& path);
+           const std::string& path, const int8 parallelism);
 
    ~Dataset() override;
 
@@ -49,6 +51,7 @@ class ServiceCachePutOp::Dataset : public DatasetBase {
 
     const DatasetBase* const input_;
     const tstring path_;
+    const int8 parallelism_;
 
 };
 
@@ -92,7 +95,10 @@ void ServiceCachePutOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
   tstring path;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kPath, &path));
 
-  *output = new ServiceCachePutOp::Dataset(ctx, input, path);
+  int8 parallelism;
+  OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kParallelism, &parallelism));
+
+  *output = new ServiceCachePutOp::Dataset(ctx, input, path, parallelism);
 }
 
 // -----------------------------------------------------------------------------
@@ -100,8 +106,12 @@ void ServiceCachePutOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
 // -----------------------------------------------------------------------------
 
 ServiceCachePutOp::Dataset::Dataset(
-    OpKernelContext* ctx, const DatasetBase* input, const std::string& path)
-    : DatasetBase(DatasetContext(ctx)), input_(input), path_(path) {
+    OpKernelContext* ctx,
+    const DatasetBase* input,
+    const std::string& path,
+    const int8 parallelism)
+    : DatasetBase(DatasetContext(ctx)), input_(input),
+      path_(path), parallelism_(parallelism) {
   input_->Ref();
 }
 
@@ -148,11 +158,14 @@ Status ServiceCachePutOp::Dataset::AsGraphDefInternal(
 
   Node* path = nullptr;
   TF_RETURN_IF_ERROR(b->AddScalar(path_, &path));
- 
+
+  Node* parallelism = nullptr;
+  TF_RETURN_IF_ERROR(b->AddScalar(parallelism_, &parallelism));
+
   return b->AddDataset(
       this,
       /*inputs=*/
-      {input_graph_node, path},
+      {input_graph_node, path, parallelism},
       output);
 }
 
@@ -171,7 +184,7 @@ Status ServiceCachePutOp::Dataset::Iterator::Initialize(
   writer_ =
       std::make_unique<tensorflow::data::easl::service_cache_util::Writer>(
           ctx->env(), dataset()->path_, dataset()->output_dtypes(),
-          dataset()->output_shapes());
+          dataset()->output_shapes(), dataset()->parallelism_);
   writer_->Initialize();
 
   return dataset()->input_->MakeIterator(
