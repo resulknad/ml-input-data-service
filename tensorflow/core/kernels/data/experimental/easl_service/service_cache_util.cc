@@ -1,6 +1,8 @@
 #include "tensorflow/core/kernels/data/experimental/easl_service/service_cache_util.h"
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/protobuf/service_cache.pb.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
+
 
 namespace tensorflow {
 namespace data {
@@ -248,8 +250,11 @@ void Reader::Add(std::vector<Tensor>& tensors) {
 
 Status Reader::ReaderThread(Env *env, uint64 writer_id, int64 version, 
   DataTypeVector output_types) {
-  LOG(INFO) << "(Reader_" << writer_id << ") Starting reading task";
   
+  LOG(INFO) << "(Reader_" << writer_id << ") Starting reading task";
+  tensorflow::profiler::TraceMe activity(
+          "EASLReaderThread", tensorflow::profiler::TraceMeLevel::kVerbose);
+
   bool end_of_sequence = false; 
 
   while (!end_of_sequence) {
@@ -297,7 +302,8 @@ Status Reader::Read(std::vector<Tensor>* &read_tensors, bool* end_of_sequence) {
   LOG(INFO) << "(Reader) Task is getting invoked... Reading " << n;
   while(true){
     if(!tensors_.empty()){
-      while (n-- > 0) {
+      while (n > 0) {
+        n--;
         read_tensors->push_back(tensors_.front());
         tensors_.pop_front();
       }
