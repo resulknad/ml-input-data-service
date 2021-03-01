@@ -299,7 +299,7 @@ Status Reader::Read(std::vector<Tensor>* &read_tensors, bool* end_of_sequence) {
   *end_of_sequence = false;
   int64 n = output_dtypes_.size();
 
-  LOG(INFO) << "(Reader) Task is getting invoked... Reading " << n;
+  VLOG(0) << "(Reader) Task is getting invoked... Reading " << n;
   while(true){
     if(!tensors_.empty()){
       while (n > 0) {
