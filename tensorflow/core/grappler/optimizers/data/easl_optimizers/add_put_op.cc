@@ -19,6 +19,7 @@ namespace easl {
 namespace {
   // Define constants here
   constexpr char kCacheLocation[] = "./outputs/";
+  constexpr int8 kParallelism = 8;
   constexpr char kPutOpDataset[] = "ServiceCachePutDataset";
   constexpr char kOutputShapes[] = "output_shapes";
   constexpr char kOutputTypes[] = "output_types";
@@ -39,6 +40,9 @@ namespace {
     NodeDef* location_node = graph_utils::AddScalarConstNode<StringPiece>(
         kCacheLocation, graph); 
     put_op_node.add_input(location_node->name());
+    NodeDef* parallelism_node = graph_utils::AddScalarConstNode<int>(
+        kParallelism, graph); 
+    put_op_node.add_input(parallelism_node->name());
 
     // Copy over the relevant attributes from root of the prefix
     // TODO cleanup dirty hack: output_types can also be Toutput_types.
