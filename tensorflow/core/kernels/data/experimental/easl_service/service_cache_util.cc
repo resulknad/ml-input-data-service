@@ -9,7 +9,7 @@ namespace data {
 namespace easl{
 namespace service_cache_util {
 
-namespace {
+namespace { // anonymous namespace => declared functions only visible within this file
 static constexpr const char *const kCacheLocation = "";
 
 std::string GetFileName(const std::string& shard_directory,
@@ -30,9 +30,9 @@ Writer::Writer(Env* env,
     const std::vector<PartialTensorShape>& output_shapes, 
     const int writer_count) : env_(env), target_dir_(target_dir), 
     output_dtypes_(output_dtypes), output_shapes_(output_shapes), 
-    writer_count_(writer_count) {}
+    writer_count_(writer_count) {}  // Constructor, calls various constructors after colon
 
-Writer::~Writer() {}
+Writer::~Writer() {}  // ~ Destructor
 
 Status Writer::Initialize(){
   // TODO (damien-aymon) add constant for writer version.
