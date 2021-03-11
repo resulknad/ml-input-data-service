@@ -313,24 +313,22 @@ Status Reader::Read(std::vector<Tensor>* &read_tensors, bool* end_of_sequence) {
       if(num_readers_done_ == reader_count_){
         *end_of_sequence = true;
         
-        LOG(INFO) << "(Reader) Still have some to read... Waiting... ";
+        LOG(INFO) << "(Reader) End of sequence reached, returning empty.";
         return Status::OK();
       }
       // Readers are not done, waiting on data...
       LOG(INFO) << "(Reader) Task could not read, waiting... ";
-      read_cv_.wait(l); 
+      read_cv_.wait(l);
     }
   }
   
-  
-  // TODO (damien-aymon) if the reader does not have the chance to fill tensors_
-  // i.e. iteration is faster than reading, this will set end_of_sequence.
+  /*
   if (num_readers_done_ == reader_count_) {
     *end_of_sequence = true;
+    LOG(INFO) << "(Reader) End of sequence reached, returning last tensors.";
     return Status::OK();
   }
-  LOG(INFO) << "(Reader) Still have some to read... Waiting... ";
-  return Status::OK();
+  return Status::OK();*/
 }
 
 Reader::~Reader(){}
