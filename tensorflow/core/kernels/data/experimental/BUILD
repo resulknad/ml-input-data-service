@@ -800,6 +800,7 @@ cc_library(
     srcs = ["easl_service/arrow_reader.cc"],
     hdrs = ["easl_service/arrow_reader.h"],
     deps = [
+        ":snapshot_util",
         "@arrow",
     ],
 )
