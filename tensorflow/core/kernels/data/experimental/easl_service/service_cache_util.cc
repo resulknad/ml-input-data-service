@@ -251,8 +251,9 @@ void Reader::Add(std::vector<Tensor>& tensors) {
 
 Status Reader::ReaderThread(Env *env, uint64 writer_id, int64 version, 
   DataTypeVector output_types) {
-  
-  LOG(INFO) << "(Reader_" << writer_id << ") Starting reading task";
+
+  std:string d_string = DataTypeVectorString(output_types);
+  LOG(INFO) << "(Reader_" << writer_id << ") Starting reading task\n\tREADING D_TYPE:\t" << d_string;
   tensorflow::profiler::TraceMe activity(
           "EASLReaderThread", tensorflow::profiler::TraceMeLevel::kVerbose);
 
@@ -284,7 +285,12 @@ Status Reader::ReaderThread(Env *env, uint64 writer_id, int64 version,
         if (errors::IsOutOfRange(s)) {
           eof = true;
           break;
-        } 
+        }
+        std::string t_str = "Reading Tensors:";
+        for(Tensor t : tensors) {
+          t_str += "\n\t"+t.DebugString(t.NumElements());
+        }
+        LOG(INFO) << "(Reader_" << writer_id << ") Read tensors (count = " << count << "): " << t_str;
         Add(tensors);
         count++;
       }
