@@ -2,6 +2,7 @@
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/protobuf/service_cache.pb.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/kernels/data/experimental/easl_service/arrow_reader.h"
 
 
 namespace tensorflow {
@@ -264,6 +265,12 @@ Status Reader::ReaderThread(Env *env, uint64 writer_id, int64 version,
 
     if (!end_of_sequence) {
       LOG(INFO) << "(Reader_" << writer_id << ") Reading file " << file_path;
+
+      // TODO use switch on version to select own version, insert instantiation of own reader
+      ArrowReader arrowReader;
+      arrowReader.PrintTestLog(); //Test dependencies of arrow...
+
+
       std::unique_ptr<snapshot_util::Reader> reader;
       snapshot_util::Reader::Create(env, file_path, io::compression::kNone, 
           version, output_types, &reader);
