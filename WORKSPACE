@@ -131,16 +131,6 @@ http_archive(
 )
 
 http_archive(
-    name = "double-conversion",
-    sha256 = "a63ecb93182134ba4293fd5f22d6e08ca417caafa244afaa751cbfddf6415b13",
-    strip_prefix = "double-conversion-3.1.5",
-    urls = [
-        #"https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/double-conversion/archive/v3.1.5.tar.gz",
-        "https://github.com/google/double-conversion/archive/v3.1.5.tar.gz",
-    ],
-)
-
-http_archive(
     name = "bzip2",
     build_file = "//third_party:bzip2.BUILD",
     sha256 = "ab5a03176ee106d3f0fa90e381da478ddae405918153cca248e682cd0c4a2269",
