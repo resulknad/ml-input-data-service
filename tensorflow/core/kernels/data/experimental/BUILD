@@ -789,7 +789,8 @@ cc_library(
     hdrs = ["easl_service/service_cache_util.h"],
     deps = [
         ":snapshot_util",
-        ":arrow_reader",
+        ":arrow_reader", # simonsom
+        ":arrow_writer",
     ],
 )
 
@@ -799,6 +800,28 @@ cc_library(
     name = "arrow_reader",
     srcs = ["easl_service/arrow_reader.cc"],
     hdrs = ["easl_service/arrow_reader.h"],
+    deps = [
+        ":snapshot_util",
+        ":arrow_util",
+        "@arrow",
+    ],
+)
+
+cc_library(
+    name = "arrow_writer",
+    srcs = ["easl_service/arrow_writer.cc"],
+    hdrs = ["easl_service/arrow_writer.h"],
+    deps = [
+        ":snapshot_util",
+        ":arrow_util",
+        "@arrow",
+    ],
+)
+
+cc_library(
+    name = "arrow_util",
+    srcs = ["easl_service/arrow_util.cc"],
+    hdrs = ["easl_service/arrow_util.h"],
     deps = [
         ":snapshot_util",
         "@arrow",

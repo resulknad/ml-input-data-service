@@ -3,6 +3,7 @@
 #include "tensorflow/core/protobuf/service_cache.pb.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/kernels/data/experimental/easl_service/arrow_reader.h"
+#include "tensorflow/core/kernels/data/experimental/easl_service/arrow_writer.h"
 
 
 namespace tensorflow {
@@ -22,7 +23,7 @@ std::string GetFileName(const std::string& shard_directory,
 }
 
 constexpr const char* const kMetadataFilename = "service_cache.metadata";
-const int kWriterVersion = 2;
+const int kWriterVersion = 0; // 0 --> ArrowWriter; 2 --> TFRecordWriter
 const char kCompression[] = ""; // can be SNAPPY, GZIP, ZLIB, "" for none.
 
 
@@ -152,18 +153,34 @@ Status MultiThreadedAsyncWriter::WriterThread(Env* env,
                                  const std::string& shard_directory,
                                  uint64 writer_id,
                                  const std::string& compression, int64 version,
-                                 DataTypeVector output_types) { 
-  std::unique_ptr<snapshot_util::Writer> writer;
+                                 DataTypeVector output_types) {
+
+
   // TODO (damien-aymon) Push this to the specific writers, so that we can make
   // the async writer more general (e.g. different file system, gs://, etc...)
   TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(shard_directory));
+  LOG(INFO) << "(Writer_" << writer_id << ") Created Dir ";
 
-  LOG(INFO) << "(Writer_" << writer_id << ") Created Dir "; 
+  // select between arrowReader and standard built-in readers
+  bool isArrow = (version == 0);
 
-  TF_RETURN_IF_ERROR(snapshot_util::Writer::Create(
-      env, GetFileName(shard_directory, writer_id), 
-      compression, version, std::move(output_types), &writer));
-  
+  // possible readers
+  std::unique_ptr<ArrowWriter> arrowWriter;
+  std::unique_ptr<snapshot_util::Writer> writer;
+
+  if(isArrow) {
+    arrowWriter = absl::make_unique<ArrowWriter>(
+            env, GetFileName(shard_directory, writer_id),
+            io::compression::kNone, output_types);
+  } else {
+    TF_RETURN_IF_ERROR(snapshot_util::Writer::Create(
+            env, GetFileName(shard_directory, writer_id),
+            compression, version, std::move(output_types), &writer));
+  }
+
+  ArrowReader::PrintTestLog(); //Test dependencies of arrow...
+
+
   int count = 0;
   LOG(INFO) << "(Writer_" << writer_id << ") Starting to write "; 
 
@@ -174,13 +191,13 @@ Status MultiThreadedAsyncWriter::WriterThread(Env* env,
     LOG(INFO) << "(Writer_" << writer_id << ") Read - " 
       << be.end_of_sequence << " - Total: " << ++count;
     if (be.end_of_sequence) {
-      TF_RETURN_IF_ERROR(writer->Close());
+      TF_RETURN_IF_ERROR(isArrow ? arrowWriter->Close() : writer->Close());
       LOG(INFO) << "(Writer_" << writer_id << ") Closed w/ total read " 
                 << count;
       break;
     }
 
-    TF_RETURN_IF_ERROR(writer->WriteTensors(be.value));
+    TF_RETURN_IF_ERROR(isArrow ? arrowWriter->WriteTensors(be.value) : writer->WriteTensors(be.value));
   }
   return Status::OK();
 }
@@ -200,7 +217,8 @@ Reader::Reader(Env *env,
 Status Reader::Initialize() {
   // Read metadata first:
   // TODO (damien-aymon) not really useful anymore until more info in there
-  TF_RETURN_IF_ERROR(ReadAndParseMetadataFile());
+  // simonsom -- don't use metadata file for the moment
+  // TF_RETURN_IF_ERROR(ReadAndParseMetadataFile());
   
   // Find all the files of this dataset
   std::vector<string> files;
@@ -222,7 +240,9 @@ Status Reader::Initialize() {
   for (int i = 0; i < reader_count_; ++i) {
     thread_pool_->Schedule(
       [this, i] {
-        ReaderThread(env_, i, cache_file_version_, output_dtypes_);
+          // simonsom -- manually set reader version to arrow
+        // ReaderThread(env_, i, cache_file_version_, output_dtypes_);
+        ReaderThread(env_, i, 0, output_dtypes_);
         }
     );
   }
@@ -252,8 +272,11 @@ void Reader::Add(std::vector<Tensor>& tensors) {
 Status Reader::ReaderThread(Env *env, uint64 writer_id, int64 version, 
   DataTypeVector output_types) {
 
+  // Debugging
   std:string d_string = DataTypeVectorString(output_types);
   LOG(INFO) << "(Reader_" << writer_id << ") Starting reading task\n\tREADING D_TYPE:\t" << d_string;
+
+
   tensorflow::profiler::TraceMe activity(
           "EASLReaderThread", tensorflow::profiler::TraceMeLevel::kVerbose);
 
@@ -267,30 +290,46 @@ Status Reader::ReaderThread(Env *env, uint64 writer_id, int64 version,
     if (!end_of_sequence) {
       LOG(INFO) << "(Reader_" << writer_id << ") Reading file " << file_path;
 
-      // TODO use switch on version to select own version, insert instantiation of own reader
-      ArrowReader arrowReader;
-      arrowReader.PrintTestLog(); //Test dependencies of arrow...
+      // select between arrowReader and standard built-in readers
+      bool isArrow = (version == 0);
 
-
+      // possible readers
+      std::unique_ptr<ArrowReader> arrowReader;
       std::unique_ptr<snapshot_util::Reader> reader;
-      snapshot_util::Reader::Create(env, file_path, io::compression::kNone, 
-          version, output_types, &reader);
+
+      if(isArrow) {
+        arrowReader = absl::make_unique<ArrowReader>(env, file_path, io::compression::kNone, output_types);
+        arrowReader->Initialize();
+      } else {
+        snapshot_util::Reader::Create(env, file_path, io::compression::kNone,
+                                      version, output_types, &reader);
+      }
+
+      ArrowReader::PrintTestLog(); //Test dependencies of arrow...
+
+
 
       LOG(INFO) << "(Reader_" << writer_id << ") Starting to read file " << file_path;
       int64 count = 0;
       bool eof = false;
       while (!eof) {
         std::vector<Tensor> tensors;
-        Status s = reader->ReadTensors(&tensors);
+        Status s = isArrow ? arrowReader->ReadTensors(&tensors) : reader->ReadTensors(&tensors);
         if (errors::IsOutOfRange(s)) {
           eof = true;
-          break;
+
+          //simonsom -- don't break, read current tensors (test purpose)
+          //break;
         }
         std::string t_str = "Reading Tensors:";
+
+        //--------------DEBUG
         for(Tensor t : tensors) {
           t_str += "\n\t"+t.DebugString(t.NumElements());
         }
         LOG(INFO) << "(Reader_" << writer_id << ") Read tensors (count = " << count << "): " << t_str;
+        //--------------DEBUG
+
         Add(tensors);
         count++;
       }
