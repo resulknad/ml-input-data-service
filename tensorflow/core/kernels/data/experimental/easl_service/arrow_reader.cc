@@ -6,7 +6,7 @@
 #include "arrow_reader.h"
 #include "arrow/api.h"
 #include "arrow/ipc/feather.h"
-#include "tensorflow/core/kernels/data/experimental/easl_service/arrow/io/file.h"
+#include "arrow/io/file.h"
 #include "tensorflow/core/kernels/data/experimental/easl_service/arrow_util.h"
 
 namespace tensorflow {
