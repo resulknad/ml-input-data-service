@@ -20,17 +20,14 @@ namespace service_cache_util {
     }
 
     ArrowReader::ArrowReader(Env *env, const std::string &filename,
-                         const string &compression_type,
-                         const DataTypeVector &dtypes) {
-      this->env_ = env;
-      this->filename_ = filename;
-      this->compression_type_ = compression_type;
-      this->dtypes_ = dtypes;
+                         const string &compression_type, const DataTypeVector &dtypes)
+         : env_(env), filename_(filename), compression_type_(compression_type), dtypes_(dtypes){
 
+      // initialize internal data structures
+      this->current_batch_idx_ = -1;
     }
 
     Status ArrowReader::Initialize() {
-      //TODO open file --> initialize stream
       std::shared_ptr<arrow::io::MemoryMappedFile> file;
       ARROW_ASSIGN_CHECKED(file, arrow::io::MemoryMappedFile::Open(filename_, arrow::io::FileMode::READ))
       std::shared_ptr<arrow::ipc::feather::Reader> reader;
@@ -38,13 +35,21 @@ namespace service_cache_util {
       std::shared_ptr<::arrow::Table> table;
       CHECK_ARROW(reader->Read(&table));
 
-      int64_t n = table->num_columns();
-      VLOG(0) << "ARROW: read table from file successfully. Num Columns: " << n;
+      arrow::TableBatchReader tr(*table.get());
+      std::shared_ptr<arrow::RecordBatch> batch;
+      CHECK_ARROW(tr.ReadNext(&batch));
+      while(batch != nullptr) {
+        record_batches_.push_back(batch);
+        CHECK_ARROW(tr.ReadNext(&batch));
+      }
+
+      VLOG(0) << "ArrowReader: read table into recordbatches.";
       return Status::OK();
     }
 
     Status ArrowReader::ReadTensors(std::vector<Tensor> *read_tensors) {
-      // reader reads one tensor and returns out of range.
+
+      // dummy reader for testing
       Tensor t = Tensor((int64) 0);
       read_tensors->push_back(t);
       t = Tensor((int64) 1);
@@ -56,8 +61,34 @@ namespace service_cache_util {
       t = Tensor((int64) 4);
       read_tensors->push_back(t);
 
+
+      TF_RETURN_IF_ERROR(NextBatch());
+      // Invariant: current_batch_ != nullptr
+
+      // logging information of record batches:
+      VLOG(0) << "ArrowReader - ReadTensors - RecordBatchInfo\n"
+                  "Schema : " << current_batch_->schema()->ToString() << "\n"
+                  "RecordBatch : " << current_batch_->ToString() << "\n";
+
+      for(int i; i < current_batch_->num_columns(); i++) {
+
+        std::shared_ptr<arrow::Array> arr = current_batch_->column(i);
+
+        // TODO: go over all columns and append row-wise to read_tensors
+        // TODO: convert to tensor
+      }
+
       Status s = Status(error::OUT_OF_RANGE, "dummy msg");
-      return s;
+      return Status::OK();
+    }
+
+    Status ArrowReader::NextBatch() {
+      if (++current_batch_idx_ < record_batches_.size()) {
+        current_batch_ = record_batches_[current_batch_idx_];
+      } else  { // finished reading all record batches
+        return Status(error::OUT_OF_RANGE, "finished reading all record batches");
+      }
+      return Status::OK();
     }
 
 } // namespace service_cache_util

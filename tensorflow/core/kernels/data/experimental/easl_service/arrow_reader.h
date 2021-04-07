@@ -7,6 +7,7 @@
 
 #include "tensorflow/core/kernels/data/experimental/snapshot_util.h"
 #include "tensorflow/core/framework/types.h"
+#include "arrow/api.h"
 
 
 namespace tensorflow {
@@ -28,10 +29,16 @@ namespace service_cache_util {
         Status ReadTensors(std::vector<Tensor> *read_tensors);
 
     private:
+        Status NextBatch();
+
         Env *env_;
         std::string filename_;
         string compression_type_;
         DataTypeVector dtypes_;
+
+        std::vector<std::shared_ptr<arrow::RecordBatch>> record_batches_;
+        std::shared_ptr<arrow::RecordBatch> current_batch_;
+        size_t current_batch_idx_;
     };
 
 } // namespace service_cache_util
