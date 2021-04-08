@@ -57,6 +57,8 @@ namespace service_cache_util {
 
       TF_RETURN_IF_ERROR(NextBatch());
       // Invariant: current_batch_ != nullptr
+      VLOG(0) << "ArrowReader - ReadTensors - at this point current_batch should never be null. -> " << (current_batch_ != nullptr);
+
 
       // logging information of record batches:
       VLOG(0) << "ArrowReader - ReadTensors - info of current_batch:\n"
@@ -67,10 +69,10 @@ namespace service_cache_util {
 
       //TODO yields segmentation fault!
       for(int i; i < current_batch_->num_columns(); i++) {
-
-        std::shared_ptr<arrow::Array> arr = current_batch_->column(i);
-        VLOG(0) << "ArrowReader - ReadTensors - Reading column " << i << "of current_batch_:\n"
-                         "Is arr nullptr? -- " << (arr == nullptr);
+        VLOG(0) << "Is this being called?";
+//        std::shared_ptr<arrow::Array> arr = current_batch_->column(i);
+//        VLOG(0) << "ArrowReader - ReadTensors - Reading column " << i << "of current_batch_:\n"
+//                         "Is arr nullptr? -- " << (arr == nullptr);
         // TODO: go over all columns and append row-wise to read_tensors
         // TODO: convert to tensor
       }
