@@ -49,17 +49,11 @@ namespace service_cache_util {
 
     Status ArrowReader::ReadTensors(std::vector<Tensor> *read_tensors) {
 
-      // dummy reader for testing
-      Tensor t = Tensor((int64) 0);
+      // dummy reader for testing --------------
+      Tensor t = Tensor((int64) current_batch_idx_);
       read_tensors->push_back(t);
-      t = Tensor((int64) 1);
-      read_tensors->push_back(t);
-      t = Tensor((int64) 2);
-      read_tensors->push_back(t);
-      t = Tensor((int64) 3);
-      read_tensors->push_back(t);
-      t = Tensor((int64) 4);
-      read_tensors->push_back(t);
+      // ---------------------------------------
+
 
 
       TF_RETURN_IF_ERROR(NextBatch());
@@ -73,19 +67,18 @@ namespace service_cache_util {
       for(int i; i < current_batch_->num_columns(); i++) {
 
         std::shared_ptr<arrow::Array> arr = current_batch_->column(i);
-
+        VLOG(0) << "ArrowReader - ArrToString: "<< arr->ToString();
         // TODO: go over all columns and append row-wise to read_tensors
         // TODO: convert to tensor
       }
 
-      Status s = Status(error::OUT_OF_RANGE, "dummy msg");
       return Status::OK();
     }
 
     Status ArrowReader::NextBatch() {
       if (++current_batch_idx_ < record_batches_.size()) {
         current_batch_ = record_batches_[current_batch_idx_];
-      } else  { // finished reading all record batches
+      } else  {
         return Status(error::OUT_OF_RANGE, "finished reading all record batches");
       }
       return Status::OK();

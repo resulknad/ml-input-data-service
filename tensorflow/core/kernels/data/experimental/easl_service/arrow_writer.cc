@@ -60,6 +60,14 @@ Status ArrowWriter::WriteTensors(std::vector<Tensor> &tensors) {
   for(Tensor t : tensors) {
     // check whether all needed information is in tensors:
     VLOG(0) << "ArrowWriter: TensorInfo ---- Shape: " << t.shape().DebugString() << "\t Type: " << DataTypeString(t.dtype());
+
+    // print out tensor data:
+    char* data_buf = (char *) t.tensor_data().data();
+    typedef int64_t tensor_type;
+    for(int i = 0; i < t.shape().num_elements(); i += 8) { //always alligned on 64-bit boundaries.
+      VLOG(0) << "ArrowWriter: Tensor element " << i / sizeof(tensor_type) << ": \t" << (tensor_type) data_buf[i];
+    }
+
     tensors_.push_back(t);
   }
   return Status::OK();
