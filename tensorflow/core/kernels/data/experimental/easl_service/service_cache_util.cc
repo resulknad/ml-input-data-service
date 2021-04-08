@@ -178,9 +178,6 @@ Status MultiThreadedAsyncWriter::WriterThread(Env* env,
             compression, version, std::move(output_types), &writer));
   }
 
-  ArrowReader::PrintTestLog(); //Test dependencies of arrow...
-
-
   int count = 0;
   LOG(INFO) << "(Writer_" << writer_id << ") Starting to write "; 
 
@@ -304,9 +301,6 @@ Status Reader::ReaderThread(Env *env, uint64 writer_id, int64 version,
         snapshot_util::Reader::Create(env, file_path, io::compression::kNone,
                                       version, output_types, &reader);
       }
-
-      ArrowReader::PrintTestLog(); //Test dependencies of arrow...
-
 
 
       LOG(INFO) << "(Reader_" << writer_id << ") Starting to read file " << file_path;

@@ -16,7 +16,7 @@ namespace service_cache_util {
 
 
 void ArrowWriter::PrintTestLog() {
-  VLOG(0) << "ArrowWriter - TestLog\nArrow Version: " << arrow::GetBuildInfo().version_string;
+  VLOG(0) << "ArrowWriter - PrintTestLog: " << arrow::GetBuildInfo().version_string;
 }
 
 ArrowWriter::ArrowWriter(Env *env, const std::string &filename,
@@ -32,17 +32,28 @@ Status ArrowWriter::Close() {
   // TODO: build table from table-builders
 
   // build dummy table to test build
-  arrow::MemoryPool* pool = arrow::default_memory_pool();
-  arrow::Int32Builder int_builder(pool);
-  for(int i = 0; i < 5; i++) {
-    CHECK_ARROW(int_builder.Append(i));
+  arrow::MemoryPool* pool1 = arrow::default_memory_pool();
+  arrow::MemoryPool* pool2 = arrow::default_memory_pool();
+
+  arrow::Int32Builder int1_builder(pool1);
+  arrow::Int32Builder int2_builder(pool2);
+
+  for(int i = 0; i < 100; i++) {
+    CHECK_ARROW(int1_builder.Append(i));
+    CHECK_ARROW(int2_builder.Append(i * i));
+
   }
-  std::shared_ptr<arrow::Array> int_array;
-  CHECK_ARROW(int_builder.Finish(&int_array));
-  std::vector<std::shared_ptr<arrow::Field>> schema_vector = {arrow::field("int32", arrow::int32())};
+  std::shared_ptr<arrow::Array> int1_array;
+  std::shared_ptr<arrow::Array> int2_array;
+
+  CHECK_ARROW(int1_builder.Finish(&int1_array));
+  CHECK_ARROW(int2_builder.Finish(&int2_array));
+
+  std::vector<std::shared_ptr<arrow::Field>> schema_vector =
+          {arrow::field("int1", arrow::int32()), arrow::field("int2", arrow::int32())};
   auto schema = std::make_shared<arrow::Schema>(schema_vector);
   std::shared_ptr<arrow::Table> table;
-  table = arrow::Table::Make(schema, {int_array});
+  table = arrow::Table::Make(schema, {int1_array, int2_array});
 
   // write table to file:
   std::shared_ptr<arrow::io::FileOutputStream> file;
@@ -50,7 +61,7 @@ Status ArrowWriter::Close() {
   CHECK_ARROW(arrow::ipc::feather::WriteTable(*table, file.get(), arrow::ipc::feather::WriteProperties::Defaults()));
   CHECK_ARROW(file->Close());
 
-  VLOG(0) << "ArrowWriter: written table to file";
+  VLOG(0) << "ArrowWriter - Close - written table to file";
   tensors_.clear();
   return Status::OK();
 }
@@ -59,13 +70,13 @@ Status ArrowWriter::Close() {
 Status ArrowWriter::WriteTensors(std::vector<Tensor> &tensors) {
   for(Tensor t : tensors) {
     // check whether all needed information is in tensors:
-    VLOG(0) << "ArrowWriter: TensorInfo ---- Shape: " << t.shape().DebugString() << "\t Type: " << DataTypeString(t.dtype());
+    VLOG(0) << "ArrowWriter - WriteTensors - TensorInfo ---- Shape: " << t.shape().DebugString() << "\t Type: " << DataTypeString(t.dtype()) << "\t NumEle: " << t.shape().num_elements();
 
     // print out tensor data:
     char* data_buf = (char *) t.tensor_data().data();
     typedef int64_t tensor_type;
-    for(int i = 0; i < t.shape().num_elements(); i += 8) { //always alligned on 64-bit boundaries.
-      VLOG(0) << "ArrowWriter: Tensor element " << i / sizeof(tensor_type) << ": \t" << (tensor_type) data_buf[i];
+    for(int i = 0; i < t.shape().num_elements() * 8; i += 8) { //always alligned on 64-bit boundaries.
+      VLOG(0) << "ArrowWriter - WriteTensors - Tensor element " << i / sizeof(tensor_type) << ": \t" << (tensor_type) data_buf[i];
     }
 
     tensors_.push_back(t);

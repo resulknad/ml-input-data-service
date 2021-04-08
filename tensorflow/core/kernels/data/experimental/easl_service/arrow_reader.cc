@@ -43,31 +43,34 @@ namespace service_cache_util {
         CHECK_ARROW(tr.ReadNext(&batch));
       }
 
-      VLOG(0) << "ArrowReader: read table into recordbatches.";
+      VLOG(0) << "ArrowReader - Initialize - read table into recordbatches.\n"
+                 "Num record batches: " << record_batches_.size();
       return Status::OK();
     }
 
     Status ArrowReader::ReadTensors(std::vector<Tensor> *read_tensors) {
 
       // dummy reader for testing --------------
-      Tensor t = Tensor((int64) current_batch_idx_);
+      Tensor t = Tensor((int32) current_batch_idx_);
       read_tensors->push_back(t);
       // ---------------------------------------
-
-
 
       TF_RETURN_IF_ERROR(NextBatch());
       // Invariant: current_batch_ != nullptr
 
       // logging information of record batches:
-      VLOG(0) << "ArrowReader - ReadTensors - RecordBatchInfo\n"
+      VLOG(0) << "ArrowReader - ReadTensors - info of current_batch:\n"
                   "Schema : " << current_batch_->schema()->ToString() << "\n"
+                  "NumColumns : " << current_batch_->num_columns() << "\n"
+                  "NumRows : " << current_batch_->num_rows() << "\n"
                   "RecordBatch : " << current_batch_->ToString() << "\n";
 
+      //TODO yields segmentation fault!
       for(int i; i < current_batch_->num_columns(); i++) {
 
         std::shared_ptr<arrow::Array> arr = current_batch_->column(i);
-        VLOG(0) << "ArrowReader - ArrToString: "<< arr->ToString();
+        VLOG(0) << "ArrowReader - ReadTensors - Reading column " << i << "of current_batch_:\n"
+                         "Is arr nullptr? -- " << (arr == nullptr);
         // TODO: go over all columns and append row-wise to read_tensors
         // TODO: convert to tensor
       }
