@@ -311,9 +311,7 @@ Status Reader::ReaderThread(Env *env, uint64 writer_id, int64 version,
         Status s = isArrow ? arrowReader->ReadTensors(&tensors) : reader->ReadTensors(&tensors);
         if (errors::IsOutOfRange(s)) {
           eof = true;
-
-          //simonsom -- don't break, read current tensors (test purpose)
-          //break;
+          break;
         }
         std::string t_str = "Reading Tensors:";
 
