@@ -2,18 +2,13 @@
 // Created by simon on 30.03.21.
 //
 
-#include "tensorflow/core/profiler/lib/traceme.h"
-#include "arrow_writer.h"
-#include "arrow/api.h"
+#include "tensorflow/core/kernels/data/experimental/easl_service/arrow_writer.h"
 #include "arrow/ipc/feather.h"
 #include "arrow/io/file.h"
-#include "tensorflow/core/kernels/data/experimental/easl_service/arrow_util.h"
 
 namespace tensorflow {
 namespace data {
 namespace easl{
-namespace service_cache_util {
-
 
 void ArrowWriter::PrintTestLog() {
   VLOG(0) << "ArrowWriter - PrintTestLog: " << arrow::GetBuildInfo().version_string;
@@ -38,7 +33,7 @@ Status ArrowWriter::Close() {
   arrow::Int32Builder int1_builder(pool1);
   arrow::Int32Builder int2_builder(pool2);
 
-  for(int i = 0; i < 100; i++) {
+  for(int i = 0; i < 5; i++) {
     CHECK_ARROW(int1_builder.Append(i));
     CHECK_ARROW(int2_builder.Append(i * i));
 
@@ -74,8 +69,8 @@ Status ArrowWriter::WriteTensors(std::vector<Tensor> &tensors) {
 
     // print out tensor data:
     char* data_buf = (char *) t.tensor_data().data();
-    typedef int64_t tensor_type;
-    for(int i = 0; i < t.shape().num_elements() * 8; i += 8) { //always alligned on 64-bit boundaries.
+    typedef int32_t tensor_type;
+    for(int i = 0; i < t.shape().num_elements() * sizeof(tensor_type); i += sizeof(tensor_type)) { //always alligned on 64-bit boundaries.
       VLOG(0) << "ArrowWriter - WriteTensors - Tensor element " << i / sizeof(tensor_type) << ": \t" << (tensor_type) data_buf[i];
     }
 
@@ -84,7 +79,6 @@ Status ArrowWriter::WriteTensors(std::vector<Tensor> &tensors) {
   return Status::OK();
 }
 
-} // namespace service_cache_util
 } // namespace easl
 } // namespace data
 } // namespace tensorflow
