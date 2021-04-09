@@ -67,12 +67,14 @@ namespace service_cache_util {
                   "NumRows : " << current_batch_->num_rows() << "\n"
                   "RecordBatch : " << current_batch_->ToString() << "\n";
 
-      //TODO yields segmentation fault!
-      for(int i; i < current_batch_->num_columns(); i++) {
+      for(int i = 0; i < current_batch_->num_columns(); i++) {
         VLOG(0) << "Is this being called?";
-//        std::shared_ptr<arrow::Array> arr = current_batch_->column(i);
-//        VLOG(0) << "ArrowReader - ReadTensors - Reading column " << i << "of current_batch_:\n"
-//                         "Is arr nullptr? -- " << (arr == nullptr);
+        std::shared_ptr<arrow::Array> arr = current_batch_->column(i);
+        VLOG(0) << "ArrowReader - ReadTensors - Reading column " << i << "of current_batch_:\n"
+                         "Array length (num elements): " << arr->length() << "\n"
+                         "Array Type: " << arr->type()->ToString() << "\n"
+                         "Array Contents: " << arr->ToString();
+
         // TODO: go over all columns and append row-wise to read_tensors
         // TODO: convert to tensor
       }
