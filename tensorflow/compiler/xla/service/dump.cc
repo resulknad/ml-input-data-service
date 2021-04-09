@@ -43,6 +43,7 @@ struct CanonicalDebugOptions {
         dump_as_dot(opts.xla_dump_hlo_as_dot()),
         dump_as_html(opts.xla_dump_hlo_as_html()),
         dump_as_url(opts.xla_dump_hlo_as_url()),
+        dump_fusion_visualization(opts.xla_dump_fusion_visualization()),
         dump_snapshots(opts.xla_dump_hlo_snapshots()),
         dump_include_timestamp(opts.xla_dump_include_timestamp()),
         dump_max_hlo_modules(opts.xla_dump_max_hlo_modules()),
@@ -64,6 +65,11 @@ struct CanonicalDebugOptions {
     // If we haven't specified an output format, default to dumping as text.
     if (!output_format_specified) {
       dump_as_text = true;
+    }
+
+    // Disable dumping if specified by the user.
+    if (!opts.xla_detailed_logging_and_dumping()) {
+      dump_to = "";
     }
 
     // If dump_to is empty, default to dumping to stdout, so long as some dump
@@ -109,7 +115,7 @@ struct CanonicalDebugOptions {
     // Output dirs "sponge" and "test_undeclared_outputs_dir" (case-insensitive)
     // have a special meaning: Dump into the directory specified by the
     // environment variable TEST_UNDECLARED_OUTPUTS_DIR.
-    string dump_to_lower = absl::AsciiStrToLower(opts.xla_dump_to());
+    string dump_to_lower = absl::AsciiStrToLower(dump_to);
     if (dump_to_lower == "sponge" ||
         dump_to_lower == "test_undeclared_outputs_dir") {
       if (!tensorflow::io::GetTestUndeclaredOutputsDir(&dump_to)) {
@@ -135,6 +141,7 @@ struct CanonicalDebugOptions {
   bool dump_as_dot;
   bool dump_as_html;
   bool dump_as_url;
+  bool dump_fusion_visualization;
   bool dump_snapshots;
   bool dump_include_timestamp;
   int64 dump_max_hlo_modules;
@@ -225,11 +232,15 @@ std::vector<std::string> DumpHloModuleImpl(const HloModule& module,
   std::vector<absl::optional<std::string>> file_paths;
 
   if (opts.dump_as_text) {
-    file_paths.push_back(DumpToFileInDirOrStdoutImpl(StrCat(filename, ".txt"),
-                                                     module.ToString(), opts));
+    file_paths.push_back(DumpToFileInDirOrStdoutImpl(
+        StrCat(filename, ".txt"),
+        module.ToString(HloPrintOptions().set_print_backend_config(true)),
+        opts));
     if (buffer_assn) {
       file_paths.push_back(DumpToFileInDirOrStdoutImpl(
-          StrCat(filename, "-buffer-assignment.txt"), buffer_assn->ToString(),
+          StrCat(filename, "-buffer-assignment.txt"),
+          StrCat(buffer_assn->ToString(), "\n\n",
+                 buffer_assn->hlo_live_range().ToString()),
           opts));
     }
   }
@@ -266,6 +277,24 @@ std::vector<std::string> DumpHloModuleImpl(const HloModule& module,
     file_paths.push_back(
         DumpToFileInDirImpl(StrFormat("%s.html", filename),
                             render_graph(RenderedGraphFormat::kHtml), opts));
+  }
+
+  if (opts.dump_fusion_visualization) {
+    for (const HloComputation* computation :
+         module.MakeNonfusionComputations()) {
+      StatusOr<string> rendered_graph = RenderGraph(
+          *computation,
+          /*label=*/absl::StrCat(filename, "_", computation->name()),
+          module.config().debug_options(),
+          RenderedGraphFormat::kFusionVisualization, profile);
+      file_paths.push_back(DumpToFileInDirImpl(
+          StrFormat("%s_%s_fusion_visualization.html", filename,
+                    computation->name()),
+          rendered_graph.ok() ? *rendered_graph
+                              : StrFormat("Error rendering graph: %s",
+                                          rendered_graph.status().ToString()),
+          opts));
+    }
   }
 
   // Special case for rendering graphs as URLs.  We'll dump them to a file
@@ -333,8 +362,11 @@ int64 StepNumberForModule(const HloModule& module) {
   tensorflow::mutex_lock lock(mu);
   return module_id_to_step_number[module.unique_id()]++;
 }
+
 }  // namespace
 
+// Get a timestamp which we can use as a filename prefix specific to this
+// module.
 string TimestampFor(const HloModule& module) {
   if (!module.config().debug_options().xla_dump_include_timestamp()) {
     return "";
@@ -345,10 +377,15 @@ string TimestampFor(const HloModule& module) {
   return std::to_string(timestamp_emplace.first->second);
 }
 
+static string FilenameFor(int unique_id, string_view prefix,
+                          string_view suffix) {
+  return StrFormat("%s%smodule_%04d.%s", prefix, prefix.empty() ? "" : ".",
+                   unique_id, suffix);
+}
+
 string FilenameFor(const HloModule& module, string_view prefix,
                    string_view suffix) {
-  return StrFormat("%s%smodule_%04d.%s", prefix, prefix.empty() ? "" : ".",
-                   module.unique_id(), suffix);
+  return FilenameFor(module.unique_id(), prefix, suffix);
 }
 
 void DumpToFileInDir(const HloModule& module, string_view file_prefix,
@@ -364,11 +401,26 @@ void DumpToFileInDirOrStdout(const HloModule& module, string_view file_prefix,
       CanonicalDebugOptions(module.config().debug_options()));
 }
 
+void DumpToFileInDirOrStdout(const DebugOptions& debug_options, int unique_id,
+                             string_view file_prefix, string_view file_suffix,
+                             string_view contents) {
+  DumpToFileInDirOrStdoutImpl(FilenameFor(unique_id, file_prefix, file_suffix),
+                              contents, CanonicalDebugOptions(debug_options));
+}
+
 void DumpExecutionOptions(const ExecutionOptions& execution_options,
                           const DebugOptions& debug_options) {
   CanonicalDebugOptions opts(debug_options);
   tensorflow::Env* env = tensorflow::Env::Default();
   const string& dir = opts.dump_to;
+  if (!env->IsDirectory(dir).ok()) {
+    auto status = env->RecursivelyCreateDir(dir);
+    if (!status.ok()) {
+      LOG(ERROR) << "Could not create directory " << dir
+                 << " for dumping XLA execution options: " << status;
+      return;
+    }
+  }
   if (env->IsDirectory(dir).ok()) {
     string filename = tensorflow::io::JoinPath(dir, "execution_options");
     Status status;
@@ -393,6 +445,7 @@ void DumpHloModuleIfEnabled(const HloModule& module, string_view name) {
                       TimestampFor(module), name, opts);
   }
 }
+
 void DumpHloModuleIfEnabled(const HloModule& module,
                             const BufferAssignment& buffer_assn,
                             string_view name) {

@@ -419,7 +419,6 @@ class Context(object):
     if execution_mode is None:
       execution_mode = SYNC
     self._default_is_async = execution_mode == ASYNC
-    self._lazy_remote_inputs_copy = None
     self._use_tfrt = is_tfrt_enabled()
     self._server_def = server_def
     self._collective_ops_server_def = None
@@ -521,9 +520,6 @@ class Context(object):
               opts, self._mirroring_policy)
         if self._default_is_async == ASYNC:
           pywrap_tfe.TFE_ContextOptionsSetAsync(opts, True)
-        if self._lazy_remote_inputs_copy is not None:
-          pywrap_tfe.TFE_ContextOptionsSetLazyRemoteInputsCopy(
-              opts, self._lazy_remote_inputs_copy)
         if self._use_tfrt is not None:
           pywrap_tfe.TFE_ContextOptionsSetTfrt(opts, self._use_tfrt)
         context_handle = pywrap_tfe.TFE_NewContext(opts)
@@ -662,6 +658,17 @@ class Context(object):
     """
     if self._context_handle:
       pywrap_tfe.TFE_ContextClearExecutors(self._context_handle)
+    else:
+      raise ValueError("Context is not initialized.")
+
+  def clear_kernel_cache(self):
+    """Clear kernel cache and reset all stateful kernels.
+
+    Raises:
+      ValueError: if context is not initialized.
+    """
+    if self._context_handle is not None:
+      pywrap_tfe.TFE_ContextClearCaches(self._context_handle)
     else:
       raise ValueError("Context is not initialized.")
 
@@ -996,6 +1003,7 @@ class Context(object):
     rewriter_toggle("pin_to_host_optimization")
     rewriter_toggle("implementation_selector")
     rewriter_toggle("auto_mixed_precision")
+    rewriter_toggle("use_plugin_optimizers")
     rewriter_bool("disable_meta_optimizer")
     nodes = self._optimizer_experimental_options.get("min_graph_nodes", None)
     if nodes is not None:
@@ -1177,11 +1185,16 @@ class Context(object):
       A packed EagerTensor.
     """
     self.ensure_initialized()
-    if self._lazy_remote_inputs_copy is not None and (
-        not self._lazy_remote_inputs_copy):
-      raise ValueError("Packing eager tensors is not supported when "
-                       "lazy_remote_inputs_copy is disabled.")
     return pywrap_tfe.TFE_Py_PackEagerTensors(self._handle, tensors)
+
+  def list_function_names(self):
+    """Get a list of names of registered functions.
+
+    Returns:
+      A set of names of all registered functions for the context.
+    """
+    self.ensure_initialized()
+    return set(pywrap_tfe.TFE_ContextListFunctionNames(self._handle))
 
   def remove_function(self, name):
     """Remove a function from the context.
@@ -1426,11 +1439,16 @@ class Context(object):
 
     self._visible_device_list = visible_device_list
 
-  def get_total_memory_usage(self, dev):
-    """Returns total memory usage in bytes for the current device."""
+  def get_memory_info(self, dev):
+    """Returns a dict of memory info for the device."""
     self._initialize_physical_devices()
     self.ensure_initialized()
-    return pywrap_tfe.TFE_GetTotalMemoryUsage(self._context_handle, dev)
+    return pywrap_tfe.TFE_GetMemoryInfo(self._context_handle, dev)
+
+  # TODO(reedwm): Remove this function
+  def get_total_memory_usage(self, dev):
+    """Returns total memory usage in bytes for the current device."""
+    return self.get_memory_info(dev)["current"]
 
   def get_memory_growth(self, dev):
     """Get if memory growth is enabled for a PhysicalDevice."""
@@ -1506,6 +1524,29 @@ class Context(object):
 
     self._virtual_device_map[dev] = virtual_devices
 
+  def set_logical_cpu_devices(self, num_cpus, prefix=""):
+    """Set virtual CPU devices in context.
+
+    If virtual CPU devices are already configured at context initialization
+    by tf.config.set_logical_device_configuration(), this method should not be
+    called.
+
+    Args:
+      num_cpus: Number of virtual CPUs.
+      prefix: Device name prefix.
+
+    Raises:
+     RuntimeError: If virtual CPUs are already configured at context
+     initialization.
+    """
+    self.ensure_initialized()
+    # Error out if there are already multiple logical CPU in the context.
+    if len(self.list_logical_devices("CPU")) > 1:
+      raise RuntimeError("Virtual CPUs already set, cannot modify again.")
+
+    pywrap_tfe.TFE_SetLogicalCpuDevices(self._context_handle, num_cpus, prefix)
+    self._initialize_logical_devices()
+
   def get_compiler_ir(self, device_name, function_name, args, stage="hlo"):
     return pywrap_tfe.TF_GetCompilerIr(self._context_handle, function_name,
                                        stage, device_name, args)
@@ -1577,6 +1618,7 @@ class Context(object):
     rewriter_toggle("pin_to_host_optimization")
     rewriter_toggle("implementation_selector")
     rewriter_toggle("auto_mixed_precision")
+    rewriter_toggle("use_plugin_optimizers")
     rewriter_bool("disable_meta_optimizer")
 
     if rewrite_options.min_graph_nodes != 0:
@@ -1668,22 +1710,6 @@ class Context(object):
       if self._context_handle is not None:
         pywrap_tfe.TFE_ContextSetThreadLocalDevicePlacementPolicy(
             self._handle, self._device_policy)
-
-  @property
-  def lazy_remote_inputs_copy(self):
-    return self._lazy_remote_inputs_copy
-
-  @lazy_remote_inputs_copy.setter
-  def lazy_remote_inputs_copy(self, lazy_copy):
-    """Sets whether to copy remote inputs lazily for functions."""
-    if not isinstance(lazy_copy, bool):
-      raise ValueError("Expecting a boolean but got %s" % type(lazy_copy))
-
-    if self._lazy_remote_inputs_copy != lazy_copy:
-      if self._initialized:
-        raise ValueError(
-            "lazy_remote_inputs_copy should be set before being initialized.")
-      self._lazy_remote_inputs_copy = lazy_copy
 
   @property
   def use_tfrt(self):
@@ -1862,6 +1888,11 @@ def context_safe():
 def ensure_initialized():
   """Initialize the context."""
   context().ensure_initialized()
+
+
+def initialize_logical_devices():
+  """Initialize the virtual devices."""
+  context()._initialize_logical_devices()  # pylint: disable=protected-access
 
 
 def set_global_seed(seed):
@@ -2123,7 +2154,32 @@ def get_log_device_placement():
 
 @tf_export("debugging.set_log_device_placement")
 def set_log_device_placement(enabled):
-  """Set if device placements should be logged.
+  """Turns logging for device placement decisions on or off.
+
+  Operations execute on a particular device, producing and consuming tensors on
+  that device. This may change the performance of the operation or require
+  TensorFlow to copy data to or from an accelerator, so knowing where operations
+  execute is useful for debugging performance issues.
+
+  For more advanced profiling, use the [TensorFlow
+  profiler](https://www.tensorflow.org/guide/profiler).
+
+  Device placement for operations is typically controlled by a `tf.device`
+  scope, but there are exceptions, for example operations on a `tf.Variable`
+  which follow the initial placement of the variable. Turning off soft device
+  placement (with `tf.config.set_soft_device_placement`) provides more explicit
+  control.
+
+  >>> tf.debugging.set_log_device_placement(True)
+  >>> tf.ones([])
+  >>> # [...] op Fill in device /job:localhost/replica:0/task:0/device:GPU:0
+  >>> with tf.device("CPU"):
+  ...  tf.ones([])
+  >>> # [...] op Fill in device /job:localhost/replica:0/task:0/device:CPU:0
+  >>> tf.debugging.set_log_device_placement(False)
+
+  Turning on `tf.debugging.set_log_device_placement` also logs the placement of
+  ops inside `tf.function` when the function is called.
 
   Args:
     enabled: Whether to enabled device placement logging.
