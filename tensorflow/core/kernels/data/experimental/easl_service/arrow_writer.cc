@@ -147,16 +147,22 @@ void ArrowWriter::InitDims(Tensor  &t) {
     std::string debug_string = "Dimensions:";
 
     std::vector<int> single_col_dims;
-    for (auto dim : t.shape()) {
-      int val = (int) dim.size;
+    for (int64_t dim_size : t.shape().dim_sizes()) {
+      int val = (int) dim_size;
       single_col_dims.push_back(val);
-
-      debug_string += "\t" + val;
+      debug_string += "\t" + std::to_string(val);
     }
     VLOG(0) << "ArrowWriter - InitDims - " << debug_string;
     col_dims_.push_back(single_col_dims);
   } else {
     VLOG(0) << "ArrowWriter - InitDims - set dims_initialized to true";
+    VLOG(0) << "ArrowWriter - InitDims - all dimensions:";
+    for(int i = 0; i < col_dims_.size(); i++) {
+      for(int j = 0; j < col_dims_[i].size(); j++) {
+        VLOG(0) << "Column = " << i << " Dimension = " << j << " Val = " << col_dims_[i][j];
+      }
+    }
+
     dims_initialized_ = true;
   }
 }
