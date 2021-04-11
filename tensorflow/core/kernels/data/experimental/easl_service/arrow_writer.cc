@@ -159,7 +159,7 @@ void ArrowWriter::InitDims(Tensor  &t) {
     VLOG(0) << "ArrowWriter - InitDims - all dimensions:";
     for(int i = 0; i < col_dims_.size(); i++) {
       for(int j = 0; j < col_dims_[i].size(); j++) {
-        VLOG(0) << "Column = " << i << " Dimension = " << j << " Val = " << col_dims_[i][j];
+        VLOG(0) << "\tArrowWriter - InitDims - Column = " << i << " Dimension = " << j << " Val = " << col_dims_[i][j];
       }
     }
 
