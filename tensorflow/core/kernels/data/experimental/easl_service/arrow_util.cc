@@ -461,6 +461,7 @@ public:
       current_row_ = 0;
       empty_shape_ = false;
 
+      VLOG(0) << "ArrowUtil - ConvertToArrowArrayImpl - Make - initialized values, calling visitor";
 
       ARROW_RETURN_NOT_OK(type->Accept(this));
 
@@ -478,6 +479,9 @@ protected:
     arrow::Status fillData(int data_idx, int& data_offset, std::vector<std::shared_ptr<arrow::ListBuilder>>& builders,
                            std::shared_ptr<arrow::NumericBuilder<DataTypeType>>& data_builder, int current_builder_idx) {
 
+
+      VLOG(0) << "ArrowUtil - ConvertToArrowArrayImpl - fillData - invoked. Params:\n"
+                 "data_idx " << data_idx << "\ndata_offset: " << data_offset << "\ncurrent_builder: " << current_builder_idx;
 
       // TODO: len_ should be a vector with one value for each list_builder
       // TODO: iterate over all data entries in data_column_
@@ -504,6 +508,8 @@ protected:
 
     template <typename DataTypeType>
     arrow::Status getNestedArray() {
+      VLOG(0) << "ArrowUtil - ConvertToArrowArrayImpl - NestedArray - invoked";
+
       arrow::MemoryPool* pool = arrow::default_memory_pool();
 
       // data builder for underlying primitive data type of tensor
@@ -514,7 +520,9 @@ protected:
       // this is a special case where we don't delimit the individual tensors with an
       // additional array level.
       if(empty_shape_) {
+        VLOG(0) << "ArrowUtil - ConvertToArrowArrayImpl - NestedArray - empty_shape_ called";
         // TODO: handle empty shape
+        return arrow::Status::NotImplemented(empty_shape_);
       }
 
       // list of builders, one for each additional dimension (d-1) and one outermost
@@ -528,6 +536,8 @@ protected:
         std::shared_ptr<arrow::ListBuilder> b = std::make_shared<arrow::ListBuilder>(pool, prev);
         builders.push_back(b);
       }
+
+      VLOG(0) << "ArrowUtil - ConvertToArrowArrayImpl - NestedArray - building pools finished";
 
       int data_idx = 0; // current idx to data_column
 
@@ -543,10 +553,16 @@ protected:
                 data_idx++, data_offset, builders, data_builder, dims_ - 2));
       }
 
+      VLOG(0) << "ArrowUtil - ConvertToArrowArrayImpl - NestedArray - successfully read data";
+
+
       // finalize and return the array containing all tensors of the column
       std::shared_ptr<arrow::Array> arrow_array;
       RETURN_NOT_OK(builders[dims_-1]->Finish(&arrow_array));
       (*out_array_).swap(arrow_array);
+
+      VLOG(0) << "ArrowUtil - ConvertToArrowArrayImpl - NestedArray - successfully finished array. Size: " << arrow_array->length();
+
       return arrow::Status::OK();
     }
 

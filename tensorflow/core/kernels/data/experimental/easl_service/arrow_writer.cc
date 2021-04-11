@@ -39,6 +39,11 @@ Status ArrowWriter::Create(Env *env, const std::string &filename,
     std::vector<char *> col;
     tensor_data_.push_back(col);
   }
+
+  VLOG(0) << "ArrowWriter - Create - Initialized with the following parameters:\n"
+             "Filename: " << filename_ << "\nCompression_Type: " << compression_type_ << "\n"
+             "DataTypes: " << DataTypeVectorString(dtypes_) << "\nncols: " << ncols_ << "\n"
+             "ArrowDataTypes[0]: " << arrow_dtypes_[0]->ToString();
 }
 
 
@@ -78,8 +83,10 @@ Status ArrowWriter::Close() {
 
   for(int i = 0; i < ncols_; i++) {
     std::shared_ptr<arrow::Array> arr_ptr;
+    VLOG(0) << "ArrowWriter - Close - converting " << i << "th column to array";
+
     TF_RETURN_IF_ERROR(ArrowUtil::GetArrayFromData(arrow_dtypes_[i], tensor_data_[i], col_dims_[i], &arr_ptr));
-    VLOG(0) << "ArrowWriter - Close - converted " << i << "th column to array: \n "
+    VLOG(0) << "ArrowWriter - Close - conversion completed: \n "
                      "" << arr_ptr->ToString();
 
     arrays.push_back(arr_ptr);
@@ -122,8 +129,6 @@ Status ArrowWriter::WriteTensors(std::vector<Tensor> &tensors) {
                      "\t Type: " << DataTypeString(t.dtype()) << "\t NumEle: " << t.shape().num_elements() << ""
                      "\nDims: " << t.shape().dims() << " \nDimension Sizes: Todo";
 
-
-    t.shape().dim_sizes();
 
     // accumulate buffers in correct column:
     char* data_buf = (char *) t.tensor_data().data();
