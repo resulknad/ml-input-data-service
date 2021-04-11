@@ -169,9 +169,9 @@ Status MultiThreadedAsyncWriter::WriterThread(Env* env,
   std::unique_ptr<snapshot_util::Writer> writer;
 
   if(isArrow) {
-    arrowWriter = absl::make_unique<ArrowWriter>(
-            env, GetFileName(shard_directory, writer_id),
-            io::compression::kNone, output_types);
+    arrowWriter = absl::make_unique<ArrowWriter>();
+    TF_RETURN_IF_ERROR(arrowWriter->Create(env, GetFileName(shard_directory, writer_id),
+                        io::compression::kNone, output_types));
   } else {
     TF_RETURN_IF_ERROR(snapshot_util::Writer::Create(
             env, GetFileName(shard_directory, writer_id),
@@ -298,6 +298,7 @@ Status Reader::ReaderThread(Env *env, uint64 writer_id, int64 version,
         arrowReader = absl::make_unique<ArrowReader>(env, file_path, io::compression::kNone, output_types);
         arrowReader->Initialize();
       } else {
+        // TODO: should there be a cal to make_unique first??
         snapshot_util::Reader::Create(env, file_path, io::compression::kNone,
                                       version, output_types, &reader);
       }

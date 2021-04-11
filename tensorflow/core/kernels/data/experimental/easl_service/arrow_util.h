@@ -66,6 +66,22 @@ Status AssignSpec(std::shared_ptr<arrow::Array> array, int64 i,
 Status AssignTensor(std::shared_ptr<arrow::Array> array, int64 i,
                     Tensor* out_tensor);
 
+/// \brief Construct a (nested) Arrow Array given a vector of flattened data buffers.
+/// Each entry of the returned array corresponds to the data and shape of one tensor.
+/// A batch of scalar tensors for example are represented as an array of arrow scalar values.
+/// Supported primitive types for now: [Int8/16/32/64], [UInt8/16/32/64],
+/// [HalfFloat], [Float], [Double]
+///
+/// \param[in] type Arrow Data type of the underlying primitive
+/// used in the data buffer. Output Array will contain elements of this type.
+/// \param[in] data Flattened data buffer. Assumes data stored in row major order.
+/// \param[in] dim_size Sizes of all the dimensions
+/// \param[in] out_array The array is returned via the shared pointer.
+/// Caution: Don't forget to initialize the shared pointer before passing to this function!
+Status GetArrayFromData(std::shared_ptr<arrow::DataType> type, std::vector<char *>& data_column,
+                        std::vector<int>& dim_size, std::shared_ptr<arrow::Array>* out_array);
+
+
 } // namespace ArrowUtil
 } //namespace easl
 } // namespace data

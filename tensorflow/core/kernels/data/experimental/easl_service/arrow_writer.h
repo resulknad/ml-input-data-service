@@ -15,9 +15,11 @@ namespace easl{
 
 class ArrowWriter {
 public:
-    ArrowWriter(Env *env, const string &filename,
-                const string &compression_type,
-                const DataTypeVector &dtypes);
+    ArrowWriter();
+
+    Status Create(Env *env, const string &filename,
+                  const string &compression_type,
+                  const DataTypeVector &dtypes);
 
     static void PrintTestLog();
 
@@ -26,11 +28,20 @@ public:
     Status WriteTensors(std::vector<Tensor> &tensors);
 
 private:
+    void InitDims(Tensor &t);
+
     Env *env_;
     std::string filename_;
     string compression_type_;
     DataTypeVector dtypes_;
-    std::deque<Tensor> tensors_;
+    arrow::DataTypeVector arrow_dtypes_;
+    int32_t ncols_;
+    int32_t current_col_idx_;
+
+    //initially false, true after first row has been read (implicitly get TensorShape)
+    bool dims_initialized_;
+    std::vector<std::vector<int>> col_dims_;
+    std::vector<std::vector<char *>> tensor_data_;
 };
 
 } // namespace easl

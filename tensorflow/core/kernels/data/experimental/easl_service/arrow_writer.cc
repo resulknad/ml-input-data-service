@@ -14,24 +14,40 @@ void ArrowWriter::PrintTestLog() {
   VLOG(0) << "ArrowWriter - PrintTestLog: " << arrow::GetBuildInfo().version_string;
 }
 
-ArrowWriter::ArrowWriter(Env *env, const std::string &filename,
+ArrowWriter::ArrowWriter() {} // empty constructor, call Create for error handling.
+
+Status ArrowWriter::Create(Env *env, const std::string &filename,
                          const string &compression_type,
                          const DataTypeVector &dtypes) {
   this->env_ = env;
   this->filename_ = filename;
   this->compression_type_ = compression_type;
   this->dtypes_ = dtypes;
+  this->ncols_ = dtypes.size(); // TODO: make sure this always corresponds to number of dtypes!!
+  this->current_col_idx_ = 0;
+  this->dims_initialized_ = false;
+
+  // Get Arrow Data Types
+  for(int i = 0; i < dtypes_.size(); i++) {
+    std::shared_ptr<arrow::DataType> arrow_dt;
+    TF_RETURN_IF_ERROR(ArrowUtil::GetArrowType(dtypes[i], &arrow_dt));
+    this->arrow_dtypes_.push_back(arrow_dt);
+  }
+
+  // initialize data columns
+  for(int i = 0; i < ncols_; i++) {
+    std::vector<char *> col;
+    tensor_data_.push_back(col);
+  }
 }
 
-Status ArrowWriter::Close() {
-  // TODO: build table from table-builders
 
-  // build dummy table to test build
-  arrow::MemoryPool* pool1 = arrow::default_memory_pool();
-  arrow::MemoryPool* pool2 = arrow::default_memory_pool();
+// build dummy table to test with fixed schema
+Status BuildExampleTable(std::shared_ptr<arrow::Table>& table) {
+  arrow::MemoryPool* pool = arrow::default_memory_pool();
 
-  arrow::Int32Builder int1_builder(pool1);
-  arrow::Int32Builder int2_builder(pool2);
+  arrow::Int32Builder int1_builder(pool);
+  arrow::Int32Builder int2_builder(pool);
 
   for(int i = 0; i < 5; i++) {
     CHECK_ARROW(int1_builder.Append(i));
@@ -47,8 +63,39 @@ Status ArrowWriter::Close() {
   std::vector<std::shared_ptr<arrow::Field>> schema_vector =
           {arrow::field("int1", arrow::int32()), arrow::field("int2", arrow::int32())};
   auto schema = std::make_shared<arrow::Schema>(schema_vector);
-  std::shared_ptr<arrow::Table> table;
   table = arrow::Table::Make(schema, {int1_array, int2_array});
+  return Status::OK();
+}
+
+
+Status ArrowWriter::Close() {
+
+  VLOG(0) << "ArrowWriter - Close - invoked";
+
+  // get converted arrow array for each column:
+  std::vector<std::shared_ptr<arrow::Array>> arrays;
+  std::vector<std::shared_ptr<arrow::Field>> schema_vector;
+
+  for(int i = 0; i < ncols_; i++) {
+    std::shared_ptr<arrow::Array> arr_ptr;
+    TF_RETURN_IF_ERROR(ArrowUtil::GetArrayFromData(arrow_dtypes_[i], tensor_data_[i], col_dims_[i], &arr_ptr));
+    VLOG(0) << "ArrowWriter - Close - converted " << i << "th column to array: \n "
+                     "" << arr_ptr->ToString();
+
+    arrays.push_back(arr_ptr);
+    schema_vector.push_back(arrow::field(""+i, arr_ptr->type()));
+  }
+
+  VLOG(0) << "ArrowWriter - Close - conversion to arrow arrays finished";
+
+
+  // create schema from fields
+  auto schema = std::make_shared<arrow::Schema>(schema_vector);
+  std::shared_ptr<arrow::Table> table;
+  table = arrow::Table::Make(schema, arrays);
+
+  VLOG(0) << "ArrowWriter - Close - table created";
+
 
   // write table to file:
   std::shared_ptr<arrow::io::FileOutputStream> file;
@@ -57,26 +104,56 @@ Status ArrowWriter::Close() {
   CHECK_ARROW(file->Close());
 
   VLOG(0) << "ArrowWriter - Close - written table to file";
-  tensors_.clear();
+  tensor_data_.clear();
   return Status::OK();
 }
 
 // Assumption: tensors contains one row of the table.
 Status ArrowWriter::WriteTensors(std::vector<Tensor> &tensors) {
-  for(Tensor t : tensors) {
-    // check whether all needed information is in tensors:
-    VLOG(0) << "ArrowWriter - WriteTensors - TensorInfo ---- Shape: " << t.shape().DebugString() << "\t Type: " << DataTypeString(t.dtype()) << "\t NumEle: " << t.shape().num_elements();
 
-    // print out tensor data:
-    char* data_buf = (char *) t.tensor_data().data();
-    typedef int32_t tensor_type;
-    for(int i = 0; i < t.shape().num_elements() * sizeof(tensor_type); i += sizeof(tensor_type)) { //always alligned on 64-bit boundaries.
-      VLOG(0) << "ArrowWriter - WriteTensors - Tensor element " << i / sizeof(tensor_type) << ": \t" << (tensor_type) data_buf[i];
+  for(Tensor t : tensors) {
+    if(!dims_initialized_) {
+      InitDims(t);
     }
 
-    tensors_.push_back(t);
+
+    // check whether all needed information is in tensors:
+    VLOG(0) << "ArrowWriter - WriteTensors - TensorInfo ---- Shape: " << t.shape().DebugString() << ""
+                     "\t Type: " << DataTypeString(t.dtype()) << "\t NumEle: " << t.shape().num_elements() << ""
+                     "\nDims: " << t.shape().dims() << " \nDimension Sizes: Todo";
+
+
+    t.shape().dim_sizes();
+
+    // accumulate buffers in correct column:
+    char* data_buf = (char *) t.tensor_data().data();
+    tensor_data_[current_col_idx_].push_back(data_buf);
+    VLOG(0) << "ArrowWriter - WriteTensors - Added data_buffer to corresponding column " << current_col_idx_;
+    current_col_idx_ = (current_col_idx_ + 1) % ncols_;
+
+    // TODO: maybe track estimated memory usage and flush to file before using too much
   }
   return Status::OK();
+}
+
+void ArrowWriter::InitDims(Tensor  &t) {
+  if(col_dims_.size() < ncols_) {
+    // TODO: not sure whether this works. test whether loop gets called for scalar shapes.
+    std::string debug_string = "Dimensions:";
+
+    std::vector<int> single_col_dims;
+    for (auto dim : t.shape()) {
+      int val = (int) dim.size;
+      single_col_dims.push_back(val);
+
+      debug_string += "\t" + val;
+    }
+    VLOG(0) << "ArrowWriter - InitDims - " << debug_string;
+    col_dims_.push_back(single_col_dims);
+  } else {
+    VLOG(0) << "ArrowWriter - InitDims - set dims_initialized to true";
+    dims_initialized_ = true;
+  }
 }
 
 } // namespace easl

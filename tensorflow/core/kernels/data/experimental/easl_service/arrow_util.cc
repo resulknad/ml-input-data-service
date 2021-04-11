@@ -1,6 +1,19 @@
-//
-// Created by simon on 07.04.21.
-//
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+More or less untouched code, adapted slightly for specific use case by simonsom
+==============================================================================*/
 
 #include "tensorflow/core/kernels/data/experimental/easl_service/arrow_util.h"
 #include "arrow/adapters/tensorflow/convert.h"
@@ -112,7 +125,9 @@ protected:
     virtual arrow::Status Visit(const arrow::ListArray& array) override {
       int32 values_offset = array.value_offset(i_);
       int32 array_length = array.value_length(i_);
-      int32 num_arrays = 1;
+
+      // what is this for? --> probably number of dimensions?
+      int32 num_arrays = 2;
 
       VLOG(0) << "ArrowUtil - AssignSpecImpl - Visit(ListArray) - Invoked";
 
@@ -129,6 +144,8 @@ protected:
 
       // Add diminsion for array
       if (out_shape_ != nullptr) {
+        VLOG(0) << "ArrowUtil - AssignSpecImpl - Visit(ListArray) - add dimension for array."
+                   "\n Adding Dimension Size: " << array_length;
         out_shape_->AddDim(array_length);
       }
 
@@ -425,6 +442,146 @@ Status MakeArrayData(std::shared_ptr<arrow::DataType> type,
                      std::shared_ptr<arrow::ArrayData>* out_data) {
   ArrowMakeArrayDataImpl visitor;
   return visitor.Make(type, array_lengths, buffers, out_data);
+}
+
+
+
+
+// ---------------------------- simonsom -------------------------------
+class ConvertToArrowArrayImpl : public arrow::TypeVisitor {
+
+public:
+    arrow::Status Make(std::shared_ptr<arrow::DataType> type, std::vector<char *>& data_column,
+                       std::vector<int>& dim_size, std::shared_ptr<arrow::Array>* out_array) {
+      type_ = type;
+      data_column_ = data_column;
+      dims_ = dim_size.size();
+      dim_size_ = dim_size;
+      out_array_ = out_array;
+      current_row_ = 0;
+      empty_shape_ = false;
+
+
+      ARROW_RETURN_NOT_OK(type->Accept(this));
+
+      return arrow::Status::OK();
+    }
+protected:
+    // helper function to get the size of the current dimension, indexed by builder_idx (reversed to dim)
+    int getDimSize(int builder_idx) {
+      // -1 --> data builder --> dim_size_[dims_ - 1]
+      // dims_ - 2 --> outermost tensor builder --> dim_size_[0]
+      return dim_size_[dims_ - (builder_idx + 2)];
+    }
+
+    template <typename DataTypeType>
+    arrow::Status fillData(int data_idx, int& data_offset, std::vector<std::shared_ptr<arrow::ListBuilder>>& builders,
+                           std::shared_ptr<arrow::NumericBuilder<DataTypeType>>& data_builder, int current_builder_idx) {
+
+
+      // TODO: len_ should be a vector with one value for each list_builder
+      // TODO: iterate over all data entries in data_column_
+
+      if(current_builder_idx == -1) {
+        using value_type = typename DataTypeType::c_type;
+        value_type *data_batch = (value_type *) &(data_column_[current_row_][data_offset]);
+        value_type a = data_batch[0];
+
+        ARROW_RETURN_NOT_OK(data_builder->AppendValues(data_batch, getDimSize(current_builder_idx)));
+        data_offset += getDimSize(current_builder_idx) * sizeof(int32_t);
+        return arrow::Status::OK();
+      }
+
+      std::shared_ptr<arrow::ListBuilder> current_builder = builders[current_builder_idx];
+      for(int i = 0; i < getDimSize(current_builder_idx); i++) {
+        ARROW_RETURN_NOT_OK(current_builder->Append());
+        ARROW_RETURN_NOT_OK(fillData<DataTypeType>(data_idx, data_offset, builders,
+                data_builder, current_builder_idx-1));
+      }
+
+      return arrow::Status::OK();
+    }
+
+    template <typename DataTypeType>
+    arrow::Status getNestedArray() {
+      arrow::MemoryPool* pool = arrow::default_memory_pool();
+
+      // data builder for underlying primitive data type of tensor
+      std::shared_ptr<arrow::NumericBuilder<DataTypeType>> data_builder =
+              std::make_shared<arrow::NumericBuilder<DataTypeType>>(pool);
+
+      // this means that all tensors only hold scalar values (no dimension)
+      // this is a special case where we don't delimit the individual tensors with an
+      // additional array level.
+      if(empty_shape_) {
+        // TODO: handle empty shape
+      }
+
+      // list of builders, one for each additional dimension (d-1) and one outermost
+      // builder delimiting the data of each individual tensor
+      std::vector<std::shared_ptr<arrow::ListBuilder>> builders;
+      std::shared_ptr<arrow::ListBuilder> b0 =
+              std::make_shared<arrow::ListBuilder>(pool, data_builder);
+      builders.push_back(b0);
+      for(int i = 0; i < dims_ - 1; i++) {
+        std::shared_ptr<arrow::ListBuilder> prev = builders.back();
+        std::shared_ptr<arrow::ListBuilder> b = std::make_shared<arrow::ListBuilder>(pool, prev);
+        builders.push_back(b);
+      }
+
+      int data_idx = 0; // current idx to data_column
+
+      // go over all accumulated vectors and build the respective sub-arrays
+      for(int i = 0; i < data_column_.size(); i++) {
+        builders[dims_ - 1]->Append(); // here starts data of a new tensor
+
+        // this value is passed by ref to share it inside recursive calls to fillData
+        int data_offset = 0; // current data offset at data_column[data_idx]
+        // feed data to data builder and build shape with list builders corresponding to tensor
+        // if dims_ - 2 is negative, we only use the data_builder (no additional nestedness).
+        RETURN_NOT_OK(fillData<DataTypeType>(
+                data_idx++, data_offset, builders, data_builder, dims_ - 2));
+      }
+
+      // finalize and return the array containing all tensors of the column
+      std::shared_ptr<arrow::Array> arrow_array;
+      RETURN_NOT_OK(builders[dims_-1]->Finish(&arrow_array));
+      (*out_array_).swap(arrow_array);
+      return arrow::Status::OK();
+    }
+
+#define VISIT_PRIMITIVE(TYPE)                         \
+virtual arrow::Status Visit(const TYPE& type) override {   \
+  return getNestedArray<TYPE>();                    \
+}
+
+//    VISIT_PRIMITIVE(BooleanType)
+    VISIT_PRIMITIVE(arrow::Int8Type)
+    VISIT_PRIMITIVE(arrow::Int16Type)
+    VISIT_PRIMITIVE(arrow::Int32Type)
+    VISIT_PRIMITIVE(arrow::Int64Type)
+    VISIT_PRIMITIVE(arrow::UInt8Type)
+    VISIT_PRIMITIVE(arrow::UInt16Type)
+    VISIT_PRIMITIVE(arrow::UInt32Type)
+    VISIT_PRIMITIVE(arrow::UInt64Type)
+    VISIT_PRIMITIVE(arrow::HalfFloatType)
+    VISIT_PRIMITIVE(arrow::FloatType)
+    VISIT_PRIMITIVE(arrow::DoubleType)
+
+private:
+    bool empty_shape_;
+    std::shared_ptr<arrow::DataType> type_;
+    std::vector<char *> data_column_;
+    int dims_;
+    std::vector<int> dim_size_;
+    std::shared_ptr<arrow::Array>* out_array_;
+    int current_row_;
+};
+
+Status GetArrayFromData(std::shared_ptr<arrow::DataType> type, std::vector<char *>& data_column,
+                        std::vector<int>& dim_size, std::shared_ptr<arrow::Array>* out_array) {
+  ConvertToArrowArrayImpl visitor;
+  CHECK_ARROW(visitor.Make(type, data_column, dim_size, out_array));
 }
 
 }  // namespace ArrowUtil

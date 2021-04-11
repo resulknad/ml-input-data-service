@@ -70,7 +70,7 @@ Status ArrowReader::ReadTensors(std::vector<Tensor> *read_tensors) {
                        "Array length (num elements): " << arr->length() << "\n"
                        "Array Type: " << arr->type()->ToString() << "\n"
                        "Array Contents: " << arr->ToString();
-      DataType output_type = this->dtypes_[j];
+      DataType output_type = this->dtypes_[j]; // TODO: probably need to implicitly convert type --> len(dtypes_) != num_columns()
 
       // get the TensorShape for the column entry:
       TensorShape output_shape = TensorShape({});
