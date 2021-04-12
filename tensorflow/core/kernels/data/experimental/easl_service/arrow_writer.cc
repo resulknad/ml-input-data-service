@@ -86,7 +86,8 @@ Status ArrowWriter::Close() {
 
   for(int i = 0; i < ncols_; i++) {
     std::shared_ptr<arrow::Array> arr_ptr;
-    VLOG(0) << "ArrowWriter - Close - converting " << i << "th column to array";
+    VLOG(0) << "ArrowWriter - Close - converting " << i << "th column to array. "
+                     "col_dims_.size(): " << col_dims_.size();
 
     TF_RETURN_IF_ERROR(ArrowUtil::GetArrayFromData(arrow_dtypes_[i], tensor_data_[i], col_dims_[i], &arr_ptr));
     VLOG(0) << "ArrowWriter - Close - conversion completed, arr_ptr: " << arr_ptr;
@@ -142,7 +143,7 @@ Status ArrowWriter::WriteTensors(std::vector<Tensor> &tensors) {
     VLOG(0) << "ArrowWriter - WriteTensors - Added data_buffer to corresponding column " << current_col_idx_;
     current_col_idx_ = (current_col_idx_ + 1) % ncols_;
 
-    // TODO: ugly solution, find better way to keep data_buf reference.
+    // TODO: ugly solution, find better way to keep data_buf reference (shared_ptr for example).
     tensors_.push_back(t);
     // TODO: maybe track estimated memory usage and flush to file before using too much
   }

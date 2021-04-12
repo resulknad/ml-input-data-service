@@ -501,8 +501,7 @@ public:
       empty_shape_ = dims_ == 0;
 
       VLOG(0) << "ArrowUtil - ConvertToArrowArrayImpl - Make - initialized values:"
-                 "\nType: " << type->ToString() << "\ndims_: " << dims_ << "\ndim_size_[0]: " << dim_size_[0] << ""
-                 "\nType: " << type->ToString() << "";
+                 "\nType: " << type->ToString() << "\ndims_: " << dims_ << "\n";
 
       ARROW_RETURN_NOT_OK(type->Accept(this));
 
@@ -581,7 +580,7 @@ protected:
         // finalize and return the array containing all tensors of the column
         std::shared_ptr<arrow::Array> arrow_array;
         RETURN_NOT_OK(data_builder->Finish(&arrow_array));
-        (*out_array_).swap(arrow_array);
+        *out_array_ = arrow_array;
 
         return arrow::Status::OK();
       }
@@ -619,7 +618,7 @@ protected:
       VLOG(0) << "ArrowUtil - ConvertToArrowArrayImpl - NestedArray - successfully finished array. Size: " << arrow_array->ToString();
 
 
-      (*out_array_).swap(arrow_array);
+      *out_array_ = arrow_array;
 
       VLOG(0) << "ArrowUtil - ConvertToArrowArrayImpl - NestedArray - written array to out pointer";
 
