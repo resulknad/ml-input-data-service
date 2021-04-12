@@ -500,8 +500,8 @@ public:
       out_array_ = out_array;
       empty_shape_ = dims_ == 0;
 
-      VLOG(0) << "ArrowUtil - ConvertToArrowArrayImpl - Make - initialized values:"
-                 "\nType: " << type->ToString() << "\ndims_: " << dims_ << "\n";
+//      VLOG(0) << "ArrowUtil - ConvertToArrowArrayImpl - Make - initialized values:"
+//                 "\nType: " << type->ToString() << "\ndims_: " << dims_ << "\n";
 
       ARROW_RETURN_NOT_OK(type->Accept(this));
 
@@ -523,8 +523,8 @@ protected:
                            std::shared_ptr<arrow::NumericBuilder<DataTypeType>>& data_builder, int current_builder_idx) {
 
 
-      VLOG(0) << "ArrowUtil - ConvertToArrowArrayImpl - fillData - invoked. Params:\n"
-                 "data_idx " << data_idx << "\ndata_offset: " << data_offset << "\ncurrent_builder: " << current_builder_idx;
+//      VLOG(0) << "ArrowUtil - ConvertToArrowArrayImpl - fillData - invoked. Params:\n"
+//                 "data_idx " << data_idx << "\ndata_offset: " << data_offset << "\ncurrent_builder: " << current_builder_idx;
 
       // TODO: len_ should be a vector with one value for each list_builder
       // TODO: iterate over all data entries in data_column_
@@ -532,10 +532,9 @@ protected:
       if(current_builder_idx == -1) {
         using value_type = typename DataTypeType::c_type;
         value_type *data_batch = (value_type *) &(data_column_[data_idx][data_offset]);
-        value_type a = data_batch[0];
-        VLOG(0) << "ArrowUtil - ConvertToArrowArrayImpl - fillData - "
-                   "\nData batch binary contents (length= " << getDimSize(current_builder_idx) * sizeof(value_type) << ": \n"
-                   "" << binaryToString(getDimSize(current_builder_idx) * sizeof(value_type), (char *)data_batch);
+//        VLOG(0) << "ArrowUtil - ConvertToArrowArrayImpl - fillData - "
+//                   "\nData batch binary contents (length= " << getDimSize(current_builder_idx) * sizeof(value_type) << ": \n"
+//                   "" << binaryToString(getDimSize(current_builder_idx) * sizeof(value_type), (char *)data_batch);
 
         ARROW_RETURN_NOT_OK(data_builder->AppendValues(data_batch, getDimSize(current_builder_idx)));
         data_offset += getDimSize(current_builder_idx) * sizeof(value_type);
@@ -554,7 +553,7 @@ protected:
 
     template <typename DataTypeType>
     arrow::Status getNestedArray() {
-      VLOG(0) << "ArrowUtil - ConvertToArrowArrayImpl - NestedArray - invoked";
+//      VLOG(0) << "ArrowUtil - ConvertToArrowArrayImpl - NestedArray - invoked";
 
       arrow::MemoryPool* pool = arrow::default_memory_pool();
 
@@ -569,8 +568,8 @@ protected:
       // this means that all tensors only hold scalar values (no dimension)
       // this is a special case where we don't delimit the individual tensors with an
       // additional array level.
-      if(empty_shape_) {  // TODO: test implementation
-        VLOG(0) << "ArrowUtil - ConvertToArrowArrayImpl - NestedArray - empty_shape_ called";
+      if(empty_shape_) {
+//        VLOG(0) << "ArrowUtil - ConvertToArrowArrayImpl - NestedArray - empty_shape_ called";
 
         for(int i = 0; i < data_column_.size(); i++) {
           int data_offset = 0; // current data offset at data_column[data_idx]
@@ -594,11 +593,11 @@ protected:
         builders.push_back(b);
       }
 
-      VLOG(0) << "ArrowUtil - ConvertToArrowArrayImpl - NestedArray - building pools finished";
+//      VLOG(0) << "ArrowUtil - ConvertToArrowArrayImpl - NestedArray - building pools finished";
 
       // go over all accumulated vectors and build the respective sub-arrays
       for(int i = 0; i < data_column_.size(); i++) {
-        builders[dims_ - 1]->Append(); // here starts data of a new tensor
+        RETURN_NOT_OK(builders[dims_ - 1]->Append()); // here starts data of a new tensor
 
         // this value is passed by ref to share it inside recursive calls to fillData
         int data_offset = 0; // current data offset at data_column[data_idx]
@@ -608,19 +607,19 @@ protected:
                 i, data_offset, builders, data_builder, dims_ - 2));
       }
 
-      VLOG(0) << "ArrowUtil - ConvertToArrowArrayImpl - NestedArray - successfully read data";
+//      VLOG(0) << "ArrowUtil - ConvertToArrowArrayImpl - NestedArray - successfully read data";
 
 
       // finalize and return the array containing all tensors of the column
       std::shared_ptr<arrow::Array> arrow_array;
       RETURN_NOT_OK(builders[dims_-1]->Finish(&arrow_array));
 
-      VLOG(0) << "ArrowUtil - ConvertToArrowArrayImpl - NestedArray - successfully finished array. Size: " << arrow_array->ToString();
+//      VLOG(0) << "ArrowUtil - ConvertToArrowArrayImpl - NestedArray - successfully finished array. Size: " << arrow_array->ToString();
 
 
       *out_array_ = arrow_array;
 
-      VLOG(0) << "ArrowUtil - ConvertToArrowArrayImpl - NestedArray - written array to out pointer";
+//      VLOG(0) << "ArrowUtil - ConvertToArrowArrayImpl - NestedArray - written array to out pointer";
 
       return arrow::Status::OK();
     }
@@ -652,10 +651,10 @@ private:
     std::shared_ptr<arrow::Array>* out_array_;
 };
 
-Status GetArrayFromData(std::shared_ptr<arrow::DataType> type, std::vector<const char *>& data_column,
+arrow::Status GetArrayFromData(std::shared_ptr<arrow::DataType> type, std::vector<const char *>& data_column,
                         std::vector<int>& dim_size, std::shared_ptr<arrow::Array>* out_array) {
   ConvertToArrowArrayImpl visitor;
-  CHECK_ARROW(visitor.Make(type, data_column, dim_size, out_array));
+  return visitor.Make(type, data_column, dim_size, out_array);
 }
 
 

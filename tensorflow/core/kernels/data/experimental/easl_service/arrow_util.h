@@ -78,7 +78,7 @@ Status AssignTensor(std::shared_ptr<arrow::Array> array, int64 i,
 /// \param[in] dim_size Sizes of all the dimensions
 /// \param[in] out_array The array is returned via the shared pointer.
 /// Caution: Don't forget to initialize the shared pointer before passing to this function!
-Status GetArrayFromData(std::shared_ptr<arrow::DataType> type, std::vector<const char *>& data_column,
+arrow::Status GetArrayFromData(std::shared_ptr<arrow::DataType> type, std::vector<const char *>& data_column,
                         std::vector<int>& dim_size, std::shared_ptr<arrow::Array>* out_array);
 
 

@@ -99,7 +99,7 @@ Status ArrowWriter::Close() {
   std::shared_ptr<arrow::Array> arr;
   std::vector<int> dimensions = {};
   std::shared_ptr<arrow::DataType> dt = arrow::int32();
-  TF_RETURN_IF_ERROR(ArrowUtil::GetArrayFromData(dt, data_column, dimensions, &arr));
+  ArrowUtil::GetArrayFromData(dt, data_column, dimensions, &arr); // TODO: propagate error
   VLOG(0) << arr->ToString() << "\n";
   VLOG(0) << arr->type()->ToString();
   VLOG(0) << "\n" << arr->length();
@@ -115,7 +115,7 @@ Status ArrowWriter::Close() {
     VLOG(0) << "ArrowWriter - Close - converting " << i << "th column to array. "
                      "col_dims_.size(): " << col_dims_.size();
 
-    TF_RETURN_IF_ERROR(ArrowUtil::GetArrayFromData(arrow_dtypes_[i], tensor_data_[i], col_dims_[i], &arr_ptr));
+    ArrowUtil::GetArrayFromData(arrow_dtypes_[i], tensor_data_[i], col_dims_[i], &arr_ptr); // TODO: propagate error
 //    VLOG(0) << "ArrowWriter - Close - conversion completed: \n "
 //                     "" << arr_ptr->ToString();
 
