@@ -39,7 +39,7 @@ Status ArrowWriter::Create(Env *env, const std::string &filename,
 
   // initialize data columns
   for(int i = 0; i < ncols_; i++) {
-    std::vector<char *> col;
+    std::vector<const char *> col;
     tensor_data_.push_back(col);
   }
 
@@ -135,10 +135,9 @@ Status ArrowWriter::WriteTensors(std::vector<Tensor> &tensors) {
 
 
     // accumulate buffers in correct column:
-    char* data_buf = (char *) t.tensor_data().data();
-    tensor_data_[current_col_idx_].push_back(data_buf);
+    tensor_data_[current_col_idx_].push_back(t.tensor_data().data());
     VLOG(0) << "ArrowWriter - WriteTensors - data buffer contents (length = "
-               "" << t.TotalBytes() << "): " << ArrowUtil::binaryToString(t.TotalBytes(), data_buf);
+               "" << t.TotalBytes() << "):\n" << ArrowUtil::binaryToString(t.TotalBytes(), tensor_data_[current_col_idx_].back());
     VLOG(0) << "ArrowWriter - WriteTensors - Added data_buffer to corresponding column " << current_col_idx_;
     current_col_idx_ = (current_col_idx_ + 1) % ncols_;
 

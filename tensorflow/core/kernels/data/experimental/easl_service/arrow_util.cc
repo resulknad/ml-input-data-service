@@ -463,7 +463,7 @@ char* chartobin ( unsigned char c )
   return bin;
 }
 
-std::string binaryToString(size_t size, char* ptr)
+std::string binaryToString(size_t size, const char* ptr)
 {
   unsigned char *b = (unsigned char*) ptr;
   unsigned char byte;
@@ -491,7 +491,7 @@ std::string binaryToString(size_t size, char* ptr)
 class ConvertToArrowArrayImpl : public arrow::TypeVisitor {
 
 public:
-    arrow::Status Make(std::shared_ptr<arrow::DataType> type, std::vector<char *>& data_column,
+    arrow::Status Make(std::shared_ptr<arrow::DataType> type, std::vector<const char *>& data_column,
                        std::vector<int>& dim_size, std::shared_ptr<arrow::Array>* out_array) {
       type_ = type;
       data_column_ = data_column;
@@ -503,10 +503,7 @@ public:
       VLOG(0) << "ArrowUtil - ConvertToArrowArrayImpl - Make - initialized values:"
                  "\nType: " << type->ToString() << "\ndims_: " << dims_ << "\ndim_size_[0]: " << dim_size_[0] << ""
                  "\nType: " << type->ToString() << "";
-      for(int i = 0; i < data_column.size(); i++) {
-        VLOG(0) << "ArrowUtil - ConvertToArrowArrayImpl - Make - Passed data buffer (" << i << ":\n"
-                   "" << binaryToString(8, data_column[i]); // 8 only for test purpose
-      }
+
       ARROW_RETURN_NOT_OK(type->Accept(this));
 
       return arrow::Status::OK();
@@ -636,13 +633,13 @@ virtual arrow::Status Visit(const TYPE& type) override {   \
 private:
     bool empty_shape_;
     std::shared_ptr<arrow::DataType> type_;
-    std::vector<char *> data_column_;
+    std::vector<const char *> data_column_;
     int dims_;
     std::vector<int> dim_size_;
     std::shared_ptr<arrow::Array>* out_array_;
 };
 
-Status GetArrayFromData(std::shared_ptr<arrow::DataType> type, std::vector<char *>& data_column,
+Status GetArrayFromData(std::shared_ptr<arrow::DataType> type, std::vector<const char *>& data_column,
                         std::vector<int>& dim_size, std::shared_ptr<arrow::Array>* out_array) {
   ConvertToArrowArrayImpl visitor;
   CHECK_ARROW(visitor.Make(type, data_column, dim_size, out_array));

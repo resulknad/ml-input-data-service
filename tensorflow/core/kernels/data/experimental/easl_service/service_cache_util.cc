@@ -298,7 +298,7 @@ Status Reader::ReaderThread(Env *env, uint64 writer_id, int64 version,
         arrowReader = absl::make_unique<ArrowReader>(env, file_path, io::compression::kNone, output_types);
         arrowReader->Initialize();
       } else {
-        // TODO: should there be a cal to make_unique first??
+        // TODO: should there be a call to make_unique first??
         snapshot_util::Reader::Create(env, file_path, io::compression::kNone,
                                       version, output_types, &reader);
       }

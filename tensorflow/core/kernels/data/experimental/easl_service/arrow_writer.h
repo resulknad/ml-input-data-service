@@ -41,7 +41,7 @@ private:
     //initially false, true after first row has been read (implicitly get TensorShape)
     bool dims_initialized_;
     std::vector<std::vector<int>> col_dims_;
-    std::vector<std::vector<char *>> tensor_data_;
+    std::vector<std::vector<const char *>> tensor_data_;
 };
 
 } // namespace easl
