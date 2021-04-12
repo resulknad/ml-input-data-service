@@ -20,7 +20,7 @@ Status ArrowWriter::Create(Env *env, const std::string &filename,
   this->filename_ = filename;
   this->compression_type_ = compression_type;
   this->dtypes_ = dtypes;
-  this->ncols_ = dtypes.size(); // TODO: make sure this always corresponds to number of dtypes!!
+  this->ncols_ = dtypes.size(); // one column in final arrow table per data type (one "dataset row")
   this->current_col_idx_ = 0;
   this->dims_initialized_ = false;
 
@@ -36,13 +36,9 @@ Status ArrowWriter::Create(Env *env, const std::string &filename,
     std::vector<const char *> col;
     tensor_data_.push_back(col);
   }
-
-  VLOG(0) << "ArrowWriter - Create - Initialized with the following parameters:\n"
-             "Filename: " << filename_ << "\nCompression_Type: " << compression_type_ << "\n"
-             "DataTypes: " << DataTypeVectorString(dtypes_) << "\nncols: " << ncols_ << "\n"
-             "ArrowDataTypes[0]: " << arrow_dtypes_[0]->ToString();
 }
 
+/// \brief convert from given compression to arrow compression type supported by the feather writer
 arrow::Compression::type ArrowWriter::getArrowCompressionType(){
   if(compression_type_.compare("LZ4_FRAME") == 0) {
     return arrow::Compression::LZ4_FRAME;
@@ -53,42 +49,15 @@ arrow::Compression::type ArrowWriter::getArrowCompressionType(){
   return arrow::Compression::UNCOMPRESSED;
 }
 
-// build dummy table to test with fixed schema
-Status BuildExampleTable(std::shared_ptr<arrow::Table>& table) {
-  arrow::MemoryPool* pool = arrow::default_memory_pool();
-
-  arrow::Int32Builder int1_builder(pool);
-  arrow::Int32Builder int2_builder(pool);
-
-  for(int i = 0; i < 5; i++) {
-    CHECK_ARROW(int1_builder.Append(i));
-    CHECK_ARROW(int2_builder.Append(i * i));
-
-  }
-  std::shared_ptr<arrow::Array> int1_array;
-  std::shared_ptr<arrow::Array> int2_array;
-
-  CHECK_ARROW(int1_builder.Finish(&int1_array));
-  CHECK_ARROW(int2_builder.Finish(&int2_array));
-
-  std::vector<std::shared_ptr<arrow::Field>> schema_vector =
-          {arrow::field("int1", arrow::int32()), arrow::field("int2", arrow::int32())};
-  auto schema = std::make_shared<arrow::Schema>(schema_vector);
-  table = arrow::Table::Make(schema, {int1_array, int2_array});
-  return Status::OK();
-}
-
-
 Status ArrowWriter::Close() {
 
   VLOG(0) << "ArrowWriter - Close - invoked";
-
-  // TODO: same memory pool for all arrays.
 
   // get converted arrow array for each column:
   std::vector<std::shared_ptr<arrow::Array>> arrays;
   std::vector<std::shared_ptr<arrow::Field>> schema_vector;
 
+  // iterate over all columns and construct corresponding arrow::Array and arrow::field (for schema)
   for(int i = 0; i < ncols_; i++) {
     std::shared_ptr<arrow::Array> arr_ptr;
     ArrowUtil::GetArrayFromData(arrow_dtypes_[i], tensor_data_[i], col_dims_[i], &arr_ptr); // TODO: propagate error
@@ -115,6 +84,7 @@ Status ArrowWriter::Close() {
   // write table to file:
   std::shared_ptr<arrow::io::FileOutputStream> file;
   ARROW_ASSIGN_CHECKED(file, arrow::io::FileOutputStream::Open(filename_, /*append=*/false));
+
   struct arrow::ipc::feather::WriteProperties wp = {
       arrow::ipc::feather::kFeatherV2Version,
       // Number of rows per intra-file chunk. Use smaller chunksize when you need faster random row access
@@ -135,54 +105,35 @@ Status ArrowWriter::Close() {
 Status ArrowWriter::WriteTensors(std::vector<Tensor> &tensors) {
 
   for(Tensor t : tensors) {
+    // need to implicitly get tensor shapes (dimension sizes) as it is not passed to writer.
+    // we only check for the shape in the first row of tensors handed to this function.
     if(!dims_initialized_) {
       InitDims(t);
     }
 
-
-    // check whether all needed information is in tensors:
-    VLOG(0) << "ArrowWriter - WriteTensors - TensorInfo ---- Shape: " << t.shape().DebugString() << ""
-                     "\t Type: " << DataTypeString(t.dtype()) << "\t NumEle: " << t.shape().num_elements() << ""
-                     "\nDims: " << t.shape().dims() << " \nDimension Sizes: Todo";
-
-
     // accumulate buffers in correct column:
     tensor_data_[current_col_idx_].push_back(t.tensor_data().data());
-    VLOG(0) << "ArrowWriter - WriteTensors - data buffer contents (length = "
-               "" << t.TotalBytes() << "):\n" << ArrowUtil::binaryToString(t.TotalBytes(), tensor_data_[current_col_idx_].back());
     VLOG(0) << "ArrowWriter - WriteTensors - Added data_buffer to corresponding column " << current_col_idx_;
     current_col_idx_ = (current_col_idx_ + 1) % ncols_;
 
     // TODO: ugly solution, find better way to keep data_buf reference (shared_ptr for example).
-    // this copies all the data every time.
+    // this seems to copy all the data every time.
     tensors_.push_back(t);
-    // TODO: maybe track estimated memory usage and flush to file before using too much
   }
   return Status::OK();
 }
 
+/// \brief Takes tensor t as argument and appends shape information to local vector col_dims_[i] where
+/// t is the i-th tensor handed to this function.
 void ArrowWriter::InitDims(Tensor  &t) {
-  if(col_dims_.size() < ncols_) {
-    // TODO: not sure whether this works. test whether loop gets called for scalar shapes.
-    std::string debug_string = "Dimensions:";
-
+  if(col_dims_.size() < ncols_) { // we need more tensors to complete shape information
     std::vector<int> single_col_dims;
     for (int64_t dim_size : t.shape().dim_sizes()) {
       int val = (int) dim_size;
       single_col_dims.push_back(val);
-      debug_string += "\t" + std::to_string(val);
     }
-    VLOG(0) << "ArrowWriter - InitDims - " << debug_string;
     col_dims_.push_back(single_col_dims);
-  } else {
-    VLOG(0) << "ArrowWriter - InitDims - set dims_initialized to true";
-    VLOG(0) << "ArrowWriter - InitDims - all dimensions:";
-    for(int i = 0; i < col_dims_.size(); i++) {
-      for(int j = 0; j < col_dims_[i].size(); j++) {
-        VLOG(0) << "\tArrowWriter - InitDims - Column = " << i << " Dimension = " << j << " Val = " << col_dims_[i][j];
-      }
-    }
-
+  } else {  // all shapes known, don't need more information
     dims_initialized_ = true;
   }
 }

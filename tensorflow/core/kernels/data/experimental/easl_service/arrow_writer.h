@@ -42,7 +42,7 @@ private:
     std::vector<std::vector<int>> col_dims_;
     std::vector<std::vector<const char *>> tensor_data_;
 
-    // test whether this helps to prevent gc from de-allocating tensor data buffs
+    // prevents memory pool from de-allocating tensor data buffs
     std::deque<Tensor> tensors_;
 };
 

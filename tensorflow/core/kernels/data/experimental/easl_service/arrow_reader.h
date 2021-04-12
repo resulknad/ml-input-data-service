@@ -18,13 +18,14 @@ public:
                 const string &compression_type,
                 const DataTypeVector &dtypes);
 
-    static void PrintTestLog();
-
     Status Initialize();
 
+    /// \brief Read an entire record batch into a vector<Tensor>.
     Status ReadTensors(std::vector<Tensor> *read_tensors);
 
 private:
+    /// \brief increments current_batch_idx_ by 1 (initialized to -1). If no more batches,
+    /// return status with OUT_OF_RANGE error.
     Status NextBatch();
 
     Env *env_;

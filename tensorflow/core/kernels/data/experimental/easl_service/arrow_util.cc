@@ -519,6 +519,7 @@ protected:
     arrow::Status fillData(int data_idx, int& data_offset, std::vector<std::shared_ptr<arrow::ListBuilder>>& builders,
                            std::shared_ptr<arrow::NumericBuilder<DataTypeType>>& data_builder, int current_builder_idx) {
 
+      // base case of recursion. if current_builder_idx == -1 we use the data_builder to actually insert data.
       if(current_builder_idx == -1) {
         using value_type = typename DataTypeType::c_type;
         value_type *data_batch = (value_type *) &(data_column_[data_idx][data_offset]);
@@ -528,6 +529,7 @@ protected:
         return arrow::Status::OK();
       }
 
+      // we use the append function to delimit beginning of new subarray.
       std::shared_ptr<arrow::ListBuilder> current_builder = builders[current_builder_idx];
       for(int i = 0; i < getDimSize(current_builder_idx); i++) {
         ARROW_RETURN_NOT_OK(current_builder->Append());
@@ -541,7 +543,7 @@ protected:
     template <typename DataTypeType>
     arrow::Status getNestedArray() {
 
-      arrow::MemoryPool* pool = arrow::default_memory_pool();
+      arrow::MemoryPool* pool = arrow::default_memory_pool(); // same for all table columns
 
       // data builder for underlying primitive data type of tensor
       std::shared_ptr<arrow::NumericBuilder<DataTypeType>> data_builder =
@@ -569,6 +571,7 @@ protected:
         return arrow::Status::OK();
       }
 
+      // construct builder dependencies
       std::shared_ptr<arrow::ListBuilder> b0 =
               std::make_shared<arrow::ListBuilder>(pool, data_builder);
       builders.push_back(b0);
@@ -620,6 +623,9 @@ virtual arrow::Status Visit(const TYPE& type) override {   \
     VISIT_PRIMITIVE(arrow::FloatType)
     VISIT_PRIMITIVE(arrow::DoubleType)
 
+    // TODO: visit string
+    // VISIT_PRIMITIVE(arrow::StringType)
+
 private:
     bool empty_shape_;
     std::shared_ptr<arrow::DataType> type_;
@@ -631,7 +637,7 @@ private:
 
 arrow::Status GetArrayFromData(std::shared_ptr<arrow::DataType> type, std::vector<const char *>& data_column,
                         std::vector<int>& dim_size, std::shared_ptr<arrow::Array>* out_array) {
-  ConvertToArrowArrayImpl visitor;
+  ConvertToArrowArrayImpl visitor; // use visitor pattern to cover all types
   return visitor.Make(type, data_column, dim_size, out_array);
 }
 

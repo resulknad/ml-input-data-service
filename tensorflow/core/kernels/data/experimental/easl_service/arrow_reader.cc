@@ -10,9 +10,6 @@ namespace tensorflow {
 namespace data {
 namespace easl{
 
-void ArrowReader::PrintTestLog() {
-  VLOG(0) << "ARROW - TestLog\nArrow Version: " << arrow::GetBuildInfo().version_string;
-}
 
 ArrowReader::ArrowReader(Env *env, const std::string &filename,
                      const string &compression_type, const DataTypeVector &dtypes)
@@ -27,6 +24,9 @@ Status ArrowReader::Initialize() {
   VLOG(0) << "ArrowReader - Initialize - Initialized with the following parameters:\n"
              "Filename: " << filename_ << "\nCompression_Type: " << compression_type_ << "\n"
              "DataTypes: " << DataTypeVectorString(dtypes_);
+
+  // TODO: maybe use env to open file, here I use the built-in functionality of arrow.
+  // open file and read table
   std::shared_ptr<arrow::io::MemoryMappedFile> file;
   ARROW_ASSIGN_CHECKED(file, arrow::io::MemoryMappedFile::Open(filename_, arrow::io::FileMode::READ))
   std::shared_ptr<arrow::ipc::feather::Reader> reader;
@@ -34,6 +34,8 @@ Status ArrowReader::Initialize() {
   std::shared_ptr<::arrow::Table> table;
   CHECK_ARROW(reader->Read(&table));
 
+  // read individual record batches and append to class internal datastructure (size of record batches
+  // given by configuration of writer)
   arrow::TableBatchReader tr(*table.get());
   std::shared_ptr<arrow::RecordBatch> batch;
   CHECK_ARROW(tr.ReadNext(&batch));
@@ -49,18 +51,11 @@ Status ArrowReader::Initialize() {
 
 Status ArrowReader::ReadTensors(std::vector<Tensor> *read_tensors) {
 
+  // increments current_batch_idx_ by 1 (initialized to -1). If no more batches,
+  // return status with OUT_OF_RANGE error.
   TF_RETURN_IF_ERROR(NextBatch());
   // Invariant: current_batch_ != nullptr
-  VLOG(0) << "ArrowReader - ReadTensors - at this point current_batch should never be null. -> "
-             "" << (current_batch_ != nullptr);
 
-
-  // logging information of record batches:
-  VLOG(0) << "ArrowReader - ReadTensors - info of current_batch:\n"
-              "Schema : " << current_batch_->schema()->ToString() << "\n"
-              "NumColumns : " << current_batch_->num_columns() << "\n"
-              "NumRows : " << current_batch_->num_rows() << "\n"
-              "RecordBatch : " << current_batch_->ToString() << "\n";
 
   // go over all rows of record batch
   for(int i = 0; i < current_batch_->num_rows(); i++) {
@@ -77,7 +72,7 @@ Status ArrowReader::ReadTensors(std::vector<Tensor> *read_tensors) {
       TF_RETURN_IF_ERROR(ArrowUtil::AssignShape(arr, i, 0, &output_shape));  //batch_size = 0
 
       // Allocate a new tensor and assign Arrow data to it
-      Tensor tensor(output_type, output_shape); // TODO use allocator as constructor argument
+      Tensor tensor(output_type, output_shape); // this constructor will use the default_cpu_allocator.
       TF_RETURN_IF_ERROR(ArrowUtil::AssignTensor(arr, i, &tensor));
       read_tensors->emplace_back(std::move(tensor));
       VLOG(0) << "ArrowReader - ReadTensors - Successfully Read Tensor: " << tensor.DebugString(tensor.NumElements());
