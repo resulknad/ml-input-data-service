@@ -448,6 +448,46 @@ Status MakeArrayData(std::shared_ptr<arrow::DataType> type,
 
 
 // ---------------------------- simonsom -------------------------------
+
+char* chartobin ( unsigned char c )
+{
+  static char bin[CHAR_BIT + 1] = { 0 };
+  int i;
+
+  for ( i = CHAR_BIT - 1; i >= 0; i-- )
+  {
+    bin[i] = (c % 2) + '0';
+    c /= 2;
+  }
+
+  return bin;
+}
+
+std::string binaryToString(size_t size, char* ptr)
+{
+  unsigned char *b = (unsigned char*) ptr;
+  unsigned char byte;
+  int i, j;
+  std::string res = "";
+  std::string current_line = "";
+  int counter = 0;
+  for (i = 0; i < size; i++) {
+    byte = b[i];
+    if(counter % 4 == 0) {
+      res += current_line;
+      current_line = std::string(chartobin(byte)) + "\n";
+    } else {
+      current_line = std::string(chartobin(byte)) + "\t" + current_line;
+    }
+    counter = (counter + 1) % 4;
+  }
+  res += current_line;
+  return res;
+}
+
+
+
+
 class ConvertToArrowArrayImpl : public arrow::TypeVisitor {
 
 public:
@@ -463,6 +503,12 @@ public:
       VLOG(0) << "ArrowUtil - ConvertToArrowArrayImpl - Make - initialized values:"
                  "\nType: " << type->ToString() << "\ndims_: " << dims_ << "\ndim_size_[0]: " << dim_size_[0] << ""
                  "\nType: " << type->ToString() << "";
+      for(int i = 0; i < data_column.size(); i++) {
+        VLOG(0) << "ArrowUtil - ConvertToArrowArrayImpl - Make - Passed data buffer (" << i << ":\n"
+                   "" << binaryToString(8, data_column[i]); // 8 only for test purpose
+      }
+                 "\nData batch binary contents (length= " << getDimSize(current_builder_idx) << ": \n"
+                 "" << binaryToString(getDimSize(current_builder_idx), (char *)data_batch);
 
       ARROW_RETURN_NOT_OK(type->Accept(this));
 
@@ -470,7 +516,7 @@ public:
     }
 protected:
     // helper function to get the size of the current dimension, indexed by builder_idx (reversed to dim)
-    int getDimSize(int builder_idx) {
+    size_t getDimSize(int builder_idx) {
       // -1 --> data builder --> dim_size_[dims_ - 1]
       // dims_ - 2 --> outermost tensor builder --> dim_size_[0]
       return dim_size_[dims_ - (builder_idx + 2)];
@@ -492,10 +538,11 @@ protected:
         value_type *data_batch = (value_type *) &(data_column_[data_idx][data_offset]);
         value_type a = data_batch[0];
         VLOG(0) << "ArrowUtil - ConvertToArrowArrayImpl - fillData - "
-                   "\nFirst element of current data buffer: " << data_batch[0];
+                   "\nData batch binary contents (length= " << getDimSize(current_builder_idx) << ": \n"
+                   "" << binaryToString(getDimSize(current_builder_idx), (char *)data_batch);
 
         ARROW_RETURN_NOT_OK(data_builder->AppendValues(data_batch, getDimSize(current_builder_idx)));
-        data_offset += getDimSize(current_builder_idx) * sizeof(int32_t);
+        data_offset += getDimSize(current_builder_idx) * sizeof(value_type);
         return arrow::Status::OK();
       }
 
@@ -542,8 +589,6 @@ protected:
 
       VLOG(0) << "ArrowUtil - ConvertToArrowArrayImpl - NestedArray - building pools finished";
 
-      int data_idx = 0; // current idx to data_column
-
       // go over all accumulated vectors and build the respective sub-arrays
       for(int i = 0; i < data_column_.size(); i++) {
         builders[dims_ - 1]->Append(); // here starts data of a new tensor
@@ -553,7 +598,7 @@ protected:
         // feed data to data builder and build shape with list builders corresponding to tensor
         // if dims_ - 2 is negative, we only use the data_builder (no additional nestedness).
         RETURN_NOT_OK(fillData<DataTypeType>(
-                data_idx++, data_offset, builders, data_builder, dims_ - 2));
+                i, data_offset, builders, data_builder, dims_ - 2));
       }
 
       VLOG(0) << "ArrowUtil - ConvertToArrowArrayImpl - NestedArray - successfully read data";
@@ -605,6 +650,7 @@ Status GetArrayFromData(std::shared_ptr<arrow::DataType> type, std::vector<char 
   ConvertToArrowArrayImpl visitor;
   CHECK_ARROW(visitor.Make(type, data_column, dim_size, out_array));
 }
+
 
 }  // namespace ArrowUtil
 }  // easl

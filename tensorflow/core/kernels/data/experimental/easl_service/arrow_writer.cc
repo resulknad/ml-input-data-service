@@ -10,43 +10,6 @@ namespace tensorflow {
 namespace data {
 namespace easl{
 
-// ------------------------ helper functions ----------------------
-char* chartobin ( unsigned char c )
-{
-  static char bin[CHAR_BIT + 1] = { 0 };
-  int i;
-
-  for ( i = CHAR_BIT - 1; i >= 0; i-- )
-  {
-    bin[i] = (c % 2) + '0';
-    c /= 2;
-  }
-
-  return bin;
-}
-
-std::string binaryToString(size_t size, char* ptr)
-{
-  unsigned char *b = (unsigned char*) ptr;
-  unsigned char byte;
-  int i, j;
-  std::string res = "";
-
-  unsigned char test = 'c';
-  int counter = 0;
-  for (i = 0; i < size; i++) {
-    byte = b[i];
-    if(counter % 4 == 0) {
-      res += "\n" + std::string(chartobin(byte));
-    } else {
-      res += "\t" + std::string(chartobin(byte));
-    }
-    counter = (counter + 1) % 4;
-  }
-  return res;
-}
-
-
 // ------------------------ arrow writer ----------------------
 
 
@@ -175,7 +138,7 @@ Status ArrowWriter::WriteTensors(std::vector<Tensor> &tensors) {
     char* data_buf = (char *) t.tensor_data().data();
     tensor_data_[current_col_idx_].push_back(data_buf);
     VLOG(0) << "ArrowWriter - WriteTensors - data buffer contents (length = "
-               "" << t.TotalBytes() << "): " << binaryToString(t.TotalBytes(), data_buf);
+               "" << t.TotalBytes() << "): " << ArrowUtil::binaryToString(t.TotalBytes(), data_buf);
     VLOG(0) << "ArrowWriter - WriteTensors - Added data_buffer to corresponding column " << current_col_idx_;
     current_col_idx_ = (current_col_idx_ + 1) % ncols_;
 
