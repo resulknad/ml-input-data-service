@@ -171,7 +171,7 @@ Status MultiThreadedAsyncWriter::WriterThread(Env* env,
   if(isArrow) {
     arrowWriter = absl::make_unique<ArrowWriter>();
     TF_RETURN_IF_ERROR(arrowWriter->Create(env, GetFileName(shard_directory, writer_id),
-                        io::compression::kNone, output_types));
+                        compression, output_types));
   } else {
     TF_RETURN_IF_ERROR(snapshot_util::Writer::Create(
             env, GetFileName(shard_directory, writer_id),

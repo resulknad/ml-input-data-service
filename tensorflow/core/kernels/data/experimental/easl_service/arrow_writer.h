@@ -21,14 +21,13 @@ public:
                   const string &compression_type,
                   const DataTypeVector &dtypes);
 
-    static void PrintTestLog();
-
     Status Close();
 
     Status WriteTensors(std::vector<Tensor> &tensors);
 
 private:
     void InitDims(Tensor &t);
+    arrow::Compression::type getArrowCompressionType();
 
     Env *env_;
     std::string filename_;

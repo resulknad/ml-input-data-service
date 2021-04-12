@@ -11,12 +11,6 @@ namespace data {
 namespace easl{
 
 // ------------------------ arrow writer ----------------------
-
-
-void ArrowWriter::PrintTestLog() {
-  VLOG(0) << "ArrowWriter - PrintTestLog: " << arrow::GetBuildInfo().version_string;
-}
-
 ArrowWriter::ArrowWriter() {} // empty constructor, call Create for error handling.
 
 Status ArrowWriter::Create(Env *env, const std::string &filename,
@@ -49,6 +43,15 @@ Status ArrowWriter::Create(Env *env, const std::string &filename,
              "ArrowDataTypes[0]: " << arrow_dtypes_[0]->ToString();
 }
 
+arrow::Compression::type ArrowWriter::getArrowCompressionType(){
+  if(compression_type_.compare("LZ4_FRAME") == 0) {
+    return arrow::Compression::LZ4_FRAME;
+  } else if(compression_type_.compare("ZSTD") == 0) {
+    return arrow::Compression::ZSTD;
+  }
+
+  return arrow::Compression::UNCOMPRESSED;
+}
 
 // build dummy table to test with fixed schema
 Status BuildExampleTable(std::shared_ptr<arrow::Table>& table) {
@@ -82,45 +85,20 @@ Status ArrowWriter::Close() {
 
   // TODO: same memory pool for all arrays.
 
-  // ---------------- test with own buffer data:
-  int32_t c_data1[1] = {1};
-  int32_t c_data2[1] = {2};
-  int32_t c_data3[1] = {3};
-
-
-  const char *data1 = (const char *) c_data1;
-  const char *data2 = (const char *) c_data2;
-  const char *data3 = (const char *) c_data3;
-
-  std::vector<const char *> data_column;
-  data_column.push_back(data1);
-  data_column.push_back(data2);
-  data_column.push_back(data3);
-  std::shared_ptr<arrow::Array> arr;
-  std::vector<int> dimensions = {};
-  std::shared_ptr<arrow::DataType> dt = arrow::int32();
-  ArrowUtil::GetArrayFromData(dt, data_column, dimensions, &arr); // TODO: propagate error
-  VLOG(0) << arr->ToString() << "\n";
-  VLOG(0) << arr->type()->ToString();
-  VLOG(0) << "\n" << arr->length();
-
-  // ---------------- finish test with own buffer data:
-
   // get converted arrow array for each column:
   std::vector<std::shared_ptr<arrow::Array>> arrays;
   std::vector<std::shared_ptr<arrow::Field>> schema_vector;
 
   for(int i = 0; i < ncols_; i++) {
     std::shared_ptr<arrow::Array> arr_ptr;
-    VLOG(0) << "ArrowWriter - Close - converting " << i << "th column to array. "
-                     "col_dims_.size(): " << col_dims_.size();
-
     ArrowUtil::GetArrayFromData(arrow_dtypes_[i], tensor_data_[i], col_dims_[i], &arr_ptr); // TODO: propagate error
-//    VLOG(0) << "ArrowWriter - Close - conversion completed: \n "
-//                     "" << arr_ptr->ToString();
+    VLOG(0) << "ArrowWriter - Close - conversion completed for column: " << i << ""
+                     "\nArray:\n" << arr_ptr->ToString() << ""
+                     "\nDType: " << arr_ptr->type()->ToString();
+
 
     arrays.push_back(arr_ptr);
-    schema_vector.push_back(arrow::field(""+i, arr_ptr->type()));
+    schema_vector.push_back(arrow::field(std::to_string(i), arr_ptr->type()));
   }
 
   VLOG(0) << "ArrowWriter - Close - conversion to arrow arrays finished";
@@ -137,7 +115,14 @@ Status ArrowWriter::Close() {
   // write table to file:
   std::shared_ptr<arrow::io::FileOutputStream> file;
   ARROW_ASSIGN_CHECKED(file, arrow::io::FileOutputStream::Open(filename_, /*append=*/false));
-  CHECK_ARROW(arrow::ipc::feather::WriteTable(*table, file.get(), arrow::ipc::feather::WriteProperties::Defaults()));
+  struct arrow::ipc::feather::WriteProperties wp = {
+      arrow::ipc::feather::kFeatherV2Version,
+      // Number of rows per intra-file chunk. Use smaller chunksize when you need faster random row access
+      1LL << 8,
+      getArrowCompressionType(),
+      arrow::util::kUseDefaultCompressionLevel
+  };
+  CHECK_ARROW(arrow::ipc::feather::WriteTable(*table, file.get(), wp));
   CHECK_ARROW(file->Close());
 
   VLOG(0) << "ArrowWriter - Close - written table to file";
