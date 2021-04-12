@@ -458,8 +458,7 @@ public:
       dims_ = dim_size.size();
       dim_size_ = dim_size;
       out_array_ = out_array;
-      current_row_ = 0;
-      empty_shape_ = false;
+      empty_shape_ = false; // TODO: implement empty_shape_
 
       VLOG(0) << "ArrowUtil - ConvertToArrowArrayImpl - Make - initialized values:"
                  "\nType: " << type->ToString() << "\ndims_: " << dims_ << "\ndim_size_[0]: " << dim_size_[0] << ""
@@ -490,8 +489,10 @@ protected:
 
       if(current_builder_idx == -1) {
         using value_type = typename DataTypeType::c_type;
-        value_type *data_batch = (value_type *) &(data_column_[current_row_][data_offset]);
+        value_type *data_batch = (value_type *) &(data_column_[data_idx][data_offset]);
         value_type a = data_batch[0];
+        VLOG(0) << "ArrowUtil - ConvertToArrowArrayImpl - fillData - "
+                   "\nFirst element of current data buffer: " << data_batch[0];
 
         ARROW_RETURN_NOT_OK(data_builder->AppendValues(data_batch, getDimSize(current_builder_idx)));
         data_offset += getDimSize(current_builder_idx) * sizeof(int32_t);
@@ -597,7 +598,6 @@ private:
     int dims_;
     std::vector<int> dim_size_;
     std::shared_ptr<arrow::Array>* out_array_;
-    int current_row_;
 };
 
 Status GetArrayFromData(std::shared_ptr<arrow::DataType> type, std::vector<char *>& data_column,
