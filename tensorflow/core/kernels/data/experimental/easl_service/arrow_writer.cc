@@ -80,6 +80,32 @@ Status ArrowWriter::Close() {
 
   VLOG(0) << "ArrowWriter - Close - invoked";
 
+  // TODO: same memory pool for all arrays.
+
+  // ---------------- test with own buffer data:
+  int32_t c_data1[1] = {1};
+  int32_t c_data2[1] = {2};
+  int32_t c_data3[1] = {3};
+
+
+  const char *data1 = (const char *) c_data1;
+  const char *data2 = (const char *) c_data2;
+  const char *data3 = (const char *) c_data3;
+
+  std::vector<const char *> data_column;
+  data_column.push_back(data1);
+  data_column.push_back(data2);
+  data_column.push_back(data3);
+  std::shared_ptr<arrow::Array> arr;
+  std::vector<int> dimensions = {};
+  std::shared_ptr<arrow::DataType> dt = arrow::int32();
+  TF_RETURN_IF_ERROR(ArrowUtil::GetArrayFromData(dt, data_column, dimensions, &arr));
+  VLOG(0) << arr->ToString() << "\n";
+  VLOG(0) << arr->type()->ToString();
+  VLOG(0) << "\n" << arr->length();
+
+  // ---------------- finish test with own buffer data:
+
   // get converted arrow array for each column:
   std::vector<std::shared_ptr<arrow::Array>> arrays;
   std::vector<std::shared_ptr<arrow::Field>> schema_vector;
@@ -90,9 +116,8 @@ Status ArrowWriter::Close() {
                      "col_dims_.size(): " << col_dims_.size();
 
     TF_RETURN_IF_ERROR(ArrowUtil::GetArrayFromData(arrow_dtypes_[i], tensor_data_[i], col_dims_[i], &arr_ptr));
-    VLOG(0) << "ArrowWriter - Close - conversion completed, arr_ptr: " << arr_ptr;
-    VLOG(0) << "ArrowWriter - Close - conversion completed: \n "
-                     "" << arr_ptr->ToString();
+//    VLOG(0) << "ArrowWriter - Close - conversion completed: \n "
+//                     "" << arr_ptr->ToString();
 
     arrays.push_back(arr_ptr);
     schema_vector.push_back(arrow::field(""+i, arr_ptr->type()));
@@ -144,6 +169,7 @@ Status ArrowWriter::WriteTensors(std::vector<Tensor> &tensors) {
     current_col_idx_ = (current_col_idx_ + 1) % ncols_;
 
     // TODO: ugly solution, find better way to keep data_buf reference (shared_ptr for example).
+    // this copies all the data every time.
     tensors_.push_back(t);
     // TODO: maybe track estimated memory usage and flush to file before using too much
   }
