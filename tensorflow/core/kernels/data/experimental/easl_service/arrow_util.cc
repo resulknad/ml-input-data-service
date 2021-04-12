@@ -507,9 +507,6 @@ public:
         VLOG(0) << "ArrowUtil - ConvertToArrowArrayImpl - Make - Passed data buffer (" << i << ":\n"
                    "" << binaryToString(8, data_column[i]); // 8 only for test purpose
       }
-                 "\nData batch binary contents (length= " << getDimSize(current_builder_idx) << ": \n"
-                 "" << binaryToString(getDimSize(current_builder_idx), (char *)data_batch);
-
       ARROW_RETURN_NOT_OK(type->Accept(this));
 
       return arrow::Status::OK();
