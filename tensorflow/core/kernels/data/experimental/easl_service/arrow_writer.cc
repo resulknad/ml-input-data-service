@@ -116,6 +116,7 @@ Status ArrowWriter::Close() {
 
   VLOG(0) << "ArrowWriter - Close - written table to file";
   tensor_data_.clear();
+  tensors_.clear();
   return Status::OK();
 }
 
@@ -141,6 +142,8 @@ Status ArrowWriter::WriteTensors(std::vector<Tensor> &tensors) {
     VLOG(0) << "ArrowWriter - WriteTensors - Added data_buffer to corresponding column " << current_col_idx_;
     current_col_idx_ = (current_col_idx_ + 1) % ncols_;
 
+    // TODO: ugly solution, find better way to keep data_buf reference.
+    tensors_.push_back(t);
     // TODO: maybe track estimated memory usage and flush to file before using too much
   }
   return Status::OK();

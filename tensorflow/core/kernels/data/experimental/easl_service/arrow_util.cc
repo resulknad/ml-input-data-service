@@ -498,7 +498,7 @@ public:
       dims_ = dim_size.size();
       dim_size_ = dim_size;
       out_array_ = out_array;
-      empty_shape_ = false; // TODO: implement empty_shape_
+      empty_shape_ = dims_ == 0;
 
       VLOG(0) << "ArrowUtil - ConvertToArrowArrayImpl - Make - initialized values:"
                  "\nType: " << type->ToString() << "\ndims_: " << dims_ << "\ndim_size_[0]: " << dim_size_[0] << ""
@@ -511,6 +511,9 @@ public:
 protected:
     // helper function to get the size of the current dimension, indexed by builder_idx (reversed to dim)
     size_t getDimSize(int builder_idx) {
+      if(empty_shape_) {
+        return 1;
+      }
       // -1 --> data builder --> dim_size_[dims_ - 1]
       // dims_ - 2 --> outermost tensor builder --> dim_size_[0]
       return dim_size_[dims_ - (builder_idx + 2)];
@@ -560,18 +563,29 @@ protected:
       std::shared_ptr<arrow::NumericBuilder<DataTypeType>> data_builder =
               std::make_shared<arrow::NumericBuilder<DataTypeType>>(pool);
 
-      // this means that all tensors only hold scalar values (no dimension)
-      // this is a special case where we don't delimit the individual tensors with an
-      // additional array level.
-      if(empty_shape_) {
-        VLOG(0) << "ArrowUtil - ConvertToArrowArrayImpl - NestedArray - empty_shape_ called";
-        // TODO: handle empty shape
-        return arrow::Status::NotImplemented(empty_shape_);
-      }
-
       // list of builders, one for each additional dimension (d-1) and one outermost
       // builder delimiting the data of each individual tensor
       std::vector<std::shared_ptr<arrow::ListBuilder>> builders;
+
+      // this means that all tensors only hold scalar values (no dimension)
+      // this is a special case where we don't delimit the individual tensors with an
+      // additional array level.
+      if(empty_shape_) {  // TODO: test implementation
+        VLOG(0) << "ArrowUtil - ConvertToArrowArrayImpl - NestedArray - empty_shape_ called";
+
+        for(int i = 0; i < data_column_.size(); i++) {
+          int data_offset = 0; // current data offset at data_column[data_idx]
+          RETURN_NOT_OK(fillData(i, data_offset, builders, data_builder, -1));
+        }
+
+        // finalize and return the array containing all tensors of the column
+        std::shared_ptr<arrow::Array> arrow_array;
+        RETURN_NOT_OK(data_builder->Finish(&arrow_array));
+        (*out_array_).swap(arrow_array);
+
+        return arrow::Status::OK();
+      }
+
       std::shared_ptr<arrow::ListBuilder> b0 =
               std::make_shared<arrow::ListBuilder>(pool, data_builder);
       builders.push_back(b0);
