@@ -562,7 +562,7 @@ protected:
       std::shared_ptr<arrow::Array> arrow_array;
       RETURN_NOT_OK(builders[dims_-1]->Finish(&arrow_array));
 
-      VLOG(0) << "ArrowUtil - ConvertToArrowArrayImpl - NestedArray - successfully finished array. Size: " << arrow_array->length();
+      VLOG(0) << "ArrowUtil - ConvertToArrowArrayImpl - NestedArray - successfully finished array. Size: " << arrow_array->ToString();
 
 
       (*out_array_).swap(arrow_array);

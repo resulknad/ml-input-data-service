@@ -16,7 +16,7 @@ void ArrowReader::PrintTestLog() {
 
 ArrowReader::ArrowReader(Env *env, const std::string &filename,
                      const string &compression_type, const DataTypeVector &dtypes)
-     : env_(env), filename_(filename), compression_type_(compression_type), dtypes_(dtypes){
+     : env_(env), filename_(filename), compression_type_(compression_type), dtypes_(dtypes) {
 
   // initialize internal data structures
   this->current_batch_idx_ = -1; // gets increased upon every invocation of read_tensors

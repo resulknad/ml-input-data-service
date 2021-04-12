@@ -86,6 +86,7 @@ Status ArrowWriter::Close() {
     VLOG(0) << "ArrowWriter - Close - converting " << i << "th column to array";
 
     TF_RETURN_IF_ERROR(ArrowUtil::GetArrayFromData(arrow_dtypes_[i], tensor_data_[i], col_dims_[i], &arr_ptr));
+    VLOG(0) << "ArrowWriter - Close - conversion completed, arr_ptr: " << arr_ptr;
     VLOG(0) << "ArrowWriter - Close - conversion completed: \n "
                      "" << arr_ptr->ToString();
 
