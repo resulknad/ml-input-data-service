@@ -535,8 +535,8 @@ protected:
         value_type *data_batch = (value_type *) &(data_column_[data_idx][data_offset]);
         value_type a = data_batch[0];
         VLOG(0) << "ArrowUtil - ConvertToArrowArrayImpl - fillData - "
-                   "\nData batch binary contents (length= " << getDimSize(current_builder_idx) << ": \n"
-                   "" << binaryToString(getDimSize(current_builder_idx), (char *)data_batch);
+                   "\nData batch binary contents (length= " << getDimSize(current_builder_idx) * sizeof(value_type) << ": \n"
+                   "" << binaryToString(getDimSize(current_builder_idx) * sizeof(value_type), (char *)data_batch);
 
         ARROW_RETURN_NOT_OK(data_builder->AppendValues(data_batch, getDimSize(current_builder_idx)));
         data_offset += getDimSize(current_builder_idx) * sizeof(value_type);
