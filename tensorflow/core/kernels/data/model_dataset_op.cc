@@ -198,9 +198,19 @@ class ModelDatasetOp::Dataset : public DatasetBase {
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       // Start the optimization thread if necessary
       if (!model_thread_) {
-        model_thread_ =
-            ctx->StartThread("tf_data_model", [this]() { ModelThread(); });
+        model_thread_ = ctx->StartThread("tf_data_model", [this]() {
+          Status status =
+              model_->OptimizeLoop(dataset()->algorithm_, cpu_budget_,
+                                   ram_budget_, cancellation_manager_.get());
+          if (!status.ok()) {
+            LOG(WARNING) << "Optimization loop failed: " << status.ToString();
+          }
+        });
       }
+
+      // NOTE(damien-aymon) The modelThread method has been removed, the
+      // functionality has been pushed to the OptimizeLoop method of the model
+      
       // Start the metrics thread if necessary
       // if (!metrics_thread_) {
       //   std::shared_ptr<IteratorContext> new_ctx =
@@ -262,47 +272,6 @@ class ModelDatasetOp::Dataset : public DatasetBase {
       }
     }
 
-    void ModelThread() {
-      int64 last_optimization_ms = 0;
-      int64 optimization_period_ms = 10;
-      int64 current_time_ms = EnvTime::NowMicros() / EnvTime::kMillisToMicros;
-      while (true) {
-        {
-          mutex_lock l(mu_);
-          while (!cancelled_ && last_optimization_ms + optimization_period_ms >
-              current_time_ms) {
-            auto wait_ms =
-                last_optimization_ms + optimization_period_ms - current_time_ms;
-            VLOG(2) << "Waiting for " << wait_ms << " ms.";
-            cond_var_.wait_for(l, std::chrono::milliseconds(wait_ms));
-            current_time_ms = EnvTime::NowMicros() / EnvTime::kMillisToMicros;
-          }
-          if (cancelled_) return;
-        }
-        double model_input_time;
-        {
-          tf_shared_lock l(mu_);
-          model_input_time = SelfInputTime();
-        }
-
-        int64 optimization_start_us = EnvTime::NowMicros();
-        model_->Optimize(dataset()->algorithm_, cpu_budget_, ram_budget_,
-            /*model_input_time=*/0);
-        VLOG(2) << "Optimized for "
-                << (EnvTime::NowMicros() - optimization_start_us) << " us.";
-
-        // Exponentially increase the period of running the optimization
-        // until a threshold is reached.
-        if (optimization_period_ms != kOptimizationPeriodThresholdMs) {
-          optimization_period_ms = std::min(optimization_period_ms << 1,
-                                            kOptimizationPeriodThresholdMs);
-        }
-        current_time_ms = EnvTime::NowMicros() / EnvTime::kMillisToMicros;
-        last_optimization_ms = current_time_ms;
-        model_->FlushMetrics();
-      }
-    }
-
     void RecordInput(int64 time_nanos) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       if (last_output_time_ != 0) {
         DCHECK_LE(last_output_time_, time_nanos);
@@ -324,22 +293,23 @@ class ModelDatasetOp::Dataset : public DatasetBase {
     }
 
     mutex mu_;
+    condition_variable cond_var_;
     std::shared_ptr<model::Model> model_;
     // Controls cancellation of `model_thread_`. Must be ordered before
     // `model_thread_` so that `model_thread_` is destroyed first.
     std::unique_ptr<CancellationManager> cancellation_manager_;
     std::unique_ptr<Thread> model_thread_ TF_GUARDED_BY(mu_);
-<<<<<<< HEAD
     std::unique_ptr<Thread> metrics_thread_ TF_GUARDED_BY(mu_);
     bool cancelled_ TF_GUARDED_BY(mu_) = false;
-=======
->>>>>>> 9ad4f38982f8fe4559422d97b560894987a76ad6
     std::unique_ptr<IteratorBase> input_impl_;
     int64 num_input_events_ TF_GUARDED_BY(mu_) = 0;
     int64 input_time_ TF_GUARDED_BY(mu_) = 0;
     int64 last_output_time_ TF_GUARDED_BY(mu_) = 0;
     const int64 cpu_budget_;
     const int64 ram_budget_;
+
+    // TODO(DanGraur): Stores the latest metrics
+    absl::flat_hash_map<string, model::Node::MetricDump> latest_metrics;
   };
 
   const DatasetBase* input_;

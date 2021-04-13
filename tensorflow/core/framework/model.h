@@ -773,7 +773,8 @@ class Model {
   ModelParameters CollectTunableParameters(std::shared_ptr<Node> node);
 
   // Flushes metrics recorded by the model.
-  void FlushMetrics() TF_LOCKS_EXCLUDED(mu_);
+  // TODO (damien-aymon) should this method be public or private?
+  //void FlushMetrics() TF_LOCKS_EXCLUDED(mu_);
 
   // This optimization algorithm starts by setting all tunable parallelism
   // parameters to the minimum value. It then repeatedly identifies the
