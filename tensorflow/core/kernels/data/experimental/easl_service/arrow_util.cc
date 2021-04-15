@@ -78,9 +78,9 @@ public:
                       int64 batch_size, ::tensorflow::DataType* out_dtype,
                       TensorShape* out_shape) {
       VLOG(0) << "ArrowUtil - AssignSpecImpl - AssignSpec - Invoked";
-      i_ = i;
+      i_ = i;  // we want to get i-th element of array -> tensor data
       batch_size_ = batch_size;
-      out_shape_ = out_shape;
+      out_shape_ = out_shape;  //out_shape_points to shape needed for allocation
       out_dtype_ = out_dtype;
 
       // batch_size of 0 indicates 1 record at a time, no batching
@@ -88,7 +88,7 @@ public:
         out_shape_->AddDim(batch_size_);
       }
 
-      CHECK_ARROW(array->Accept(this));
+      CHECK_ARROW(array->Accept(this));  // visit all types of arrow arrays
       return Status::OK();
     }
 
@@ -123,13 +123,19 @@ protected:
 #undef VISIT_PRIMITIVE
 
     virtual arrow::Status Visit(const arrow::ListArray& array) override {
+      // values in the outermost array are tensors with their corresponding dimensionality and can
+      // be indexed by i_. if we flatten first dimension, value_offset(i_) gives the new idx.
       int32 values_offset = array.value_offset(i_);
-      int32 array_length = array.value_length(i_);
+       int32 array_length = array.value_length(i_); // #elements in values array belonging to i_
 
       // what is this for? --> probably number of dimensions?
-      int32 num_arrays = 2;
+      int32 num_arrays = 1;
 
-      VLOG(0) << "ArrowUtil - AssignSpecImpl - Visit(ListArray) - Invoked";
+      VLOG(0) << "ArrowUtil - AssignSpecImpl - Visit(ListArray) - Invoked\n"
+                 "values_offset: " << values_offset << "\n"
+                 "length of element " << i_ << ": " << array_length << "\n"
+                 "Array type " << array.type()->ToString() << "\n"
+                  "Array To String: " << array.ToString();
 
       // If batching tensors, arrays must be same length
       if (batch_size_ > 0) {
@@ -142,7 +148,8 @@ protected:
         }
       }
 
-      // Add diminsion for array
+      // Add dimension for array
+      // --> first time, this is going to be null --> only want to add dim for elements of array
       if (out_shape_ != nullptr) {
         VLOG(0) << "ArrowUtil - AssignSpecImpl - Visit(ListArray) - add dimension for array."
                    "\n Adding Dimension Size: " << array_length;
@@ -150,9 +157,15 @@ protected:
       }
 
       // Prepare the array data buffer and visit the array slice
+      // this function returns an array where the outermost dimension is flattened
       std::shared_ptr<arrow::Array> values = array.values();
       std::shared_ptr<arrow::Array> element_values =
               values->Slice(values_offset, array_length * num_arrays);
+
+
+      VLOG(0) << "ArrowUtil - AssignSpecImpl - Visit(ListArray) - Returning with"
+                 "element_values type = " << element_values->type()->ToString();
+
       return element_values->Accept(this);
     }
 
@@ -212,20 +225,23 @@ protected:
     template <typename ArrayType>
     arrow::Status VisitFixedWidth(const ArrayType& array) {
 
-      VLOG(0) << "ArrowUtil - ArrowAssignTensorImpl - VisitFixedWidth - Invoked\n"
-                 "ArrayType: " << array.type()->ToString() << "\n"
-                 "ArrayContent: " << array.ToString();
 
       const auto& fw_type =
               static_cast<const arrow::FixedWidthType&>(*array.type());
       const int64_t type_width = fw_type.bit_width() / 8;
+
+      VLOG(0) << "ArrowUtil - ArrowAssignTensorImpl - VisitFixedWidth - Invoked\n"
+                 "ArrayType: " << array.type()->ToString() << "\n"
+                 "ArrayContent: " << array.ToString() << "\n"
+                 "Type Width: " << type_width << "\n";
 
       // TODO: verify tensor is correct shape, arrow array is within bounds
 
       // Primitive Arrow arrays have validity and value buffers, currently
       // only arrays with null count == 0 are supported, so only need values here
       static const int VALUE_BUFFER = 1;
-      auto values = array.data()->buffers[VALUE_BUFFER];
+      // same as array.values()
+      auto values = array.data()->buffers[VALUE_BUFFER];  // only works for primitive arrays!
       if (values == NULLPTR) {
         return arrow::Status::Invalid(
                 "Received an Arrow array with a NULL value buffer");
