@@ -308,23 +308,27 @@ Status Reader::ReaderThread(Env *env, uint64 writer_id, int64 version,
       int64 count = 0;
       bool eof = false;
       while (!eof) {
+        std::string t_str = "Reading Tensors:";
         std::vector<Tensor> tensors;
         Status s = isArrow ? arrowReader->ReadTensors(&tensors) : reader->ReadTensors(&tensors);
         if (errors::IsOutOfRange(s)) {
-          eof = true;
-          break;
+          eof = true;  // can't break because of TFRecordReader.
+        } else if(s != Status::OK()) {
+          LOG(INFO) << "Internal error in ArrowReader / TFRecordReader";
+          return s;
         }
-        std::string t_str = "Reading Tensors:";
 
-        //--------------DEBUG
-        for(Tensor t : tensors) {
-          t_str += "\n\t"+t.DebugString(t.NumElements());
+        if(!tensors.empty()) {
+          Add(tensors);
+
+          //--------------DEBUG
+          for(Tensor t : tensors) {
+            t_str += "\n\t"+t.DebugString(t.NumElements());
+          }
+
+          LOG(INFO) << "(Reader_" << writer_id << ") Read tensors (count = " << count << "): " << t_str;
+          //--------------DEBUG
         }
-        LOG(INFO) << "(Reader_" << writer_id << ") Read tensors (count = " << count << "): " << t_str;
-        //--------------DEBUG
-
-        Add(tensors);
-        count++;
       }
       LOG(INFO) << "(Reader_" << writer_id << ") Finished reading file " << file_path
       << " with " << count << " elements.";

@@ -65,17 +65,19 @@ Status ArrowReader::ReadTensors(std::vector<Tensor> *read_tensors) {
                        "Array length (num elements): " << arr->length() << "\n"
                        "Array Type: " << arr->type()->ToString() << "\n"
                        "Array Contents: " << arr->ToString();
-      DataType output_type = this->dtypes_[j]; // TODO: probably need to implicitly convert type --> len(dtypes_) != num_columns()
+      DataType output_type = this->dtypes_[j];
 
       // get the TensorShape for the column entry:
       TensorShape output_shape = TensorShape({});
+      // TODO: don't do this for every tensor
       TF_RETURN_IF_ERROR(ArrowUtil::AssignShape(arr, i, 0, &output_shape));  //batch_size = 0
+      VLOG(0) << "ArrowReader - ReadTensors - Successfully Extracted Shape";
 
       // Allocate a new tensor and assign Arrow data to it
       Tensor tensor(output_type, output_shape); // this constructor will use the default_cpu_allocator.
       TF_RETURN_IF_ERROR(ArrowUtil::AssignTensor(arr, i, &tensor));
       read_tensors->emplace_back(std::move(tensor));
-      VLOG(0) << "ArrowReader - ReadTensors - Successfully Read Tensor: " << tensor.DebugString(tensor.NumElements());
+      VLOG(0) << "ArrowReader - ReadTensors - Successfully assigned tensor";
     }
   }
 

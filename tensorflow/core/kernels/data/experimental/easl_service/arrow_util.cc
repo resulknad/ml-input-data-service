@@ -275,18 +275,26 @@ return VisitFixedWidth(array);                          \
 #undef VISIT_FIXED_WITH
 
     virtual arrow::Status Visit(const arrow::ListArray& array) override {
-      VLOG(0) << "ArrowUtil - ArrowAssignTensorImpl - Visit(ListArray) - Invoked";
+      VLOG(0) << "ArrowUtil - ArrowAssignTensorImpl - Visit(ListArray) - Invoked with array:\n" << array.ToString();
 
       int32 values_offset = array.value_offset(i_);   // i_ is always 0 except for the outermost call
       int32 curr_array_length = array.value_length(i_);
       int32 num_arrays = 1;
       auto shape = out_tensor_->shape();
 
+      VLOG(0) << "ArrowUtil - ArrowAssignTensorImpl - Visit(ListArray) - Invoked\n"
+                 "values_offset: " << values_offset << "\n"
+                 "length of element i=" << i_ << ": " << curr_array_length << "\n"
+                 "Array type " << array.type()->ToString() << "\n"
+                 "Array To String: " << array.ToString();
+
       // If batching tensors, arrays must be same length
       if (shape.dims() > 1) {
         num_arrays = shape.dim_size(0);
         for (int64_t j = i_; j < i_ + num_arrays; ++j) {
           if (array.value_length(j) != curr_array_length) {
+            VLOG(0) << "ArrowUtil - ArrowAssignTensorImpl - Visit(ListArray) - Error, arrays not same length\n";
+
             return arrow::Status::Invalid(
                     "Batching variable-length arrays is unsupported");
           }
@@ -301,6 +309,12 @@ return VisitFixedWidth(array);                          \
       std::shared_ptr<arrow::Array> values = array.values();
       std::shared_ptr<arrow::Array> element_values =
               values->Slice(values_offset, curr_array_length * num_arrays);
+
+      VLOG(0) << "ArrowUtil - ArrowAssignTensorImpl - Visit(ListArray) - element_values:\n"
+                 "type: " << element_values->type()->ToString() << "\n"
+                 "Array values type " << values->type()->ToString() << "\n"
+                 "Array To String: " << element_values->ToString();
+
       auto result = element_values->Accept(this);
 
       // Reset state variables for next time
