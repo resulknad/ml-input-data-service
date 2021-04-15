@@ -162,10 +162,11 @@ protected:
       std::shared_ptr<arrow::Array> element_values =
               values->Slice(values_offset, array_length * num_arrays);
 
-
       VLOG(0) << "ArrowUtil - AssignSpecImpl - Visit(ListArray) - Returning with"
                  "element_values type = " << element_values->type()->ToString();
 
+      // for subsequent dimensions always look at first element
+      i_ = 0;
       return element_values->Accept(this);
     }
 
@@ -248,7 +249,7 @@ protected:
       }
 
       const void* src =
-              (values->data() + array.data()->offset * type_width) + i_ * type_width;
+              (values->data() + array.data()->offset * type_width) + i_ * type_width;   // i_ is 0 if from list_array
       void* dst = const_cast<char*>(out_tensor_->tensor_data().data());
       std::memcpy(dst, src, out_tensor_->NumElements() * type_width);
 
@@ -276,7 +277,7 @@ return VisitFixedWidth(array);                          \
     virtual arrow::Status Visit(const arrow::ListArray& array) override {
       VLOG(0) << "ArrowUtil - ArrowAssignTensorImpl - Visit(ListArray) - Invoked";
 
-      int32 values_offset = array.value_offset(i_);
+      int32 values_offset = array.value_offset(i_);   // i_ is always 0 except for the outermost call
       int32 curr_array_length = array.value_length(i_);
       int32 num_arrays = 1;
       auto shape = out_tensor_->shape();
