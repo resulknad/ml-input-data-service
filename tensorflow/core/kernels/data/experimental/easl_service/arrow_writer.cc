@@ -112,7 +112,9 @@ Status ArrowWriter::WriteTensors(std::vector<Tensor> &tensors) {
     }
 
     if(arrow_dtypes_[current_col_idx_]->Equals(arrow::utf8())) {
-      VLOG(0) << "Processing String Tensor:" << std::string(t.tensor_data().data(), t.tensor_data().length());
+      VLOG(0) << "Processing String Tensor:\n" << std::string(t.tensor_data().data(), t.tensor_data().length());
+    } else {
+      VLOG(0) << "Processing " << arrow_dtypes_[current_col_idx_]->ToString() << " Tensor:" << std::string(t.tensor_data().data(), t.tensor_data().length());
     }
 
     // accumulate buffers in correct column:
