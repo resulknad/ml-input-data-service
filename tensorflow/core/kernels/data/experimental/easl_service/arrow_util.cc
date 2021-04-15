@@ -275,7 +275,7 @@ return VisitFixedWidth(array);                          \
 #undef VISIT_FIXED_WITH
 
     virtual arrow::Status Visit(const arrow::ListArray& array) override {
-      VLOG(0) << "ArrowUtil - ArrowAssignTensorImpl - Visit(ListArray) - Invoked with array:\n" << array.ToString();
+      VLOG(0) << "ArrowUtil - ArrowAssignTensorImpl - Visit(ListArray) - Invoked";
 
       int32 values_offset = array.value_offset(i_);   // i_ is always 0 except for the outermost call
       int32 curr_array_length = array.value_length(i_);
@@ -287,19 +287,6 @@ return VisitFixedWidth(array);                          \
                  "length of element i=" << i_ << ": " << curr_array_length << "\n"
                  "Array type " << array.type()->ToString() << "\n"
                  "Array To String: " << array.ToString();
-
-      // If batching tensors, arrays must be same length
-      if (shape.dims() > 1) {
-        num_arrays = shape.dim_size(0);
-        for (int64_t j = i_; j < i_ + num_arrays; ++j) {
-          if (array.value_length(j) != curr_array_length) {
-            VLOG(0) << "ArrowUtil - ArrowAssignTensorImpl - Visit(ListArray) - Error, arrays not same length\n";
-
-            return arrow::Status::Invalid(
-                    "Batching variable-length arrays is unsupported");
-          }
-        }
-      }
 
       // Save current index and swap after array is copied
       int32 tmp_index = i_;
