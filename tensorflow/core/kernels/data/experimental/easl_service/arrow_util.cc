@@ -77,7 +77,7 @@ public:
     Status AssignSpec(std::shared_ptr<arrow::Array> array, int64 i,
                       int64 batch_size, ::tensorflow::DataType* out_dtype,
                       TensorShape* out_shape) {
-      VLOG(0) << "ArrowUtil - AssignSpecImpl - AssignSpec - Invoked";
+
       i_ = i;  // we want to get i-th element of array -> tensor data
       batch_size_ = batch_size;
       out_shape_ = out_shape;  //out_shape_points to shape needed for allocation
@@ -128,31 +128,9 @@ protected:
       int32 values_offset = array.value_offset(i_);
        int32 array_length = array.value_length(i_); // #elements in values array belonging to i_
 
-      // what is this for? --> probably number of dimensions?
-      int32 num_arrays = 1;
-
-      VLOG(0) << "ArrowUtil - AssignSpecImpl - Visit(ListArray) - Invoked\n"
-                 "values_offset: " << values_offset << "\n"
-                 "length of element " << i_ << ": " << array_length << "\n"
-                 "Array type " << array.type()->ToString() << "\n"
-                  "Array To String: " << array.ToString();
-
-      // If batching tensors, arrays must be same length
-      if (batch_size_ > 0) {
-        num_arrays = batch_size_;
-        for (int64 j = i_; j < i_ + num_arrays; ++j) {
-          if (array.value_length(j) != array_length) {
-            return arrow::Status::Invalid(
-                    "Batching variable-length arrays is unsupported");
-          }
-        }
-      }
-
       // Add dimension for array
       // --> first time, this is going to be null --> only want to add dim for elements of array
       if (out_shape_ != nullptr) {
-        VLOG(0) << "ArrowUtil - AssignSpecImpl - Visit(ListArray) - add dimension for array."
-                   "\n Adding Dimension Size: " << array_length;
         out_shape_->AddDim(array_length);
       }
 
@@ -160,10 +138,7 @@ protected:
       // this function returns an array where the outermost dimension is flattened
       std::shared_ptr<arrow::Array> values = array.values();
       std::shared_ptr<arrow::Array> element_values =
-              values->Slice(values_offset, array_length * num_arrays);
-
-      VLOG(0) << "ArrowUtil - AssignSpecImpl - Visit(ListArray) - Returning with"
-                 "element_values type = " << element_values->type()->ToString();
+              values->Slice(values_offset, array_length);
 
       // for subsequent dimensions always look at first element
       i_ = 0;
@@ -197,7 +172,6 @@ public:
 
     Status AssignTensor(std::shared_ptr<arrow::Array> array, int64 i,
                         Tensor* out_tensor) {
-      VLOG(0) << "ArrowUtil - ArrowAssignTensorImpl - AssignTensor - Invoked";
       i_ = i;
       out_tensor_ = out_tensor;
       if (array->null_count() != 0) {
@@ -230,13 +204,6 @@ protected:
       const auto& fw_type =
               static_cast<const arrow::FixedWidthType&>(*array.type());
       const int64_t type_width = fw_type.bit_width() / 8;
-
-      VLOG(0) << "ArrowUtil - ArrowAssignTensorImpl - VisitFixedWidth - Invoked\n"
-                 "ArrayType: " << array.type()->ToString() << "\n"
-                 "ArrayContent: " << array.ToString() << "\n"
-                 "Type Width: " << type_width << "\n";
-
-      // TODO: verify tensor is correct shape, arrow array is within bounds
 
       // Primitive Arrow arrays have validity and value buffers, currently
       // only arrays with null count == 0 are supported, so only need values here
@@ -279,14 +246,6 @@ return VisitFixedWidth(array);                          \
 
       int32 values_offset = array.value_offset(i_);   // i_ is always 0 except for the outermost call
       int32 curr_array_length = array.value_length(i_);
-      int32 num_arrays = 1;
-      auto shape = out_tensor_->shape();
-
-      VLOG(0) << "ArrowUtil - ArrowAssignTensorImpl - Visit(ListArray) - Invoked\n"
-                 "values_offset: " << values_offset << "\n"
-                 "length of element i=" << i_ << ": " << curr_array_length << "\n"
-                 "Array type " << array.type()->ToString() << "\n"
-                 "Array To String: " << array.ToString();
 
       // Save current index and swap after array is copied
       int32 tmp_index = i_;
@@ -295,12 +254,7 @@ return VisitFixedWidth(array);                          \
       // Prepare the array data buffer and visit the array slice
       std::shared_ptr<arrow::Array> values = array.values();
       std::shared_ptr<arrow::Array> element_values =
-              values->Slice(values_offset, curr_array_length * num_arrays);
-
-      VLOG(0) << "ArrowUtil - ArrowAssignTensorImpl - Visit(ListArray) - element_values:\n"
-                 "type: " << element_values->type()->ToString() << "\n"
-                 "Array values type " << values->type()->ToString() << "\n"
-                 "Array To String: " << element_values->ToString();
+              values->Slice(values_offset, curr_array_length);
 
       auto result = element_values->Accept(this);
 

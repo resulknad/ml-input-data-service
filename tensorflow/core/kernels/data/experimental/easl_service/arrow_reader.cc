@@ -61,10 +61,6 @@ Status ArrowReader::ReadTensors(std::vector<Tensor> *read_tensors) {
   for(int i = 0; i < current_batch_->num_rows(); i++) {
     for(int j = 0; j < current_batch_->num_columns(); j++) {
       std::shared_ptr<arrow::Array> arr = current_batch_->column(j);
-      VLOG(0) << "ArrowReader - ReadTensors - Reading entry (" << i << ", " << j << ") of current_batch_:\n"
-                       "Array length (num elements): " << arr->length() << "\n"
-                       "Array Type: " << arr->type()->ToString() << "\n"
-                       "Array Contents: " << arr->ToString();
       DataType output_type = this->dtypes_[j];
 
       // get the TensorShape for the column entry:

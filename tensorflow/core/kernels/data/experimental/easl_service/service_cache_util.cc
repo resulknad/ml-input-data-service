@@ -321,14 +321,6 @@ Status Reader::ReaderThread(Env *env, uint64 writer_id, int64 version,
 
         if(!tensors.empty()) {
           Add(tensors);
-
-          //--------------DEBUG
-          for(Tensor t : tensors) {
-            t_str += "\n\t"+t.DebugString(t.NumElements());
-          }
-
-          LOG(INFO) << "(Reader_" << writer_id << ") Read tensors (count = " << count << "): " << t_str;
-          //--------------DEBUG
         }
       }
       LOG(INFO) << "(Reader_" << writer_id << ") Finished reading file " << file_path
