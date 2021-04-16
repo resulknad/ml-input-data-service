@@ -264,12 +264,24 @@ return VisitFixedWidth(array);                          \
     }
 
     virtual arrow::Status Visit(const arrow::StringArray& array) override {
-      if (!array.IsNull(i_)) {
-        out_tensor_->scalar<tstring>()() = array.GetString(i_);
-      } else {
-        out_tensor_->scalar<tstring>()() = "";
+
+      int32 curr_array_length = array.length();
+
+      tstring* strings = reinterpret_cast<tstring*>(out_tensor_->data()); // TODO: check if this works!
+
+      VLOG(0) << "ArrowUtil - AssignTensor - Visit(StringArray) - array_length: " << curr_array_length << "\n";
+
+      for(int i = 0; i< curr_array_length; i++) {
+        strings[i] = tstring(array.GetString(i).data());
+        VLOG(0) << "ArrowUtil - AssignTensor - Visit(StringArray) - strings[i]: " << strings[i].data() << "\n";
+//        strings[i].assign(array.GetString(i).data());  // TODO: which option to choose
       }
-      return arrow::Status::OK();
+//      if (!array.IsNull(i_)) {
+//        out_tensor_->scalar<tstring>()() = array.GetString(i_);
+//      } else {
+//        out_tensor_->scalar<tstring>()() = "";
+//      }
+//      return arrow::Status::OK();
     }
 
 private:
