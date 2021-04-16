@@ -269,7 +269,8 @@ return VisitFixedWidth(array);                          \
 
       tstring* strings = reinterpret_cast<tstring*>(out_tensor_->data()); // TODO: check if this works!
 
-      VLOG(0) << "ArrowUtil - AssignTensor - Visit(StringArray) - array_length: " << curr_array_length << "\n";
+      VLOG(0) << "ArrowUtil - AssignTensor - Visit(StringArray) - array_length: " << curr_array_length << "\n"
+                       "Array to String: \n" << array.ToString();
 
       for(int i = 0; i< curr_array_length; i++) {
         strings[i] = tstring(array.GetString(i).data());
