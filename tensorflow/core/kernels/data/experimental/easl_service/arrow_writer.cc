@@ -112,20 +112,16 @@ Status ArrowWriter::WriteTensors(std::vector<Tensor> &tensors) {
     }
 
    if(arrow_dtypes_[current_col_idx_]->Equals(arrow::utf8())) {
-	        const char **data = (const char **) t.tensor_data().data();
-	             VLOG(0) << "Address of data buffer: " << data << "\n";
-	           VLOG(0) << "Processing String Tensor: length = " << t.tensor_data().length() << "\n";
-            VLOG(0) << "First 2 entries of data buffer interpreted as addresses:\n"
-                  "Addr 0: " << (void *) data[0] << "\n"
-                 "Addr 1: " << (void *) data[1] << "\n"
-                 "Addr 2: " << (void *) data[0] << "\n"
-                 "Addr 3: " << (void *) data[1] << "\n"
-                 "Addr 4: " << (void *) data[0] << "\n"
-                 "Addr 5: " << (void *) data[1] << "\n";
+	    // get string data for tensor
+      const tstring* str_data = reinterpret_cast<const tstring*>(t.data());
 
-      VLOG(0) << "Binary representation of entire buffer:\n"
-                   "" << ArrowUtil::binaryToString(t.tensor_data().length(), t.tensor_data().data()) << "\n";
-    }
+      // number of strings in tensor:
+      int64_t n_elements = t.NumElements();
+
+      for(int i = 0; i < n_elements; i++) {
+        VLOG(0) << "Element " << i << ": " << str_data[i].data() << "\n";
+      }
+   }
 
     // accumulate buffers in correct column:
     tensor_data_[current_col_idx_].push_back(t.tensor_data().data());
