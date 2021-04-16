@@ -112,9 +112,13 @@ Status ArrowWriter::WriteTensors(std::vector<Tensor> &tensors) {
     }
 
     if(arrow_dtypes_[current_col_idx_]->Equals(arrow::utf8())) {
-      VLOG(0) << "Processing String Tensor:\n" << std::string(t.tensor_data().data(), t.tensor_data().length());
-    } else {
-      VLOG(0) << "Processing " << arrow_dtypes_[current_col_idx_]->ToString() << " Tensor:" << std::string(t.tensor_data().data(), t.tensor_data().length());
+      const char **data = (const char **) t.tensor_data().data();
+      VLOG(0) << "Address of data buffer: " << data << "\n";
+      VLOG(0) << "Processing String Tensor: length = " << t.tensor_data().length() << "\n";
+      VLOG(0) << "First 2 entries of data buffer interpreted as addresses:\n"
+                 "Addr 0: " << (void *) data[0] << "\n"
+                 "Addr 1: " << (void *) data[1] << "\n";
+      VLOG(0) << "Following pointer at data[1]: " << data[1] << "\n";
     }
 
     // accumulate buffers in correct column:
