@@ -465,19 +465,19 @@ class ConvertToArrowArrayImpl : public arrow::TypeVisitor {
 public:
     arrow::Status Make(std::shared_ptr<arrow::DataType> type, std::vector<const char *>& data_column,
                        std::vector<int>& dim_size, std::shared_ptr<arrow::Array>* out_array) {
-      type_ = type;
       data_column_ = data_column;
       dims_ = dim_size.size();
       dim_size_ = dim_size;
       out_array_ = out_array;
       empty_shape_ = dims_ == 0;
+      pool_ = arrow::default_memory_pool();
 
       ARROW_RETURN_NOT_OK(type->Accept(this));
 
       return arrow::Status::OK();
     }
 protected:
-    // helper function to get the size of the current dimension, indexed by builder_idx (reversed to dim)
+// helper function to get the size of the current dimension, indexed by builder_idx (reversed to dim)
     size_t getDimSize(int builder_idx) {
       if(empty_shape_) {
         return 1;
@@ -487,17 +487,16 @@ protected:
       return dim_size_[dims_ - (builder_idx + 2)];
     }
 
-    template <typename DataTypeType>
+    template <typename c_type, typename builder_type>
     arrow::Status fillData(int data_idx, int& data_offset, std::vector<std::shared_ptr<arrow::ListBuilder>>& builders,
-                           std::shared_ptr<arrow::NumericBuilder<DataTypeType>>& data_builder, int current_builder_idx) {
+                           std::shared_ptr<builder_type>& data_builder, int current_builder_idx) {
 
       // base case of recursion. if current_builder_idx == -1 we use the data_builder to actually insert data.
       if(current_builder_idx == -1) {
-        using value_type = typename DataTypeType::c_type;
-        value_type *data_batch = (value_type *) &(data_column_[data_idx][data_offset]);
+        c_type *data_batch = (c_type *) (data_column_[data_idx] + (data_offset));
 
         ARROW_RETURN_NOT_OK(data_builder->AppendValues(data_batch, getDimSize(current_builder_idx)));
-        data_offset += getDimSize(current_builder_idx) * sizeof(value_type);
+        data_offset += getDimSize(current_builder_idx) * sizeof(c_type);
         return arrow::Status::OK();
       }
 
@@ -505,21 +504,15 @@ protected:
       std::shared_ptr<arrow::ListBuilder> current_builder = builders[current_builder_idx];
       for(int i = 0; i < getDimSize(current_builder_idx); i++) {
         ARROW_RETURN_NOT_OK(current_builder->Append());
-        ARROW_RETURN_NOT_OK(fillData<DataTypeType>(data_idx, data_offset, builders,
-                data_builder, current_builder_idx-1));
+        ARROW_RETURN_NOT_OK( (fillData<c_type, builder_type>(data_idx, data_offset, builders,
+                data_builder, current_builder_idx-1)) );
       }
 
       return arrow::Status::OK();
     }
 
-    template <typename DataTypeType>
-    arrow::Status getNestedArray() {
-
-      arrow::MemoryPool* pool = arrow::default_memory_pool(); // same for all table columns
-
-      // data builder for underlying primitive data type of tensor
-      std::shared_ptr<arrow::NumericBuilder<DataTypeType>> data_builder =
-              std::make_shared<arrow::NumericBuilder<DataTypeType>>(pool);
+    template <typename c_type, typename builder_type>
+    arrow::Status getNestedArray(std::shared_ptr<builder_type>& data_builder) {
 
       // list of builders, one for each additional dimension (d-1) and one outermost
       // builder delimiting the data of each individual tensor
@@ -529,27 +522,25 @@ protected:
       // this is a special case where we don't delimit the individual tensors with an
       // additional array level.
       if(empty_shape_) {
-
         for(int i = 0; i < data_column_.size(); i++) {
           int data_offset = 0; // current data offset at data_column[data_idx]
-          RETURN_NOT_OK(fillData(i, data_offset, builders, data_builder, -1));
+          RETURN_NOT_OK( (fillData<c_type, builder_type>(i, data_offset, builders, data_builder, -1)) );
         }
 
         // finalize and return the array containing all tensors of the column
         std::shared_ptr<arrow::Array> arrow_array;
         RETURN_NOT_OK(data_builder->Finish(&arrow_array));
         *out_array_ = arrow_array;
-
         return arrow::Status::OK();
       }
 
       // construct builder dependencies
       std::shared_ptr<arrow::ListBuilder> b0 =
-              std::make_shared<arrow::ListBuilder>(pool, data_builder);
+              std::make_shared<arrow::ListBuilder>(pool_, data_builder);
       builders.push_back(b0);
       for(int i = 0; i < dims_ - 1; i++) {
         std::shared_ptr<arrow::ListBuilder> prev = builders.back();
-        std::shared_ptr<arrow::ListBuilder> b = std::make_shared<arrow::ListBuilder>(pool, prev);
+        std::shared_ptr<arrow::ListBuilder> b = std::make_shared<arrow::ListBuilder>(pool_, prev);
         builders.push_back(b);
       }
 
@@ -562,8 +553,8 @@ protected:
         int data_offset = 0; // current data offset at data_column[data_idx]
         // feed data to data builder and build shape with list builders corresponding to tensor
         // if dims_ - 2 is negative, we only use the data_builder (no additional nestedness).
-        RETURN_NOT_OK(fillData<DataTypeType>(
-                i, data_offset, builders, data_builder, dims_ - 2));
+        RETURN_NOT_OK( (fillData<c_type, builder_type>(
+                i, data_offset, builders, data_builder, dims_ - 2)) );
       }
 
 
@@ -577,12 +568,17 @@ protected:
       return arrow::Status::OK();
     }
 
-#define VISIT_PRIMITIVE(TYPE)                         \
-virtual arrow::Status Visit(const TYPE& type) override {   \
-  return getNestedArray<TYPE>();                    \
+#define VISIT_PRIMITIVE(TYPE)                                               \
+virtual arrow::Status Visit(const TYPE& type) override {                    \
+using c_type = typename TYPE::c_type;                                   \
+using builder_type = arrow::NumericBuilder<TYPE>;                       \
+std::shared_ptr<builder_type> n =                                       \
+              std::make_shared<builder_type>(pool_);                \
+std::cout << "Numeric builder type: " << n->type()->ToString() << "\n"; \
+return getNestedArray<c_type, builder_type>(n);                         \
 }
 
-//    VISIT_PRIMITIVE(BooleanType)
+// Visit numerical values
     VISIT_PRIMITIVE(arrow::Int8Type)
     VISIT_PRIMITIVE(arrow::Int16Type)
     VISIT_PRIMITIVE(arrow::Int32Type)
@@ -595,20 +591,38 @@ virtual arrow::Status Visit(const TYPE& type) override {   \
     VISIT_PRIMITIVE(arrow::FloatType)
     VISIT_PRIMITIVE(arrow::DoubleType)
 
-    // TODO: visit string
-    // VISIT_PRIMITIVE(arrow::StringType)
+    virtual arrow::Status Visit(const arrow::StringType& type) override {
+      using c_type = const char *;
+      using builder_type = arrow::StringBuilder;
+      std::shared_ptr<builder_type> s = std::make_shared<builder_type>(pool_);
+      std::cout << "String builder type: " << s->type()->Equals(arrow::utf8()) << "\n"; // ret 1
+
+      return getNestedArray<c_type, builder_type>(s);
+    }
+
+    virtual arrow::Status Visit(const arrow::BooleanType& type) override {
+      using c_type = const uint8_t;
+      using builder_type = arrow::BooleanBuilder;
+      std::shared_ptr<builder_type> b = std::make_shared<builder_type>(pool_);
+      std::cout << "Boolean builder type: " << b->type()->ToString() << "\n";
+
+      return getNestedArray<c_type, builder_type>(b);
+    }
 
 private:
     bool empty_shape_;
-    std::shared_ptr<arrow::DataType> type_;
+
+// for numerical data
     std::vector<const char *> data_column_;
+
+    arrow::MemoryPool* pool_;
     int dims_;
     std::vector<int> dim_size_;
     std::shared_ptr<arrow::Array>* out_array_;
 };
 
 arrow::Status GetArrayFromData(std::shared_ptr<arrow::DataType> type, std::vector<const char *>& data_column,
-                        std::vector<int>& dim_size, std::shared_ptr<arrow::Array>* out_array) {
+                               std::vector<int>& dim_size, std::shared_ptr<arrow::Array>* out_array) {
   ConvertToArrowArrayImpl visitor; // use visitor pattern to cover all types
   return visitor.Make(type, data_column, dim_size, out_array);
 }

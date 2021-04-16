@@ -37,10 +37,13 @@ private:
     int32_t ncols_;
     int32_t current_col_idx_;
 
-    //initially false, true after first row has been read (implicitly get TensorShape)
+    // initially false, true after first row has been read (implicitly get TensorShape)
     bool dims_initialized_;
     std::vector<std::vector<int>> col_dims_;
     std::vector<std::vector<const char *>> tensor_data_;
+
+    // memory allocator for string buffers
+    Allocator* string_allocator_;
 
     // prevents memory pool from de-allocating tensor data buffs
     std::deque<Tensor> tensors_;

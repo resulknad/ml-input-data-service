@@ -24,6 +24,9 @@ Status ArrowWriter::Create(Env *env, const std::string &filename,
   this->current_col_idx_ = 0;
   this->dims_initialized_ = false;
 
+  // default CPU_Allocator
+  string_allocator_ = cpu_allocator(port::kNUMANoAffinity);
+
   // Get Arrow Data Types
   for(int i = 0; i < dtypes_.size(); i++) {
     std::shared_ptr<arrow::DataType> arrow_dt;
@@ -65,6 +68,12 @@ Status ArrowWriter::Close() {
                      "\nArray:\n" << arr_ptr->ToString() << ""
                      "\nDType: " << arr_ptr->type()->ToString();
 
+    // Deallocate String memory
+    if(arrow_dtypes_[i]->Equals(arrow::utf8())) {
+      for(int j = 0; j < tensor_data_[i].size(); j++) {
+        string_allocator_->DeallocateRaw((void *) tensor_data_[i][j]);
+      }
+    }
 
     arrays.push_back(arr_ptr);
     schema_vector.push_back(arrow::field(std::to_string(i), arr_ptr->type()));
@@ -118,18 +127,26 @@ Status ArrowWriter::WriteTensors(std::vector<Tensor> &tensors) {
       // number of strings in tensor:
       int64_t n_elements = t.NumElements();
 
+     // 8-byte boundary. Memory freed after strings have been written to arrow array.
+     const char ** str_refs = (const char **) string_allocator_->AllocateRaw(
+             Allocator::kAllocatorAlignment, n_elements * 8);
+
+     // accumulate pointers to strings in a char **
       for(int i = 0; i < n_elements; i++) {
-        VLOG(0) << "Element " << i << ": " << str_data[i].data() << "\n";
+        str_refs[i] = str_data[i].data();
       }
+     // accumulate buffers in correct column:
+     tensor_data_[current_col_idx_].push_back((const char*) str_refs);
+   } else { // if not a string, it is a simple data type -> don't touch data
+     // accumulate buffers in correct column:
+     tensor_data_[current_col_idx_].push_back(t.tensor_data().data());
    }
 
-    // accumulate buffers in correct column:
-    tensor_data_[current_col_idx_].push_back(t.tensor_data().data());
     VLOG(0) << "ArrowWriter - WriteTensors - Added data_buffer to corresponding column " << current_col_idx_;
     current_col_idx_ = (current_col_idx_ + 1) % ncols_;
 
     // TODO: ugly solution, find better way to keep data_buf reference (shared_ptr for example).
-    // this seems to copy all the data every time.
+    // goal is to keep the references to the tensors around s.t. buffers don't get deallocated.
     tensors_.push_back(t);
   }
   return Status::OK();
