@@ -272,9 +272,16 @@ return VisitFixedWidth(array);                          \
       VLOG(0) << "ArrowUtil - AssignTensor - Visit(StringArray) - array_length: " << curr_array_length << "\n"
                        "Array to String: \n" << array.ToString();
 
+      VLOG(0) << "ArrowUtil - AssignTensor - Visit(StringArray) - \nTotal number of Bytes allocated in tensor: "
+                 "" << out_tensor_->TotalBytes() << "\n"
+                 "Size of single tstring: " << sizeof(tstring) << "\n"
+                 "Location of data buffer in memory: " << strings;
+
       for(int i = 0; i< curr_array_length; i++) {
         strings[i] = tstring(array.GetString(i).data());
-        VLOG(0) << "ArrowUtil - AssignTensor - Visit(StringArray) - strings[i]: " << strings[i].data() << "\n";
+        VLOG(0) << "ArrowUtil - AssignTensor - Visit(StringArray) - \n"
+                   "strings[i]: " << strings[i].data() << "\n"
+                   "location in memory: " << &(strings[i]);
 //        strings[i].assign(array.GetString(i).data());  // TODO: which option to choose
       }
 //      if (!array.IsNull(i_)) {
@@ -282,7 +289,7 @@ return VisitFixedWidth(array);                          \
 //      } else {
 //        out_tensor_->scalar<tstring>()() = "";
 //      }
-//      return arrow::Status::OK();
+      return arrow::Status::OK();
     }
 
 private:
