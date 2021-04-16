@@ -111,14 +111,20 @@ Status ArrowWriter::WriteTensors(std::vector<Tensor> &tensors) {
       InitDims(t);
     }
 
-    if(arrow_dtypes_[current_col_idx_]->Equals(arrow::utf8())) {
-      const char **data = (const char **) t.tensor_data().data();
-      VLOG(0) << "Address of data buffer: " << data << "\n";
-      VLOG(0) << "Processing String Tensor: length = " << t.tensor_data().length() << "\n";
-      VLOG(0) << "First 2 entries of data buffer interpreted as addresses:\n"
-                 "Addr 0: " << (void *) data[0] << "\n"
-                 "Addr 1: " << (void *) data[1] << "\n";
-      VLOG(0) << "Following pointer at data[1]: " << data[1] << "\n";
+   if(arrow_dtypes_[current_col_idx_]->Equals(arrow::utf8())) {
+	        const char **data = (const char **) t.tensor_data().data();
+	             VLOG(0) << "Address of data buffer: " << data << "\n";
+	           VLOG(0) << "Processing String Tensor: length = " << t.tensor_data().length() << "\n";
+            VLOG(0) << "First 2 entries of data buffer interpreted as addresses:\n"
+                  "Addr 0: " << (void *) data[0] << "\n"
+                 "Addr 1: " << (void *) data[1] << "\n"
+                 "Addr 2: " << (void *) data[0] << "\n"
+                 "Addr 3: " << (void *) data[1] << "\n"
+                 "Addr 4: " << (void *) data[0] << "\n"
+                 "Addr 5: " << (void *) data[1] << "\n";
+
+      VLOG(0) << "Binary representation of entire buffer:\n"
+                   "" << ArrowUtil::binaryToString(t.tensor_data().length(), t.tensor_data().data()) << "\n";
     }
 
     // accumulate buffers in correct column:
