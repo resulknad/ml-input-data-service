@@ -269,26 +269,14 @@ return VisitFixedWidth(array);                          \
 
       tstring* strings = reinterpret_cast<tstring*>(out_tensor_->data()); // TODO: check if this works!
 
-      VLOG(0) << "ArrowUtil - AssignTensor - Visit(StringArray) - array_length: " << curr_array_length << "\n"
-                       "Array to String: \n" << array.ToString();
-
-      VLOG(0) << "ArrowUtil - AssignTensor - Visit(StringArray) - \nTotal number of Bytes allocated in tensor: "
-                 "" << out_tensor_->TotalBytes() << "\n"
-                 "Size of single tstring: " << sizeof(tstring) << "\n"
-                 "Location of data buffer in memory: " << strings;
-
-      for(int i = 0; i< curr_array_length; i++) {
-        strings[i] = tstring(array.GetString(i).data());
-        VLOG(0) << "ArrowUtil - AssignTensor - Visit(StringArray) - \n"
-                   "strings[i]: " << strings[i].data() << "\n"
-                   "location in memory: " << &(strings[i]);
-//        strings[i].assign(array.GetString(i).data());  // TODO: which option to choose
+      if(out_tensor_->NumElements() > 1) {  // not a scalar tensor -> array only holds elements of this tensor
+        for(int i = 0; i< curr_array_length; i++) {
+          strings[i] = tstring(array.GetString(i).data());
+        }
+      } else {  // for scalar tensors array also holds elements of other tensors --> use i_
+        strings[0] = tstring(array.GetString(i_).data());
       }
-//      if (!array.IsNull(i_)) {
-//        out_tensor_->scalar<tstring>()() = array.GetString(i_);
-//      } else {
-//        out_tensor_->scalar<tstring>()() = "";
-//      }
+
       return arrow::Status::OK();
     }
 
