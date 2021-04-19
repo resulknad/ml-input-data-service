@@ -15,9 +15,10 @@ namespace { // anonymous namespace => declared functions only visible within thi
 static constexpr const char *const kCacheLocation = "";
 
 std::string GetFileName(const std::string& shard_directory,
-                                uint64 file_id) {
-  return io::JoinPath(shard_directory, strings::Printf("%08llu.easl",
-                      static_cast<unsigned long long>(file_id)));
+                                uint64 file_id, uint64 split_id = 0) {
+  return io::JoinPath(shard_directory, strings::Printf("%07llu_%llu.easl",
+                      static_cast<unsigned long long>(file_id),
+                      static_cast<unsigned long long>(split_id)));
 }
 
 }
@@ -25,6 +26,7 @@ std::string GetFileName(const std::string& shard_directory,
 constexpr const char* const kMetadataFilename = "service_cache.metadata";
 const int kWriterVersion = 0; // 0 --> ArrowWriter; 2 --> TFRecordWriter
 const char kCompression[] = ""; // can be SNAPPY, GZIP, ZLIB, "" for none.
+const uint64 memoryThreshold = 1 << 20; // in Bytes, Write at most 1MB files for now.
 
 
 Writer::Writer(Env* env,
@@ -155,13 +157,16 @@ Status MultiThreadedAsyncWriter::WriterThread(Env* env,
                                  const std::string& compression, int64 version,
                                  DataTypeVector output_types) {
 
+  uint64_t storageEstimate = 0; // estimated storage space on disk in bytes
+  uint64_t rowStorage = 0; // storage size of a single dataset row (single be.value). Assume all have the same size.
+  uint64 split_id = 0; // name all produced arrow files by this thread
 
   // TODO (damien-aymon) Push this to the specific writers, so that we can make
   // the async writer more general (e.g. different file system, gs://, etc...)
   TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(shard_directory));
   LOG(INFO) << "(Writer_" << writer_id << ") Created Dir ";
 
-  // select between arrowReader and standard built-in readers
+  // select between arrowWriter and standard built-in Writers (TFRecord, CustomReader)
   bool isArrow = (version == 0);
 
   // possible readers
@@ -192,6 +197,35 @@ Status MultiThreadedAsyncWriter::WriterThread(Env* env,
       LOG(INFO) << "(Writer_" << writer_id << ") Closed w/ total read " 
                 << count;
       break;
+    }
+
+    // update memory estimate:
+    if(rowStorage == 0) {
+      std::vector<Tensor> &tensors = be.value;
+      for(Tensor t : tensors) {
+        rowStorage += t.TotalBytes();
+      }
+    } else {
+      storageEstimate += rowStorage;
+    }
+
+    // create new reader if memoryThreshold exceeded
+    if(storageEstimate > memoryThreshold) {
+
+      TF_RETURN_IF_ERROR(isArrow ? arrowWriter->Close() : writer->Close());
+      storageEstimate = rowStorage;
+      // create new writer for remaining tensors:
+      if(isArrow) {
+        arrowWriter = absl::make_unique<ArrowWriter>();
+        TF_RETURN_IF_ERROR(arrowWriter->Create(env, GetFileName(shard_directory, writer_id, ++split_id),
+                                               compression, output_types));
+      } else {
+        TF_RETURN_IF_ERROR(snapshot_util::Writer::Create(
+                env, GetFileName(shard_directory, writer_id, ++split_id),
+                compression, version, std::move(output_types), &writer));
+      }
+      LOG(INFO) << "(Writer_" << writer_id << ") Exceeded memory threshold, created new file (split_id = "
+                                              "" << split_id <<")...";
     }
 
     TF_RETURN_IF_ERROR(isArrow ? arrowWriter->WriteTensors(be.value) : writer->WriteTensors(be.value));
