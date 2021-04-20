@@ -64,9 +64,6 @@ Status ArrowWriter::Close() {
   for(int i = 0; i < ncols_; i++) {
     std::shared_ptr<arrow::Array> arr_ptr;
     ArrowUtil::GetArrayFromData(arrow_dtypes_[i], tensor_data_[i], col_dims_[i], &arr_ptr); // TODO: propagate error
-    VLOG(0) << "ArrowWriter - Close - conversion completed for column: " << i << ""
-                     "\nArray:\n" << arr_ptr->ToString() << ""
-                     "\nDType: " << arr_ptr->type()->ToString();
 
     // Deallocate String memory
     if(arrow_dtypes_[i]->Equals(arrow::utf8())) {

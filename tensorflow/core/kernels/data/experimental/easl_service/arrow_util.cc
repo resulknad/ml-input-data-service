@@ -576,13 +576,12 @@ protected:
       return arrow::Status::OK();
     }
 
-#define VISIT_PRIMITIVE(TYPE)                                               \
-virtual arrow::Status Visit(const TYPE& type) override {                    \
+#define VISIT_PRIMITIVE(TYPE)                                           \
+virtual arrow::Status Visit(const TYPE& type) override {                \
 using c_type = typename TYPE::c_type;                                   \
 using builder_type = arrow::NumericBuilder<TYPE>;                       \
 std::shared_ptr<builder_type> n =                                       \
-              std::make_shared<builder_type>(pool_);                \
-std::cout << "Numeric builder type: " << n->type()->ToString() << "\n"; \
+              std::make_shared<builder_type>(pool_);                    \
 return getNestedArray<c_type, builder_type>(n);                         \
 }
 
@@ -603,8 +602,6 @@ return getNestedArray<c_type, builder_type>(n);                         \
       using c_type = const char *;
       using builder_type = arrow::StringBuilder;
       std::shared_ptr<builder_type> s = std::make_shared<builder_type>(pool_);
-      std::cout << "String builder type: " << s->type()->Equals(arrow::utf8()) << "\n"; // ret 1
-
       return getNestedArray<c_type, builder_type>(s);
     }
 
@@ -612,8 +609,6 @@ return getNestedArray<c_type, builder_type>(n);                         \
       using c_type = const uint8_t;
       using builder_type = arrow::BooleanBuilder;
       std::shared_ptr<builder_type> b = std::make_shared<builder_type>(pool_);
-      std::cout << "Boolean builder type: " << b->type()->ToString() << "\n";
-
       return getNestedArray<c_type, builder_type>(b);
     }
 
