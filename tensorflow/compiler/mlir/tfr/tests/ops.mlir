@@ -138,8 +138,8 @@ func @equal() -> (i1, i1, i1, i1) {
   %diff_str = tfr.equal %3,%5 -> i1
   return %same_type, %diff_type, %same_str, %diff_str  : i1, i1, i1, i1
 
-// CANON-NEXT: %true = constant true
-// CANON-NEXT: %false = constant false
+// CANON-DAG: %true = constant true
+// CANON-DAG: %false = constant false
 // CANON-NEXT: return %true, %false, %true, %false : i1, i1, i1, i1
 }
 
@@ -255,6 +255,22 @@ func @build_const_list() -> !tfr.attr {
   return %2 : !tfr.attr
 
 // CANON-NEXT: %[[c:.*]] = tfr.constant [42 : i32, 41 : i32] -> !tfr.attr
+// CANON-NEXT: return %[[c]] : !tfr.attr
+}
+
+// -----
+
+// CHECK-LABEL: build_high_dim_const_list
+// CANON-LABEL: build_high_dim_const_list
+func @build_high_dim_const_list() -> !tfr.attr {
+  %0 = "std.constant"() {value = 42 : i32} : () -> i32
+  %1 = "std.constant"() {value = 41 : i32} : () -> i32
+  %2 = "tfr.build_list"(%0, %1) : (i32, i32) -> !tfr.attr
+  %3 = "tfr.build_list"(%0, %1) : (i32, i32) -> !tfr.attr
+  %4 = "tfr.build_list"(%2, %3) : (!tfr.attr, !tfr.attr) -> !tfr.attr
+  return %4 : !tfr.attr
+
+// CANON-NEXT: %[[c:.*]] = tfr.constant {{\[}}[42 : i32, 41 : i32], [42 : i32, 41 : i32]] -> !tfr.attr
 // CANON-NEXT: return %[[c]] : !tfr.attr
 }
 

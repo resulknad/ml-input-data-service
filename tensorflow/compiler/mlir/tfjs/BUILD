@@ -9,7 +9,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 filegroup(
@@ -175,7 +175,8 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:decode_constant_pass",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
-        "//tensorflow/compiler/mlir/tensorflow:tf_dialect_hooks",
+        "//tensorflow/compiler/mlir/tensorflow:tf_dialect_lib",
+        "//tensorflow/compiler/mlir/tensorflow:tf_dialect_passes",
         "//tensorflow/compiler/mlir/tensorflow:translate_cl_options",
         "//tensorflow/compiler/mlir/tensorflow:translate_lib",
         "//tensorflow/core:framework",
@@ -185,7 +186,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
+        "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
@@ -241,7 +242,7 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir:init_mlir",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_legalize_tf",
         "//tensorflow/compiler/mlir/tensorflow",
-        "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
+        "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:MlirOptLib",
         "@llvm-project//mlir:StandardOps",
     ],

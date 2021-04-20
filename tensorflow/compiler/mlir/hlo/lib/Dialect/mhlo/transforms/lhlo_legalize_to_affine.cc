@@ -19,8 +19,8 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/map_lmhlo_to_scalar_op.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Location.h"
-#include "mlir/IR/StandardTypes.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
@@ -155,10 +155,10 @@ struct LhloLegalizeToAffinePass
     registry.insert<AffineDialect>();
   }
   void runOnFunction() override {
-    OwningRewritePatternList patterns;
     auto func = getFunction();
-    populateLHLOToAffineConversionPattern(func.getContext(), &patterns);
-    applyPatternsAndFoldGreedily(func, std::move(patterns));
+    OwningRewritePatternList patterns(&getContext());
+    populateLHLOToAffineConversionPattern(&getContext(), &patterns);
+    (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
   }
 };
 

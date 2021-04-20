@@ -135,6 +135,21 @@ class ParallelDeviceTests(_VirtualDeviceTestCase, parameterized.TestCase):
     self.assertIn(self.device.components[0], outputs[0].backing_device)
     self.assertIn(self.device.components[1], outputs[1].backing_device)
 
+  def test_string_representation(self):
+    x = self.device.pack(
+        [constant_op.constant([5., 6.]),
+         constant_op.constant([6., 7.])])
+    parallel_str = str(x)
+    self.assertIn("5", parallel_str)
+    self.assertIn("7", parallel_str)
+    self.assertIn(self.device_type + ":0", parallel_str)
+    self.assertIn(self.device_type + ":1", parallel_str)
+    parallel_repr = repr(x)
+    self.assertIn("5", parallel_repr)
+    self.assertIn("7", parallel_repr)
+    self.assertIn(self.device_type + ":0", parallel_repr)
+    self.assertIn(self.device_type + ":1", parallel_repr)
+
   def test_device_id(self):
     device_ids = self.device.unpack(self.device.device_ids)
     self.assertAllClose([0, 1], device_ids)
@@ -404,6 +419,24 @@ class ParallelDeviceTests(_VirtualDeviceTestCase, parameterized.TestCase):
       packed_outputs = m(array_ops.ones([]))
       outputs = self.device.unpack(packed_outputs)
     self.assertAllClose([16., 16.], outputs)
+
+  def test_different_shapes(self):
+    with self.device:
+      x = self.device.pack(
+          [constant_op.constant([1., 2.]),
+           constant_op.constant([5.])])
+      y = x * 2.
+    with self.assertRaisesRegex(Exception,
+                                "components do not all have the same shape"):
+      y.shape  # pylint: disable=pointless-statement
+    self.assertAllClose([[2., 4.], [10.]], self.device.unpack(y))
+
+    different_axes = self.device.pack(
+        [constant_op.constant([1., 2.]),
+         constant_op.constant([[5.]])])
+    with self.assertRaisesRegex(Exception,
+                                "components do not all have the same shape"):
+      different_axes.shape  # pylint: disable=pointless-statement
 
 
 class LayerTests(_VirtualDeviceTestCase):
