@@ -41,6 +41,7 @@ private:
     bool dims_initialized_;
     std::vector<std::vector<int>> col_dims_;
     std::vector<std::vector<const char *>> tensor_data_;
+    std::vector<uint64> tensor_data_len_;
 
     // memory allocator for string buffers
     Allocator* string_allocator_;

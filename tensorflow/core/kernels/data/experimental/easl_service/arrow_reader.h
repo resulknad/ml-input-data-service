@@ -14,11 +14,12 @@ namespace easl{
 
 class ArrowReader {
 public:
-    ArrowReader(Env *env, const std::string &filename,
-                const string &compression_type,
-                const DataTypeVector &dtypes);
+    ArrowReader();
 
-    Status Initialize();
+    Status Initialize(Env *env, const std::string &filename,
+                      const string &compression_type,
+                      const DataTypeVector &dtypes,
+                      const std::vector<PartialTensorShape> &shapes);
 
     /// \brief Read an entire record batch into a vector<Tensor>.
     Status ReadTensors(std::vector<Tensor> *read_tensors);
@@ -28,14 +29,21 @@ private:
     /// return status with OUT_OF_RANGE error.
     Status NextBatch();
 
+    /// \brief If no metadata provided for shapes / types, extract them implicitly from arrow arrays.
+    /// Looks at first row across all RecordBatches to get the shapes / types of the first dataset row.
+    Status InitShapesAndTypes();
+
     Env *env_;
     std::string filename_;
     string compression_type_;
     DataTypeVector dtypes_;
+    std::vector<TensorShape> shapes_;
 
     std::vector<std::shared_ptr<arrow::RecordBatch>> record_batches_;
     std::shared_ptr<arrow::RecordBatch> current_batch_;
     size_t current_batch_idx_;
+    bool shapes_initialized_ = false;
+    bool experimental_ = false;
     int64_t current_row_idx_;
 };
 

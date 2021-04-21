@@ -123,7 +123,7 @@ class Reader {
   void Add(std::vector<Tensor>& tensors)  TF_LOCKS_EXCLUDED(mu_add_);
   bool AllFilesRead() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_add_);
   Status ReaderThread(Env *env, uint64 writer_id, int64 version, 
-      DataTypeVector output_types);
+      DataTypeVector output_types, std::vector<PartialTensorShape> output_shapes);
 
   const std::string target_dir_;
   int64 cache_file_version_;

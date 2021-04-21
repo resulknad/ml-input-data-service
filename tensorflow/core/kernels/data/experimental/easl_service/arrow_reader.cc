@@ -10,20 +10,37 @@ namespace tensorflow {
 namespace data {
 namespace easl{
 
+ArrowReader::ArrowReader(){}
 
-ArrowReader::ArrowReader(Env *env, const std::string &filename,
-                     const string &compression_type, const DataTypeVector &dtypes)
-     : env_(env), filename_(filename), compression_type_(compression_type), dtypes_(dtypes) {
+Status ArrowReader::Initialize(Env *env, const std::string &filename, const string &compression_type,
+                               const DataTypeVector &dtypes, const std::vector<PartialTensorShape> &shapes) {
+
+  this->shapes_ = std::vector<TensorShape>();
+
+  // initialize shapes
+  if(!shapes.empty()) {
+    shapes_initialized_ = true;
+    experimental_ = true;
+    for (PartialTensorShape pts : shapes) {
+      TensorShape out;
+      if (pts.AsTensorShape(&out)) {
+        shapes_.push_back(out);
+      } else {
+        return Status(error::FAILED_PRECONDITION, "can't deal with partially filled tensors");
+      }
+    }
+  }
 
   // initialize internal data structures
+  this->env_ = env;
+  this->filename_ = filename;
+  this->compression_type_ = compression_type;
+  this->dtypes_ = dtypes;
   this->current_batch_idx_ = -1; // gets increased upon every invocation of read_tensors
   this->current_row_idx_ = 0;
-}
 
-Status ArrowReader::Initialize() {
   VLOG(0) << "ArrowReader - Initialize - Initialized with the following parameters:\n"
-             "Filename: " << filename_ << "\nCompression_Type: " << compression_type_ << "\n"
-             "DataTypes: " << DataTypeVectorString(dtypes_);
+             "Filename: " << filename_ << "\nCompression_Type: " << compression_type_;
 
   // TODO: maybe use env to open file, here I use the built-in functionality of arrow.
   // open file and read table
@@ -49,6 +66,32 @@ Status ArrowReader::Initialize() {
   return Status::OK();
 }
 
+
+Status ArrowReader::InitShapesAndTypes() {
+  VLOG(0) << "ArrowReader - InitShapesAndTypes - Implicitly extracting shapes and dtypes from arrow format...";
+  for(int i = 0; i < current_batch_->num_columns(); i++) {
+    std::shared_ptr<arrow::Array> arr = current_batch_->column(i);
+
+    // get the TensorShape for the current column entry:
+    TensorShape output_shape = TensorShape({});
+    DataType output_type;
+
+    TF_RETURN_IF_ERROR(ArrowUtil::AssignSpec(arr, 0, 0, &output_type, &output_shape));  //batch_size = 0
+
+    // add to internal data structures
+    this->dtypes_.push_back(output_type);
+    this->shapes_.push_back(output_shape);
+
+    VLOG(0) << "ArrowReader - InitShapesAndTypes - \n"
+               "DataType: " << DataTypeString(output_type) << "\n"
+               "Shape: " << output_shape.DebugString() << "\n"
+               "Column: " << i;
+  }
+  shapes_initialized_ = true;
+  return Status::OK();
+}
+
+
 Status ArrowReader::ReadTensors(std::vector<Tensor> *read_tensors) {
 
   // increments current_batch_idx_ by 1 (initialized to -1). If no more batches,
@@ -56,22 +99,32 @@ Status ArrowReader::ReadTensors(std::vector<Tensor> *read_tensors) {
   TF_RETURN_IF_ERROR(NextBatch());
   // Invariant: current_batch_ != nullptr
 
+  if(!shapes_initialized_) {
+    TF_RETURN_IF_ERROR(InitShapesAndTypes());
+  }
 
   // go over all rows of record batch
   for(int i = 0; i < current_batch_->num_rows(); i++) {
     for(int j = 0; j < current_batch_->num_columns(); j++) {
       std::shared_ptr<arrow::Array> arr = current_batch_->column(j);
-      DataType output_type = this->dtypes_[j];
 
-      // get the TensorShape for the column entry:
-      TensorShape output_shape = TensorShape({});
-      // TODO: don't do this for every tensor
-      TF_RETURN_IF_ERROR(ArrowUtil::AssignShape(arr, i, 0, &output_shape));  //batch_size = 0
-      VLOG(0) << "ArrowReader - ReadTensors - Successfully Extracted Shape";
+      DataType output_type = this->dtypes_[j];
+      TensorShape output_shape = this->shapes_[j];
 
       // Allocate a new tensor and assign Arrow data to it
       Tensor tensor(output_type, output_shape); // this constructor will use the default_cpu_allocator.
-      TF_RETURN_IF_ERROR(ArrowUtil::AssignTensor(arr, i, &tensor));
+
+      // String arrays and normal arrays have different shapes in experimental.
+      if(output_type == DataType::DT_STRING || !experimental_) {
+        VLOG(0) << "ArrowReader - ReadTensors - Standard Assign Tensor";
+
+        TF_RETURN_IF_ERROR(ArrowUtil::AssignTensor(arr, i, &tensor));
+      } else {
+        VLOG(0) << "ArrowReader - ReadTensors - Experimental Assign Tensor";
+
+        TF_RETURN_IF_ERROR(ArrowUtil::AssignTensorExperimental(arr, i, &tensor));
+      }
+
       read_tensors->emplace_back(std::move(tensor));
       VLOG(0) << "ArrowReader - ReadTensors - Successfully assigned tensor";
     }

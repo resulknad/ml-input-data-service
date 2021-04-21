@@ -54,7 +54,11 @@ arrow::Compression::type ArrowWriter::getArrowCompressionType(){
 
 Status ArrowWriter::Close() {
 
-  VLOG(0) << "ArrowWriter - Close - invoked";
+  VLOG(0) << "ArrowWriter - Close - invoked. Dims_initialized: " << dims_initialized_;
+  // check if writer has any data, if not just return.
+  if(!dims_initialized_) {
+    return Status::OK();
+  }
 
   // get converted arrow array for each column:
   std::vector<std::shared_ptr<arrow::Array>> arrays;
@@ -63,13 +67,20 @@ Status ArrowWriter::Close() {
   // iterate over all columns and construct corresponding arrow::Array and arrow::field (for schema)
   for(int i = 0; i < ncols_; i++) {
     std::shared_ptr<arrow::Array> arr_ptr;
-    ArrowUtil::GetArrayFromData(arrow_dtypes_[i], tensor_data_[i], col_dims_[i], &arr_ptr); // TODO: propagate error
 
-    // Deallocate String memory
     if(arrow_dtypes_[i]->Equals(arrow::utf8())) {
+      VLOG(0) << "ArrowWriter - Close - GetArray String";
+
+      CHECK_ARROW(ArrowUtil::GetArrayFromData(arrow_dtypes_[i], tensor_data_[i], col_dims_[i], &arr_ptr));
+
+      // Deallocate String memory
       for(int j = 0; j < tensor_data_[i].size(); j++) {
         string_allocator_->DeallocateRaw((void *) tensor_data_[i][j]);
       }
+    } else {
+      // TODO: Experimental
+      VLOG(0) << "ArrowWriter - Close - GetArray Experimental";
+      CHECK_ARROW(ArrowUtil::GetArrayFromDataExperimental(tensor_data_len_[i], tensor_data_[i], &arr_ptr));
     }
 
     arrays.push_back(arr_ptr);
@@ -109,6 +120,7 @@ Status ArrowWriter::Close() {
 
 // Assumption: tensors contains one row of the table.
 Status ArrowWriter::WriteTensors(std::vector<Tensor> &tensors) {
+  VLOG(0) << "ArrowWriter - WriteTensors - Invoked. dims_initialized = " << dims_initialized_;
 
   for(Tensor t : tensors) {
     // need to implicitly get tensor shapes (dimension sizes) as it is not passed to writer.
@@ -152,16 +164,17 @@ Status ArrowWriter::WriteTensors(std::vector<Tensor> &tensors) {
 /// \brief Takes tensor t as argument and appends shape information to local vector col_dims_[i] where
 /// t is the i-th tensor handed to this function.
 void ArrowWriter::InitDims(Tensor  &t) {
-  if(col_dims_.size() < ncols_) { // we need more tensors to complete shape information
-    std::vector<int> single_col_dims;
-    for (int64_t dim_size : t.shape().dim_sizes()) {
-      int val = (int) dim_size;
-      single_col_dims.push_back(val);
-    }
-    col_dims_.push_back(single_col_dims);
-  } else {  // all shapes known, don't need more information
-    dims_initialized_ = true;
+  VLOG(0) << "ArrowWriter - InitDims - Adding Dimension";
+  std::vector<int> single_col_dims;
+  for (int64_t dim_size : t.shape().dim_sizes()) {
+    int val = (int) dim_size;
+    single_col_dims.push_back(val);
   }
+  // saves size of tensor buffer for experimental writer
+  tensor_data_len_.push_back(t.TotalBytes());
+  col_dims_.push_back(single_col_dims);
+
+  dims_initialized_ = col_dims_.size() >= ncols_;
 }
 
 
