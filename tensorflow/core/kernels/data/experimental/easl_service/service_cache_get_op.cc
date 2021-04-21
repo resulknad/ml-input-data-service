@@ -50,7 +50,7 @@ class ServiceCacheGetOp::Dataset : public DatasetBase {
   const tstring path_;
   const DataTypeVector output_dtypes_;
   const std::vector<PartialTensorShape> output_shapes_;
-  const int8 parallelism_;
+  const int32 parallelism_;
 
 };
 

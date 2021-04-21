@@ -294,6 +294,11 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       VLOG(3) << "Calling GetNext in data service dataset op";
       mutex_lock l(mu_);
       EnsureThreadsStarted(ctx);
+
+      // EASL - metrics collection
+      bool hadToWait = false;
+      int64 start_us = Env::Default()->NowMicros();
+
       bool skip = true;
       while (skip) {
         while ((results_.empty() || !results_.front().ready) &&
@@ -306,6 +311,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
                   << " num_running_worker_threads_:"
                   << num_running_worker_threads_;
           get_next_cv_.wait(l);
+          hadToWait = true; // EASL - metrics collection.
         }
         if (cancelled_) {
           VLOG(3) << "Returning from GetNext due to cancellation";
@@ -337,6 +343,13 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
                   << " element " << result.element_index;
         }
       }
+
+      // EASL - metrics logging.
+      int64 end_us = Env::Default()->NowMicros();
+      int64 wait_us = end_us - start_us;
+      VLOG(3) << "EASL, data_service_client, GetNextInternal, "
+        << wait_us << ", " << hadToWait;
+
       results_.pop();
       worker_thread_cv_.notify_one();
       return Status::OK();
@@ -656,9 +669,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           mutex_lock l(mu_);
           if (task_to_process) {
             task_to_process->in_use = false;
-            // (damien-aymon) task_to_process is a shared_ptr.
-            //task_to_process = nullptr;
-            task_to_process.reset();
+            task_to_process = nullptr;
             worker_thread_cv_.notify_one();
           }
           outstanding_requests_--;
