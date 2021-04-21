@@ -31,11 +31,19 @@ limitations under the License.
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/ptr_util.h"
 
+// (damien-aymon)
+// Testing metrics collection
+#include "tensorflow/core/framework/metrics.h"
+
 namespace tensorflow {
 namespace data {
 namespace standalone {
 
 Status Iterator::GetNext(std::vector<Tensor>* outputs, bool* end_of_input) {
+  monitoring::CounterCell* tf_data_elements_counter =
+      GetTFDataElementsCounter("ServiceCacheGet");
+  VLOG(0) << " EASL - serviceCacheGet elements counter: " <<
+  tf_data_elements_counter->value();
   return iterator_->GetNext(ctx_.get(), outputs, end_of_input);
 }
 
