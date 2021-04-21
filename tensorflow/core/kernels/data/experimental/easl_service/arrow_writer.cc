@@ -55,6 +55,10 @@ arrow::Compression::type ArrowWriter::getArrowCompressionType(){
 Status ArrowWriter::Close() {
 
   VLOG(0) << "ArrowWriter - Close - invoked";
+  // check if writer has any data, if not just return.
+  if(!dims_initialized_) {
+    return Status::OK();
+  }
 
   // get converted arrow array for each column:
   std::vector<std::shared_ptr<arrow::Array>> arrays;
@@ -63,7 +67,7 @@ Status ArrowWriter::Close() {
   // iterate over all columns and construct corresponding arrow::Array and arrow::field (for schema)
   for(int i = 0; i < ncols_; i++) {
     std::shared_ptr<arrow::Array> arr_ptr;
-    ArrowUtil::GetArrayFromData(arrow_dtypes_[i], tensor_data_[i], col_dims_[i], &arr_ptr); // TODO: propagate error
+    ArrowUtil::GetArrayFromData(arrow_dtypes_[i], tensor_data_[i], col_dims_[i], &arr_ptr);
 
     // Deallocate String memory
     if(arrow_dtypes_[i]->Equals(arrow::utf8())) {

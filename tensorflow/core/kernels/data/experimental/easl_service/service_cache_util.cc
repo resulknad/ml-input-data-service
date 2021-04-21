@@ -248,8 +248,9 @@ Reader::Reader(Env *env,
 Status Reader::Initialize() {
   // Read metadata first:
   // TODO (damien-aymon) not really useful anymore until more info in there
-  // simonsom -- don't use metadata file for the moment
-  // TF_RETURN_IF_ERROR(ReadAndParseMetadataFile());
+
+  // simonsom -- only use it for "fast version"
+   TF_RETURN_IF_ERROR(ReadAndParseMetadataFile());
   
   // Find all the files of this dataset
   std::vector<string> files;
@@ -271,9 +272,9 @@ Status Reader::Initialize() {
   for (int i = 0; i < reader_count_; ++i) {
     thread_pool_->Schedule(
       [this, i] {
-          // simonsom -- manually set reader version to arrow
+          // simonsom -- manually set reader version to arrow, added output_shapes_
         // ReaderThread(env_, i, cache_file_version_, output_dtypes_);
-        ReaderThread(env_, i, 0, output_dtypes_);
+        ReaderThread(env_, i, 0, output_dtypes_, output_shapes_);
         }
     );
   }
@@ -301,7 +302,7 @@ void Reader::Add(std::vector<Tensor>& tensors) {
 }
 
 Status Reader::ReaderThread(Env *env, uint64 writer_id, int64 version, 
-  DataTypeVector output_types) {
+  DataTypeVector output_types, std::vector<PartialTensorShape> output_shapes) {
 
   // Debugging
   std:string d_string = DataTypeVectorString(output_types);
@@ -329,8 +330,14 @@ Status Reader::ReaderThread(Env *env, uint64 writer_id, int64 version,
       std::unique_ptr<snapshot_util::Reader> reader;
 
       if(isArrow) {
-        arrowReader = absl::make_unique<ArrowReader>(env, file_path, io::compression::kNone, output_types);
-        arrowReader->Initialize();
+        arrowReader = absl::make_unique<ArrowReader>();
+
+        // TEST PURPOSE --- REMOVE THIS
+        DataTypeVector dtv;
+        std::vector<PartialTensorShape> ptsv;
+        arrowReader->Initialize(env, file_path, io::compression::kNone, dtv, ptsv);
+
+//        arrowReader->Initialize(env, file_path, io::compression::kNone, output_types, output_shapes);
       } else {
         // TODO: should there be a call to make_unique first??
         snapshot_util::Reader::Create(env, file_path, io::compression::kNone,

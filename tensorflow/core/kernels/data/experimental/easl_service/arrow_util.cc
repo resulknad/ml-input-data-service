@@ -184,6 +184,8 @@ public:
 
 protected:
     virtual arrow::Status Visit(const arrow::BooleanArray& array) {
+      VLOG(0) << "ArrowUtil - ArrowAssignTensorImpl - Visit(BooleanArray) - Invoked";
+
       // Must copy one value at a time because Arrow stores values as bits
       auto shape = out_tensor_->shape();
       for (int64 j = 0; j < shape.num_elements(); ++j) {
@@ -199,6 +201,7 @@ protected:
 
     template <typename ArrayType>
     arrow::Status VisitFixedWidth(const ArrayType& array) {
+      VLOG(0) << "ArrowUtil - ArrowAssignTensorImpl - VisitFixedWidth - Invoked";
 
 
       const auto& fw_type =
