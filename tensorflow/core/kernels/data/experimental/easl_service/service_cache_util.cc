@@ -331,13 +331,7 @@ Status Reader::ReaderThread(Env *env, uint64 writer_id, int64 version,
 
       if(isArrow) {
         arrowReader = absl::make_unique<ArrowReader>();
-
-        // TEST PURPOSE --- REMOVE THIS
-        DataTypeVector dtv;
-        std::vector<PartialTensorShape> ptsv;
-        arrowReader->Initialize(env, file_path, io::compression::kNone, dtv, ptsv);
-
-//        arrowReader->Initialize(env, file_path, io::compression::kNone, output_types, output_shapes);
+        arrowReader->Initialize(env, file_path, io::compression::kNone, output_types, output_shapes);
       } else {
         // TODO: should there be a call to make_unique first??
         snapshot_util::Reader::Create(env, file_path, io::compression::kNone,
