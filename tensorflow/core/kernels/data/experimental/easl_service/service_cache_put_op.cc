@@ -51,7 +51,7 @@ class ServiceCachePutOp::Dataset : public DatasetBase {
 
     const DatasetBase* const input_;
     const tstring path_;
-    const int8 parallelism_;
+    const int32 parallelism_;
 
 };
 
