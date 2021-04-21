@@ -78,6 +78,8 @@ public:
                       int64 batch_size, ::tensorflow::DataType* out_dtype,
                       TensorShape* out_shape) {
 
+      VLOG(0) << "ArrowUtil - AssignSpec - Invoked";
+
       i_ = i;  // we want to get i-th element of array -> tensor data
       batch_size_ = batch_size;
       out_shape_ = out_shape;  //out_shape_points to shape needed for allocation
@@ -95,9 +97,11 @@ public:
 protected:
     template <typename ArrayType>
     arrow::Status VisitPrimitive(const ArrayType& array) {
+      VLOG(0) << "ArrowUtil - AssignSpecImpl - VisitPrimitive - Invoked";
+
       if (out_dtype_ != nullptr) {
-        return ::arrow::adapters::tensorflow::GetTensorFlowType(array.type(),
-                                                                out_dtype_);
+        GetTensorFlowType(array.type(), out_dtype_);
+        return ::arrow::Status::OK();
       }
       return arrow::Status::OK();
     }
@@ -123,6 +127,8 @@ protected:
 #undef VISIT_PRIMITIVE
 
     virtual arrow::Status Visit(const arrow::ListArray& array) override {
+      VLOG(0) << "ArrowUtil - AssignSpecImpl - VisitPrimitive - Invoked";
+
       // values in the outermost array are tensors with their corresponding dimensionality and can
       // be indexed by i_. if we flatten first dimension, value_offset(i_) gives the new idx.
       int32 values_offset = array.value_offset(i_);
@@ -535,12 +541,12 @@ protected:
       if(empty_shape_) {
         for(int i = 0; i < data_column_.size(); i++) {
           int data_offset = 0; // current data offset at data_column[data_idx]
-          RETURN_NOT_OK( (fillData<c_type, builder_type>(i, data_offset, builders, data_builder, -1)) );
+          ARROW_RETURN_NOT_OK( (fillData<c_type, builder_type>(i, data_offset, builders, data_builder, -1)) );
         }
 
         // finalize and return the array containing all tensors of the column
         std::shared_ptr<arrow::Array> arrow_array;
-        RETURN_NOT_OK(data_builder->Finish(&arrow_array));
+        ARROW_RETURN_NOT_OK(data_builder->Finish(&arrow_array));
         *out_array_ = arrow_array;
         return arrow::Status::OK();
       }
@@ -558,20 +564,20 @@ protected:
 
       // go over all accumulated vectors and build the respective sub-arrays
       for(int i = 0; i < data_column_.size(); i++) {
-        RETURN_NOT_OK(builders[dims_ - 1]->Append()); // here starts data of a new tensor
+        ARROW_RETURN_NOT_OK(builders[dims_ - 1]->Append()); // here starts data of a new tensor
 
         // this value is passed by ref to share it inside recursive calls to fillData
         int data_offset = 0; // current data offset at data_column[data_idx]
         // feed data to data builder and build shape with list builders corresponding to tensor
         // if dims_ - 2 is negative, we only use the data_builder (no additional nestedness).
-        RETURN_NOT_OK( (fillData<c_type, builder_type>(
+        ARROW_RETURN_NOT_OK( (fillData<c_type, builder_type>(
                 i, data_offset, builders, data_builder, dims_ - 2)) );
       }
 
 
       // finalize and return the array containing all tensors of the column
       std::shared_ptr<arrow::Array> arrow_array;
-      RETURN_NOT_OK(builders[dims_-1]->Finish(&arrow_array));
+      ARROW_RETURN_NOT_OK(builders[dims_-1]->Finish(&arrow_array));
 
 
       *out_array_ = arrow_array;
@@ -631,6 +637,25 @@ arrow::Status GetArrayFromData(std::shared_ptr<arrow::DataType> type, std::vecto
                                std::vector<int>& dim_size, std::shared_ptr<arrow::Array>* out_array) {
   ConvertToArrowArrayImpl visitor; // use visitor pattern to cover all types
   return visitor.Make(type, data_column, dim_size, out_array);
+}
+
+
+// currently not supported: strings
+arrow::Status GetArrayFromDataExperimental(
+        size_t buff_len,
+        std::vector<const char *>& data_column,
+        std::shared_ptr<arrow::Array>* out_array) {
+
+  arrow::StringBuilder data_builder(arrow::default_memory_pool());
+
+  for(const char* buff : data_column) {
+    ARROW_RETURN_NOT_OK(data_builder.Append(buff, buff_len)) ;
+  }
+  std::shared_ptr<arrow::Array> arrow_array;
+  ARROW_RETURN_NOT_OK(data_builder.Finish(&arrow_array));
+  *out_array = arrow_array;
+
+  return arrow::Status::OK();
 }
 
 

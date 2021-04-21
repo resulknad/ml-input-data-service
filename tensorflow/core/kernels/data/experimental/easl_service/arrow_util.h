@@ -82,6 +82,13 @@ arrow::Status GetArrayFromData(std::shared_ptr<arrow::DataType> type, std::vecto
                         std::vector<int>& dim_size, std::shared_ptr<arrow::Array>* out_array);
 
 
+/// \brief experimental ultra fast writer for non-complex data types (i.e. string not supported)
+arrow::Status GetArrayFromDataExperimental(
+        size_t buff_len,
+        std::vector<const char *>& data_column,
+        std::shared_ptr<arrow::Array>* out_array);
+
+
 /// \brief print content of a data buffer to string (binary representation).
 /// prints memory words (4 bytes) in little-endian order.
 /// starts with ptr[0], ptr[4], ...

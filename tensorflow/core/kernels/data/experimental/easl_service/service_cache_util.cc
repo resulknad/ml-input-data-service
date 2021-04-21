@@ -355,8 +355,7 @@ Status Reader::ReaderThread(Env *env, uint64 writer_id, int64 version,
         if (errors::IsOutOfRange(s)) {
           eof = true;  // can't break because of TFRecordReader.
         } else if(s != Status::OK()) {
-          LOG(INFO) << "Internal error in ArrowReader / TFRecordReader";
-          //TODO: how to handle this?
+          LOG(INFO) << "Internal error in ArrowReader / TFRecordReader. " << s.ToString();
           return s;
         }
 

@@ -54,7 +54,7 @@ arrow::Compression::type ArrowWriter::getArrowCompressionType(){
 
 Status ArrowWriter::Close() {
 
-  VLOG(0) << "ArrowWriter - Close - invoked";
+  VLOG(0) << "ArrowWriter - Close - invoked. Dims_initialized: " << dims_initialized_;
   // check if writer has any data, if not just return.
   if(!dims_initialized_) {
     return Status::OK();
@@ -113,6 +113,7 @@ Status ArrowWriter::Close() {
 
 // Assumption: tensors contains one row of the table.
 Status ArrowWriter::WriteTensors(std::vector<Tensor> &tensors) {
+  VLOG(0) << "ArrowWriter - WriteTensors - Invoked. dims_initialized = " << dims_initialized_;
 
   for(Tensor t : tensors) {
     // need to implicitly get tensor shapes (dimension sizes) as it is not passed to writer.
@@ -157,6 +158,7 @@ Status ArrowWriter::WriteTensors(std::vector<Tensor> &tensors) {
 /// t is the i-th tensor handed to this function.
 void ArrowWriter::InitDims(Tensor  &t) {
   if(col_dims_.size() < ncols_) { // we need more tensors to complete shape information
+    VLOG(0) << "ArrowWriter - InitDims - Adding Dimension";
     std::vector<int> single_col_dims;
     for (int64_t dim_size : t.shape().dim_sizes()) {
       int val = (int) dim_size;
@@ -164,6 +166,7 @@ void ArrowWriter::InitDims(Tensor  &t) {
     }
     col_dims_.push_back(single_col_dims);
   } else {  // all shapes known, don't need more information
+    VLOG(0) << "ArrowWriter - InitDims - All Dimensions Initialized";
     dims_initialized_ = true;
   }
 }
