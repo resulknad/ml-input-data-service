@@ -164,7 +164,7 @@ Status ArrowWriter::WriteTensors(std::vector<Tensor> &tensors) {
 /// \brief Takes tensor t as argument and appends shape information to local vector col_dims_[i] where
 /// t is the i-th tensor handed to this function.
 void ArrowWriter::InitDims(Tensor  &t) {
-  VLOG(0) << "ArrowWriter - InitDims - Adding Dimension";
+  VLOG(0) << "ArrowWriter - InitDims - Adding Shape Info";
   std::vector<int> single_col_dims;
   for (int64_t dim_size : t.shape().dim_sizes()) {
     int val = (int) dim_size;

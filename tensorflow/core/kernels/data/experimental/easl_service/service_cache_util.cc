@@ -26,7 +26,7 @@ std::string GetFileName(const std::string& shard_directory,
 constexpr const char* const kMetadataFilename = "service_cache.metadata";
 const int kWriterVersion = 0; // 0 --> ArrowWriter; 2 --> TFRecordWriter
 const char kCompression[] = ""; // can be SNAPPY, GZIP, ZLIB, "" for none.
-const uint64 memoryThreshold = 1 << 20; // in Bytes, Write at most 1MB files for now.
+const uint64 memoryThreshold = 1 << 27; // in Bytes, Write at most 128MB files for now.
 
 
 Writer::Writer(Env* env,
