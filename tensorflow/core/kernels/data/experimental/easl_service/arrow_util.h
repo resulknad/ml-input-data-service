@@ -89,6 +89,13 @@ arrow::Status GetArrayFromDataExperimental(
         std::shared_ptr<arrow::Array>* out_array);
 
 
+/// \brief experimental ultra fast reader for non-complex data types (i.e. string not supported)
+Status AssignTensorExperimental(
+        std::shared_ptr<arrow::Array> array,
+        int64 i,
+        Tensor* out_tensor);
+
+
 /// \brief print content of a data buffer to string (binary representation).
 /// prints memory words (4 bytes) in little-endian order.
 /// starts with ptr[0], ptr[4], ...

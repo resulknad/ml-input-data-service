@@ -43,6 +43,7 @@ private:
     std::shared_ptr<arrow::RecordBatch> current_batch_;
     size_t current_batch_idx_;
     bool shapes_initialized_ = false;
+    bool experimental_ = false;
     int64_t current_row_idx_;
 };
 

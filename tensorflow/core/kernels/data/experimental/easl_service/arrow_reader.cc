@@ -20,6 +20,7 @@ Status ArrowReader::Initialize(Env *env, const std::string &filename, const stri
   // initialize shapes
   if(!shapes.empty()) {
     shapes_initialized_ = true;
+    experimental_ = true;
     for (PartialTensorShape pts : shapes) {
       TensorShape out;
       if (pts.AsTensorShape(&out)) {
@@ -112,7 +113,18 @@ Status ArrowReader::ReadTensors(std::vector<Tensor> *read_tensors) {
 
       // Allocate a new tensor and assign Arrow data to it
       Tensor tensor(output_type, output_shape); // this constructor will use the default_cpu_allocator.
-      TF_RETURN_IF_ERROR(ArrowUtil::AssignTensor(arr, i, &tensor));
+
+      // String arrays and normal arrays have different shapes in experimental.
+      if(output_type == DataType::DT_STRING || !experimental_) {
+        VLOG(0) << "ArrowReader - ReadTensors - Standard Assign Tensor";
+
+        TF_RETURN_IF_ERROR(ArrowUtil::AssignTensor(arr, i, &tensor));
+      } else {
+        VLOG(0) << "ArrowReader - ReadTensors - Experimental Assign Tensor";
+
+        TF_RETURN_IF_ERROR(ArrowUtil::AssignTensorExperimental(arr, i, &tensor));
+      }
+
       read_tensors->emplace_back(std::move(tensor));
       VLOG(0) << "ArrowReader - ReadTensors - Successfully assigned tensor";
     }

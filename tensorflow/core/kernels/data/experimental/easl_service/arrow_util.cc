@@ -640,6 +640,9 @@ arrow::Status GetArrayFromData(std::shared_ptr<arrow::DataType> type, std::vecto
 }
 
 
+// ***************************** Experimental ********************************
+
+
 // currently not supported: strings
 arrow::Status GetArrayFromDataExperimental(
         size_t buff_len,
@@ -656,6 +659,38 @@ arrow::Status GetArrayFromDataExperimental(
   *out_array = arrow_array;
 
   return arrow::Status::OK();
+}
+
+Status AssignTensorExperimental(
+        std::shared_ptr<arrow::Array> array,
+        int64 i,
+        Tensor* out_tensor) {
+
+  VLOG(0) << "ArrowUtil - AssignTensorExperimental - Invoked";
+
+  arrow::StringArray* str_arr = dynamic_cast<arrow::StringArray*>(array.get());
+
+  VLOG(0) << "ArrowUtil - AssignTensorExperimental - Downcast StringArray";
+
+  int64 value_offset = str_arr->value_offset(i);
+  size_t len = str_arr->value_offset(i+1) - value_offset;  //TODO: check if works at boundary
+
+  VLOG(0) << "ArrowUtil - AssignTensorExperimental -\n"
+             "ValueOffset: " << value_offset << "\n"
+             "ValueOffsetNext: " << str_arr->value_offset(i+1) << "\n"
+             "Len " << len;
+
+
+  const void* src = str_arr->raw_data() + value_offset;
+
+  VLOG(0) << "ArrowUtil - AssignTensorExperimental -\n"
+                  "raw_data location: " << str_arr->raw_data() << "\n"
+                  "values location: " << str_arr->raw_data() + value_offset;
+
+  void* dst = const_cast<char*>(out_tensor->tensor_data().data());
+  memcpy(dst, src, len);
+
+  return Status::OK();
 }
 
 
