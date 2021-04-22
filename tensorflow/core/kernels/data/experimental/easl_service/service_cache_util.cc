@@ -24,7 +24,7 @@ std::string GetFileName(const std::string& shard_directory,
 }
 
 constexpr const char* const kMetadataFilename = "service_cache.metadata";
-const int kWriterVersion = 2; // 0 --> ArrowWriter; 2 --> TFRecordWriter
+const int64 kWriterVersion = 2; // 0 --> ArrowWriter; 2 --> TFRecordWriter
 const char kCompression[] = ""; // can be SNAPPY, GZIP, ZLIB, "" for none.
 const uint64 memoryThreshold = 1 << 27; // in Bytes, Write at most 128MB files for now.
 
@@ -274,7 +274,7 @@ Status Reader::Initialize() {
       [this, i] {
           // simonsom -- manually set reader version to arrow, added output_shapes_
         // ReaderThread(env_, i, cache_file_version_, output_dtypes_);
-        ReaderThread(env_, i, 0, output_dtypes_, output_shapes_);
+        ReaderThread(env_, i, kWriterVersion, output_dtypes_, output_shapes_);
         }
     );
   }
