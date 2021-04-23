@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -351,6 +352,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         << wait_us << ", " << hadToWait;
 
       results_.pop();
+      // TODO (damien-aymon) remove wait, was just for testing.
+      std::this_thread::sleep_for(std::chrono::seconds(1));
       worker_thread_cv_.notify_one();
       return Status::OK();
     }
@@ -462,7 +465,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             return;
           }
         }
-        Heartbeat();
+        Heartbeat(ctx.get());
         UpdateWorkerThreads(ctx.get());
         next_check = Env::Default()->NowMicros() +
             dataset()->task_refresh_interval_ms_ * 1000;
@@ -515,8 +518,23 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       return Status::OK();
     }
 
-    void Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
+    void Heartbeat(IteratorContext* ctx) TF_LOCKS_EXCLUDED(mu_) {
       ClientHeartbeatRequest req;
+
+      // EASL - gather stats for dispatcher
+      int64 num_elements = 0;
+      int64 cumulative_get_next_time = 0;
+
+      auto model = ctx->model();
+      if (model){
+        model->FlushMetrics();
+        // OK since there should only be one dataset of that type.
+        monitoring::CounterCell* tf_data_processing_time_counter =
+            tensorflow::metrics::GetTFDataProcessingTimeCounter(kDatasetType);
+        VLOG(0) << " EASL - Dataservice client heartbeat elements counter: " <<
+        tf_data_processing_time_counter->value();
+      }
+
       req.set_job_client_id(job_client_id_);
       if (StrictRoundRobin()) {
         mutex_lock l(mu_);
