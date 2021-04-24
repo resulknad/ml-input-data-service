@@ -818,6 +818,7 @@ cc_library(
     hdrs = [
         "easl_service/arrow/arrow_async_writer.h",
         "easl_service/arrow/arrow_writer.h",
+        "service_cache_util.h",
     ],
     deps = [
         ":arrow_util",
