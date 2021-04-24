@@ -3,7 +3,6 @@
 //
 
 #include "arrow_async_writer.h"
-#include "tensorflow/core/kernels/data/experimental/easl_service/arrow/arrow_reader.h"
 #include "tensorflow/core/kernels/data/experimental/easl_service/arrow/arrow_writer.h"
 #include "tensorflow/core/platform/stringprintf.h"
 
