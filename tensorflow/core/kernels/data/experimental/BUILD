@@ -801,40 +801,46 @@ cc_library(
     srcs = ["easl_service/service_cache_util.cc"],
     hdrs = ["easl_service/service_cache_util.h"],
     deps = [
-        ":snapshot_util",
-        ":arrow_reader", # simonsom
+        ":arrow_reader",  # simonsom
         ":arrow_writer",
+        ":snapshot_util",
     ],
 )
 
 # --- simonsom ---
 
 cc_library(
-    name = "arrow_reader",
-    srcs = ["easl_service/arrow_reader.cc"],
-    hdrs = ["easl_service/arrow_reader.h"],
+    name = "arrow_writer",
+    srcs = [
+        "easl_service/arrow/arrow_async_writer.cc",
+        "easl_service/arrow/arrow_writer.cc",
+    ],
+    hdrs = [
+        "easl_service/arrow/arrow_async_writer.h",
+        "easl_service/arrow/arrow_writer.h",
+    ],
     deps = [
-        ":snapshot_util",
         ":arrow_util",
+        ":snapshot_util",
         "@arrow",
     ],
 )
 
 cc_library(
-    name = "arrow_writer",
-    srcs = ["easl_service/arrow_writer.cc"],
-    hdrs = ["easl_service/arrow_writer.h"],
+    name = "arrow_reader",
+    srcs = ["easl_service/arrow/arrow_reader.cc"],
+    hdrs = ["easl_service/arrow/arrow_reader.h"],
     deps = [
-        ":snapshot_util",
         ":arrow_util",
+        ":snapshot_util",
         "@arrow",
     ],
 )
 
 cc_library(
     name = "arrow_util",
-    srcs = ["easl_service/arrow_util.cc"],
-    hdrs = ["easl_service/arrow_util.h"],
+    srcs = ["easl_service/arrow/arrow_util.cc"],
+    hdrs = ["easl_service/arrow/arrow_util.h"],
     deps = [
         ":snapshot_util",
         "@arrow",

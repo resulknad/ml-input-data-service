@@ -5,7 +5,7 @@
 #ifndef ML_INPUT_DATA_SERVICE_ARROW_READER_H
 #define ML_INPUT_DATA_SERVICE_ARROW_READER_H
 
-#include "tensorflow/core/kernels/data/experimental/easl_service/arrow_util.h"
+#include "tensorflow/core/kernels/data/experimental/easl_service/arrow/arrow_util.h"
 #include "tensorflow/core/framework/types.h"
 
 namespace tensorflow {

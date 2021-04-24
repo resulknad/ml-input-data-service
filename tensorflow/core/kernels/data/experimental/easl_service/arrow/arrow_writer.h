@@ -5,7 +5,7 @@
 #ifndef ML_INPUT_DATA_SERVICE_ARROW_WRITER_H
 #define ML_INPUT_DATA_SERVICE_ARROW_WRITER_H
 
-#include "tensorflow/core/kernels/data/experimental/easl_service/arrow_util.h"
+#include "tensorflow/core/kernels/data/experimental/easl_service/arrow/arrow_util.h"
 #include "tensorflow/core/framework/types.h"
 
 
@@ -36,6 +36,9 @@ private:
     arrow::DataTypeVector arrow_dtypes_;
     int32_t ncols_;
     int32_t current_col_idx_;
+
+    // last tensor per column is usually smaller if batching enabled
+    std::vector<uint64> last_col_len_;
 
     // initially false, true after first row has been read (implicitly get TensorShape)
     bool dims_initialized_;

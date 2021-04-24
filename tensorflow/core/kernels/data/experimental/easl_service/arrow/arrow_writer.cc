@@ -2,7 +2,7 @@
 // Created by simon on 30.03.21.
 //
 
-#include "tensorflow/core/kernels/data/experimental/easl_service/arrow_writer.h"
+#include "tensorflow/core/kernels/data/experimental/easl_service/arrow/arrow_writer.h"
 #include "arrow/ipc/feather.h"
 #include "arrow/io/file.h"
 
@@ -129,6 +129,13 @@ Status ArrowWriter::WriteTensors(std::vector<Tensor> &tensors) {
       InitDims(t);
     }
 
+    // check whether length of current tensor conforms to length of other tensors in the same row
+    if(t.TotalBytes() != tensor_data_len_[current_col_idx_]) {
+      VLOG(0) << "Skipping Tensor not conforming to column tensor shape";
+
+
+    }
+
    if(arrow_dtypes_[current_col_idx_]->Equals(arrow::utf8())) {
 	    // get string data for tensor
       const tstring* str_data = reinterpret_cast<const tstring*>(t.data());
@@ -154,8 +161,7 @@ Status ArrowWriter::WriteTensors(std::vector<Tensor> &tensors) {
     VLOG(0) << "ArrowWriter - WriteTensors - Added data_buffer to corresponding column " << current_col_idx_;
     current_col_idx_ = (current_col_idx_ + 1) % ncols_;
 
-    // TODO: ugly solution, find better way to keep data_buf reference (shared_ptr for example).
-    // goal is to keep the references to the tensors around s.t. buffers don't get deallocated.
+    // make ArrowWriter owner of tensors s.t. buffers don't get de-allocated.
     tensors_.push_back(t);
   }
   return Status::OK();

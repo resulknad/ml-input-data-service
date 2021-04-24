@@ -2,8 +2,8 @@
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/protobuf/service_cache.pb.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/core/kernels/data/experimental/easl_service/arrow_reader.h"
-#include "tensorflow/core/kernels/data/experimental/easl_service/arrow_writer.h"
+#include "tensorflow/core/kernels/data/experimental/easl_service/arrow/arrow_reader.h"
+#include "tensorflow/core/kernels/data/experimental/easl_service/arrow/arrow_async_writer.h"
 
 
 namespace tensorflow {
@@ -16,18 +16,15 @@ static constexpr const char *const kCacheLocation = "";
 
 std::string GetFileName(const std::string& shard_directory,
                                 uint64 file_id, uint64 split_id = 0) {
-  return io::JoinPath(shard_directory, strings::Printf("%07llu_%llu.easl",
-                      static_cast<unsigned long long>(file_id),
-                      static_cast<unsigned long long>(split_id)));
+  return io::JoinPath(shard_directory, strings::Printf("%08llu.easl",
+                      static_cast<unsigned long long>(file_id)));
 }
 
 }
 
 constexpr const char* const kMetadataFilename = "service_cache.metadata";
-const int64 kWriterVersion = 2; // 0 --> ArrowWriter; 2 --> TFRecordWriter
+const int64 kWriterVersion = 0; // 0 --> ArrowWriter; 2 --> TFRecordWriter
 const char kCompression[] = ""; // can be SNAPPY, GZIP, ZLIB, "" for none.
-const uint64 memoryThreshold = 1 << 27; // in Bytes, Write at most 128MB files for now.
-
 
 Writer::Writer(Env* env,
     const std::string& target_dir, const DataTypeVector& output_dtypes,
@@ -40,21 +37,25 @@ Writer::~Writer() {}  // ~ Destructor
 
 Status Writer::Initialize(){
   // TODO (damien-aymon) add constant for writer version.
-  async_writer_ = std::make_unique<MultiThreadedAsyncWriter>(
-      env_, /*file_index*/ 0, target_dir_, /*checkpoint_id*/ 0,
-      kCompression, kWriterVersion, output_dtypes_,
-      /*done*/ [this](Status s){
-        // TODO (damien-aymon) check and propagate errors here!
-        if (!s.ok()) {
-          VLOG(0) << "EASL - writer error: "<< s.ToString();
-        }
-        //LOG(ERROR) << "MultiThreadedAsyncWriter in snapshot writer failed: " << s;
-        //mutex_lock l(writer_status_mu_);
-        //writer_status_ = s;
-        return;
-      },
-      writer_count_
-  );
+
+  if(kWriterVersion == 0) { // 0 -> arrow
+    async_writer_ = std::make_unique<arrow_async_writer::ArrowAsyncWriter>(writer_count_);
+  } else {
+    async_writer_ = std::make_unique<MultiThreadedAsyncWriter>(writer_count_);
+  }
+
+  async_writer_->Initialize(env_, /*file_index*/ 0, target_dir_, /*checkpoint_id*/ 0,
+                            kCompression, kWriterVersion, output_dtypes_,
+          /*done*/ [this](Status s){
+              // TODO (damien-aymon) check and propagate errors here!
+              if (!s.ok()) {
+                VLOG(0) << "EASL - writer error: "<< s.ToString();
+              }
+              //LOG(ERROR) << "MultiThreadedAsyncWriter in snapshot writer failed: " << s;
+              //mutex_lock l(writer_status_mu_);
+              //writer_status_ = s;
+              return;
+          });
 
   return WriteMetadataFile(env_, target_dir_, output_dtypes_, output_shapes_);
 }
@@ -101,25 +102,26 @@ Status Writer::WriteMetadataFile(
 // MultiThreadedAsyncWriter
 // -----------------------------------------------------------------------------
 
-MultiThreadedAsyncWriter::MultiThreadedAsyncWriter(Env* env, int64 file_index,
-                         const std::string& shard_directory,
-                         uint64 checkpoint_id, const std::string& compression,
-                         int64 version, const DataTypeVector& output_types,
-                         std::function<void(Status)> done,
-                         const int writer_count) : writer_count_(writer_count) {
-  thread_pool_ = absl::make_unique<thread::ThreadPool>(env, ThreadOptions(),  
-      absl::StrCat("thread_pool_", file_index), writer_count_, false);
+MultiThreadedAsyncWriter::MultiThreadedAsyncWriter(const int writer_count) : writer_count_(writer_count) {
+}
 
-  LOG(INFO) << "(MultiThreadedAsyncWriter) Starting ThreadPool"; 
+void MultiThreadedAsyncWriter::Initialize(Env *env, int64 file_index, const std::string &shard_directory,
+        uint64 checkpoint_id, const std::string &compression, int64 version,
+        const DataTypeVector &output_types, std::function<void (Status)> done) {
+  thread_pool_ = absl::make_unique<thread::ThreadPool>(env, ThreadOptions(),
+           absl::StrCat("thread_pool_", file_index), writer_count_, false);
+
+  LOG(INFO) << "(MultiThreadedAsyncWriter) Starting ThreadPool";
   for (int i = 0; i < writer_count_; ++i) {
     thread_pool_->Schedule(
-      [this, env, shard_directory, checkpoint_id, compression, version,
-        &output_types, done = std::move(done), i] {
-        // Note that `done` is not used since it causes a bug here 
-        WriterThread(env, shard_directory, i, compression, version, 
-            output_types);
-        }
+            [this, env, shard_directory, checkpoint_id, compression, version,
+                    &output_types, done = std::move(done), i] {
+                // Note that `done` is not used since it causes a bug here
+                WriterThread(env, shard_directory, i, compression, version,
+                             output_types);
+            }
     );
+
   }
   LOG(INFO) << "(MultiThreadedAsyncWriter) Finished Starting ThreadPool";
 }
@@ -157,31 +159,16 @@ Status MultiThreadedAsyncWriter::WriterThread(Env* env,
                                  const std::string& compression, int64 version,
                                  DataTypeVector output_types) {
 
-  uint64_t storageEstimate = 0; // estimated storage space on disk in bytes
-  uint64_t rowStorage = 0; // storage size of a single dataset row (single be.value). Assume all have the same size.
-  uint64 split_id = 0; // name all produced arrow files by this thread
-
   // TODO (damien-aymon) Push this to the specific writers, so that we can make
   // the async writer more general (e.g. different file system, gs://, etc...)
   TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(shard_directory));
   LOG(INFO) << "(Writer_" << writer_id << ") Created Dir ";
 
-  // select between arrowWriter and standard built-in Writers (TFRecord, CustomReader)
-  bool isArrow = (version == 0);
-
-  // possible readers
-  std::unique_ptr<ArrowWriter> arrowWriter;
   std::unique_ptr<snapshot_util::Writer> writer;
 
-  if(isArrow) {
-    arrowWriter = absl::make_unique<ArrowWriter>();
-    TF_RETURN_IF_ERROR(arrowWriter->Create(env, GetFileName(shard_directory, writer_id),
-                        compression, output_types));
-  } else {
-    TF_RETURN_IF_ERROR(snapshot_util::Writer::Create(
-            env, GetFileName(shard_directory, writer_id),
-            compression, version, std::move(output_types), &writer));
-  }
+  TF_RETURN_IF_ERROR(snapshot_util::Writer::Create(
+          env, GetFileName(shard_directory, writer_id),
+          compression, version, std::move(output_types), &writer));
 
   int count = 0;
   LOG(INFO) << "(Writer_" << writer_id << ") Starting to write "; 
@@ -193,42 +180,13 @@ Status MultiThreadedAsyncWriter::WriterThread(Env* env,
     LOG(INFO) << "(Writer_" << writer_id << ") Read - " 
       << be.end_of_sequence << " - Total: " << ++count;
     if (be.end_of_sequence) {
-      TF_RETURN_IF_ERROR(isArrow ? arrowWriter->Close() : writer->Close());
+      writer->Close();
       LOG(INFO) << "(Writer_" << writer_id << ") Closed w/ total read " 
                 << count;
       break;
     }
 
-    // update memory estimate:
-    if(rowStorage == 0) {
-      std::vector<Tensor> &tensors = be.value;
-      for(Tensor t : tensors) {
-        rowStorage += t.TotalBytes();
-      }
-    } else {
-      storageEstimate += rowStorage;
-    }
-
-    // create new reader if memoryThreshold exceeded
-    if(storageEstimate > memoryThreshold) {
-
-      TF_RETURN_IF_ERROR(isArrow ? arrowWriter->Close() : writer->Close());
-      storageEstimate = rowStorage;
-      // create new writer for remaining tensors:
-      if(isArrow) {
-        arrowWriter = absl::make_unique<ArrowWriter>();
-        TF_RETURN_IF_ERROR(arrowWriter->Create(env, GetFileName(shard_directory, writer_id, ++split_id),
-                                               compression, output_types));
-      } else {
-        TF_RETURN_IF_ERROR(snapshot_util::Writer::Create(
-                env, GetFileName(shard_directory, writer_id, ++split_id),
-                compression, version, std::move(output_types), &writer));
-      }
-      LOG(INFO) << "(Writer_" << writer_id << ") Exceeded memory threshold, created new file (split_id = "
-                                              "" << split_id <<")...";
-    }
-
-    TF_RETURN_IF_ERROR(isArrow ? arrowWriter->WriteTensors(be.value) : writer->WriteTensors(be.value));
+    TF_RETURN_IF_ERROR(writer->WriteTensors(be.value));
   }
   return Status::OK();
 }
@@ -260,8 +218,9 @@ Status Reader::Initialize() {
 
   { 
     mutex_lock l(mu_);
-    for (const auto& f : files)
+    for (const auto& f : files) {
       file_names_.push_back(f);
+    }
   }
 
   // Spawn the threadpool, and start reading from the files

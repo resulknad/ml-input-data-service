@@ -2,7 +2,7 @@
 // Created by simon on 30.03.21.
 //
 
-#include "tensorflow/core/kernels/data/experimental/easl_service/arrow_reader.h"
+#include "tensorflow/core/kernels/data/experimental/easl_service/arrow/arrow_reader.h"
 #include "arrow/ipc/feather.h"
 #include "arrow/io/file.h"
 

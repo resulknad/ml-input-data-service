@@ -15,7 +15,7 @@ limitations under the License.
 More or less untouched code, adapted slightly for specific use case by simonsom
 ==============================================================================*/
 
-#include "tensorflow/core/kernels/data/experimental/easl_service/arrow_util.h"
+#include "tensorflow/core/kernels/data/experimental/easl_service/arrow/arrow_util.h"
 #include "arrow/adapters/tensorflow/convert.h"
 #include "arrow/api.h"
 #include "arrow/ipc/api.h"
@@ -648,14 +648,22 @@ arrow::Status GetArrayFromDataExperimental(
         size_t buff_len,
         std::vector<const char *>& data_column,
         std::shared_ptr<arrow::Array>* out_array) {
-
+  VLOG(0) << "ArrowUtil - GetArrayFromDataExperimental - Invoked";
   arrow::StringBuilder data_builder(arrow::default_memory_pool());
+
+  VLOG(0) << "ArrowUtil - GetArrayFromDataExperimental - Created DataBuilder";
 
   for(const char* buff : data_column) {
     ARROW_RETURN_NOT_OK(data_builder.Append(buff, buff_len)) ;
   }
+
+  VLOG(0) << "ArrowUtil - GetArrayFromDataExperimental - Appended Values";
+
   std::shared_ptr<arrow::Array> arrow_array;
   ARROW_RETURN_NOT_OK(data_builder.Finish(&arrow_array));
+
+  VLOG(0) << "ArrowUtil - GetArrayFromDataExperimental - Appended Values";
+
   *out_array = arrow_array;
 
   return arrow::Status::OK();

@@ -27,12 +27,13 @@ namespace service_cache_util {
 // writer = nullptr;  // This will block until writes are flushed.
 class MultiThreadedAsyncWriter {
  public:
-  explicit MultiThreadedAsyncWriter(Env* env, int64 file_index,
-                       const std::string& shard_directory, uint64 checkpoint_id,
-                       const std::string& compression, int64 version,
-                       const DataTypeVector& output_types,
-                       std::function<void(Status)> done,
-                       const int writer_count);
+  MultiThreadedAsyncWriter(const int writer_count);
+
+  void Initialize(Env* env, int64 file_index,
+                  const std::string& shard_directory, uint64 checkpoint_id,
+                  const std::string& compression, int64 version,
+                  const DataTypeVector& output_types,
+                  std::function<void(Status)> done);
 
   // Writes the given tensors. The method is non-blocking and returns without
   // waiting for the element to be written.
@@ -42,10 +43,10 @@ class MultiThreadedAsyncWriter {
   // waiting for the writer to be closed.
   void SignalEOF() TF_LOCKS_EXCLUDED(mu_);
 
- private:
+ protected:
   void Consume(snapshot_util::ElementOrEOF* be) TF_LOCKS_EXCLUDED(mu_);
   bool ElementAvailable() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  Status WriterThread(Env* env, const std::string& shard_directory,
+  virtual Status WriterThread(Env* env, const std::string& shard_directory,
                       uint64 checkpoint_id, const std::string& compression,
                       int64 version, DataTypeVector output_types);
 
@@ -136,7 +137,6 @@ class Reader {
   std::deque<Tensor> tensors_ TF_GUARDED_BY(mu_add_);
   std::unique_ptr<thread::ThreadPool> thread_pool_;
 };
-
 
 } // namespace service_cache_util
 } // namespace easl
