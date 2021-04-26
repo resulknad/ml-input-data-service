@@ -457,6 +457,10 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           gtl::MakeCleanup([] { VLOG(1) << "Task thread manager exiting"; });
       VLOG(1) << "Starting task thread manager";
       uint64 next_check = Env::Default()->NowMicros();
+
+      // eartbeat
+      // L - Setting the offsets for the metric collection
+      tf_data_processing_time_counter_offset
       while (true) {
         {
           mutex_lock l(mu_);
@@ -536,18 +540,21 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       // We get processing time computed by the model, from the metrics counters
       auto model = ctx->model();
       if (model){
-        model->FlushMetrics();
         // OK since there should only be one dataset of that type.
-        monitoring::CounterCell* tf_data_processing_time_counter =
+        // Since we have access to the node_ of the model, we do not use the
+        // counters anymore.
+        /*monitoring::CounterCell* tf_data_processing_time_counter =
             tensorflow::metrics::GetTFDataProcessingTimeCounter(kDatasetType);
         monitoring::CounterCell* tf_data_num_elements_counter =
             tensorflow::metrics::GetTFDataElementsCounter(kDatasetType);
-
-        VLOG(0) << " EASL - Dataservice client heartbeat elements counter: " <<
+        VLOG(0) << " EASL - Dataservice client heartbeat processing time "
+                   "counter: " <<
         tf_data_processing_time_counter->value();
+        VLOG(0) << " EASL - Dataservice client heartbeat element "
+                   "counter: " <<
+                tf_data_num_elements_counter->value();*/
 
-        avg_get_next_time = tf_data_processing_time_counter->value() /
-            tf_data_num_elements_counter->value();
+        avg_get_next_time = node_->SelfProcessingTime();
       }
       // We use our own implementation for inter-arrival times.
       {
