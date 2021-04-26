@@ -226,7 +226,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     explicit Iterator(const Params& params, int64 iterator_index)
         : DatasetIterator<Dataset>(params),
           iterator_index_(iterator_index),
-          max_outstanding_requests_(params.dataset->max_outstanding_requests_) {
+          max_outstanding_requests_(params.dataset->max_outstanding_requests_){
     }
 
     ~Iterator() override {
@@ -299,6 +299,11 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       // EASL - metrics collection
       bool hadToWait = false;
       int64 start_us = Env::Default()->NowMicros();
+      if(num_elements_ != 0){
+        int64 inter_arrival_time = start_us - last_get_next_end_us_;
+        get_next_inter_arrival_sum_us_ += inter_arrival_time;
+      }
+      num_elements_++;
 
       bool skip = true;
       while (skip) {
@@ -355,6 +360,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       // TODO (damien-aymon) remove wait, was just for testing.
       std::this_thread::sleep_for(std::chrono::seconds(1));
       worker_thread_cv_.notify_one();
+
+      end_us = Env::Default()->NowMicros();
+      last_get_next_end_us_ = end_us;
       return Status::OK();
     }
 
@@ -522,18 +530,37 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       ClientHeartbeatRequest req;
 
       // EASL - gather stats for dispatcher
-      int64 num_elements = 0;
-      int64 cumulative_get_next_time = 0;
+      int64 avg_get_next_time = 0;
+      int64 avg_get_next_inter_arrival_times = 0;
 
+      // We get processing time computed by the model, from the metrics counters
       auto model = ctx->model();
       if (model){
         model->FlushMetrics();
         // OK since there should only be one dataset of that type.
         monitoring::CounterCell* tf_data_processing_time_counter =
             tensorflow::metrics::GetTFDataProcessingTimeCounter(kDatasetType);
+        monitoring::CounterCell* tf_data_num_elements_counter =
+            tensorflow::metrics::GetTFDataElementsCounter(kDatasetType);
+
         VLOG(0) << " EASL - Dataservice client heartbeat elements counter: " <<
         tf_data_processing_time_counter->value();
+
+        avg_get_next_time = tf_data_processing_time_counter->value() /
+            tf_data_num_elements_counter->value();
       }
+      // We use our own implementation for inter-arrival times.
+      {
+        mutex_lock l(mu_);
+        if(num_elements_ > 0){
+          avg_get_next_inter_arrival_times = get_next_inter_arrival_sum_us_ /
+              (num_elements_ - 1);
+          // TODO reset inter_arrival counting to account for adjustments?
+        }
+      }
+
+      VLOG(0) << " EASL - Dataservice client avg inter-arrival time: " <<
+              avg_get_next_inter_arrival_times;
 
       req.set_job_client_id(job_client_id_);
       if (StrictRoundRobin()) {
@@ -949,6 +976,11 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     bool job_finished_ = false;
     std::vector<std::unique_ptr<Thread>> worker_threads_ TF_GUARDED_BY(mu_);
     std::unique_ptr<Thread> task_thread_manager_ TF_GUARDED_BY(mu_);
+
+    // EASL metrics collection
+    int64 num_elements_ = 0;
+    int64 last_get_next_end_us_ = 0;
+    int64 get_next_inter_arrival_sum_us_ = 0;
   };
 
   const int op_version_;
