@@ -458,9 +458,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       VLOG(1) << "Starting task thread manager";
       uint64 next_check = Env::Default()->NowMicros();
 
-      // eartbeat
-      // L - Setting the offsets for the metric collection
-      tf_data_processing_time_counter_offset
+      // Heartbeat
       while (true) {
         {
           mutex_lock l(mu_);
@@ -559,10 +557,11 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       // We use our own implementation for inter-arrival times.
       {
         mutex_lock l(mu_);
-        if(num_elements_ > 0){
+        if(num_elements_ > 1){
           avg_get_next_inter_arrival_time = get_next_inter_arrival_sum_us_ /
               (num_elements_ - 1);
           // TODO reset inter_arrival counting to account for adjustments?
+
         }
       }
       // Fill up the metadata fields in the heartbeat request
