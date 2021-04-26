@@ -847,7 +847,10 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
     const ClientHeartbeatRequest* request, ClientHeartbeatResponse* response) {
   TF_RETURN_IF_ERROR(CheckStarted());
   mutex_lock l(mu_);
-  VLOG(4) << "Received heartbeat from client id " << request->job_client_id();
+  // TODO (damien-aymon) revert back to level 4
+  VLOG(0) << "Received heartbeat from client id " << request->job_client_id();
+  VLOG(0) << "Avg inter-arrival time" << request->avg_inter_arrival_time();
+
   std::shared_ptr<const Job> job;
   Status s = state_.JobForJobClientId(request->job_client_id(), job);
   if (errors::IsNotFound(s) && !config_.fault_tolerant_mode()) {

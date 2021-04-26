@@ -534,8 +534,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       ClientHeartbeatRequest req;
 
       // EASL - gather stats for dispatcher
-      int64 avg_get_next_time = 0;
-      int64 avg_get_next_inter_arrival_times = 0;
+      double get_next_processing_time = -1;
+      double avg_get_next_inter_arrival_time = -1;
 
       // We get processing time computed by the model, from the metrics counters
       auto model = ctx->model();
@@ -554,20 +554,20 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
                    "counter: " <<
                 tf_data_num_elements_counter->value();*/
 
-        avg_get_next_time = node_->SelfProcessingTime();
+        get_next_processing_time = node_->SelfProcessingTime();
       }
       // We use our own implementation for inter-arrival times.
       {
         mutex_lock l(mu_);
         if(num_elements_ > 0){
-          avg_get_next_inter_arrival_times = get_next_inter_arrival_sum_us_ /
+          avg_get_next_inter_arrival_time = get_next_inter_arrival_sum_us_ /
               (num_elements_ - 1);
           // TODO reset inter_arrival counting to account for adjustments?
         }
       }
-
-      VLOG(0) << " EASL - Dataservice client avg inter-arrival time: " <<
-              avg_get_next_inter_arrival_times;
+      // Fill up the metadata fields in the heartbeat request
+      req.set_avg_get_next_processing_time(get_next_processing_time);
+      req.set_avg_inter_arrival_time(avg_get_next_inter_arrival_time);
 
       req.set_job_client_id(job_client_id_);
       if (StrictRoundRobin()) {
