@@ -13,9 +13,15 @@ message TaskProgress {
 }
 
 message WorkerHeartbeatRequest {
+  message Metric {
+    string name = 1;
+    float value = 2;
+  }
+
   string worker_address = 1;
   string transfer_address = 3;
   repeated int64 current_tasks = 2;
+  repeated Metric metrics = 4;
 }
 
 message WorkerHeartbeatResponse {

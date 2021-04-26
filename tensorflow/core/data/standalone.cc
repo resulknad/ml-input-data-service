@@ -143,7 +143,7 @@ const DatasetBase* Dataset::Get() const { return dataset_; }
 
 Status Dataset::GetMetrics(const std::string& container, 
                            const std::string& name, 
-                           MyResource* var) {
+                           MetricsResource* var) {
   Status s = resource_mgr_.Lookup(container, name, &var);
   if (s.ok()) {
     VLOG(1) << "(Dataset::GetMetrics) Value: " << var->counter;

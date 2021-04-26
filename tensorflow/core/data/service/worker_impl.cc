@@ -377,6 +377,7 @@ void DataServiceWorkerImpl::HeartbeatThread() TF_LOCKS_EXCLUDED(mu_) {
 
 Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
   std::vector<int64> current_tasks;
+  MetricsResource* metrics_resource = nullptr;
   {
     VLOG(1) << "(DataServiceWorkerImpl::Heartbeat) Starting heartbeat";
     mutex_lock l(mu_);
@@ -388,10 +389,10 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
         std::unique_ptr<standalone::Dataset> dataset;
         TF_RETURN_IF_ERROR(standalone::Dataset::FromGraph(
                 params, task.second->task_def.dataset_def().graph(), &dataset));
-        MyResource* var;
-        Status s = dataset->GetMetrics("my_container", "my_resource", var);
+        Status s = dataset->GetMetrics("my_container", "my_resource", 
+            metrics_resource);
         if (s.ok()) {
-          VLOG(1) << "(DataServiceWorkerImpl::Heartbeat) Got value" 
+          VLOG(1) << "(DataServiceWorkerImpl::Heartbeat) Got metrics_resource" 
                   << var->counter; 
         }
       }
@@ -401,7 +402,8 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
   std::vector<int64> tasks_to_delete;
   TF_RETURN_IF_ERROR(
       dispatcher_->WorkerHeartbeat(worker_address_, transfer_address_,
-                                   current_tasks, new_tasks, tasks_to_delete));
+                                   current_tasks, new_tasks, tasks_to_delete, 
+                                   var));
   mutex_lock l(mu_);
   for (const auto& task : new_tasks) {
     VLOG(1) << "Received new task from dispatcher with id " << task.task_id();

@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/kernels/data/model_dataset_op.h"
 
 namespace tensorflow {
 namespace data {
@@ -91,7 +92,8 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
                          const std::string& transfer_address,
                          const std::vector<int64>& current_tasks,
                          std::vector<TaskDef>& new_tasks,
-                         std::vector<int64>& tasks_to_delete);
+                         std::vector<int64>& tasks_to_delete,
+                         const MetricsResource* metrics);
 
   // Updates the dispatcher with information about the worker's state.
   Status WorkerUpdate(const std::string& worker_address,

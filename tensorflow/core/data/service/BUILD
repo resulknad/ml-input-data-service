@@ -98,6 +98,7 @@ cc_library(
         ":worker_cc_grpc_proto",
         ":worker_proto_cc",
         "//tensorflow/core:framework",
+        "//tensorflow/core/kernels/data",
         "//tensorflow/core/platform:errors",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/types:optional",

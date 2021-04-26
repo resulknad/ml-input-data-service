@@ -62,7 +62,7 @@ std::string ProcessingModeToString(ProcessingMode mode) {
 Status DataServiceDispatcherClient::WorkerHeartbeat(
     const std::string& worker_address, const std::string& transfer_address,
     const std::vector<int64>& current_tasks, std::vector<TaskDef>& new_tasks,
-    std::vector<int64>& tasks_to_delete) {
+    std::vector<int64>& tasks_to_delete, const MetricsResource* metrics) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   WorkerHeartbeatRequest req;
   req.set_worker_address(worker_address);

@@ -110,7 +110,7 @@ class Dataset {
 
   // Returns the metrics for this dataset
   Status GetMetrics(const std::string& container, const std::string& name, 
-                    MyResource* var);
+                    MetricsResource* var);
 
  private:
   Dataset(DatasetBase* dataset, DeviceMgr* device_mgr,

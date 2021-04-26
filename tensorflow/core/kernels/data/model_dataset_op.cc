@@ -271,11 +271,11 @@ class ModelDatasetOp::Dataset : public DatasetBase {
         }
 
         // Test the ResourceMgr
-        MyResource* var;
+        MetricsResource* var;
         ResourceMgr* rm = ctx->resource_mgr();
         Status s = rm->Lookup("my_container", "my_resource", &var);
         if (!s.ok()) {
-          var = new MyResource();
+          var = new MetricsResource();
           var->counter = 0;
           rm->Create("my_container", "my_resource", var);
         } else {
