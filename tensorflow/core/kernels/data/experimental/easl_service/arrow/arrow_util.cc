@@ -18,6 +18,8 @@ More or less untouched code, adapted slightly for specific use case by simonsom
 #include "tensorflow/core/kernels/data/experimental/easl_service/arrow/arrow_util.h"
 #include "arrow/adapters/tensorflow/convert.h"
 #include "arrow/api.h"
+#include "arrow/io/file.h"
+#include "arrow/ipc/feather.h"
 #include "arrow/ipc/api.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -27,6 +29,166 @@ namespace tensorflow {
 namespace data {
 namespace easl {
 namespace ArrowUtil {
+
+
+Status ArrowMetadata::WriteData(const std::string& path) {
+
+  arrow::MemoryPool* pool = arrow::default_memory_pool();
+
+  std::vector<std::shared_ptr<arrow::Array>> arrays;
+  std::vector<std::shared_ptr<arrow::Field>> schema_vector;
+
+  std::shared_ptr<arrow::Array> rowShapeArr;
+  arrow::StringBuilder rowShapeBuilder(pool);
+  for(TensorShape &s : shapes_) {
+    TensorShapeProto p;
+    s.AsProto(&p);
+    std::string s_str = p.SerializeAsString();
+    rowShapeBuilder.Append(s_str.data(), s_str.length());
+  }
+  rowShapeBuilder.Finish(&rowShapeArr);
+  arrays.push_back(rowShapeArr);
+  schema_vector.push_back(arrow::field("row_shape", rowShapeArr->type()));
+
+
+  auto itr = partial_batch_shapes_.begin();
+  for(auto i : partial_batch_shapes_) {
+    std::string col_name(i.first.data(), i.first.length());
+
+    std::shared_ptr<arrow::Array> partialShapesArr;
+    arrow::StringBuilder partialShapesBuilder(pool);
+
+    for(TensorShape &s : i.second) {
+      TensorShapeProto p;
+      s.AsProto(&p);
+      std::string s_str = p.SerializeAsString();
+      partialShapesBuilder.Append(s_str.data(), s_str.length());
+    }
+
+    partialShapesBuilder.Finish(&partialShapesArr);
+    arrays.push_back(partialShapesArr);
+    schema_vector.push_back(arrow::field(col_name, partialShapesArr->type()));
+  }
+
+  // create schema
+  auto schema = std::make_shared<arrow::Schema>(schema_vector);
+  std::shared_ptr<arrow::Table> table;
+  table = arrow::Table::Make(schema, arrays);
+
+  // open file
+  std::shared_ptr<arrow::io::FileOutputStream> file;
+  file = arrow::io::FileOutputStream::Open(
+          io::JoinPath(path, "arrow_metadata.feather"), /*append=*/false).MoveValueUnsafe();
+
+  // write table to file
+  struct arrow::ipc::feather::WriteProperties wp = {
+          arrow::ipc::feather::kFeatherV2Version,
+          // Number of rows per intra-file chunk. Use smaller chunksize when you need faster random row access
+          1LL << 16,
+          arrow::Compression::UNCOMPRESSED,
+          arrow::util::kUseDefaultCompressionLevel
+  };
+  arrow::ipc::feather::WriteTable(*table, file.get(), wp);
+  return Status::OK();
+}
+
+Status ArrowMetadata::WriteMetadataToFile(const std::string& path) {
+  mutex_lock l(mu_);  // unlocked automatically upon function return
+  --num_writer_threads_;
+  if(num_writer_threads_ == 0) {
+    WriteData(path);
+  }
+  return Status::OK();
+}
+
+Status ArrowMetadata::ReadMetadataFromFile(const std::string& path) {
+
+  // clear metadata if already data in it
+  this->partial_batch_shapes_.clear();
+  this->shapes_.clear();
+
+  // open file
+  std::shared_ptr<arrow::Table> table;
+  std::shared_ptr<arrow::io::MemoryMappedFile> mm_file;
+  mm_file = arrow::io::MemoryMappedFile::Open(io::JoinPath(path, "arrow_metadata.feather"),
+          arrow::io::FileMode::READ).MoveValueUnsafe();
+  std::shared_ptr<arrow::ipc::feather::Reader> reader;
+  reader = arrow::ipc::feather::Reader::Open(mm_file).MoveValueUnsafe();
+  reader->Read(&table);
+
+  arrow::TableBatchReader tr(*table.get());
+  std::shared_ptr<arrow::RecordBatch> batch;
+  std::shared_ptr<arrow::RecordBatch> next_batch;
+  tr.ReadNext(&batch); // should never be nullptr
+  tr.ReadNext(&next_batch);
+  if(batch == nullptr) {
+    return Status(error::UNAVAILABLE, "Metadata empty.");
+  } else if(next_batch != nullptr) {  // next batch should be nullptr
+    return Status(error::UNAVAILABLE, "Metadata too large");
+  }
+
+  // read rowShape (column 0 always exists)
+  arrow::StringArray* rowShapeArr = dynamic_cast<arrow::StringArray*>(batch->column(0).get());
+  for(int i = 0; i < rowShapeArr->length(); i++) {
+    std::string proto_data = rowShapeArr->GetString(i);
+    TensorShapeProto s_proto;
+    s_proto.ParseFromString(proto_data);
+    TensorShape s(s_proto);
+    shapes_.push_back(s);
+  }
+
+  // read partialTensorShapes
+  partial_batching_ = batch->num_columns() > 1;
+  for(int i = 1; i < batch->num_columns(); i++) {
+    std::string col_name = batch->column_name(i);
+    std::vector<TensorShape> partial_shapes;
+    arrow::StringArray* partialShapeArr = dynamic_cast<arrow::StringArray*>(batch->column(i).get());
+
+    for(int j = 0; j < partialShapeArr->length(); j++) {
+      std::string proto_data = rowShapeArr->GetString(j);
+      TensorShapeProto s_proto;
+      s_proto.ParseFromString(proto_data);
+      TensorShape s(s_proto);
+      partial_shapes.push_back(s);
+    }
+    partial_batch_shapes_.insert({col_name, partial_shapes});
+  }
+  return Status::OK();
+}
+
+Status ArrowMetadata::AddPartialBatch(string doc, std::vector<TensorShape> last_batch_shape) {
+  mutex_lock l(mu_);  // unlocked automatically upon function return
+  this->partial_batch_shapes_.insert({doc, last_batch_shape});
+  this->partial_batching_ = true;
+  return Status::OK();
+}
+
+Status ArrowMetadata::GetPartialBatches(string doc, std::vector<TensorShape>* out_last_batch_shape) {
+  auto it = partial_batch_shapes_.find(doc);
+  if (it != partial_batch_shapes_.end()) {
+    out_last_batch_shape = &partial_batch_shapes_[doc];
+  } else {
+    return Status(error::NOT_FOUND, "doc name not found in map");
+  }
+  return Status::OK();
+}
+
+Status ArrowMetadata::IsPartialBatching(bool *batching) {
+  batching = &partial_batching_;
+  return Status::OK();
+}
+
+Status ArrowMetadata::GetRowShape(std::vector<TensorShape>* out_row_shape) {
+  out_row_shape = &shapes_;
+  return Status::OK();
+}
+
+Status ArrowMetadata::SetRowShape(std::vector<TensorShape> row_shape) {
+  this->shapes_ = row_shape;
+  return Status::OK();
+}
+
+
 
 Status GetTensorFlowType(std::shared_ptr<::arrow::DataType> dtype,
                          ::tensorflow::DataType* out) {
@@ -678,22 +840,10 @@ Status AssignTensorExperimental(
 
   arrow::StringArray* str_arr = dynamic_cast<arrow::StringArray*>(array.get());
 
-  VLOG(0) << "ArrowUtil - AssignTensorExperimental - Downcast StringArray";
-
   int64 value_offset = str_arr->value_offset(i);
   size_t len = str_arr->value_offset(i+1) - value_offset;  //TODO: check if works at boundary
 
-  VLOG(0) << "ArrowUtil - AssignTensorExperimental -\n"
-             "ValueOffset: " << value_offset << "\n"
-             "ValueOffsetNext: " << str_arr->value_offset(i+1) << "\n"
-             "Len " << len;
-
-
   const void* src = str_arr->raw_data() + value_offset;
-
-  VLOG(0) << "ArrowUtil - AssignTensorExperimental -\n"
-                  "raw_data location: " << str_arr->raw_data() << "\n"
-                  "values location: " << str_arr->raw_data() + value_offset;
 
   void* dst = const_cast<char*>(out_tensor->tensor_data().data());
   memcpy(dst, src, len);

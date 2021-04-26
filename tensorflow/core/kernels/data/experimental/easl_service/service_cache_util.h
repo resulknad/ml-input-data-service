@@ -97,33 +97,32 @@ class Writer {
   std::unique_ptr<MultiThreadedAsyncWriter> async_writer_;
 };
 
-class Reader {
+class MultiThreadedAsyncReader {
  public:
-  Reader(Env *env,
-         const std::string &target_dir,
-         const DataTypeVector& output_dtypes,
-         const int reader_count = 8);
+  MultiThreadedAsyncReader(Env *env,
+                           const std::string &target_dir,
+                           const DataTypeVector &output_dtypes,
+                           const std::vector<PartialTensorShape> &output_shapes,
+                           int reader_count = 8);
 
   Status Initialize();
 
   Status Read(std::vector<Tensor>* &read_tensors, bool* end_of_sequence);
 
-  ~Reader();
+  ~MultiThreadedAsyncReader();
 
- private:
+ protected:
   mutex mu_;
   mutex mu_add_;
   condition_variable read_cv_ TF_GUARDED_BY(mu_);
   int file_count_;
   const int reader_count_;
-  int8 num_readers_done_ = 0 TF_GUARDED_BY(mu_add);
-  
+  int8 num_readers_done_ TF_GUARDED_BY(mu_add_);
 
   Status ReadAndParseMetadataFile();
   void Consume(string* s, bool* end_of_sequence) TF_LOCKS_EXCLUDED(mu_);
   void Add(std::vector<Tensor>& tensors)  TF_LOCKS_EXCLUDED(mu_add_);
-  bool AllFilesRead() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_add_);
-  Status ReaderThread(Env *env, uint64 writer_id, int64 version, 
+  virtual Status ReaderThread(Env *env, uint64 writer_id, int64 version,
       DataTypeVector output_types, std::vector<PartialTensorShape> output_shapes);
 
   const std::string target_dir_;
@@ -136,6 +135,27 @@ class Reader {
   std::deque<string> file_names_ TF_GUARDED_BY(mu_);
   std::deque<Tensor> tensors_ TF_GUARDED_BY(mu_add_);
   std::unique_ptr<thread::ThreadPool> thread_pool_;
+};
+
+
+class Reader {
+public:
+    Reader(Env *env,
+           const std::string &target_dir,
+           const DataTypeVector& output_dtypes,
+           const std::vector<PartialTensorShape>& output_shapes,
+           const int reader_count = 8);
+
+    Status Initialize();
+
+    Status Read(std::vector<Tensor>* &read_tensors, bool* end_of_sequence);
+private:
+    Env* env_;
+    const int reader_count_;
+    const std::string target_dir_;
+    const DataTypeVector output_dtypes_;
+    const std::vector<PartialTensorShape> output_shapes_;
+    std::unique_ptr<MultiThreadedAsyncReader> async_reader_;
 };
 
 } // namespace service_cache_util

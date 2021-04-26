@@ -2,8 +2,9 @@
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/protobuf/service_cache.pb.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/core/kernels/data/experimental/easl_service/arrow/arrow_reader.h"
 #include "tensorflow/core/kernels/data/experimental/easl_service/arrow/arrow_async_writer.h"
+#include "tensorflow/core/kernels/data/experimental/easl_service/arrow/arrow_async_reader.h"
+
 
 
 namespace tensorflow {
@@ -102,8 +103,7 @@ Status Writer::WriteMetadataFile(
 // MultiThreadedAsyncWriter
 // -----------------------------------------------------------------------------
 
-MultiThreadedAsyncWriter::MultiThreadedAsyncWriter(const int writer_count) : writer_count_(writer_count) {
-}
+MultiThreadedAsyncWriter::MultiThreadedAsyncWriter(const int writer_count) : writer_count_(writer_count) {}
 
 void MultiThreadedAsyncWriter::Initialize(Env *env, int64 file_index, const std::string &shard_directory,
         uint64 checkpoint_id, const std::string &compression, int64 version,
@@ -195,20 +195,47 @@ Status MultiThreadedAsyncWriter::WriterThread(Env* env,
 // Reader
 // -----------------------------------------------------------------------------
 
-Reader::Reader(Env *env,
-               const std::string &target_dir,
-               const DataTypeVector& output_dtypes, const int reader_count)
-    : target_dir_(target_dir), env_(env), output_dtypes_(output_dtypes), 
-    reader_count_(reader_count), tensors_() {
+Reader::Reader(Env *env, const std::string &target_dir, const DataTypeVector& output_dtypes,
+        const std::vector<PartialTensorShape>& output_shapes, const int reader_count)
+        : target_dir_(target_dir), env_(env), output_dtypes_(output_dtypes), reader_count_(reader_count) {}
+
+Status Reader::Initialize() {
+
+  if(kWriterVersion == 0) { // 0 -> arrow
+    async_reader_ = std::make_unique<arrow_async_reader::ArrowAsyncReader>(env_, target_dir_, output_dtypes_,
+                                                               output_shapes_, reader_count_);
+  } else {
+    async_reader_ = std::make_unique<MultiThreadedAsyncReader>(env_, target_dir_, output_dtypes_,
+                                                               output_shapes_, reader_count_);
+  }
+
+  return async_reader_->Initialize();
+}
+
+Status Reader::Read(std::vector<Tensor>* &read_tensors, bool* end_of_sequence) {
+  return async_reader_->Read(read_tensors, end_of_sequence);
+}
+
+
+// -----------------------------------------------------------------------------
+// MultiThreadedAsyncReader (Base Class for ArrowAsyncReader)
+// -----------------------------------------------------------------------------
+
+
+
+MultiThreadedAsyncReader::MultiThreadedAsyncReader(Env *env, const std::string &target_dir,
+                                                   const DataTypeVector &output_dtypes,
+                                                   const std::vector<PartialTensorShape> &output_shapes,
+                                                   const int reader_count)
+    : env_(env), output_dtypes_(output_dtypes), output_shapes_(output_shapes),
+    target_dir_(target_dir), reader_count_(reader_count), tensors_() {
+  this->num_readers_done_ = 0;
   // TODO (damien-aymon) add constant for writer version.
 }
 
-Status Reader::Initialize() {
-  // Read metadata first:
-  // TODO (damien-aymon) not really useful anymore until more info in there
-
-  // simonsom -- only use it for "fast version"
-   TF_RETURN_IF_ERROR(ReadAndParseMetadataFile());
+Status MultiThreadedAsyncReader::Initialize() {
+  // Don't use metadata file at the moment...
+  // TF_RETURN_IF_ERROR(ReadAndParseMetadataFile());
   
   // Find all the files of this dataset
   std::vector<string> files;
@@ -240,7 +267,7 @@ Status Reader::Initialize() {
   LOG(INFO) << "(Reader) Finished Starting ThreadPool";
 }
 
-void Reader::Consume(string* s, bool* end_of_sequence) {
+void MultiThreadedAsyncReader::Consume(string* s, bool* end_of_sequence) {
   mutex_lock l(mu_);
   if (file_names_.empty()) {
     *s = ""; 
@@ -252,7 +279,7 @@ void Reader::Consume(string* s, bool* end_of_sequence) {
   }
 }
 
-void Reader::Add(std::vector<Tensor>& tensors) {
+void MultiThreadedAsyncReader::Add(std::vector<Tensor>& tensors) {
   mutex_lock l(mu_add_);
   for (const auto& t : tensors)
     tensors_.push_back(t);
@@ -260,7 +287,7 @@ void Reader::Add(std::vector<Tensor>& tensors) {
   read_cv_.notify_one();
 }
 
-Status Reader::ReaderThread(Env *env, uint64 writer_id, int64 version, 
+Status MultiThreadedAsyncReader::ReaderThread(Env *env, uint64 writer_id, int64 version,
   DataTypeVector output_types, std::vector<PartialTensorShape> output_shapes) {
 
   // Debugging
@@ -329,7 +356,7 @@ Status Reader::ReaderThread(Env *env, uint64 writer_id, int64 version,
   return Status::OK();
 }
 
-Status Reader::Read(std::vector<Tensor>* &read_tensors, bool* end_of_sequence) {
+Status MultiThreadedAsyncReader::Read(std::vector<Tensor>* &read_tensors, bool* end_of_sequence) {
   mutex_lock l(mu_add_);
   *end_of_sequence = false;
   int64 n = output_dtypes_.size();
@@ -366,9 +393,9 @@ Status Reader::Read(std::vector<Tensor>* &read_tensors, bool* end_of_sequence) {
   return Status::OK();*/
 }
 
-Reader::~Reader(){}
+MultiThreadedAsyncReader::~MultiThreadedAsyncReader(){}
 
-Status Reader::ReadAndParseMetadataFile() {
+Status MultiThreadedAsyncReader::ReadAndParseMetadataFile() {
   string metadata_filename = io::JoinPath(target_dir_, kMetadataFilename);
   TF_RETURN_IF_ERROR(env_->FileExists(metadata_filename));
 
@@ -383,8 +410,8 @@ Status Reader::ReadAndParseMetadataFile() {
   }
 
   output_shapes_ = std::vector<PartialTensorShape>();
-  for(auto shape : metadata.tensor_shape()){
-    output_shapes_.push_back(PartialTensorShape(shape));
+  for(auto &shape : metadata.tensor_shape()){
+    output_shapes_.emplace_back(PartialTensorShape(shape));
   }
 
   return Status::OK();

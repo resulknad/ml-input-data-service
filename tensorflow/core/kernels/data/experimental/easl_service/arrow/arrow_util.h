@@ -44,6 +44,45 @@ namespace data {
 namespace easl {
 namespace ArrowUtil {
 
+
+class ArrowMetadata {
+public:
+    /// \brief write accumulated metadata to a file in serialized form
+    Status WriteMetadataToFile(const std::string& path) TF_LOCKS_EXCLUDED(mu_);
+
+    /// \brief read and deserialize metadata from file
+    Status ReadMetadataFromFile(const std::string& path);
+
+    /// \brief remembers which files contain partially filled batches at the end of
+    /// the file. The last row of tensors stored in the arrays will have a different shapes.
+    Status AddPartialBatch(string doc, std::vector<TensorShape> last_batch_shape) TF_LOCKS_EXCLUDED(mu_);
+
+    Status GetPartialBatches(string doc, std::vector<TensorShape>* out_last_batch_shape);
+
+    Status IsPartialBatching(bool *batching);
+
+    Status GetRowShape(std::vector<TensorShape>* out_row_shape);
+
+    /// \brief (general) shape of all dataset rows, one shape per dataset column. If
+    /// batching is enabled, there may be tensors in the last row of the dataset that have a
+    /// different shape and thus don't conform to this shape specification (see AddPartialBatch).
+    Status SetRowShape(std::vector<TensorShape> row_shape);
+
+    Status RegisterWriter() {
+      mutex_lock l(mu_);  // unlocked automatically upon function return
+      num_writer_threads_++;
+    }
+
+private:
+    Status WriteData(const std::string& path);
+
+    mutex mu_;  // allow multiple threads to add values to Metadata File
+    bool partial_batching_ = false;
+    std::vector<TensorShape> shapes_;
+    int num_writer_threads_ TF_GUARDED_BY(mu_); // num writer_threads still actively writing
+    std::map<string, std::vector<TensorShape>> partial_batch_shapes_ TF_GUARDED_BY(mu_);
+};
+
 // utility functions ------------------------------------------
 // Convert Arrow Data Type to TensorFlow
 Status GetTensorFlowType(std::shared_ptr<::arrow::DataType> dtype,

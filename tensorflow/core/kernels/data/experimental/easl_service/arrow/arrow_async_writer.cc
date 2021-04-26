@@ -21,19 +21,7 @@ namespace {
   }
 }
 
-Status Metadata::WriteMetadata() {
-  // TODO: serialization
-}
 
-Status Metadata::AddPartialBatch(string doc, std::vector<TensorShape> last_batch_shape) {
-  mutex_lock l(mu_);  // unlocked automatically upon function return
-  this->partial_batch_shapes_.insert({doc, last_batch_shape});
-  this->partial_batching_ = true;
-}
-
-Status Metadata::SetRowShape(std::vector<TensorShape> row_shape) {
-  this->shapes_ = row_shape;
-}
 
 
 
@@ -51,8 +39,10 @@ Status ArrowAsyncWriter::WriterThread(Env* env, const std::string& shard_directo
   TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(shard_directory));
   LOG(INFO) << "(Writer_" << writer_id << ") Created Dir ";
 
-  std::unique_ptr<ArrowWriter> arrowWriter;
+  // register thread for concurrently writing to arrowMetadata file
+  metadata_.RegisterWriter();
 
+  std::unique_ptr<ArrowWriter> arrowWriter;
   arrowWriter = absl::make_unique<ArrowWriter>();
   TF_RETURN_IF_ERROR(arrowWriter->Create(env, GetFileName(shard_directory, writer_id),
                                          compression, output_types));
@@ -97,6 +87,9 @@ Status ArrowAsyncWriter::WriterThread(Env* env, const std::string& shard_directo
 
     TF_RETURN_IF_ERROR(arrowWriter->WriteTensors(be.value));
   }
+
+  // Write accumulated metadata before closing --> if last thread writes to file
+  metadata_.WriteMetadataToFile(shard_directory);
   return Status::OK();
 }
 

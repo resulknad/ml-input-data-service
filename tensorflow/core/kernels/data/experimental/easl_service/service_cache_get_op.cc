@@ -173,7 +173,7 @@ Status ServiceCacheGetOp::Dataset::Iterator::Initialize(
   reader_ =
       std::make_unique<tensorflow::data::easl::service_cache_util::Reader>(
           ctx->env(), dataset()->path_, dataset()->output_dtypes_,
-          dataset()->parallelism_);
+          dataset()->output_shapes_, dataset()->parallelism_);
 
   return reader_->Initialize();
 }
