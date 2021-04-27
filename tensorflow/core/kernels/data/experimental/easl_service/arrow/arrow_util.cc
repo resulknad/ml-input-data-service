@@ -33,6 +33,7 @@ namespace ArrowUtil {
 
 Status ArrowMetadata::WriteData(const std::string& path) {
 
+  VLOG(0) << "ArrowUtil - WriteData - WriteData Called. Path = " << path;
   arrow::MemoryPool* pool = arrow::default_memory_pool();
 
   std::vector<std::shared_ptr<arrow::Array>> arrays;
@@ -49,6 +50,8 @@ Status ArrowMetadata::WriteData(const std::string& path) {
   rowShapeBuilder.Finish(&rowShapeArr);
   arrays.push_back(rowShapeArr);
   schema_vector.push_back(arrow::field("row_shape", rowShapeArr->type()));
+
+  VLOG(0) << "ArrowUtil - WriteData - Built Arrays";
 
 
   auto itr = partial_batch_shapes_.begin();
@@ -70,6 +73,9 @@ Status ArrowMetadata::WriteData(const std::string& path) {
     schema_vector.push_back(arrow::field(col_name, partialShapesArr->type()));
   }
 
+  VLOG(0) << "ArrowUtil - WriteData - Built Partial Batch Arrays";
+
+
   // create schema
   auto schema = std::make_shared<arrow::Schema>(schema_vector);
   std::shared_ptr<arrow::Table> table;
@@ -89,6 +95,9 @@ Status ArrowMetadata::WriteData(const std::string& path) {
           arrow::util::kUseDefaultCompressionLevel
   };
   arrow::ipc::feather::WriteTable(*table, file.get(), wp);
+
+  VLOG(0) << "ArrowUtil - WriteData - Written Table";
+
   return Status::OK();
 }
 
@@ -109,6 +118,8 @@ Status ArrowMetadata::ReadMetadataFromFile(const std::string& path) {
   this->partial_batch_shapes_.clear();
   this->shapes_.clear();
 
+  VLOG(0) << "ArrowUtil - ReadMetadataFromFile - cleared buffs";
+
   // open file
   std::shared_ptr<arrow::Table> table;
   std::shared_ptr<arrow::io::MemoryMappedFile> mm_file;
@@ -117,6 +128,8 @@ Status ArrowMetadata::ReadMetadataFromFile(const std::string& path) {
   std::shared_ptr<arrow::ipc::feather::Reader> reader;
   reader = arrow::ipc::feather::Reader::Open(mm_file).MoveValueUnsafe();
   reader->Read(&table);
+
+  VLOG(0) << "ArrowUtil - ReadMetadataFromFile - loaded file";
 
   arrow::TableBatchReader tr(*table.get());
   std::shared_ptr<arrow::RecordBatch> batch;
