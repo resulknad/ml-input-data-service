@@ -31,7 +31,7 @@ private:
     std::shared_ptr<ArrowUtil::ArrowMetadata> metadata_;
 
     // use to choose betw. normal and experimental mode. Default experimental.
-    const bool experimental_ = true;
+    const bool experimental_ = false;
 };
 
 } // namespace arrow_async_wirter
