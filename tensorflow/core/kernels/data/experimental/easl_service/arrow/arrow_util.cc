@@ -166,7 +166,7 @@ Status ArrowMetadata::AddPartialBatch(string doc, std::vector<TensorShape> last_
 Status ArrowMetadata::GetPartialBatches(string doc, std::vector<TensorShape>* out_last_batch_shape) {
   auto it = partial_batch_shapes_.find(doc);
   if (it != partial_batch_shapes_.end()) {
-    out_last_batch_shape = &partial_batch_shapes_[doc];
+    *out_last_batch_shape = partial_batch_shapes_[doc];
   } else {
     return Status(error::NOT_FOUND, "doc name not found in map");
   }
@@ -174,17 +174,20 @@ Status ArrowMetadata::GetPartialBatches(string doc, std::vector<TensorShape>* ou
 }
 
 Status ArrowMetadata::IsPartialBatching(bool *batching) {
-  batching = &partial_batching_;
+  *batching = partial_batching_;
   return Status::OK();
 }
 
 Status ArrowMetadata::GetRowShape(std::vector<TensorShape>* out_row_shape) {
-  out_row_shape = &shapes_;
+  *out_row_shape = shapes_;
   return Status::OK();
 }
 
 Status ArrowMetadata::SetRowShape(std::vector<TensorShape> row_shape) {
-  this->shapes_ = row_shape;
+  if(shapes_.empty()) {
+    mutex_lock l(mu_);  // unlocked automatically upon function return
+    this->shapes_ = row_shape;
+  }
   return Status::OK();
 }
 
@@ -643,10 +646,12 @@ class ConvertToArrowArrayImpl : public arrow::TypeVisitor {
 
 public:
     arrow::Status Make(std::shared_ptr<arrow::DataType> type, std::vector<const char *>& data_column,
-                       std::vector<int>& dim_size, std::shared_ptr<arrow::Array>* out_array) {
+                       const absl::InlinedVector<int64, 4>& dim_size, std::shared_ptr<arrow::Array>* out_array,
+                       const absl::InlinedVector<int64, 4>& last_dim_size) {
       data_column_ = data_column;
       dims_ = dim_size.size();
-      dim_size_ = dim_size;
+      dim_size_ = &dim_size;
+      last_dim_size_ = &last_dim_size;
       out_array_ = out_array;
       empty_shape_ = dims_ == 0;
       pool_ = arrow::default_memory_pool();
@@ -657,13 +662,17 @@ public:
     }
 protected:
 // helper function to get the size of the current dimension, indexed by builder_idx (reversed to dim)
-    size_t getDimSize(int builder_idx) {
+    size_t getDimSize(int builder_idx, int data_idx) {
       if(empty_shape_) {
         return 1;
       }
+
+      if(data_idx == data_column_.size() - 1) { // last row -> last_dim_size
+        return (*last_dim_size_)[dims_ - (builder_idx + 2)];
+      }
       // -1 --> data builder --> dim_size_[dims_ - 1]
       // dims_ - 2 --> outermost tensor builder --> dim_size_[0]
-      return dim_size_[dims_ - (builder_idx + 2)];
+      return (*dim_size_)[dims_ - (builder_idx + 2)];
     }
 
     template <typename c_type, typename builder_type>
@@ -674,14 +683,14 @@ protected:
       if(current_builder_idx == -1) {
         c_type *data_batch = (c_type *) (data_column_[data_idx] + (data_offset));
 
-        ARROW_RETURN_NOT_OK(data_builder->AppendValues(data_batch, getDimSize(current_builder_idx)));
-        data_offset += getDimSize(current_builder_idx) * sizeof(c_type);
+        ARROW_RETURN_NOT_OK(data_builder->AppendValues(data_batch, getDimSize(current_builder_idx, data_idx)));
+        data_offset += getDimSize(current_builder_idx, data_idx) * sizeof(c_type);
         return arrow::Status::OK();
       }
 
       // we use the append function to delimit beginning of new subarray.
       std::shared_ptr<arrow::ListBuilder> current_builder = builders[current_builder_idx];
-      for(int i = 0; i < getDimSize(current_builder_idx); i++) {
+      for(int i = 0; i < getDimSize(current_builder_idx, data_idx); i++) {
         ARROW_RETURN_NOT_OK(current_builder->Append());
         ARROW_RETURN_NOT_OK( (fillData<c_type, builder_type>(data_idx, data_offset, builders,
                 data_builder, current_builder_idx-1)) );
@@ -791,14 +800,16 @@ private:
 
     arrow::MemoryPool* pool_;
     int dims_;
-    std::vector<int> dim_size_;
+    const absl::InlinedVector<int64, 4> *dim_size_;
+    const absl::InlinedVector<int64, 4> *last_dim_size_;
     std::shared_ptr<arrow::Array>* out_array_;
 };
 
 arrow::Status GetArrayFromData(std::shared_ptr<arrow::DataType> type, std::vector<const char *>& data_column,
-                               std::vector<int>& dim_size, std::shared_ptr<arrow::Array>* out_array) {
+                               const absl::InlinedVector<int64, 4>& dim_size, std::shared_ptr<arrow::Array>* out_array,
+                               const absl::InlinedVector<int64, 4>& last_dim_size) {
   ConvertToArrowArrayImpl visitor; // use visitor pattern to cover all types
-  return visitor.Make(type, data_column, dim_size, out_array);
+  return visitor.Make(type, data_column, dim_size, out_array, last_dim_size);
 }
 
 
@@ -809,15 +820,20 @@ arrow::Status GetArrayFromData(std::shared_ptr<arrow::DataType> type, std::vecto
 arrow::Status GetArrayFromDataExperimental(
         size_t buff_len,
         std::vector<const char *>& data_column,
-        std::shared_ptr<arrow::Array>* out_array) {
+        std::shared_ptr<arrow::Array>* out_array,
+        int64 last_buff_len) {
   VLOG(0) << "ArrowUtil - GetArrayFromDataExperimental - Invoked";
   arrow::StringBuilder data_builder(arrow::default_memory_pool());
 
   VLOG(0) << "ArrowUtil - GetArrayFromDataExperimental - Created DataBuilder";
 
-  for(const char* buff : data_column) {
+  for(int i = 0; i < data_column.size() - 1; i++) {
+    const char* buff = data_column[i];
     ARROW_RETURN_NOT_OK(data_builder.Append(buff, buff_len)) ;
   }
+  // last tensor possibly partially batched data
+  const char* buff = data_column[data_column.size() - 1];
+  ARROW_RETURN_NOT_OK(data_builder.Append(buff, last_buff_len));
 
   VLOG(0) << "ArrowUtil - GetArrayFromDataExperimental - Appended Values";
 

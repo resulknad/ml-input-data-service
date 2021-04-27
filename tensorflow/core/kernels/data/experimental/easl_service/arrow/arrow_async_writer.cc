@@ -45,7 +45,7 @@ Status ArrowAsyncWriter::WriterThread(Env* env, const std::string& shard_directo
   std::unique_ptr<ArrowWriter> arrowWriter;
   arrowWriter = absl::make_unique<ArrowWriter>();
   TF_RETURN_IF_ERROR(arrowWriter->Create(env, GetFileName(shard_directory, writer_id),
-                                         compression, output_types));
+                                         compression, output_types, &metadata_));
 
   int count = 0;
   LOG(INFO) << "(Writer_" << writer_id << ") Starting to write ";
@@ -80,7 +80,7 @@ Status ArrowAsyncWriter::WriterThread(Env* env, const std::string& shard_directo
       // create new writer for remaining tensors:
       arrowWriter = absl::make_unique<ArrowWriter>();
       TF_RETURN_IF_ERROR(arrowWriter->Create(env, GetFileName(shard_directory, writer_id, ++split_id),
-                                             compression, output_types));
+                                             compression, output_types, &metadata_));
       LOG(INFO) << "(Writer_" << writer_id << ") Exceeded memory threshold, created new file (split_id = "
                                               "" << split_id <<")...";
     }

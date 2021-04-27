@@ -66,7 +66,7 @@ public:
     /// \brief (general) shape of all dataset rows, one shape per dataset column. If
     /// batching is enabled, there may be tensors in the last row of the dataset that have a
     /// different shape and thus don't conform to this shape specification (see AddPartialBatch).
-    Status SetRowShape(std::vector<TensorShape> row_shape);
+    Status SetRowShape(std::vector<TensorShape> row_shape) TF_LOCKS_EXCLUDED(mu_);
 
     Status RegisterWriter() {
       mutex_lock l(mu_);  // unlocked automatically upon function return
@@ -118,14 +118,16 @@ Status AssignTensor(std::shared_ptr<arrow::Array> array, int64 i,
 /// \param[in] out_array The array is returned via the shared pointer.
 /// Caution: Don't forget to initialize the shared pointer before passing to this function!
 arrow::Status GetArrayFromData(std::shared_ptr<arrow::DataType> type, std::vector<const char *>& data_column,
-                        std::vector<int>& dim_size, std::shared_ptr<arrow::Array>* out_array);
+                        const absl::InlinedVector<int64 , 4>& dim_size, std::shared_ptr<arrow::Array>* out_array,
+                        const absl::InlinedVector<int64, 4>& last_dim_size);
 
 
 /// \brief experimental ultra fast writer for non-complex data types (i.e. string not supported)
 arrow::Status GetArrayFromDataExperimental(
         size_t buff_len,
         std::vector<const char *>& data_column,
-        std::shared_ptr<arrow::Array>* out_array);
+        std::shared_ptr<arrow::Array>* out_array,
+        int64 last_buff_len);
 
 
 /// \brief experimental ultra fast reader for non-complex data types (i.e. string not supported)

@@ -15,7 +15,9 @@ ArrowWriter::ArrowWriter() {} // empty constructor, call Create for error handli
 
 Status ArrowWriter::Create(Env *env, const std::string &filename,
                          const string &compression_type,
-                         const DataTypeVector &dtypes) {
+                         const DataTypeVector &dtypes,
+                         ArrowUtil::ArrowMetadata *metadata) {
+  this->metadata_ = metadata;
   this->env_ = env;
   this->filename_ = filename;
   this->compression_type_ = compression_type;
@@ -43,9 +45,9 @@ Status ArrowWriter::Create(Env *env, const std::string &filename,
 
 /// \brief convert from given compression to arrow compression type supported by the feather writer
 arrow::Compression::type ArrowWriter::getArrowCompressionType(){
-  if(compression_type_.compare("LZ4_FRAME") == 0) {
+  if(compression_type_ == "LZ4_FRAME" == 0) {
     return arrow::Compression::LZ4_FRAME;
-  } else if(compression_type_.compare("ZSTD") == 0) {
+  } else if(compression_type_ == "ZSTD") {
     return arrow::Compression::ZSTD;
   }
 
@@ -70,17 +72,20 @@ Status ArrowWriter::Close() {
 
     if(arrow_dtypes_[i]->Equals(arrow::utf8())) {
       VLOG(0) << "ArrowWriter - Close - GetArray String";
-
-      CHECK_ARROW(ArrowUtil::GetArrayFromData(arrow_dtypes_[i], tensor_data_[i], col_dims_[i], &arr_ptr));
+      auto last_tensor_dims = partial_shapes_.size() > 0 ? partial_shapes_[i].dim_sizes() : shapes_[i].dim_sizes();
+      CHECK_ARROW(ArrowUtil::GetArrayFromData(
+              arrow_dtypes_[i], tensor_data_[i], shapes_[i].dim_sizes(), &arr_ptr, last_tensor_dims));
 
       // Deallocate String memory
       for(int j = 0; j < tensor_data_[i].size(); j++) {
         string_allocator_->DeallocateRaw((void *) tensor_data_[i][j]);
       }
     } else {
-      // TODO: Experimental
       VLOG(0) << "ArrowWriter - Close - GetArray Experimental";
-      CHECK_ARROW(ArrowUtil::GetArrayFromDataExperimental(tensor_data_len_[i], tensor_data_[i], &arr_ptr));
+
+      auto last_row_len = partial_shapes_.size() > 0 ? last_row_len_[i] : tensor_data_len_[i];
+      CHECK_ARROW(ArrowUtil::GetArrayFromDataExperimental(
+              tensor_data_len_[i], tensor_data_[i], &arr_ptr, last_row_len));
     }
 
     arrays.push_back(arr_ptr);
@@ -113,8 +118,16 @@ Status ArrowWriter::Close() {
   CHECK_ARROW(file->Close());
 
   VLOG(0) << "ArrowWriter - Close - written table to file";
+
   tensor_data_.clear();
   tensors_.clear();
+
+  // write metadata for this writer:
+  if(partial_shapes_.size() > 0) {
+    metadata_->AddPartialBatch(filename_, partial_shapes_);
+  }
+  metadata_->SetRowShape(shapes_);
+
   return Status::OK();
 }
 
@@ -130,15 +143,15 @@ Status ArrowWriter::WriteTensors(std::vector<Tensor> &tensors) {
     }
 
     // check whether length of current tensor conforms to length of other tensors in the same row
-    if(t.TotalBytes() != tensor_data_len_[current_col_idx_]) {
-      VLOG(0) << "Skipping Tensor not conforming to column tensor shape";
-
-
+    if(t.shape() != shapes_[current_col_idx_]) {
+      VLOG(0) << "Tensor not conforming to col shape -> adding partial tensor";
+      partial_shapes_.push_back(t.shape());
+      last_row_len_.push_back(t.TotalBytes());
     }
 
    if(arrow_dtypes_[current_col_idx_]->Equals(arrow::utf8())) {
 	    // get string data for tensor
-      const tstring* str_data = reinterpret_cast<const tstring*>(t.data());
+      auto str_data = reinterpret_cast<const tstring*>(t.data());
 
       // number of strings in tensor:
       int64_t n_elements = t.NumElements();
@@ -167,20 +180,15 @@ Status ArrowWriter::WriteTensors(std::vector<Tensor> &tensors) {
   return Status::OK();
 }
 
-/// \brief Takes tensor t as argument and appends shape information to local vector col_dims_[i] where
+/// \brief Takes tensor t as argument and appends shape information to local vector shapes_ where
 /// t is the i-th tensor handed to this function.
 void ArrowWriter::InitDims(Tensor  &t) {
   VLOG(0) << "ArrowWriter - InitDims - Adding Shape Info";
-  std::vector<int> single_col_dims;
-  for (int64_t dim_size : t.shape().dim_sizes()) {
-    int val = (int) dim_size;
-    single_col_dims.push_back(val);
-  }
+  shapes_.push_back(t.shape());
+
   // saves size of tensor buffer for experimental writer
   tensor_data_len_.push_back(t.TotalBytes());
-  col_dims_.push_back(single_col_dims);
-
-  dims_initialized_ = col_dims_.size() >= ncols_;
+  dims_initialized_ = shapes_.size() >= ncols_;
 }
 
 

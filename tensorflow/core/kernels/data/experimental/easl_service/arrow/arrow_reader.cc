@@ -13,23 +13,33 @@ namespace easl{
 ArrowReader::ArrowReader(){}
 
 Status ArrowReader::Initialize(Env *env, const std::string &filename, const string &compression_type,
-                               const DataTypeVector &dtypes, const std::vector<PartialTensorShape> &shapes) {
+                               const DataTypeVector &dtypes, const std::vector<PartialTensorShape> &shapes,
+                               ArrowUtil::ArrowMetadata *metadata) {
 
-  this->shapes_ = std::vector<TensorShape>();
+//  this->shapes_ = std::vector<TensorShape>();
 
-  // initialize shapes
-  if(!shapes.empty()) {
-    shapes_initialized_ = true;
-    experimental_ = true;
-    for (PartialTensorShape pts : shapes) {
-      TensorShape out;
-      if (pts.AsTensorShape(&out)) {
-        shapes_.push_back(out);
-      } else {
-        return Status(error::FAILED_PRECONDITION, "can't deal with partially filled tensors");
-      }
-    }
+//  // initialize shapes
+//  if(!shapes.empty()) {
+//    shapes_initialized_ = true;
+//    experimental_ = true;
+//    for (PartialTensorShape pts : shapes) {
+//      TensorShape out;
+//      if (pts.AsTensorShape(&out)) {
+//        shapes_.push_back(out);
+//      } else {
+//        return Status(error::FAILED_PRECONDITION, "can't deal with partially filled tensors");
+//      }
+//    }
+//  } TODO
+
+  // read metadata
+  this->metadata_ = metadata;
+  bool partial_batching;
+  TF_RETURN_IF_ERROR(metadata_->IsPartialBatching(&partial_batching));
+  if(partial_batching) {
+    TF_RETURN_IF_ERROR(metadata_->GetPartialBatches(filename, &partial_shapes));
   }
+  TF_RETURN_IF_ERROR(metadata_->GetRowShape(&shapes_));
 
   // initialize internal data structures
   this->env_ = env;
@@ -40,7 +50,7 @@ Status ArrowReader::Initialize(Env *env, const std::string &filename, const stri
   this->current_row_idx_ = 0;
 
   VLOG(0) << "ArrowReader - Initialize - Initialized with the following parameters:\n"
-             "Filename: " << filename_ << "\nCompression_Type: " << compression_type_;
+                   "Filename: " << filename_ << "\nCompression_Type: " << compression_type_;
 
   // TODO: maybe use env to open file, here I use the built-in functionality of arrow.
   // open file and read table
@@ -50,7 +60,7 @@ Status ArrowReader::Initialize(Env *env, const std::string &filename, const stri
   ARROW_ASSIGN_CHECKED(reader, arrow::ipc::feather::Reader::Open(file));
   std::shared_ptr<::arrow::Table> table;
   CHECK_ARROW(reader->Read(&table));
-
+  total_rows_ = table->num_rows();
   // read individual record batches and append to class internal datastructure (size of record batches
   // given by configuration of writer)
   arrow::TableBatchReader tr(*table.get());
@@ -99,9 +109,9 @@ Status ArrowReader::ReadTensors(std::vector<Tensor> *read_tensors) {
   TF_RETURN_IF_ERROR(NextBatch());
   // Invariant: current_batch_ != nullptr
 
-  if(!shapes_initialized_) {
-    TF_RETURN_IF_ERROR(InitShapesAndTypes());
-  }
+//  if(!shapes_initialized_) {
+//    TF_RETURN_IF_ERROR(InitShapesAndTypes());
+//  } TODO
 
   // go over all rows of record batch
   for(int i = 0; i < current_batch_->num_rows(); i++) {
@@ -109,7 +119,13 @@ Status ArrowReader::ReadTensors(std::vector<Tensor> *read_tensors) {
       std::shared_ptr<arrow::Array> arr = current_batch_->column(j);
 
       DataType output_type = this->dtypes_[j];
-      TensorShape output_shape = this->shapes_[j];
+
+      TensorShape output_shape;
+      if(partial_shapes.size() > 0 && current_row_idx_ == total_rows_ - 1) {
+        output_shape = this->partial_shapes[j];
+      } else {
+        output_shape = this->shapes_[j];
+      }
 
       // Allocate a new tensor and assign Arrow data to it
       Tensor tensor(output_type, output_shape); // this constructor will use the default_cpu_allocator.
@@ -128,6 +144,7 @@ Status ArrowReader::ReadTensors(std::vector<Tensor> *read_tensors) {
       read_tensors->emplace_back(std::move(tensor));
       VLOG(0) << "ArrowReader - ReadTensors - Successfully assigned tensor";
     }
+    current_row_idx_++;
   }
 
   return Status::OK();

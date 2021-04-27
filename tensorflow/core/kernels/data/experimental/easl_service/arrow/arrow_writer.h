@@ -19,7 +19,8 @@ public:
 
     Status Create(Env *env, const string &filename,
                   const string &compression_type,
-                  const DataTypeVector &dtypes);
+                  const DataTypeVector &dtypes,
+                  ArrowUtil::ArrowMetadata *metadata);
 
     Status Close();
 
@@ -29,6 +30,7 @@ private:
     void InitDims(Tensor &t);
     arrow::Compression::type getArrowCompressionType();
 
+    ArrowUtil::ArrowMetadata* metadata_;
     Env *env_;
     std::string filename_;
     string compression_type_;
@@ -37,14 +39,16 @@ private:
     int32_t ncols_;
     int32_t current_col_idx_;
 
-    // last tensor per column is usually smaller if batching enabled
-    std::vector<uint64> last_col_len_;
+    std::vector<TensorShape> shapes_;
+    std::vector<TensorShape> partial_shapes_;
 
     // initially false, true after first row has been read (implicitly get TensorShape)
     bool dims_initialized_;
-    std::vector<std::vector<int>> col_dims_;
+
     std::vector<std::vector<const char *>> tensor_data_;
     std::vector<uint64> tensor_data_len_;
+    // last tensor per column is usually smaller if batching enabled
+    std::vector<uint64> last_row_len_;
 
     // memory allocator for string buffers
     Allocator* string_allocator_;
