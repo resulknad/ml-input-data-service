@@ -73,7 +73,7 @@ Status DataServiceDispatcherClient::WorkerHeartbeat(
   // Add a dummy Metric object
   WorkerHeartbeatRequest::Metric* metric = req.add_metrics();
   metric->set_name("dummy_metric");
-  metric->set_value(metrics->counter);
+  metric->set_value(1);
 
   WorkerHeartbeatResponse resp;
   grpc::ClientContext client_ctx;
