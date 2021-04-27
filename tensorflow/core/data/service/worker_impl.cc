@@ -381,7 +381,7 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
     for (const auto& task : tasks_) {
       current_tasks.push_back(task.first);
       // TODO (damien-aymon) get stats
-      // task.second->task_runner->...
+      task.second->task_runner->GetMetrics();
     }
   }
   std::vector<TaskDef> new_tasks;
