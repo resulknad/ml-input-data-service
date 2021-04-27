@@ -52,6 +52,18 @@ Status Iterator::GetNext(std::vector<Tensor>* outputs, bool* end_of_input) {
   return iterator_->GetNext(ctx_.get(), outputs, end_of_input);
 }
 
+absl::flat_hash_map<string, model::Node::MetricDump> Iterator::GetMetrics() {
+  auto model = ctx_.get()->model();
+
+  if(model){
+    VLOG(0) << "EASL - Standalone iterator GetMetrics, model found";
+    return model->CollectMetrics();
+  } else {
+    VLOG(0) << "EASL - Standalone iterator GetMetrics, model not yet created.";
+    return absl::flat_hash_map<string, model::Node::MetricDump>{};
+  }
+}
+
 Iterator::Iterator(IteratorBase* iterator, IteratorContext* ctx)
     : iterator_(iterator), ctx_(ctx) {}
 

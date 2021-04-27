@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tensorflow/core/framework/model.h"
 
 namespace tensorflow {
 namespace data {
@@ -71,6 +72,9 @@ class Iterator {
   // Returns the next element of the input pipeline (if there is one) and an
   // indication of whether the end of the input pipeline has been reached.
   Status GetNext(std::vector<Tensor>* outputs, bool* end_of_input);
+
+  // EASL
+  absl::flat_hash_map<string, model::Node::MetricDump> GetMetrics();
 
  private:
   friend class Dataset;
