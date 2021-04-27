@@ -24,7 +24,7 @@ std::string GetFileName(const std::string& shard_directory,
 }
 
 constexpr const char* const kMetadataFilename = "service_cache.metadata";
-const int64 kWriterVersion = 0; // 0 --> ArrowWriter; 2 --> TFRecordWriter
+const int64 kWriterVersion = 2; // 0 --> ArrowWriter; 2 --> TFRecordWriter
 const char kCompression[] = ""; // can be SNAPPY, GZIP, ZLIB, "" for none.
 
 Writer::Writer(Env* env,
