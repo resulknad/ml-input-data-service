@@ -90,7 +90,7 @@ DataServiceWorkerImpl::~DataServiceWorkerImpl() {
 
 Status DataServiceWorkerImpl::Start(const std::string& worker_address,
                                     const std::string& transfer_address) {
-  VLOG(3) << "Starting tf.data service worker at address " << worker_address;
+  VLOG(3) << "Starting tf.data service worker at address " << worker_address << std::flush;
   worker_address_ = worker_address;
   transfer_address_ = transfer_address;
 
@@ -379,7 +379,7 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
   std::vector<int64> current_tasks;
   MetricsResource* metrics_resource = nullptr;
   {
-    VLOG(1) << "(DataServiceWorkerImpl::Heartbeat) Starting heartbeat";
+    VLOG(1) << "(DataServiceWorkerImpl::Heartbeat) Starting heartbeat" << std::flush;
     mutex_lock l(mu_);
     for (const auto& task : tasks_) {
       current_tasks.push_back(task.first);
@@ -393,7 +393,7 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
             metrics_resource);
         if (s.ok()) {
           VLOG(1) << "(DataServiceWorkerImpl::Heartbeat) Got metrics_resource" 
-                  << metrics_resource->counter; 
+                  << metrics_resource->counter << std::flush; 
         }
       }
     }
