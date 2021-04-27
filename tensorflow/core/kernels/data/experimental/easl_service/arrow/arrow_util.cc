@@ -251,6 +251,7 @@ bool ArrowMetadata::IsExperimental() {
 
 Status ArrowMetadata::SetExperimental(bool exp) {
   this->experimental_ = exp;
+  return Status::OK();
 }
 
 Status ArrowMetadata::AddLastRowBatch(Tensor &t) {
