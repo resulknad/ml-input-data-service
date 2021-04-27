@@ -249,8 +249,8 @@ Status RoundRobinTaskRunner::GetNext(const GetElementRequest& req,
 }
 
 absl::flat_hash_map<string, model::Node::MetricDump>
-RoundRobinTaskRunner::GetMetrics(){
-  return prefetch_thread_->iterator_->GetMetrics();
+    RoundRobinTaskRunner::GetMetrics(){
+  return prefetch_thread_.iterator_->GetMetrics();
 }
 
 PrefetchThread::PrefetchThread(std::unique_ptr<TaskIterator> iterator,

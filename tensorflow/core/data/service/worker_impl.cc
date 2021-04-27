@@ -399,8 +399,12 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
       }
 =======
       // TODO (damien-aymon) get stats
+<<<<<<< HEAD
       // task.second->task_runner->...
 >>>>>>> f694aa895c3... added GetMetrics chain of calls from worker heartbeat. (task->TaskRunner->TaskIterator->standalone::Iterator->ctx->model->CollectMetrics)
+=======
+      task.second->task_runner->GetMetrics();
+>>>>>>> 5d2d764eb91... added GetMetrics to TaskRunner. Worker heartbeat now calls this.
     }
   }
   std::vector<TaskDef> new_tasks;
