@@ -383,6 +383,7 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
     for (const auto& task : tasks_) {
       current_tasks.push_back(task.first);
+<<<<<<< HEAD
       
       if (task.second->task_def.dataset_case() == TaskDef::kDatasetDef) {
         standalone::Dataset::Params params;
@@ -396,6 +397,10 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
                   << metrics_resource->counter; 
         }
       }
+=======
+      // TODO (damien-aymon) get stats
+      // task.second->task_runner->...
+>>>>>>> f694aa895c3... added GetMetrics chain of calls from worker heartbeat. (task->TaskRunner->TaskIterator->standalone::Iterator->ctx->model->CollectMetrics)
     }
   }
   std::vector<TaskDef> new_tasks;
