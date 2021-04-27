@@ -70,6 +70,11 @@ Status DataServiceDispatcherClient::WorkerHeartbeat(
   for (int64 task : current_tasks) {
     req.add_current_tasks(task);
   }
+  // Add a dummy Metric object
+  WorkerHeartbeatRequest::Metric* metric = req.add_metrics();
+  metric->set_name("dummy_metric");
+  metric->set_value(metrics->counter);
+
   WorkerHeartbeatResponse resp;
   grpc::ClientContext client_ctx;
   grpc::Status status = stub_->WorkerHeartbeat(&client_ctx, req, &resp);

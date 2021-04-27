@@ -393,7 +393,7 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
             metrics_resource);
         if (s.ok()) {
           VLOG(1) << "(DataServiceWorkerImpl::Heartbeat) Got metrics_resource" 
-                  << var->counter; 
+                  << metrics_resource->counter; 
         }
       }
     }
@@ -403,7 +403,7 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
   TF_RETURN_IF_ERROR(
       dispatcher_->WorkerHeartbeat(worker_address_, transfer_address_,
                                    current_tasks, new_tasks, tasks_to_delete, 
-                                   var));
+                                   metrics_resource));
   mutex_lock l(mu_);
   for (const auto& task : new_tasks) {
     VLOG(1) << "Received new task from dispatcher with id " << task.task_id();

@@ -305,6 +305,13 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
   TF_RETURN_IF_ERROR(
       FindNewTasks(worker_address, current_tasks, assigned_tasks, response));
 
+  // Process the incoming metrics
+  for (int i = 0; i < request->metrics_size(); ++i) {
+    const WorkerHeartbeatRequest::Metric& metric = request->metrics(i);
+    VLOG(1) << "(DataServiceDispatcherImpl::WorkerHeartbeat) Got metric: " 
+            << metric.name() << " " << metric.value();
+  }
+
   VLOG(4) << "Finished worker heartbeat for worker at address "
           << request->worker_address();
   return Status::OK();
