@@ -267,6 +267,14 @@ Status ArrowMetadata::GetLastRowBatch(std::vector<Tensor> *out) {
   return Status::OK();
 }
 
+
+
+// -----------------------------------------------------------------------------
+// Conversion Arrow - Tensorflow
+// -----------------------------------------------------------------------------
+
+
+
 Status GetTensorFlowType(const std::shared_ptr<::arrow::DataType>& dtype,
                          ::tensorflow::DataType* out) {
   if (dtype->id() == ::arrow::Type::STRING) {
