@@ -33,7 +33,7 @@ namespace easl {
 namespace ArrowUtil {
 
 ArrowMetadata::ArrowMetadata() {
-  this->num_writer_threads_ = 0;
+  this->num_worker_threads_ = 0;
 }
 
 Status ArrowMetadata::WriteData(const std::string& path) {
@@ -111,8 +111,8 @@ Status ArrowMetadata::WriteData(const std::string& path) {
 
 Status ArrowMetadata::WriteMetadataToFile(const std::string& path) {
   mutex_lock l(mu_);  // unlocked automatically upon function return
-  --num_writer_threads_;
-  if(num_writer_threads_ == 0) {
+  --num_worker_threads_;
+  if(num_worker_threads_ == 0) {
     WriteData(path);
   }
   VLOG(0) << "ArrowUtil - WriteMetadataToFile successfully";
@@ -238,10 +238,10 @@ Status ArrowMetadata::SetRowShape(std::vector<TensorShape> row_shape) {
   return Status::OK();
 }
 
-Status ArrowMetadata::RegisterWriter() {
+Status ArrowMetadata::RegisterWorker() {
   mutex_lock l(mu_);  // unlocked automatically upon function return
-  num_writer_threads_++;
-  VLOG(0) << "Registered writer, writer count = " << num_writer_threads_;
+  num_worker_threads_++;
+  VLOG(0) << "Registered writer, writer count = " << num_worker_threads_;
   return Status::OK();
 }
 
@@ -253,6 +253,19 @@ Status ArrowMetadata::SetExperimental(bool exp) {
   this->experimental_ = exp;
 }
 
+Status ArrowMetadata::AddLastRowBatch(Tensor &t) {
+  last_row_batches_.emplace_back(std::move(t));
+  return Status::OK();
+}
+
+Status ArrowMetadata::GetLastRowBatch(std::vector<Tensor> *out) {
+  mutex_lock l(mu_);  // unlocked automatically upon function return
+  --num_worker_threads_;
+  if(num_worker_threads_ == 0) {
+    *out = last_row_batches_;
+  }
+  return Status::OK();
+}
 
 Status GetTensorFlowType(const std::shared_ptr<::arrow::DataType>& dtype,
                          ::tensorflow::DataType* out) {

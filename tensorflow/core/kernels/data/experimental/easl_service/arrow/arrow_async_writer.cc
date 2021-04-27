@@ -43,7 +43,7 @@ Status ArrowAsyncWriter::WriterThread(Env* env, const std::string& shard_directo
   LOG(INFO) << "(Writer_" << writer_id << ") Created Dir ";
 
   // register thread for concurrently writing to arrowMetadata file
-  metadata_->RegisterWriter();
+  metadata_->RegisterWorker();
 
   std::unique_ptr<ArrowWriter> arrowWriter;
   arrowWriter = absl::make_unique<ArrowWriter>();

@@ -34,7 +34,7 @@ private:
     /// Looks at first row across all RecordBatches to get the shapes / types of the first dataset row.
     Status InitShapesAndTypes();
 
-    Env *env_;
+    Env *env_{};
     std::string filename_;
     string compression_type_;
     DataTypeVector dtypes_;
@@ -42,16 +42,16 @@ private:
 
     // only used if batching (partially filled tensors)
     std::vector<TensorShape> partial_shapes;
-    uint64_t total_rows_;
+    uint64_t total_rows_{};
     std::shared_ptr<ArrowUtil::ArrowMetadata> metadata_;
 
 
     std::vector<std::shared_ptr<arrow::RecordBatch>> record_batches_;
     std::shared_ptr<arrow::RecordBatch> current_batch_;
-    size_t current_batch_idx_;
+    size_t current_batch_idx_{};
     bool shapes_initialized_ = false;
     bool experimental_ = false;
-    int64_t current_row_idx_;
+    int64_t current_row_idx_{};
 };
 
 } // namespace easl

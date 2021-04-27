@@ -15,7 +15,7 @@ ArrowAsyncReader::ArrowAsyncReader(Env *env, const std::string &target_dir, cons
         MultiThreadedAsyncReader(env, target_dir, output_dtypes, output_shapes, reader_count) {
   VLOG(0) << "Arrow Async Reader Created, reading metadata...";
   metadata_ = std::make_shared<ArrowUtil::ArrowMetadata>();
-  metadata_->ReadMetadataFromFile(target_dir);
+  metadata_->ReadMetadataFromFile(env, target_dir);
 }
 
 Status ArrowAsyncReader::ReaderThread(
@@ -25,7 +25,7 @@ Status ArrowAsyncReader::ReaderThread(
 
 
   LOG(INFO) << "(Reader_" << writer_id << ") Starting reading task\n\tREADING D_TYPE:\t";
-
+  metadata_->RegisterWorker();
 
   tensorflow::profiler::TraceMe activity(
           "EASLReaderThread", tensorflow::profiler::TraceMeLevel::kVerbose);
@@ -72,6 +72,13 @@ Status ArrowAsyncReader::ReaderThread(
       LOG(INFO) << "(Reader_" << writer_id << ") Finished reading file " << file_path
                 << " with " << count << " elements.";
     }
+  }
+
+
+  std::vector<Tensor> tensors;
+  metadata_->GetLastRowBatch(&tensors);  // only returns something if it is last reader registered
+  if(!tensors.empty()) {
+    Add(tensors);
   }
 
   mutex_lock l(mu_add_);

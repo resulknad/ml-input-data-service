@@ -3,6 +3,8 @@
 //
 
 #include "tensorflow/core/kernels/data/experimental/easl_service/arrow/arrow_reader.h"
+
+#include <utility>
 #include "arrow/ipc/feather.h"
 #include "arrow/io/file.h"
 
@@ -10,14 +12,14 @@ namespace tensorflow {
 namespace data {
 namespace easl{
 
-ArrowReader::ArrowReader(){}
+ArrowReader::ArrowReader()= default;
 
 Status ArrowReader::Initialize(Env *env, const std::string &filename, const string &compression_type,
                                const DataTypeVector &dtypes, const std::vector<PartialTensorShape> &shapes,
                                std::shared_ptr<ArrowUtil::ArrowMetadata> metadata) {
 
   // read metadata
-  this->metadata_ = metadata;
+  this->metadata_ = std::move(metadata);
   this->experimental_ = metadata_->IsExperimental();  // TODO: use metadata to choose experimental
   if(metadata_->IsPartialBatching()) {
     TF_RETURN_IF_ERROR(metadata_->GetPartialBatches(filename, &partial_shapes));
@@ -47,7 +49,7 @@ Status ArrowReader::Initialize(Env *env, const std::string &filename, const stri
   total_rows_ = table->num_rows();
   // read individual record batches and append to class internal datastructure (size of record batches
   // given by configuration of writer)
-  arrow::TableBatchReader tr(*table.get());
+  arrow::TableBatchReader tr(*table);
   std::shared_ptr<arrow::RecordBatch> batch;
   CHECK_ARROW(tr.ReadNext(&batch));
   while(batch != nullptr) {
@@ -103,9 +105,10 @@ Status ArrowReader::ReadTensors(std::vector<Tensor> *read_tensors) {
       std::shared_ptr<arrow::Array> arr = current_batch_->column(j);
 
       DataType output_type = this->dtypes_[j];
-
       TensorShape output_shape;
-      if(!partial_shapes.empty() && current_row_idx_ == total_rows_ - 1) {  // if partial batch in last row
+      bool partial_batch = !partial_shapes.empty() && current_row_idx_ == total_rows_ - 1;
+
+      if(partial_batch) {  // if partial batch in last row
         output_shape = this->partial_shapes[j];
       } else {
         output_shape = this->shapes_[j];
@@ -125,14 +128,20 @@ Status ArrowReader::ReadTensors(std::vector<Tensor> *read_tensors) {
         TF_RETURN_IF_ERROR(ArrowUtil::AssignTensorExperimental(arr, i, &tensor));
       }
 
-      read_tensors->emplace_back(std::move(tensor));
-      VLOG(0) << "ArrowReader - ReadTensors - Successfully assigned tensor";
+      if(partial_batch) {
+        metadata_->AddLastRowBatch(tensor);
+        VLOG(0) << "ArrowReader - ReadTensors - Added partial batch to metadata";
+      } else {
+        read_tensors->emplace_back(std::move(tensor));
+        VLOG(0) << "ArrowReader - ReadTensors - Successfully assigned tensor";
+      }
     }
     current_row_idx_++;
   }
 
   return Status::OK();
 }
+
 
 Status ArrowReader::NextBatch() {
   if (++current_batch_idx_ < record_batches_.size()) {
@@ -144,6 +153,7 @@ Status ArrowReader::NextBatch() {
   }
   return Status::OK();
 }
+
 
 } // namespace easl
 } // namespace data

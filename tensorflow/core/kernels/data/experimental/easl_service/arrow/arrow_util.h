@@ -70,21 +70,28 @@ public:
     /// different shape and thus don't conform to this shape specification (see AddPartialBatch).
     Status SetRowShape(std::vector<TensorShape> row_shape) TF_LOCKS_EXCLUDED(mu_);
 
-    Status RegisterWriter();
+    Status RegisterWorker();
 
     /// \brief specifies whether experimental more efficient data storage format is used for reading
     bool IsExperimental();
 
     Status SetExperimental(bool exp);
 
+    // Assumption: only one file contains partial batches (end of dataset)
+    Status AddLastRowBatch(Tensor &t);
+
+    // only returns last row tensors if we are at the end of the dataset
+    Status GetLastRowBatch(std::vector<Tensor> *out) TF_LOCKS_EXCLUDED(mu_);
+
 private:
     Status WriteData(const std::string& path);
 
+    std::vector<Tensor> last_row_batches_;  // used to pass partially filled last row batches to async_reader
     mutex mu_;  // allow multiple threads to add values to Metadata File
     bool partial_batching_ = false;
     bool experimental_ = true;
     std::vector<TensorShape> shapes_;
-    int num_writer_threads_ TF_GUARDED_BY(mu_); // num writer_threads still actively writing
+    int num_worker_threads_ TF_GUARDED_BY(mu_); // num writer_threads still actively writing
     std::map<string, std::vector<TensorShape>> partial_batch_shapes_ TF_GUARDED_BY(mu_);
 };
 
