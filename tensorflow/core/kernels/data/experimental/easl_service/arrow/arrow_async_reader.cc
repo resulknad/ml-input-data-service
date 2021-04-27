@@ -14,7 +14,8 @@ ArrowAsyncReader::ArrowAsyncReader(Env *env, const std::string &target_dir, cons
         const std::vector<PartialTensorShape> &output_shapes, int reader_count) :
         MultiThreadedAsyncReader(env, target_dir, output_dtypes, output_shapes, reader_count) {
   VLOG(0) << "Arrow Async Reader Created, reading metadata...";
-  metadata_.ReadMetadataFromFile(target_dir);
+  metadata_ = std::make_shared<ArrowUtil::ArrowMetadata>();
+  metadata_->ReadMetadataFromFile(target_dir);
 }
 
 Status ArrowAsyncReader::ReaderThread(
@@ -43,7 +44,7 @@ Status ArrowAsyncReader::ReaderThread(
 
       arrowReader = absl::make_unique<ArrowReader>();
       arrowReader->Initialize(env, file_path, io::compression::kNone,
-              output_types, output_shapes, &metadata_);
+              output_types, output_shapes, metadata_);
 
       LOG(INFO) << "(Reader_" << writer_id << ") Starting to read file " << file_path;
       int64 count = 0;

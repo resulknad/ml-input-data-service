@@ -26,7 +26,9 @@ namespace {
 
 
 
-ArrowAsyncWriter::ArrowAsyncWriter(const int writer_count) : MultiThreadedAsyncWriter(writer_count) {}
+ArrowAsyncWriter::ArrowAsyncWriter(const int writer_count) : MultiThreadedAsyncWriter(writer_count) {
+  metadata_ = std::make_shared<ArrowUtil::ArrowMetadata>();
+}
 
 Status ArrowAsyncWriter::WriterThread(Env* env, const std::string& shard_directory,
                     uint64 writer_id, const std::string& compression,
@@ -40,12 +42,12 @@ Status ArrowAsyncWriter::WriterThread(Env* env, const std::string& shard_directo
   LOG(INFO) << "(Writer_" << writer_id << ") Created Dir ";
 
   // register thread for concurrently writing to arrowMetadata file
-  metadata_.RegisterWriter();
+  metadata_->RegisterWriter();
 
   std::unique_ptr<ArrowWriter> arrowWriter;
   arrowWriter = absl::make_unique<ArrowWriter>();
   TF_RETURN_IF_ERROR(arrowWriter->Create(env, GetFileName(shard_directory, writer_id),
-                                         compression, output_types, &metadata_));
+                                         compression, output_types, metadata_));
 
   int count = 0;
   LOG(INFO) << "(Writer_" << writer_id << ") Starting to write ";
@@ -80,7 +82,7 @@ Status ArrowAsyncWriter::WriterThread(Env* env, const std::string& shard_directo
       // create new writer for remaining tensors:
       arrowWriter = absl::make_unique<ArrowWriter>();
       TF_RETURN_IF_ERROR(arrowWriter->Create(env, GetFileName(shard_directory, writer_id, ++split_id),
-                                             compression, output_types, &metadata_));
+                                             compression, output_types, metadata_));
       LOG(INFO) << "(Writer_" << writer_id << ") Exceeded memory threshold, created new file (split_id = "
                                               "" << split_id <<")...";
     }
@@ -89,7 +91,7 @@ Status ArrowAsyncWriter::WriterThread(Env* env, const std::string& shard_directo
   }
 
   // Write accumulated metadata before closing --> if last thread writes to file
-  metadata_.WriteMetadataToFile(shard_directory);
+  metadata_->WriteMetadataToFile(shard_directory);
   return Status::OK();
 }
 

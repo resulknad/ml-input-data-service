@@ -14,7 +14,7 @@ ArrowReader::ArrowReader(){}
 
 Status ArrowReader::Initialize(Env *env, const std::string &filename, const string &compression_type,
                                const DataTypeVector &dtypes, const std::vector<PartialTensorShape> &shapes,
-                               ArrowUtil::ArrowMetadata *metadata) {
+                               std::shared_ptr<ArrowUtil::ArrowMetadata> metadata) {
 
 //  this->shapes_ = std::vector<TensorShape>();
 

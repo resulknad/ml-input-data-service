@@ -21,14 +21,14 @@ namespace arrow_async_writer{
 
 class ArrowAsyncWriter : public MultiThreadedAsyncWriter {
 public:
-    ArrowAsyncWriter(const int writer_count);
+    explicit ArrowAsyncWriter(const int writer_count);
 
     Status WriterThread(Env* env, const std::string& shard_directory,
                         uint64 checkpoint_id, const std::string& compression,
-                        int64 version, DataTypeVector output_types);
+                        int64 version, DataTypeVector output_types) override;
 private:
     const uint64 memoryThreshold = 1 << 28;
-    ArrowUtil::ArrowMetadata metadata_;
+    std::shared_ptr<ArrowUtil::ArrowMetadata> metadata_;
 };
 
 } // namespace arrow_async_wirter

@@ -16,7 +16,7 @@ ArrowWriter::ArrowWriter() {} // empty constructor, call Create for error handli
 Status ArrowWriter::Create(Env *env, const std::string &filename,
                          const string &compression_type,
                          const DataTypeVector &dtypes,
-                         ArrowUtil::ArrowMetadata *metadata) {
+                         std::shared_ptr<ArrowUtil::ArrowMetadata> metadata) {
   this->metadata_ = metadata;
   this->env_ = env;
   this->filename_ = filename;

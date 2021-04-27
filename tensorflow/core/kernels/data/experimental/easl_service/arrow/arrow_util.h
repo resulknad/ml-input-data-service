@@ -47,6 +47,8 @@ namespace ArrowUtil {
 
 class ArrowMetadata {
 public:
+    ArrowMetadata();
+
     /// \brief write accumulated metadata to a file in serialized form
     Status WriteMetadataToFile(const std::string& path) TF_LOCKS_EXCLUDED(mu_);
 
@@ -68,11 +70,7 @@ public:
     /// different shape and thus don't conform to this shape specification (see AddPartialBatch).
     Status SetRowShape(std::vector<TensorShape> row_shape) TF_LOCKS_EXCLUDED(mu_);
 
-    Status RegisterWriter() {
-      mutex_lock l(mu_);  // unlocked automatically upon function return
-      num_writer_threads_++;
-      VLOG(0) << "Registered writer, writer count = " << num_writer_threads_;
-    }
+    Status RegisterWriter();
 
 private:
     Status WriteData(const std::string& path);
@@ -83,6 +81,8 @@ private:
     int num_writer_threads_ TF_GUARDED_BY(mu_); // num writer_threads still actively writing
     std::map<string, std::vector<TensorShape>> partial_batch_shapes_ TF_GUARDED_BY(mu_);
 };
+
+
 
 // utility functions ------------------------------------------
 // Convert Arrow Data Type to TensorFlow

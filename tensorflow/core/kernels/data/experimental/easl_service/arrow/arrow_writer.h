@@ -20,7 +20,7 @@ public:
     Status Create(Env *env, const string &filename,
                   const string &compression_type,
                   const DataTypeVector &dtypes,
-                  ArrowUtil::ArrowMetadata *metadata);
+                  std::shared_ptr<ArrowUtil::ArrowMetadata> metadata);
 
     Status Close();
 
@@ -30,7 +30,7 @@ private:
     void InitDims(Tensor &t);
     arrow::Compression::type getArrowCompressionType();
 
-    ArrowUtil::ArrowMetadata* metadata_;
+    std::shared_ptr<ArrowUtil::ArrowMetadata> metadata_;
     Env *env_;
     std::string filename_;
     string compression_type_;

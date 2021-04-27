@@ -30,6 +30,9 @@ namespace data {
 namespace easl {
 namespace ArrowUtil {
 
+ArrowMetadata::ArrowMetadata() {
+  this->num_writer_threads_ = 0;
+}
 
 Status ArrowMetadata::WriteData(const std::string& path) {
 
@@ -219,6 +222,12 @@ Status ArrowMetadata::SetRowShape(std::vector<TensorShape> row_shape) {
   return Status::OK();
 }
 
+Status ArrowMetadata::RegisterWriter() {
+  mutex_lock l(mu_);  // unlocked automatically upon function return
+  num_writer_threads_++;
+  VLOG(0) << "Registered writer, writer count = " << num_writer_threads_;
+  return Status::OK();
+}
 
 
 Status GetTensorFlowType(std::shared_ptr<::arrow::DataType> dtype,

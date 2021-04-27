@@ -20,7 +20,7 @@ public:
                       const string &compression_type,
                       const DataTypeVector &dtypes,
                       const std::vector<PartialTensorShape> &shapes,
-                      ArrowUtil::ArrowMetadata* metadata);
+                      std::shared_ptr<ArrowUtil::ArrowMetadata> metadata);
 
     /// \brief Read an entire record batch into a vector<Tensor>.
     Status ReadTensors(std::vector<Tensor> *read_tensors);
@@ -43,7 +43,7 @@ private:
     // only used if batching (partially filled tensors)
     std::vector<TensorShape> partial_shapes;
     uint64_t total_rows_;
-    ArrowUtil::ArrowMetadata* metadata_;
+    std::shared_ptr<ArrowUtil::ArrowMetadata> metadata_;
 
 
     std::vector<std::shared_ptr<arrow::RecordBatch>> record_batches_;
