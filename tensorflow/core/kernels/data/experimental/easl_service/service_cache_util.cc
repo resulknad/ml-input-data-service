@@ -258,7 +258,6 @@ Status MultiThreadedAsyncReader::Initialize() {
   for (int i = 0; i < reader_count_; ++i) {
     thread_pool_->Schedule(
       [this, i] {
-          // simonsom -- manually set reader version to arrow, added output_shapes_
         // ReaderThread(env_, i, cache_file_version_, output_dtypes_);
         ReaderThread(env_, i, kWriterVersion, output_dtypes_, output_shapes_);
         }
@@ -308,21 +307,10 @@ Status MultiThreadedAsyncReader::ReaderThread(Env *env, uint64 writer_id, int64 
     if (!end_of_sequence) {
       LOG(INFO) << "(Reader_" << writer_id << ") Reading file " << file_path;
 
-      // select between arrowReader and standard built-in readers
-      bool isArrow = (version == 0);
-
-      // possible readers
-      std::unique_ptr<ArrowReader> arrowReader;
       std::unique_ptr<snapshot_util::Reader> reader;
 
-      if(isArrow) {
-        arrowReader = absl::make_unique<ArrowReader>();
-        arrowReader->Initialize(env, file_path, io::compression::kNone, output_types, output_shapes);
-      } else {
-        // TODO: should there be a call to make_unique first??
-        snapshot_util::Reader::Create(env, file_path, io::compression::kNone,
-                                      version, output_types, &reader);
-      }
+      snapshot_util::Reader::Create(env, file_path, io::compression::kNone,
+                                    version, output_types, &reader);
 
 
       LOG(INFO) << "(Reader_" << writer_id << ") Starting to read file " << file_path;
@@ -331,11 +319,11 @@ Status MultiThreadedAsyncReader::ReaderThread(Env *env, uint64 writer_id, int64 
       while (!eof) {
         std::string t_str = "Reading Tensors:";
         std::vector<Tensor> tensors;
-        Status s = isArrow ? arrowReader->ReadTensors(&tensors) : reader->ReadTensors(&tensors);
+        Status s = reader->ReadTensors(&tensors);
         if (errors::IsOutOfRange(s)) {
           eof = true;  // can't break because of TFRecordReader.
         } else if(s != Status::OK()) {
-          LOG(INFO) << "Internal error in ArrowReader / TFRecordReader. " << s.ToString();
+          LOG(INFO) << "Internal error in TFRecordReader. " << s.ToString();
           return s;
         }
 
