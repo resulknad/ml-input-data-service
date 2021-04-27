@@ -559,7 +559,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       // We use our own implementation for inter-arrival times.
       {
         mutex_lock l(mu_);
-        if(num_elements_ > 0){
+        if(num_elements_ > 1){
           avg_get_next_inter_arrival_time = get_next_inter_arrival_sum_us_ /
               (num_elements_ - 1);
           // TODO reset inter_arrival counting to account for adjustments?
