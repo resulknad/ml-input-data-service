@@ -34,6 +34,7 @@ Status ArrowReader::Initialize(Env *env, const std::string &filename, const stri
 
   // read metadata
   this->metadata_ = metadata;
+  this->experimental_ = true;  // TODO: use metadata to choose experimental
   bool partial_batching;
   TF_RETURN_IF_ERROR(metadata_->IsPartialBatching(&partial_batching));
   if(partial_batching) {

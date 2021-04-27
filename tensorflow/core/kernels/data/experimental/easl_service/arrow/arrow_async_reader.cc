@@ -13,6 +13,7 @@ namespace arrow_async_reader{
 ArrowAsyncReader::ArrowAsyncReader(Env *env, const std::string &target_dir, const DataTypeVector &output_dtypes,
         const std::vector<PartialTensorShape> &output_shapes, int reader_count) :
         MultiThreadedAsyncReader(env, target_dir, output_dtypes, output_shapes, reader_count) {
+  VLOG(0) << "Arrow Async Reader Created, reading metadata...";
   metadata_.ReadMetadataFromFile(target_dir);
 }
 

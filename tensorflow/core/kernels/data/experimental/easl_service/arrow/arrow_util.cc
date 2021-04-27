@@ -98,6 +98,8 @@ Status ArrowMetadata::WriteMetadataToFile(const std::string& path) {
   if(num_writer_threads_ == 0) {
     WriteData(path);
   }
+  VLOG(0) << "ArrowUtil - WriteMetadataToFile successfully";
+
   return Status::OK();
 }
 
@@ -153,6 +155,9 @@ Status ArrowMetadata::ReadMetadataFromFile(const std::string& path) {
     }
     partial_batch_shapes_.insert({col_name, partial_shapes});
   }
+
+  VLOG(0) << "ArrowUtil - Successfully Read Metadata from file";
+
   return Status::OK();
 }
 
@@ -160,6 +165,8 @@ Status ArrowMetadata::AddPartialBatch(string doc, std::vector<TensorShape> last_
   mutex_lock l(mu_);  // unlocked automatically upon function return
   this->partial_batch_shapes_.insert({doc, last_batch_shape});
   this->partial_batching_ = true;
+  VLOG(0) << "ArrowUtil - AddPartialBatch successfully";
+
   return Status::OK();
 }
 
@@ -170,16 +177,22 @@ Status ArrowMetadata::GetPartialBatches(string doc, std::vector<TensorShape>* ou
   } else {
     return Status(error::NOT_FOUND, "doc name not found in map");
   }
+  VLOG(0) << "ArrowUtil - GetPartialBatch successfully";
+
   return Status::OK();
 }
 
 Status ArrowMetadata::IsPartialBatching(bool *batching) {
   *batching = partial_batching_;
+  VLOG(0) << "ArrowUtil - IsPartialBatching successfully";
+
   return Status::OK();
 }
 
 Status ArrowMetadata::GetRowShape(std::vector<TensorShape>* out_row_shape) {
   *out_row_shape = shapes_;
+  VLOG(0) << "ArrowUtil - GetRowShape successfully";
+
   return Status::OK();
 }
 
@@ -188,6 +201,8 @@ Status ArrowMetadata::SetRowShape(std::vector<TensorShape> row_shape) {
     mutex_lock l(mu_);  // unlocked automatically upon function return
     this->shapes_ = row_shape;
   }
+  VLOG(0) << "ArrowUtil - SetRowShape successfully";
+
   return Status::OK();
 }
 
