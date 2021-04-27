@@ -31,19 +31,19 @@ private:
     arrow::Compression::type getArrowCompressionType();
 
     std::shared_ptr<ArrowUtil::ArrowMetadata> metadata_;
-    Env *env_;
+    Env *env_{};
     std::string filename_;
     string compression_type_;
     DataTypeVector dtypes_;
     arrow::DataTypeVector arrow_dtypes_;
-    int32_t ncols_;
-    int32_t current_col_idx_;
+    int32_t ncols_{};
+    int32_t current_col_idx_{};
 
     std::vector<TensorShape> shapes_;
     std::vector<TensorShape> partial_shapes_;
 
     // initially false, true after first row has been read (implicitly get TensorShape)
-    bool dims_initialized_;
+    bool dims_initialized_{};
 
     std::vector<std::vector<const char *>> tensor_data_;
     std::vector<uint64> tensor_data_len_;
@@ -51,7 +51,7 @@ private:
     std::vector<uint64> last_row_len_;
 
     // memory allocator for string buffers
-    Allocator* string_allocator_;
+    Allocator* string_allocator_{};
 
     // prevents memory pool from de-allocating tensor data buffs
     std::deque<Tensor> tensors_;

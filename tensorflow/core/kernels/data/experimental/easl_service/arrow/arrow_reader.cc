@@ -16,31 +16,14 @@ Status ArrowReader::Initialize(Env *env, const std::string &filename, const stri
                                const DataTypeVector &dtypes, const std::vector<PartialTensorShape> &shapes,
                                std::shared_ptr<ArrowUtil::ArrowMetadata> metadata) {
 
-//  this->shapes_ = std::vector<TensorShape>();
-
-//  // initialize shapes
-//  if(!shapes.empty()) {
-//    shapes_initialized_ = true;
-//    experimental_ = true;
-//    for (PartialTensorShape pts : shapes) {
-//      TensorShape out;
-//      if (pts.AsTensorShape(&out)) {
-//        shapes_.push_back(out);
-//      } else {
-//        return Status(error::FAILED_PRECONDITION, "can't deal with partially filled tensors");
-//      }
-//    }
-//  } TODO
-
   // read metadata
   this->metadata_ = metadata;
-  this->experimental_ = true;  // TODO: use metadata to choose experimental
-  bool partial_batching;
-  TF_RETURN_IF_ERROR(metadata_->IsPartialBatching(&partial_batching));
-  if(partial_batching) {
+  this->experimental_ = metadata_->IsExperimental();  // TODO: use metadata to choose experimental
+  if(metadata_->IsPartialBatching()) {
     TF_RETURN_IF_ERROR(metadata_->GetPartialBatches(filename, &partial_shapes));
   }
   TF_RETURN_IF_ERROR(metadata_->GetRowShape(&shapes_));
+  shapes_initialized_ = !shapes_.empty();
 
   // initialize internal data structures
   this->env_ = env;
@@ -110,9 +93,9 @@ Status ArrowReader::ReadTensors(std::vector<Tensor> *read_tensors) {
   TF_RETURN_IF_ERROR(NextBatch());
   // Invariant: current_batch_ != nullptr
 
-//  if(!shapes_initialized_) {
-//    TF_RETURN_IF_ERROR(InitShapesAndTypes());
-//  } TODO
+  if(!shapes_initialized_) {  // if no metadata --> fall back to implicitly extracting shape / type
+    TF_RETURN_IF_ERROR(InitShapesAndTypes());
+  }
 
   // go over all rows of record batch
   for(int i = 0; i < current_batch_->num_rows(); i++) {
@@ -122,7 +105,7 @@ Status ArrowReader::ReadTensors(std::vector<Tensor> *read_tensors) {
       DataType output_type = this->dtypes_[j];
 
       TensorShape output_shape;
-      if(partial_shapes.size() > 0 && current_row_idx_ == total_rows_ - 1) {
+      if(!partial_shapes.empty() && current_row_idx_ == total_rows_ - 1) {  // if partial batch in last row
         output_shape = this->partial_shapes[j];
       } else {
         output_shape = this->shapes_[j];

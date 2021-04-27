@@ -43,8 +43,13 @@ Status ArrowAsyncReader::ReaderThread(
       std::unique_ptr<ArrowReader> arrowReader;
 
       arrowReader = absl::make_unique<ArrowReader>();
-      arrowReader->Initialize(env, file_path, io::compression::kNone,
+      Status s = arrowReader->Initialize(env, file_path, io::compression::kNone,
               output_types, output_shapes, metadata_);
+
+      if(s != Status::OK()) {
+        LOG(INFO) << "Internal error in ArrowReader " << s.ToString();
+        return s;
+      }
 
       LOG(INFO) << "(Reader_" << writer_id << ") Starting to read file " << file_path;
       int64 count = 0;

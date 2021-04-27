@@ -53,15 +53,15 @@ public:
     Status WriteMetadataToFile(const std::string& path) TF_LOCKS_EXCLUDED(mu_);
 
     /// \brief read and deserialize metadata from file
-    Status ReadMetadataFromFile(const std::string& path);
+    Status ReadMetadataFromFile(Env* env, const std::string& path);
 
     /// \brief remembers which files contain partially filled batches at the end of
     /// the file. The last row of tensors stored in the arrays will have a different shapes.
-    Status AddPartialBatch(string doc, std::vector<TensorShape> last_batch_shape) TF_LOCKS_EXCLUDED(mu_);
+    Status AddPartialBatch(const string& doc, const std::vector<TensorShape>& last_batch_shape) TF_LOCKS_EXCLUDED(mu_);
 
     Status GetPartialBatches(string doc, std::vector<TensorShape>* out_last_batch_shape);
 
-    Status IsPartialBatching(bool *batching);
+    bool IsPartialBatching();
 
     Status GetRowShape(std::vector<TensorShape>* out_row_shape);
 
@@ -72,11 +72,17 @@ public:
 
     Status RegisterWriter();
 
+    /// \brief specifies whether experimental more efficient data storage format is used for reading
+    bool IsExperimental();
+
+    Status SetExperimental(bool exp);
+
 private:
     Status WriteData(const std::string& path);
 
     mutex mu_;  // allow multiple threads to add values to Metadata File
     bool partial_batching_ = false;
+    bool experimental_ = true;
     std::vector<TensorShape> shapes_;
     int num_writer_threads_ TF_GUARDED_BY(mu_); // num writer_threads still actively writing
     std::map<string, std::vector<TensorShape>> partial_batch_shapes_ TF_GUARDED_BY(mu_);
@@ -86,7 +92,7 @@ private:
 
 // utility functions ------------------------------------------
 // Convert Arrow Data Type to TensorFlow
-Status GetTensorFlowType(std::shared_ptr<::arrow::DataType> dtype,
+Status GetTensorFlowType(const std::shared_ptr<::arrow::DataType>& dtype,
                          ::tensorflow::DataType* out);
 
 // Convert TensorFlow Data Type to Arrow

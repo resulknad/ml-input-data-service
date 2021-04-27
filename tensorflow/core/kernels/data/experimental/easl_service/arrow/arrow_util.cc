@@ -16,6 +16,8 @@ More or less untouched code, adapted slightly for specific use case by simonsom
 ==============================================================================*/
 
 #include "tensorflow/core/kernels/data/experimental/easl_service/arrow/arrow_util.h"
+
+#include <utility>
 #include "arrow/adapters/tensorflow/convert.h"
 #include "arrow/api.h"
 #include "arrow/io/file.h"
@@ -52,7 +54,10 @@ Status ArrowMetadata::WriteData(const std::string& path) {
   }
   rowShapeBuilder.Finish(&rowShapeArr);
   arrays.push_back(rowShapeArr);
-  schema_vector.push_back(arrow::field("row_shape", rowShapeArr->type()));
+
+  // a bit of a hack: encode experimental bool in header of first column
+  std::string header = experimental_ ? "experimental" : "standard";
+  schema_vector.push_back(arrow::field(header, rowShapeArr->type()));
 
   VLOG(0) << "ArrowUtil - WriteData - Built Arrays";
 
@@ -115,7 +120,16 @@ Status ArrowMetadata::WriteMetadataToFile(const std::string& path) {
   return Status::OK();
 }
 
-Status ArrowMetadata::ReadMetadataFromFile(const std::string& path) {
+Status ArrowMetadata::ReadMetadataFromFile(Env* env, const std::string& path) {
+
+  // check whether file exists, if not -> assume standard format
+  Status s = env->FileExists(io::JoinPath(path, "arrow_metadata.feather"));
+  if (s != Status::OK()) {
+    experimental_ = false;
+    partial_batching_ = false;
+
+    return Status::OK();
+  }
 
   // clear metadata if already data in it
   this->partial_batch_shapes_.clear();
@@ -144,6 +158,9 @@ Status ArrowMetadata::ReadMetadataFromFile(const std::string& path) {
   } else if(next_batch != nullptr) {  // next batch should be nullptr
     return Status(error::UNAVAILABLE, "Metadata too large");
   }
+
+  // read whether experimental:
+  this->experimental_ = batch->column_name(0) == "experimental";
 
   // read rowShape (column 0 always exists)
   arrow::StringArray* rowShapeArr = dynamic_cast<arrow::StringArray*>(batch->column(0).get());
@@ -177,7 +194,7 @@ Status ArrowMetadata::ReadMetadataFromFile(const std::string& path) {
   return Status::OK();
 }
 
-Status ArrowMetadata::AddPartialBatch(string doc, std::vector<TensorShape> last_batch_shape) {
+Status ArrowMetadata::AddPartialBatch(const string& doc, const std::vector<TensorShape>& last_batch_shape) {
   mutex_lock l(mu_);  // unlocked automatically upon function return
   this->partial_batch_shapes_.insert({doc, last_batch_shape});
   this->partial_batching_ = true;
@@ -186,26 +203,25 @@ Status ArrowMetadata::AddPartialBatch(string doc, std::vector<TensorShape> last_
   return Status::OK();
 }
 
-Status ArrowMetadata::GetPartialBatches(string doc, std::vector<TensorShape>* out_last_batch_shape) {
+Status ArrowMetadata::GetPartialBatches(string doc, std::vector<TensorShape> *out_last_batch_shape) {
   auto it = partial_batch_shapes_.find(doc);
   if (it != partial_batch_shapes_.end()) {
     *out_last_batch_shape = partial_batch_shapes_[doc];
-  } else {
-    return Status(error::NOT_FOUND, "doc name not found in map");
+    VLOG(0) << "ArrowUtil - GetPartialBatch --> partial batch file";
+
+  } else {  // no partial batches for this file
+    // do nothing as out_last_batch_shape points to empty vector already
+    VLOG(0) << "ArrowUtil - GetPartialBatch --> not partial batch file";
+
   }
-  VLOG(0) << "ArrowUtil - GetPartialBatch successfully";
-
   return Status::OK();
 }
 
-Status ArrowMetadata::IsPartialBatching(bool *batching) {
-  *batching = partial_batching_;
-  VLOG(0) << "ArrowUtil - IsPartialBatching successfully";
-
-  return Status::OK();
+bool ArrowMetadata::IsPartialBatching() {
+  return partial_batching_;
 }
 
-Status ArrowMetadata::GetRowShape(std::vector<TensorShape>* out_row_shape) {
+Status ArrowMetadata::GetRowShape(std::vector<TensorShape> *out_row_shape) {
   *out_row_shape = shapes_;
   VLOG(0) << "ArrowUtil - GetRowShape successfully";
 
@@ -215,7 +231,7 @@ Status ArrowMetadata::GetRowShape(std::vector<TensorShape>* out_row_shape) {
 Status ArrowMetadata::SetRowShape(std::vector<TensorShape> row_shape) {
   if(shapes_.empty()) {
     mutex_lock l(mu_);  // unlocked automatically upon function return
-    this->shapes_ = row_shape;
+    this->shapes_ = std::move(row_shape);
   }
   VLOG(0) << "ArrowUtil - SetRowShape successfully";
 
@@ -229,8 +245,16 @@ Status ArrowMetadata::RegisterWriter() {
   return Status::OK();
 }
 
+bool ArrowMetadata::IsExperimental() {
+  return experimental_;
+}
 
-Status GetTensorFlowType(std::shared_ptr<::arrow::DataType> dtype,
+Status ArrowMetadata::SetExperimental(bool exp) {
+  this->experimental_ = exp;
+}
+
+
+Status GetTensorFlowType(const std::shared_ptr<::arrow::DataType>& dtype,
                          ::tensorflow::DataType* out) {
   if (dtype->id() == ::arrow::Type::STRING) {
     *out = ::tensorflow::DT_STRING;

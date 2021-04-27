@@ -29,6 +29,9 @@ public:
 private:
     const uint64 memoryThreshold = 1 << 28;
     std::shared_ptr<ArrowUtil::ArrowMetadata> metadata_;
+
+    // use to choose betw. normal and experimental mode. Default experimental.
+    const bool experimental_ = true;
 };
 
 } // namespace arrow_async_wirter
