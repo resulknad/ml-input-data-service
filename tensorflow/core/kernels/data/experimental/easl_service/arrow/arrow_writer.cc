@@ -19,7 +19,10 @@ Status ArrowWriter::Create(Env *env, const std::string &filename,
                          const string &compression_type,
                          const DataTypeVector &dtypes,
                          std::shared_ptr<ArrowUtil::ArrowMetadata> metadata) {
-  this->metadata_ = std::move(metadata);
+
+  VLOG(0) << "ArrowWriter - Create - Invoked";
+
+  this->metadata_ = metadata;
   this->env_ = env;
   this->filename_ = filename;
   this->compression_type_ = compression_type;
@@ -30,6 +33,7 @@ Status ArrowWriter::Create(Env *env, const std::string &filename,
 
   // default CPU_Allocator
   string_allocator_ = cpu_allocator(port::kNUMANoAffinity);
+
 
   // Get Arrow Data Types
   for(int i = 0; i < dtypes_.size(); i++) {
@@ -43,6 +47,7 @@ Status ArrowWriter::Create(Env *env, const std::string &filename,
     std::vector<const char *> col;
     tensor_data_.push_back(col);
   }
+  VLOG(0) << "ArrowWriter - Create - Finished";
 }
 
 /// \brief convert from given compression to arrow compression type supported by the feather writer

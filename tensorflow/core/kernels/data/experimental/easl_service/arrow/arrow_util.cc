@@ -241,7 +241,7 @@ Status ArrowMetadata::SetRowShape(std::vector<TensorShape> row_shape) {
 Status ArrowMetadata::RegisterWorker() {
   mutex_lock l(mu_);  // unlocked automatically upon function return
   num_worker_threads_++;
-  VLOG(0) << "Registered writer, writer count = " << num_worker_threads_;
+  VLOG(0) << "Registered worker, worker count = " << num_worker_threads_;
   return Status::OK();
 }
 

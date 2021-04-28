@@ -19,7 +19,7 @@ Status ArrowReader::Initialize(Env *env, const std::string &filename, const stri
                                std::shared_ptr<ArrowUtil::ArrowMetadata> metadata) {
 
   // read metadata
-  this->metadata_ = std::move(metadata);
+  this->metadata_ = metadata;
   this->experimental_ = metadata_->IsExperimental();  // TODO: use metadata to choose experimental
   if(metadata_->IsPartialBatching()) {
     TF_RETURN_IF_ERROR(metadata_->GetPartialBatches(filename, &partial_shapes));
