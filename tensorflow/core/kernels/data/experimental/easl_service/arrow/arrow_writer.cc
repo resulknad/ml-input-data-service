@@ -48,6 +48,8 @@ Status ArrowWriter::Create(Env *env, const std::string &filename,
     tensor_data_.push_back(col);
   }
   VLOG(0) << "ArrowWriter - Create - Finished";
+
+  return Status::OK();
 }
 
 /// \brief convert from given compression to arrow compression type supported by the feather writer
