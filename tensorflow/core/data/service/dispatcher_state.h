@@ -213,6 +213,12 @@ class DispatcherState {
   // Lists all workers registered with the dispatcher.
   std::vector<std::shared_ptr<const Worker>> ListWorkers() const;
 
+  // Lists workers registered with the dispatcher with no jobs assigned.
+  std::vector<std::shared_ptr<const Worker>> ListAvailableWorkers() const;
+
+  // Reserves the requested number of available workers for the job with job_id.
+  std::vector<std::shared_ptr<Worker>> ReserveWorkers(int64 num_workers, int64 job_id);
+
   // Returns the next available job id.
   int64 NextAvailableJobId() const;
   // Returns a list of all jobs.
@@ -266,6 +272,9 @@ class DispatcherState {
   // Registered workers, keyed by address.
   absl::flat_hash_map<std::string, std::shared_ptr<Worker>> workers_;
 
+  // Avaialable workers (no job assigned), keyed by address.
+  absl::flat_hash_map<std::string, std::shared_ptr<Worker>> avail_workers_;
+
   int64 next_available_job_id_ = 2000;
   // Jobs, keyed by job ids.
   absl::flat_hash_map<int64, std::shared_ptr<Job>> jobs_;
@@ -285,6 +294,8 @@ class DispatcherState {
   // Tasks, keyed by worker addresses. The values are a map from task id to
   // task.
   absl::flat_hash_map<std::string, TasksById> tasks_by_worker_;
+  // List of workers associated with each job.
+  absl::flat_hash_map<int64, std::vector<std::shared_ptr<Worker>>> workers_by_job_;
 };
 
 }  // namespace data

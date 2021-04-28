@@ -93,7 +93,10 @@ void DispatcherState::RegisterWorker(
     const RegisterWorkerUpdate& register_worker) {
   std::string address = register_worker.worker_address();
   DCHECK(!workers_.contains(address));
+  DCHECK(!avail_workers_.contains(address));
   workers_[address] =
+      std::make_shared<Worker>(address, register_worker.transfer_address());
+  avail_workers_[address] =
       std::make_shared<Worker>(address, register_worker.transfer_address());
   tasks_by_worker_[address] =
       absl::flat_hash_map<int64, std::shared_ptr<Task>>();
@@ -257,6 +260,14 @@ void DispatcherState::FinishTask(const FinishTaskUpdate& finish_task) {
   }
   VLOG(3) << "Job " << task->job->job_id << " finished: " << all_finished;
   jobs_[task->job->job_id]->finished = all_finished;
+  // When a job completes, mark its workers as available
+  if (all_finished) {
+    for (auto& worker : workers_by_job_[task->job->job_id]) {
+      VLOG(3) << "Releasing worker at address " << worker->address;
+      avail_workers_[worker->address] = worker;
+    }
+    workers_by_job_[task->job->job_id].clear();
+  }
 }
 
 int64 DispatcherState::NextAvailableDatasetId() const {
@@ -300,6 +311,37 @@ DispatcherState::ListWorkers() const {
   for (const auto& it : workers_) {
     workers.push_back(it.second);
   }
+  return workers;
+}
+
+std::vector<std::shared_ptr<const DispatcherState::Worker>>
+DispatcherState::ListAvailableWorkers() const {
+  std::vector<std::shared_ptr<const Worker>> workers;
+  workers.reserve(avail_workers_.size());
+  for (const auto& it : avail_workers_) {
+    workers.push_back(it.second);
+  }
+  return workers;
+}
+
+std::vector<std::shared_ptr<DispatcherState::Worker>>
+DispatcherState::ReserveWorkers(int64 num_workers, int64 job_id) {
+  // TODO(aklimovic): wait instead of fail if insufficient workers available
+  // or return up to how many are currently available
+  DCHECK(num_workers <= avail_workers_.size()); 
+  std::vector<std::shared_ptr<Worker>> workers;
+  workers.reserve(num_workers);
+  for (auto it = avail_workers_.begin(); it != avail_workers_.end(); ) {
+    num_workers--;
+    workers.push_back(it->second);
+    VLOG(3) << "Assigning worker at address " << it->second->address << " to job "
+          << job_id;
+    workers_by_job_[job_id].push_back(it->second);
+    avail_workers_.erase(it++);
+    if (num_workers == 0)
+      break;
+  }
+  VLOG(3) << "Number of workers for job " << job_id << " is: " << workers_by_job_[job_id].size();
   return workers;
 }
 
