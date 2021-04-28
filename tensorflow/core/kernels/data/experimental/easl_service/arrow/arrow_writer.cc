@@ -137,7 +137,6 @@ Status ArrowWriter::Close() {
   if(!partial_shapes_.empty()) {
     metadata_->AddPartialBatch(filename_, partial_shapes_);
   }
-  metadata_->SetRowShape(shapes_);
 
   return Status::OK();
 }

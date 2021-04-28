@@ -21,11 +21,6 @@ namespace {
   }
 }
 
-
-
-
-
-
 ArrowAsyncWriter::ArrowAsyncWriter(const int writer_count) : MultiThreadedAsyncWriter(writer_count) {
   metadata_ = std::make_shared<ArrowUtil::ArrowMetadata>();
   VLOG(0) << "ArrowAsyncWriter created";
@@ -48,6 +43,7 @@ Status ArrowAsyncWriter::WriterThread(Env* env, const std::string& shard_directo
   // register thread for concurrently writing to arrowMetadata file
   metadata_->RegisterWorker();
 
+  // create arrow writer
   std::unique_ptr<ArrowWriter> arrowWriter;
   arrowWriter = absl::make_unique<ArrowWriter>();
   TF_RETURN_IF_ERROR(arrowWriter->Create(env, GetFileName(shard_directory, writer_id),
@@ -60,8 +56,8 @@ Status ArrowAsyncWriter::WriterThread(Env* env, const std::string& shard_directo
     snapshot_util::ElementOrEOF be;
     Consume(&be);
 
-    LOG(INFO) << "(Writer_" << writer_id << ") Read - "
-              << be.end_of_sequence << " - Total: " << ++count;
+    LOG(INFO) << "(Writer_" << writer_id << ") Read - EOF: "
+              << be.end_of_sequence << " - Total Rows: " << ++count;
     if (be.end_of_sequence) {
       TF_RETURN_IF_ERROR(arrowWriter->Close());
       LOG(INFO) << "(Writer_" << writer_id << ") Closed w/ total read "
@@ -97,6 +93,18 @@ Status ArrowAsyncWriter::WriterThread(Env* env, const std::string& shard_directo
   // Write accumulated metadata before closing --> if last thread writes to file
   metadata_->WriteMetadataToFile(shard_directory);
   return Status::OK();
+}
+
+void ArrowAsyncWriter::Write(const std::vector<Tensor> &tensors) {
+  if(!first_row_shape_set_) {
+    std::vector<TensorShape> first_row_shape;
+    for(Tensor t : tensors) {
+      first_row_shape.push_back(t.shape());
+    }
+    metadata_->SetRowShape(first_row_shape);
+    first_row_shape_set_ = true;
+  }
+  MultiThreadedAsyncWriter::Write(tensors);
 }
 
 } // namespace arrow_async_wirter

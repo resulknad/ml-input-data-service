@@ -23,12 +23,15 @@ class ArrowAsyncWriter : public MultiThreadedAsyncWriter {
 public:
     explicit ArrowAsyncWriter(const int writer_count);
 
+    void Write(const std::vector<Tensor>& tensors) TF_LOCKS_EXCLUDED(mu_);
+
     Status WriterThread(Env* env, const std::string& shard_directory,
                         uint64 checkpoint_id, const std::string& compression,
                         int64 version, DataTypeVector output_types) override;
 private:
     const uint64 memoryThreshold = 1 << 28;
     std::shared_ptr<ArrowUtil::ArrowMetadata> metadata_;
+    bool first_row_shape_set_ = false;
 
     // use to choose betw. normal and experimental mode. Default experimental.
     const bool experimental_ = true;

@@ -228,7 +228,7 @@ Status ArrowMetadata::GetRowShape(std::vector<TensorShape> *out_row_shape) {
   return Status::OK();
 }
 
-Status ArrowMetadata::SetRowShape(std::vector<TensorShape> row_shape) {
+Status ArrowMetadata::SetRowShape(std::vector<TensorShape> row_shape) {  //TODO: probably don't need lock here
   if(shapes_.empty()) {
     mutex_lock l(mu_);  // unlocked automatically upon function return
     this->shapes_ = std::move(row_shape);
@@ -940,7 +940,7 @@ Status AssignTensorExperimental(
   arrow::StringArray* str_arr = dynamic_cast<arrow::StringArray*>(array.get());
 
   int64 value_offset = str_arr->value_offset(i);
-  size_t len = str_arr->value_offset(i+1) - value_offset;  //TODO: check if works at boundary
+  size_t len = str_arr->value_offset(i+1) - value_offset;  // Note: no out of bounds error
 
   const void* src = str_arr->raw_data() + value_offset;
 
