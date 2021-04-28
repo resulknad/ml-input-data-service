@@ -330,6 +330,57 @@ TEST(DispatcherState, CreateTasksForDifferentJobs) {
   }
 }
 
+TEST(DispatcherState, CreateJobsListAvailableWorkers) {
+  int64 job_id_1 = 3;
+  int64 job_id_2 = 4;
+  int64 dataset_id = 10;
+  int64 task_id_1 = 8;
+  int64 task_id_2 = 9;
+  DispatcherState state;
+  std::string address_1 = "address_1";
+  std::string address_2 = "address_2";
+
+  // Register workers
+  {
+    std::vector<std::shared_ptr<const Worker>> workers = state.ListAvailableWorkers();
+    EXPECT_THAT(workers, IsEmpty());
+  }
+  TF_EXPECT_OK(RegisterWorker(address_1, state));
+  {
+    std::vector<std::shared_ptr<const Worker>> workers = state.ListAvailableWorkers();
+    EXPECT_THAT(workers, SizeIs(1));
+  }
+  TF_EXPECT_OK(RegisterWorker(address_2, state));
+  {
+    std::vector<std::shared_ptr<const Worker>> workers = state.ListAvailableWorkers();
+    EXPECT_THAT(workers, SizeIs(2));
+  }
+  // Register dataset and jobs
+  TF_EXPECT_OK(RegisterDataset(dataset_id, state));
+  TF_EXPECT_OK(CreateAnonymousJob(job_id_1, dataset_id, state));
+  TF_EXPECT_OK(CreateTask(task_id_1, job_id_1, address_1, state));
+  {
+    state.ReserveWorkers(1, job_id_1);
+    std::vector<std::shared_ptr<const Worker>> workers = state.ListAvailableWorkers();
+    EXPECT_THAT(workers, SizeIs(1));
+  }
+  TF_EXPECT_OK(CreateAnonymousJob(job_id_2, dataset_id, state));
+  TF_EXPECT_OK(CreateTask(task_id_2, job_id_2, address_2, state));
+  {
+    state.ReserveWorkers(1, job_id_2);
+    std::vector<std::shared_ptr<const Worker>> workers = state.ListAvailableWorkers();
+    EXPECT_THAT(workers, IsEmpty());
+  }
+
+  // Finish a task
+  TF_EXPECT_OK(FinishTask(task_id_1, state));
+  TF_EXPECT_OK(CreateTask(task_id_2, job_id_2, address_2, state));
+  {
+    std::vector<std::shared_ptr<const Worker>> workers = state.ListAvailableWorkers();
+    EXPECT_THAT(workers, SizeIs(1));
+  }
+}
+
 TEST(DispatcherState, CreateTasksForSameWorker) {
   int64 job_id = 3;
   int64 dataset_id = 10;
