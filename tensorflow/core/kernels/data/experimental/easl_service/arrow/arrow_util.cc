@@ -192,7 +192,7 @@ Status ArrowMetadata::ReadMetadataFromFile(Env* env, const std::string& path) {
     arrow::StringArray* partialShapeArr = dynamic_cast<arrow::StringArray*>(batch->column(i).get());
 
     for(int j = 0; j < partialShapeArr->length(); j++) {
-      std::string proto_data = rowShapeArr->GetString(j);
+      std::string proto_data = partialShapeArr->GetString(j);
       TensorShapeProto s_proto;
       s_proto.ParseFromString(proto_data);
       TensorShape s(s_proto);
