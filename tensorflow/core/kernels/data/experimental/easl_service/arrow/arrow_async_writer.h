@@ -34,7 +34,7 @@ private:
     bool first_row_shape_set_ = false;
 
     // use to choose betw. normal and experimental mode. Default experimental.
-    const bool experimental_ = true;
+    const bool experimental_ = false;
 };
 
 } // namespace arrow_async_wirter
