@@ -46,8 +46,6 @@ Status ArrowAsyncWriter::WriterThread(Env* env, const std::string& shard_directo
   // create arrow writer
   std::unique_ptr<ArrowWriter> arrowWriter;
   arrowWriter = absl::make_unique<ArrowWriter>();
-  TF_RETURN_IF_ERROR(arrowWriter->Create(env, GetFileName(shard_directory, writer_id),
-                                         compression, output_types, metadata_));
 
   int count = 0;
   LOG(INFO) << "(Writer_" << writer_id << ") Starting to write ";
@@ -55,6 +53,8 @@ Status ArrowAsyncWriter::WriterThread(Env* env, const std::string& shard_directo
   // consume first tensor before creating arrow writer -> metadata needs row shape first
   snapshot_util::ElementOrEOF be;
   Consume(&be);
+  TF_RETURN_IF_ERROR(arrowWriter->Create(env, GetFileName(shard_directory, writer_id),
+                                         compression, output_types, metadata_));
 
   while (true) {
     LOG(INFO) << "(Writer_" << writer_id << ") Read - EOF: "
