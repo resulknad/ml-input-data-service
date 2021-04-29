@@ -37,7 +37,7 @@ class MultiThreadedAsyncWriter {
 
   // Writes the given tensors. The method is non-blocking and returns without
   // waiting for the element to be written.
-  void Write(const std::vector<Tensor>& tensors) TF_LOCKS_EXCLUDED(mu_);
+  virtual void Write(const std::vector<Tensor>& tensors) TF_LOCKS_EXCLUDED(mu_);
 
   // Signals the end of input. The method is non-blocking and returns without
   // waiting for the writer to be closed.

@@ -43,7 +43,7 @@ private:
     std::vector<TensorShape> partial_shapes_;
 
     // initially false, true after first row has been read (implicitly get TensorShape)
-    bool dims_initialized_{};
+    bool tensor_data_len_initialized_{};
 
     std::vector<std::vector<const char *>> tensor_data_;
     std::vector<uint64> tensor_data_len_;

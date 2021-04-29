@@ -29,11 +29,13 @@ Status ArrowWriter::Create(Env *env, const std::string &filename,
   this->dtypes_ = dtypes;
   this->ncols_ = dtypes.size(); // one column in final arrow table per data type (one "dataset row")
   this->current_col_idx_ = 0;
-  this->dims_initialized_ = false;
+  this->tensor_data_len_initialized_ = false;
 
   // default CPU_Allocator
   string_allocator_ = cpu_allocator(port::kNUMANoAffinity);
 
+  // shapes of first row of dataset
+  metadata_->GetRowShape(&shapes_);
 
   // Get Arrow Data Types
   for(int i = 0; i < dtypes_.size(); i++) {
@@ -65,9 +67,9 @@ arrow::Compression::type ArrowWriter::getArrowCompressionType(){
 
 Status ArrowWriter::Close() {
 
-  VLOG(0) << "ArrowWriter - Close - invoked. Dims_initialized: " << dims_initialized_;
+  VLOG(0) << "ArrowWriter - Close - invoked. Dims_initialized: " << tensor_data_len_initialized_;
   // check if writer has any data, if not just return.
-  if(!dims_initialized_) {
+  if(!tensor_data_len_initialized_) {
     return Status::OK();
   }
   // get converted arrow array for each column:
@@ -143,16 +145,16 @@ Status ArrowWriter::Close() {
 
 // Assumption: tensors contains one row of the table.
 Status ArrowWriter::WriteTensors(std::vector<Tensor> &tensors) {
-  VLOG(0) << "ArrowWriter - WriteTensors - Invoked. dims_initialized = " << dims_initialized_;
+  VLOG(0) << "ArrowWriter - WriteTensors - Invoked. dims_initialized = " << tensor_data_len_initialized_;
 
   for(Tensor t : tensors) {
-    // need to implicitly get tensor shapes (dimension sizes) as it is not passed to writer.
-    // we only check for the shape in the first row of tensors handed to this function.
-    if(!dims_initialized_) {
-      InitDims(t);
+    // need to get size of tensor buffer for conversion.
+    if(!tensor_data_len_initialized_) {
+      tensor_data_len_.push_back(t.TotalBytes());
+      tensor_data_len_initialized_ = tensor_data_len_.size() >= ncols_;
     }
 
-    // check whether length of current tensor conforms to length of other tensors in the same row
+    // check whether shape of current tensor conforms to shape of other tensors in the same column
     if(t.shape() != shapes_[current_col_idx_]) {
       VLOG(0) << "Tensor not conforming to col shape -> adding partial tensor";
       partial_shapes_.push_back(t.shape());
@@ -189,19 +191,6 @@ Status ArrowWriter::WriteTensors(std::vector<Tensor> &tensors) {
   }
   return Status::OK();
 }
-
-/// \brief Takes tensor t as argument and appends shape information to local vector shapes_ where
-/// t is the i-th tensor handed to this function.
-void ArrowWriter::InitDims(Tensor  &t) {
-  VLOG(0) << "ArrowWriter - InitDims - Adding Shape Info";
-  shapes_.push_back(t.shape());
-
-  // saves size of tensor buffer for experimental writer
-  tensor_data_len_.push_back(t.TotalBytes());
-  dims_initialized_ = shapes_.size() >= ncols_;
-}
-
-
 
 } // namespace easl
 } // namespace data

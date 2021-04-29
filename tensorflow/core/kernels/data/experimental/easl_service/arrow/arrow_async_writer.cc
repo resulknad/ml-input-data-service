@@ -52,10 +52,11 @@ Status ArrowAsyncWriter::WriterThread(Env* env, const std::string& shard_directo
   int count = 0;
   LOG(INFO) << "(Writer_" << writer_id << ") Starting to write ";
 
-  while (true) {
-    snapshot_util::ElementOrEOF be;
-    Consume(&be);
+  // consume first tensor before creating arrow writer -> metadata needs row shape first
+  snapshot_util::ElementOrEOF be;
+  Consume(&be);
 
+  while (true) {
     LOG(INFO) << "(Writer_" << writer_id << ") Read - EOF: "
               << be.end_of_sequence << " - Total Rows: " << ++count;
     if (be.end_of_sequence) {
@@ -78,7 +79,7 @@ Status ArrowAsyncWriter::WriterThread(Env* env, const std::string& shard_directo
     // create new reader if memoryThreshold exceeded
     if(storageEstimate > memoryThreshold) {
       TF_RETURN_IF_ERROR(arrowWriter->Close());
-      storageEstimate = rowStorage;
+      storageEstimate = rowStorage; // reset storage estimate
       // create new writer for remaining tensors:
       arrowWriter = absl::make_unique<ArrowWriter>();
       TF_RETURN_IF_ERROR(arrowWriter->Create(env, GetFileName(shard_directory, writer_id, ++split_id),
@@ -88,6 +89,9 @@ Status ArrowAsyncWriter::WriterThread(Env* env, const std::string& shard_directo
     }
 
     TF_RETURN_IF_ERROR(arrowWriter->WriteTensors(be.value));
+
+    // Consume tensors for next round
+    Consume(&be);
   }
 
   // Write accumulated metadata before closing --> if last thread writes to file
