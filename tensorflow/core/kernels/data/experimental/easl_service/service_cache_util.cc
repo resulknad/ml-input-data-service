@@ -71,7 +71,6 @@ Status Writer::Close(){
   // Will call the destructor and block until done writing.
   async_writer_->SignalEOF();
   async_writer_.reset();
-
   // TODO(damien-aymon) check status in the async writer.
   return Status::OK();
 }

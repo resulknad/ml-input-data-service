@@ -110,7 +110,7 @@ Status ArrowReader::ReadTensors(std::vector<Tensor> *read_tensors) {
 
       if(partial_batch) {  // if partial batch in last row
         output_shape = this->partial_shapes[j];
-        VLOG(0) << "ArrowReader - ReadTensors - Reading Partial Batch"
+        VLOG(0) << "ArrowReader - ReadTensors - Reading Partial Batch";
       } else {
         output_shape = this->shapes_[j];
       }
