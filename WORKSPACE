@@ -107,6 +107,7 @@ http_archive(
     ],
 )
 
+
 http_archive(
     name = "thrift",
     build_file = "//third_party:thrift.BUILD",
