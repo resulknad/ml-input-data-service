@@ -462,6 +462,8 @@ protected:
               static_cast<const arrow::FixedWidthType&>(*array.type());
       const int64_t type_width = fw_type.bit_width() / 8;
 
+      VLOG(0) << "ArrowUtil - ArrowAssignTensorImpl - VisitFixedWidth - type_width = " << type_width;
+
       // Primitive Arrow arrays have validity and value buffers, currently
       // only arrays with null count == 0 are supported, so only need values here
       static const int VALUE_BUFFER = 1;
@@ -471,6 +473,16 @@ protected:
         return arrow::Status::Invalid(
                 "Received an Arrow array with a NULL value buffer");
       }
+      VLOG(0) << "ArrowUtil - ArrowAssignTensorImpl - VisitFixedWidth - length of values array = "
+                 "" << values->ToString();
+      VLOG(0) << "ArrowUtil - ArrowAssignTensorImpl - VisitFixedWidth - out tensor shape = "
+                 "" << out_tensor_->shape().DebugString();
+      VLOG(0) << "ArrowUtil - ArrowAssignTensorImpl - VisitFixedWidth - out tensor num ele = "
+                 "" << out_tensor_->NumElements();
+      VLOG(0) << "ArrowUtil - ArrowAssignTensorImpl - VisitFixedWidth - out tensor byte size = "
+                 "" << out_tensor_->TotalBytes();
+      VLOG(0) << "ArrowUtil - ArrowAssignTensorImpl - VisitFixedWidth - offset = "
+                 "" << array.data()->offset * type_width;
 
       const void* src =
               (values->data() + array.data()->offset * type_width) + i_ * type_width;   // i_ is 0 if from list_array
@@ -512,7 +524,6 @@ return VisitFixedWidth(array);                          \
       std::shared_ptr<arrow::Array> values = array.values();
       std::shared_ptr<arrow::Array> element_values =
               values->Slice(values_offset, curr_array_length);
-
       auto result = element_values->Accept(this);
 
       // Reset state variables for next time
