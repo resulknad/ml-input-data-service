@@ -142,6 +142,7 @@ class ModelDatasetOp::Dataset : public DatasetBase {
     Status Initialize(IteratorContext* ctx) override {
       IteratorContext::Params params(ctx);
       params.model = model_;
+      ctx->set_model(model_);
       return dataset()->input_->MakeIterator(IteratorContext(std::move(params)),
                                              this, prefix(), &input_impl_);
     }
