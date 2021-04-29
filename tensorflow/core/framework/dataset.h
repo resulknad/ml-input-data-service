@@ -481,6 +481,11 @@ class IteratorContext {
 
   const std::shared_ptr<model::Model>& model() { return params_.model; }
 
+  // EASL - used in model op to also set the model to the source context.
+  void set_model(std::shared_ptr<model::Model>& model){
+    params_.model = model;
+  }
+
   std::function<void(std::function<void()>)>* runner() {
     return &params_.runner;
   }
