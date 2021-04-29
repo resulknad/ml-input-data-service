@@ -121,11 +121,9 @@ Status ArrowReader::ReadTensors(std::vector<Tensor> *read_tensors) {
       // String arrays and normal arrays have different shapes in experimental.
       if(output_type == DataType::DT_STRING || !experimental_) {
         VLOG(0) << "ArrowReader - ReadTensors - Standard Assign Tensor";
-
         TF_RETURN_IF_ERROR(ArrowUtil::AssignTensor(arr, i, &tensor));
       } else {
         VLOG(0) << "ArrowReader - ReadTensors - Experimental Assign Tensor";
-
         TF_RETURN_IF_ERROR(ArrowUtil::AssignTensorExperimental(arr, i, &tensor));
       }
 

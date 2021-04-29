@@ -39,6 +39,18 @@ ArrowMetadata::ArrowMetadata() {
 Status ArrowMetadata::WriteData(const std::string& path) {
 
   VLOG(0) << "ArrowUtil - WriteData - WriteData Called. Path = " << path;
+
+  for(TensorShape s : shapes_) {
+    VLOG(0) << "ArrowUtil - WriteData - TensorShape = " << s.DebugString();
+  }
+
+  for(auto t : partial_batch_shapes_) {
+    for(auto k : t.second) {
+      VLOG(0) << "ArrowUtil - WriteData - PartialTensorShape = " << k.DebugString();
+    }
+  }
+
+
   arrow::MemoryPool* pool = arrow::default_memory_pool();
 
   std::vector<std::shared_ptr<arrow::Array>> arrays;
@@ -187,6 +199,17 @@ Status ArrowMetadata::ReadMetadataFromFile(Env* env, const std::string& path) {
       partial_shapes.push_back(s);
     }
     partial_batch_shapes_.insert({col_name, partial_shapes});
+  }
+
+
+  for(TensorShape s : shapes_) {
+    VLOG(0) << "ArrowUtil - ReadData - TensorShape = " << s.DebugString();
+  }
+
+  for(auto t : partial_batch_shapes_) {
+    for(auto k : t.second) {
+      VLOG(0) << "ArrowUtil - ReadData - PartialTensorShape = " << k.DebugString();
+    }
   }
 
   VLOG(0) << "ArrowUtil - Successfully Read Metadata from file";
