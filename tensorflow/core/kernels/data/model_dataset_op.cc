@@ -212,12 +212,13 @@ class ModelDatasetOp::Dataset : public DatasetBase {
       // functionality has been pushed to the OptimizeLoop method of the model
       
       // Start the metrics thread if necessary
-      if (!metrics_thread_) {
-        std::shared_ptr<IteratorContext> new_ctx =
-            std::make_shared<IteratorContext>(*ctx);
-        metrics_thread_ = ctx->StartThread(
-            "tf_data_metrics", [this, new_ctx]() { MetricsThread(new_ctx); });
-      }
+      // if (!metrics_thread_) {
+      //   VLOG(1) << "(EnsureOptimizationLoopThreadStarted) Starting metrics thread"; 
+      //   std::shared_ptr<IteratorContext> new_ctx =
+      //       std::make_shared<IteratorContext>(*ctx);
+      //   metrics_thread_ = ctx->StartThread(
+      //       "tf_data_metrics", [this, new_ctx]() { MetricsThread(new_ctx); });
+      // }
 
       return Status::OK();
     }
@@ -233,20 +234,22 @@ class ModelDatasetOp::Dataset : public DatasetBase {
       int64 current_time_ms = EnvTime::NowMicros() / EnvTime::kMillisToMicros;
 
       while (true) {
-        {
-          // Should I use a different lock here?
-          mutex_lock l(mu_);
-          while (!cancelled_ && last_recording_time_ms + recording_period_ms >
-                  current_time_ms) {
-            int64 wait_period_ms =
-              last_recording_time_ms + recording_period_ms - current_time_ms;
-            VLOG(2) << "Waiting for " << wait_period_ms << "ms.";
+        // {
+        //   // Should I use a different lock here?
+        //   mutex_lock l(mu_);
+        //   while (!cancelled_ && last_recording_time_ms + recording_period_ms >
+        //           current_time_ms) {
+        //     int64 wait_period_ms =
+        //       last_recording_time_ms + recording_period_ms - current_time_ms;
+        //     VLOG(2) << "Waiting for " << wait_period_ms << "ms.";
 
-            // Wait until the next recording period takes place
-            cond_var_.wait_for(l, std::chrono::milliseconds(wait_period_ms));
-            current_time_ms = EnvTime::NowMicros() / EnvTime::kMillisToMicros;
-          }
-        }
+        //     // Wait until the next recording period takes place
+        //     cond_var_.wait_for(l, std::chrono::milliseconds(wait_period_ms));
+        //     current_time_ms = EnvTime::NowMicros() / EnvTime::kMillisToMicros;
+        //   }
+        // }
+        VLOG(1) << "(MetricsThread) Going to sleep"; 
+        Env::Default()->SleepForMicroseconds(10000);
 
         // If this thread has been terminated, we return
         if (cancelled_)
@@ -255,20 +258,20 @@ class ModelDatasetOp::Dataset : public DatasetBase {
         // Otherwise flush the metrics, and record the current time
         last_recording_time_ms =
           current_time_ms = EnvTime::NowMicros() / EnvTime::kMillisToMicros;
-        model_->FlushMetrics();
+        // model_->FlushMetrics();
 
         // TODO(DanGraur): Temp call for debugging, should be removed
-        model_->PrintMetrics();
+        // model_->PrintMetrics();
 
         // TODO(DanGraur): Temp code for debugging, should be removed
         VLOG(1) << "Printing all node metrics";
-        for (auto const x : model_->CollectMetrics())
-        {
-          VLOG(1) << x.first << " \n > " << x.second.bytes_consumed() 
-                  << " \n > " << x.second.bytes_produced() 
-                  << " \n > " << x.second.num_elements()
-                  << " \n > " << x.second.computation_time();
-        }
+        // for (auto const x : model_->CollectMetrics())
+        // {
+        //   VLOG(1) << x.first << " \n > " << x.second.bytes_consumed() 
+        //           << " \n > " << x.second.bytes_produced() 
+        //           << " \n > " << x.second.num_elements()
+        //           << " \n > " << x.second.computation_time();
+        // }
 
         // Test the ResourceMgr
         MetricsResource* var;
