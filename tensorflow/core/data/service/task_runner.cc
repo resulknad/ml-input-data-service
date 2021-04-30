@@ -47,7 +47,7 @@ int64 StandaloneTaskIterator::Cardinality() const {
   return dataset_->Get()->Cardinality();
 }
 
-absl::flat_hash_map<string, model::Node::MetricDump>
+std::shared_ptr<absl::flat_hash_map<string, model::Node::MetricDump>>
     StandaloneTaskIterator::GetMetrics() {
   return iterator_->GetMetrics();
 }
@@ -99,7 +99,7 @@ Status FirstComeFirstServedTaskRunner::GetNext(const GetElementRequest& req,
   return Status::OK();
 }
 
-absl::flat_hash_map<string, model::Node::MetricDump>
+std::shared_ptr<absl::flat_hash_map<string, model::Node::MetricDump>>
     FirstComeFirstServedTaskRunner::GetMetrics(){
   return iterator_->GetMetrics();
 }
@@ -248,7 +248,7 @@ Status RoundRobinTaskRunner::GetNext(const GetElementRequest& req,
   return Status::OK();
 }
 
-absl::flat_hash_map<string, model::Node::MetricDump>
+std::shared_ptr<absl::flat_hash_map<string, model::Node::MetricDump>>
     RoundRobinTaskRunner::GetMetrics(){
   return prefetch_thread_.iterator_->GetMetrics();
 }

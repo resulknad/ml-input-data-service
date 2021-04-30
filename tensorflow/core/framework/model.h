@@ -716,14 +716,11 @@ class Model {
   // Flushes metrics record by the model.
   void FlushMetrics() TF_LOCKS_EXCLUDED(mu_);
 
-  // Flushes metrics record by the model.
+  // Logs metrics record by the model.
   void PrintMetrics() TF_LOCKS_EXCLUDED(mu_);
 
-  // TODO(DanGraur): Maybe return a tuple in the vlaue, with the prefix hash
-  // as the as the first entry and the flat_hash_map as the second
-  // Collects the metrics of the model as a map
-  absl::flat_hash_map<string, Node::MetricDump> 
-  CollectMetrics() TF_LOCKS_EXCLUDED(mu_);
+  std::shared_ptr<absl::flat_hash_map<string, Node::MetricDump>>
+  CollectMetrics();
 
   // Uses the given algorithm and resource budgets to periodically perform the
   // autotuning optimization.

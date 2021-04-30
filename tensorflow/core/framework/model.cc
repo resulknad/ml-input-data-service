@@ -1646,11 +1646,13 @@ void Model::PrintMetrics() {
 }
 
 // TODO(DanGraur): Add const and references to make this safe and efficient
-absl::flat_hash_map<string, Node::MetricDump>
+std::shared_ptr<absl::flat_hash_map<string, Node::MetricDump>>
 Model::CollectMetrics() {
-  absl::flat_hash_map<string, Node::MetricDump> metrics;
+  std::shared_ptr<absl::flat_hash_map<string, Node::MetricDump>> 
+    metrics = std::make_shared<absl::flat_hash_map<string, Node::MetricDump>>(); 
   std::deque<std::shared_ptr<Node>> queue;
 
+  FlushMetrics();
   {
     tf_shared_lock l(mu_);
     if (output_) queue.push_back(output_);
@@ -1661,7 +1663,7 @@ Model::CollectMetrics() {
     queue.pop_front();
 
     // TODO(DanGraur): Should make this a smart pointer
-    metrics.insert({node->long_name(), node->SnapshotCurrentMetrics()});
+    metrics->insert({node->long_name(), node->SnapshotCurrentMetrics()});
     
     // Enqueue the other nodes
     for (auto input : node->inputs()) {

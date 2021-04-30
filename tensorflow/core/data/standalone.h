@@ -75,7 +75,7 @@ class Iterator {
   Status GetNext(std::vector<Tensor>* outputs, bool* end_of_input);
 
   // EASL
-  absl::flat_hash_map<string, model::Node::MetricDump> GetMetrics();
+  std::shared_ptr<absl::flat_hash_map<string, model::Node::MetricDump>> GetMetrics();
 
  private:
   friend class Dataset;
