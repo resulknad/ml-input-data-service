@@ -112,10 +112,6 @@ class Dataset {
   // Returns a pointer to the underlying dataset.
   const DatasetBase* Get() const;
 
-  // Returns the metrics for this dataset
-  Status GetMetrics(const std::string& container, const std::string& name, 
-                    MetricsResource* var);
-
  private:
   Dataset(DatasetBase* dataset, DeviceMgr* device_mgr,
           ProcessFunctionLibraryRuntime* pflr,

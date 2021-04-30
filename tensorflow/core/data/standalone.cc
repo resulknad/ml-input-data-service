@@ -154,17 +154,6 @@ Status Dataset::MakeSplitProvider(std::unique_ptr<SplitProvider>* result) {
 
 const DatasetBase* Dataset::Get() const { return dataset_; }
 
-Status Dataset::GetMetrics(const std::string& container, 
-                           const std::string& name, 
-                           MetricsResource* var) {
-  Status s = resource_mgr_.Lookup(container, name, &var);
-  if (s.ok()) {
-    VLOG(1) << "(Dataset::GetMetrics) Value: " << var->counter;
-    var->Unref();
-  }
-  return s;
-}
-
 Dataset::Dataset(DatasetBase* dataset, DeviceMgr* device_mgr,
                  ProcessFunctionLibraryRuntime* pflr,
                  FunctionLibraryDefinition* flib_def, thread::ThreadPool* pool)

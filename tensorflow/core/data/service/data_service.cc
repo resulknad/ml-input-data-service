@@ -62,7 +62,8 @@ std::string ProcessingModeToString(ProcessingMode mode) {
 Status DataServiceDispatcherClient::WorkerHeartbeat(
     const std::string& worker_address, const std::string& transfer_address,
     const std::vector<int64>& current_tasks, std::vector<TaskDef>& new_tasks,
-    std::vector<int64>& tasks_to_delete, const MetricsResource* metrics) {
+    std::vector<int64>& tasks_to_delete, 
+    const absl::flat_hash_map<int64, std::shared_ptr<absl::flat_hash_map<string, model::Node::MetricDump>>>& tasks_metrics) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   WorkerHeartbeatRequest req;
   req.set_worker_address(worker_address);
@@ -70,10 +71,26 @@ Status DataServiceDispatcherClient::WorkerHeartbeat(
   for (int64 task : current_tasks) {
     req.add_current_tasks(task);
   }
-  // Add a dummy Metric object
-  WorkerHeartbeatRequest::Metric* metric = req.add_metrics();
-  metric->set_name("dummy_metric");
-  metric->set_value(1);
+  // Add the metrics
+  for (auto& task_metrics : tasks_metrics) {
+    WorkerHeartbeatRequest::Task* task = req.add_tasks();
+    task->set_id(task_metrics.first);
+
+    for (auto& nodes_metrics : *task_metrics.second) {
+      WorkerHeartbeatRequest::Task::Node* node = task->add_nodes();
+      node->set_name(nodes_metrics.first);
+      
+      WorkerHeartbeatRequest::Task::Node::Metric* metric = node->add_metrics();
+      metric->set_name("num_elements");
+      metric->set_value(nodes_metrics.second.num_elements());
+
+      // for (auto& node_metric : *nodes_metrics.second) {
+      //   WorkerHeartbeatRequest::Task::Node::Metric* metric = node->add_metrics();
+      //   metric->set_name(node_metric.first);
+      //   metric->set_value(node_metric.second)
+      // } 
+    }
+  }
 
   WorkerHeartbeatResponse resp;
   grpc::ClientContext client_ctx;

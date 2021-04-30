@@ -306,10 +306,16 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
       FindNewTasks(worker_address, current_tasks, assigned_tasks, response));
 
   // Process the incoming metrics
-  for (int i = 0; i < request->metrics_size(); ++i) {
-    const WorkerHeartbeatRequest::Metric& metric = request->metrics(i);
-    VLOG(1) << "(DataServiceDispatcherImpl::WorkerHeartbeat) Got metric: " 
-            << metric.name() << " " << metric.value();
+  for (int i = 0; i < request->tasks_size(); ++i) {
+    const WorkerHeartbeatRequest::Task& task = request->tasks(i);
+    for (int j = 0; j < task.nodes_size(); ++j) {
+      const WorkerHeartbeatRequest::Task::Node& node = task.nodes(j);
+      for (int k = 0; k < node.metrics_size(); ++k) {
+        const WorkerHeartbeatRequest::Task::Node::Metric& metric = node.metrics(k);
+        VLOG(1) << "(DataServiceDispatcherImpl::WorkerHeartbeat) Got metric: " 
+                << metric.name() << " " << metric.value();
+      }
+    }
   }
 
   VLOG(4) << "Finished worker heartbeat for worker at address "
