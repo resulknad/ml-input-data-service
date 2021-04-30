@@ -90,14 +90,25 @@ Status DatasetKey(const ::tensorflow::data::easl::CacheState& cache_state,
   return Status::OK();
 }
 
-Status AddPutOperator(const DatasetDef& dataset, DatasetDef& updated_dataset) {
+Status AddPutOperator(const DatasetDef& dataset, DatasetDef& updated_dataset,
+                      const experimental::DispatcherConfig& dispatcher_config) {
   VLOG(1) << "(AddPutOperator) At the start of the method";
   // Copy over the original dataset
   updated_dataset = dataset; 
 
   // Initialize the optimizer  
   tensorflow::grappler::easl::AddPutOp optimizer;
-  optimizer.Init(nullptr);
+  // Transfer arguments from dispatcher config to optimizer config.
+  tensorflow::RewriterConfig_CustomGraphOptimizer config;
+
+  (config.mutable_parameter_map())["cache_format"].set_i(dispatcher_config
+  .cache_format());
+  (config.mutable_parameter_map())["cache_compression"].set_placeholder
+  (dispatcher_config.cache_compression());
+  (config.mutable_parameter_map())["cache_ops_parallelism"].set_i
+  (dispatcher_config.cache_ops_parallelism());
+
+  optimizer.Init(&config);
 
   // Get the graph def and wrap it in a GrapplerItem
   GraphDef* graph_def = updated_dataset.mutable_graph();
@@ -135,14 +146,25 @@ Status AddPutOperator(const DatasetDef& dataset, DatasetDef& updated_dataset) {
   return Status::OK();
 }
 
-Status AddGetOperator(const DatasetDef& dataset, DatasetDef& updated_dataset){
+Status AddGetOperator(const DatasetDef& dataset, DatasetDef& updated_dataset,
+                      const experimental::DispatcherConfig& dispatcher_config){
   VLOG(1) << "(AddGetOperator) At the start of the method";
   // Copy over the original dataset
   updated_dataset = dataset; 
 
   // Initialize the optimizer  
   tensorflow::grappler::easl::AddGetOp optimizer;
-  optimizer.Init(nullptr);
+  // Transfer arguments from dispatcher config to optimizer config.
+  tensorflow::RewriterConfig_CustomGraphOptimizer config;
+
+  (config.mutable_parameter_map())["cache_format"].set_i(dispatcher_config
+  .cache_format());
+  (config.mutable_parameter_map())["cache_compression"].set_placeholder
+  (dispatcher_config.cache_compression());
+  (config.mutable_parameter_map())["cache_ops_parallelism"].set_i
+  (dispatcher_config.cache_ops_parallelism());
+
+  optimizer.Init(&config);
 
   // Get the graph def and wrap it in a GrapplerItem
   GraphDef* graph_def = updated_dataset.mutable_graph();

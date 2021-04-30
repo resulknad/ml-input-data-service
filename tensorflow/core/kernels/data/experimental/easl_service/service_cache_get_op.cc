@@ -14,6 +14,8 @@ namespace easl{
 
 /* static */ constexpr const char* const ServiceCacheGetOp::kDatasetType;
 /* static */ constexpr const char* const ServiceCacheGetOp::kPath;
+/* static */ constexpr const char* const ServiceCachePutOp::kCacheFormat;
+/* static */ constexpr const char* const ServiceCachePutOp::kCacheCompression;
 /* static */ constexpr const char* const ServiceCacheGetOp::kParallelism;
 
 
@@ -23,7 +25,8 @@ class ServiceCacheGetOp::Dataset : public DatasetBase {
   Dataset(OpKernelContext* ctx, const std::string& path,
           const DataTypeVector& output_types,
           const std::vector<PartialTensorShape>& output_shapes,
-          const int8 parallelism);
+          const int32 cache_format, const std::string& cache_compression,
+          const int32 parallelism);
 
   ~Dataset() override;
 
@@ -50,6 +53,8 @@ class ServiceCacheGetOp::Dataset : public DatasetBase {
   const tstring path_;
   const DataTypeVector output_dtypes_;
   const std::vector<PartialTensorShape> output_shapes_;
+  const int32 cache_format_;
+  const tstring cache_compression_;
   const int32 parallelism_;
 
 };
@@ -95,7 +100,13 @@ void ServiceCacheGetOp::MakeDataset(OpKernelContext* ctx,
   tstring path;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kPath, &path));
 
-  int8 parallelism;
+  int32 cache_format;
+  OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kCacheFormat, &cache_format));
+
+  tstring cache_compression;
+  OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kCacheCompression, &cache_compression));
+
+  int32 parallelism;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kParallelism, &parallelism));
 
   *output = new ServiceCacheGetOp::Dataset(
@@ -111,11 +122,15 @@ ServiceCacheGetOp::Dataset::Dataset(
     const std::string& path,
     const DataTypeVector& output_dtypes,
     const std::vector<PartialTensorShape>& output_shapes,
-    const int8 parallelism)
+    const int32 cache_format,
+    const std::string& cache_compression,
+    const int32 parallelism)
     : DatasetBase(DatasetContext(ctx)),
     path_(path),
     output_dtypes_(output_dtypes),
     output_shapes_(output_shapes),
+    cache_format_(cache_format),
+    cache_compression_(cache_compression),
     parallelism_(parallelism){}
 
 ServiceCacheGetOp::Dataset::~Dataset() {}
@@ -153,6 +168,8 @@ Status ServiceCacheGetOp::Dataset::AsGraphDefInternal(
   Node* parallelism = nullptr;
   TF_RETURN_IF_ERROR(b->AddScalar(parallelism_, &parallelism));
 
+  // TODO(damien-aymon) add all fields to graph..)
+
   return b->AddDataset(this, /*inputs=*/ {path, parallelism}, output);
 }
 
@@ -167,6 +184,9 @@ ServiceCacheGetOp::Dataset::Iterator::Iterator(const Params& params)
 Status ServiceCacheGetOp::Dataset::Iterator::Initialize(
     IteratorContext* ctx) {
   VLOG(0) << "EASL - Initializing ServiceCacheGet iterator";
+  VLOG(0) << "EASL - File format: " << dataset()->cache_format_;
+  VLOG(0) << "EASL - Compression format: " << dataset()->compression_format_;
+
   for(auto dt: dataset()->output_dtypes_){
     VLOG(0) << DataTypeString(dt);
   }

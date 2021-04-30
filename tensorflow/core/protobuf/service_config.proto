@@ -20,6 +20,21 @@ message DispatcherConfig {
   // How long a job needs to be unused before it becomes a candidate for garbage
   // collection.
   int64 job_gc_timeout_ms = 6;
+
+  // EASL ----------------------------------------------------------------------
+  // We use integers for now, we might change to strings.
+
+  // The caching policy applied by the service (e.g. no-cache, all-cache, etc.)
+  int32 cache_policy = 7;
+  // The file format to use for cached data
+  int32 cache_format = 8;
+  // The compression scheme (if any) of the caching op
+  string cache_compression = 9;
+  // The number of parallel readers and writers to use for the caching ops.
+  int32 cache_ops_parallelism = 10;
+  // The scaling policy applied by the service
+  int32 scaling_policy = 11;
+
 }
 
 // Configuration for a tf.data service WorkerServer.

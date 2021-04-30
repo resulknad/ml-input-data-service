@@ -16,10 +16,11 @@
 namespace tensorflow {
 namespace grappler {
 namespace easl {
+
 namespace {
   // Define constants here
   constexpr char kCacheLocation[] = "./outputs/";
-  constexpr int8 kParallelism = 8;
+  //constexpr int8 kParallelism = 8;
   constexpr char kPutOpDataset[] = "ServiceCachePutDataset";
   constexpr char kOutputShapes[] = "output_shapes";
   constexpr char kOutputTypes[] = "output_types";
@@ -27,49 +28,61 @@ namespace {
   constexpr char kTargetNode[] = "ParallelMapDatasetV2";
   constexpr int kTargetInputSize = 2;
 
-  NodeDef CreatePutOpNode(MutableGraphView* graph, NodeDef* input) {
-    NodeDef put_op_node;
 
-    // Give a unique name to the op
-    graph_utils::SetUniqueGraphNodeName("put_op_dataset",
-        graph->graph(), &put_op_node);
-
-    // Set the node's operation and inputs.
-    put_op_node.set_op(kPutOpDataset);
-    put_op_node.add_input(input->name());
-    NodeDef* location_node = graph_utils::AddScalarConstNode<StringPiece>(
-        kCacheLocation, graph); 
-    put_op_node.add_input(location_node->name());
-    NodeDef* parallelism_node = graph_utils::AddScalarConstNode<int>(
-        kParallelism, graph); 
-    put_op_node.add_input(parallelism_node->name());
-
-    // Copy over the relevant attributes from root of the prefix
-    // TODO cleanup dirty hack: output_types can also be Toutput_types.
-    VLOG(0) << "before copying attribures";
-    graph_utils::CopyAttribute(kOutputShapes, *input, &put_op_node);
-    auto it = input->attr().find(kOutputTypes);
-    if(it != input->attr().end()){
-      (*put_op_node.mutable_attr())[kOutputTypes] = it->second;
-    } else {
-      it = input->attr().find("Toutput_types");
-      (*put_op_node.mutable_attr())[kOutputTypes] = it->second;
-    }
-
-/*
-    for (auto key : {kOutputShapes, kOutputTypes}){
-      VLOG(0) << "before copying attribures";
-      VLOG(0) << "copying from " << input->name();
-      graph_utils::CopyAttribute(key, *input, &put_op_node);
-      
-      *to_node->mutable_attr())[attribute_name] = from.attr().at(attribute_name);*/
-      VLOG(0) << "after copying attribures";
-    
-
-
-    return put_op_node;
-  }
 } // namespace
+
+NodeDef AddPutOp::CreatePutOpNode(MutableGraphView* graph, NodeDef* input) {
+  NodeDef put_op_node;
+
+  // Give a unique name to the op
+  graph_utils::SetUniqueGraphNodeName("put_op_dataset",
+  graph->graph(), &put_op_node);
+
+  // Set the node's operation and inputs.
+  put_op_node.set_op(kPutOpDataset);
+  put_op_node.add_input(input->name());
+
+  NodeDef* location_node = graph_utils::AddScalarConstNode<StringPiece>(
+    kCacheLocation, graph);
+  put_op_node.add_input(location_node->name());
+
+  NodeDef* cache_format_node = graph_utils::AddScalarConstNode<int32>(
+    config_.parameter_map()["cache_format"], graph);
+  put_op_node.add_input(cache_format_node->name());
+
+  NodeDef* cache_compression = graph_utils::AddScalarConstNode<StringPiece>(
+  config_.parameter_map()["cache_compression"], graph);
+  put_op_node.add_input(cache_compression->name());
+
+  NodeDef* parallelism_node = graph_utils::AddScalarConstNode<int32>(
+    config_.parameter_map()["cache_ops_parallelism"], graph);
+  put_op_node.add_input(parallelism_node->name());
+
+  // Copy over the relevant attributes from root of the prefix
+  // TODO cleanup dirty hack: output_types can also be Toutput_types.
+  VLOG(0) << "before copying attribures";
+  graph_utils::CopyAttribute(kOutputShapes, *input, &put_op_node);
+  auto it = input->attr().find(kOutputTypes);
+  if (it != input->attr().end()){
+  (*put_op_node.mutable_attr())[kOutputTypes] = it->second;
+  } else {
+  it = input->attr().find("Toutput_types");
+  (*put_op_node.mutable_attr())[kOutputTypes] = it->second;
+  }
+
+  /*
+      for (auto key : {kOutputShapes, kOutputTypes}){
+        VLOG(0) << "before copying attribures";
+        VLOG(0) << "copying from " << input->name();
+        graph_utils::CopyAttribute(key, *input, &put_op_node);
+
+        *to_node->mutable_attr())[attribute_name] = from.attr().at(attribute_name);*/
+  VLOG(0) << "after copying attribures";
+
+
+
+  return put_op_node;
+}
 
 Status AddPutOp::ApplyOptimization(MutableGraphView &graph, NodeDef *sink_node,
                                    GraphDef *output) {

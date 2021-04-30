@@ -6,6 +6,8 @@
 #include "tensorflow/core/data/service/easl/dispatcher_cache_state.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/data/service/common.pb.h"
+#include "tensorflow/core/protobuf/service_config.pb.h"
+
 
 namespace tensorflow {
 namespace data {
@@ -32,9 +34,11 @@ Status DatasetKey(const ::tensorflow::data::easl::CacheState& cache_state,
                   const int64 task_id,
                   std::string& dataset_key);
 
-Status AddPutOperator(const DatasetDef& dataset, DatasetDef& updated_dataset);
+Status AddPutOperator(const DatasetDef& dataset, DatasetDef& updated_dataset,
+                      const experimental::DispatcherConfig& dispatcher_config);
 
-Status AddGetOperator(const DatasetDef& dataset, DatasetDef& updated_dataset);
+Status AddGetOperator(const DatasetDef& dataset, DatasetDef& updated_dataset,
+                      const experimental::DispatcherConfig& dispatcher_config);
 
 
 } // namespace cache_utils
