@@ -14,8 +14,8 @@ namespace easl{
 
 /* static */ constexpr const char* const ServiceCacheGetOp::kDatasetType;
 /* static */ constexpr const char* const ServiceCacheGetOp::kPath;
-/* static */ constexpr const char* const ServiceCachePutOp::kCacheFormat;
-/* static */ constexpr const char* const ServiceCachePutOp::kCacheCompression;
+/* static */ constexpr const char* const ServiceCacheGetOp::kCacheFormat;
+/* static */ constexpr const char* const ServiceCacheGetOp::kCacheCompression;
 /* static */ constexpr const char* const ServiceCacheGetOp::kParallelism;
 
 
@@ -110,7 +110,7 @@ void ServiceCacheGetOp::MakeDataset(OpKernelContext* ctx,
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kParallelism, &parallelism));
 
   *output = new ServiceCacheGetOp::Dataset(
-      ctx, path, output_dtypes_, output_shapes_, parallelism);
+      ctx, path, output_dtypes_, output_shapes_, cache_format, cache_compression, parallelism);
 }
 
 // -----------------------------------------------------------------------------
@@ -185,7 +185,7 @@ Status ServiceCacheGetOp::Dataset::Iterator::Initialize(
     IteratorContext* ctx) {
   VLOG(0) << "EASL - Initializing ServiceCacheGet iterator";
   VLOG(0) << "EASL - File format: " << dataset()->cache_format_;
-  VLOG(0) << "EASL - Compression format: " << dataset()->compression_format_;
+  VLOG(0) << "EASL - Compression format: " << dataset()->cache_compression_;
 
   for(auto dt: dataset()->output_dtypes_){
     VLOG(0) << DataTypeString(dt);
