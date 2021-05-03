@@ -268,7 +268,7 @@ Status DataServiceDispatcherImpl::FindNewTasks(
   for (const auto& task : assigned_tasks) {
     assigned_job_ids.insert(task->job->job_id);
   }
-  for (const auto& job : state_.ListJobs()) {
+  for (const auto& job : state_.ListJobsForWorker(worker_address)) {
     if (!assigned_job_ids.contains(job->job_id) && job->IsRoundRobin() &&
         !job->finished) {
       VLOG(1) << "Creating pending task for reconnected worker "
@@ -748,7 +748,7 @@ Status DataServiceDispatcherImpl::CreateJob(
 
 Status DataServiceDispatcherImpl::CreateTasksForWorker(
     const std::string& worker_address) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  std::vector<std::shared_ptr<const Job>> jobs = state_.ListJobs();
+  std::vector<std::shared_ptr<const Job>> jobs = state_.ListJobsForWorker(worker_address);
   for (const auto& job : jobs) {
     if (job->finished) {
       continue;
