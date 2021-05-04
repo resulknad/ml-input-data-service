@@ -21,10 +21,10 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
+#include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/kernels/data/model_dataset_op.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/public/session_options.h"
-#include "tensorflow/core/framework/model.h"
 
 namespace tensorflow {
 namespace data {
@@ -75,7 +75,7 @@ class Iterator {
   Status GetNext(std::vector<Tensor>* outputs, bool* end_of_input);
 
   // EASL
-  std::shared_ptr<absl::flat_hash_map<string, model::Node::MetricDump>> GetMetrics();
+  model::Model::ModelMetrics GetMetrics();
 
  private:
   friend class Dataset;

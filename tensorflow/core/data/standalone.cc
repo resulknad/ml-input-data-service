@@ -39,8 +39,7 @@ Status Iterator::GetNext(std::vector<Tensor>* outputs, bool* end_of_input) {
   return iterator_->GetNext(ctx_.get(), outputs, end_of_input);
 }
 
-std::shared_ptr<absl::flat_hash_map<string, model::Node::MetricDump>> 
-  Iterator::GetMetrics() {
+model::Model::ModelMetrics Iterator::GetMetrics() {
   auto model = ctx_.get()->model();
 
   if(model){

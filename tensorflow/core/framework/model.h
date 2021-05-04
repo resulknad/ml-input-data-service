@@ -681,6 +681,8 @@ class Model {
   using ModelParameters = Node::ModelParameters;
   using NodeValues = Node::NodeValues;
   using ParameterGradients = Node::ParameterGradients;
+  using ModelMetrics = 
+    std::shared_ptr<absl::flat_hash_map<string, Node::MetricDump>>;
 
   // Creates a new model.
   Model()
@@ -719,8 +721,7 @@ class Model {
   // Logs metrics record by the model.
   void PrintMetrics() TF_LOCKS_EXCLUDED(mu_);
 
-  std::shared_ptr<absl::flat_hash_map<string, Node::MetricDump>>
-  CollectMetrics();
+  ModelMetrics CollectMetrics();
 
   // Uses the given algorithm and resource budgets to periodically perform the
   // autotuning optimization.

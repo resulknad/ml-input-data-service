@@ -1646,10 +1646,9 @@ void Model::PrintMetrics() {
 }
 
 // TODO(DanGraur): Add const and references to make this safe and efficient
-std::shared_ptr<absl::flat_hash_map<string, Node::MetricDump>>
-Model::CollectMetrics() {
-  std::shared_ptr<absl::flat_hash_map<string, Node::MetricDump>> 
-    metrics = std::make_shared<absl::flat_hash_map<string, Node::MetricDump>>(); 
+Model::ModelMetrics Model::CollectMetrics() {
+  ModelMetrics metrics = 
+    std::make_shared<absl::flat_hash_map<string, Node::MetricDump>>(); 
   std::deque<std::shared_ptr<Node>> queue;
 
   FlushMetrics();
@@ -1670,7 +1669,6 @@ Model::CollectMetrics() {
       queue.push_back(input);
     }
   }
-
   return metrics;
 }
 

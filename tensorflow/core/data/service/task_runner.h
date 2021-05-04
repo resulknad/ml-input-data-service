@@ -40,8 +40,7 @@ class TaskIterator {
   virtual int64 Cardinality() const = 0;
 
   // EASL - Gets a metrics dump from the underlying iterator.
-  virtual std::shared_ptr<absl::flat_hash_map<string, model::Node::MetricDump>> 
-    GetMetrics() = 0;
+  virtual model::Model::ModelMetrics GetMetrics() = 0;
 };
 
 // Implementation of TaskIterator wrapping a standalone iterator.
@@ -56,8 +55,7 @@ class StandaloneTaskIterator : public TaskIterator {
   int64 Cardinality() const override;
 
   // EASL - Gets a metrics dump from the underlying iterator.
-  std::shared_ptr<absl::flat_hash_map<string, model::Node::MetricDump>> 
-    GetMetrics() override;
+  model::Model::ModelMetrics GetMetrics() override;
 
  private:
   std::unique_ptr<standalone::Dataset> dataset_;
@@ -79,8 +77,7 @@ class TaskRunner {
                          GetElementResult& result) = 0;
 
   // EASL - Gets a metrics dump from the underlying TaskIterator
-  virtual std::shared_ptr<absl::flat_hash_map<string, model::Node::MetricDump>> 
-    GetMetrics() = 0;
+  virtual model::Model::ModelMetrics GetMetrics() = 0;
 };
 
 // A task runner which provides elements on a first-come first-served basis.
@@ -92,8 +89,7 @@ class FirstComeFirstServedTaskRunner : public TaskRunner {
   Status GetNext(const GetElementRequest& req,
                  GetElementResult& result) override;
 
-  std::shared_ptr<absl::flat_hash_map<string, model::Node::MetricDump>> 
-    GetMetrics() override;
+  model::Model::ModelMetrics GetMetrics() override;
 
  private:
   mutex mu_;
@@ -176,8 +172,7 @@ class RoundRobinTaskRunner : public TaskRunner {
   Status GetNext(const GetElementRequest& req,
                  GetElementResult& result) override;
 
-  std::shared_ptr<absl::flat_hash_map<string, model::Node::MetricDump>> 
-    GetMetrics() override;
+  model::Model::ModelMetrics GetMetrics() override;
 
  private:
   // Prepares a full round of data. `wait_us` indicates how long to wait before
