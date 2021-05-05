@@ -63,7 +63,7 @@ Status DataServiceDispatcherClient::WorkerHeartbeat(
     const std::string& worker_address, const std::string& transfer_address,
     const std::vector<int64>& current_tasks, std::vector<TaskDef>& new_tasks,
     std::vector<int64>& tasks_to_delete, 
-    const absl::flat_hash_map<int64, std::shared_ptr<absl::flat_hash_map<string, model::Node::MetricDump>>>& tasks_metrics) {
+    const absl::flat_hash_map<int64, model::Model::ModelMetrics>& tasks_metrics) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   WorkerHeartbeatRequest req;
   req.set_worker_address(worker_address);
@@ -76,19 +76,34 @@ Status DataServiceDispatcherClient::WorkerHeartbeat(
     WorkerHeartbeatRequest::Task* task = req.add_tasks();
     task->set_id(task_metrics.first);
 
-    for (auto& nodes_metrics : *task_metrics.second) {
+    for (auto& node_metrics : *task_metrics.second) {
       WorkerHeartbeatRequest::Task::Node* node = task->add_nodes();
-      node->set_name(nodes_metrics.first);
+      node->set_name(node_metrics.first);
       
+      // Set the metrics of this node
       WorkerHeartbeatRequest::Task::Node::Metric* metric = node->add_metrics();
-      metric->set_name("num_elements");
-      metric->set_value(nodes_metrics.second.num_elements());
+      metric->set_name("bytes_consumed");
+      metric->set_value(node_metrics.second.bytes_consumed());
 
-      // for (auto& node_metric : *nodes_metrics.second) {
-      //   WorkerHeartbeatRequest::Task::Node::Metric* metric = node->add_metrics();
-      //   metric->set_name(node_metric.first);
-      //   metric->set_value(node_metric.second)
-      // } 
+      metric = node->add_metrics();
+      metric->set_name("bytes_produced");
+      metric->set_value(node_metrics.second.bytes_produced());
+
+      metric = node->add_metrics();
+      metric->set_name("num_elements");
+      metric->set_value(node_metrics.second.num_elements());
+
+      metric = node->add_metrics();
+      metric->set_name("computation_time");
+      metric->set_value(node_metrics.second.computation_time());
+
+      metric = node->add_metrics();
+      metric->set_name("in_node_time");
+      metric->set_value(node_metrics.second.in_node_time());
+
+      metric = node->add_metrics();
+      metric->set_name("in_prefix_time");
+      metric->set_value(node_metrics.second.in_prefix_time());      
     }
   }
 

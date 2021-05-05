@@ -705,7 +705,6 @@ class Model {
   using ParameterGradients = Node::ParameterGradients;
   using ModelMetrics = 
     std::shared_ptr<absl::flat_hash_map<string, Node::MetricDump>>;
-
   // Creates a new model.
   Model()
       : collect_resource_usage_(false),

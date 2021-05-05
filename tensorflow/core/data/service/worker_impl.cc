@@ -377,8 +377,7 @@ void DataServiceWorkerImpl::HeartbeatThread() TF_LOCKS_EXCLUDED(mu_) {
 
 Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
   std::vector<int64> current_tasks;
-  absl::flat_hash_map<int64, std::shared_ptr<absl::flat_hash_map<string, model::Node::MetricDump>>>
-    tasks_metrics;
+  absl::flat_hash_map<int64, model::Model::ModelMetrics> tasks_metrics;
   {
     VLOG(1) << "(DataServiceWorkerImpl::Heartbeat) Starting heartbeat";
     mutex_lock l(mu_);

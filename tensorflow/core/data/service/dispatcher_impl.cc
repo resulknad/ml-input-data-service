@@ -310,9 +310,10 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
     const WorkerHeartbeatRequest::Task& task = request->tasks(i);
     for (int j = 0; j < task.nodes_size(); ++j) {
       const WorkerHeartbeatRequest::Task::Node& node = task.nodes(j);
-      for (int k = 0; k < node.metrics_size(); ++k) {
+      VLOG(1) << "(DataServiceDispatcherImpl::WorkerHeartbeat) Metrics for node " << node.name();
+       for (int k = 0; k < node.metrics_size(); ++k) {
         const WorkerHeartbeatRequest::Task::Node::Metric& metric = node.metrics(k);
-        VLOG(1) << "(DataServiceDispatcherImpl::WorkerHeartbeat) Got metric: " 
+        VLOG(1) << " > (DataServiceDispatcherImpl::WorkerHeartbeat) Got metric: " 
                 << metric.name() << " " << metric.value();
       }
     }

@@ -93,7 +93,7 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
                          const std::vector<int64>& current_tasks,
                          std::vector<TaskDef>& new_tasks,
                          std::vector<int64>& tasks_to_delete,
-                         const absl::flat_hash_map<int64, std::shared_ptr<absl::flat_hash_map<string, model::Node::MetricDump>>>& tasks_metrics);
+                         const absl::flat_hash_map<int64, model::Model::ModelMetrics>& tasks_metrics);
 
   // Updates the dispatcher with information about the worker's state.
   Status WorkerUpdate(const std::string& worker_address,

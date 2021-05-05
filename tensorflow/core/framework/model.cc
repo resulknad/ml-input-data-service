@@ -1695,13 +1695,13 @@ Model::ModelMetrics Model::CollectMetrics() {
     entry.second.set_in_prefix_time(final_times[entry.first]);
   }
 
-  // for (const auto& entry : *metrics) {
-  //   VLOG(1) << "(Model::CollectMetrics::Metrics) At node " << entry.first;
-  //   VLOG(1) << " > Node time " << node_times[entry.first];
-  //   VLOG(1) << " > Prefix time " << prefix_times[entry.first];
-  //   VLOG(1) << " > Printing logs ";
-  //   entry.second.log_metrics();
-  // }
+  for (const auto& entry : *metrics) {
+    VLOG(1) << "(Model::CollectMetrics::Metrics) At node " << entry.first;
+    VLOG(1) << " > Node time " << node_times[entry.first];
+    VLOG(1) << " > Prefix time " << prefix_times[entry.first];
+    VLOG(1) << " > Printing logs ";
+    entry.second.log_metrics();
+  }
 
   return metrics;
 }
