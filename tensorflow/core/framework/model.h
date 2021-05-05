@@ -612,17 +612,39 @@ class Node {
     const int64 num_elements_;
     const int64 computation_time_;
     
+    // Indicates time in node and in prefix rooted at node 
+    double in_node_time_;
+    double in_prefix_time_; 
+    
     public:
       explicit MetricDump(const Node::Metrics& metrics)
           : bytes_consumed_(metrics.recorded_bytes_consumed_), 
             bytes_produced_(metrics.recorded_bytes_produced_), 
             num_elements_(metrics.recorded_num_elements_), 
-            computation_time_(metrics.recorded_computation_time_) {}
+            computation_time_(metrics.recorded_computation_time_),
+            in_node_time_(0.0),
+            in_prefix_time_(0.0) {}
 
       const int64 bytes_consumed() const { return bytes_consumed_; }
       const int64 bytes_produced() const { return bytes_produced_; }
       const int64 num_elements() const { return num_elements_; }
       const int64 computation_time() const { return computation_time_; }
+
+      // Methods for getting and setting the time metrics
+      void set_in_node_time(double x) { in_node_time_ = x; }
+      void set_in_prefix_time(double x) { in_prefix_time_ = x; }
+      double in_node_time() { return in_node_time_; }
+      double in_prefix_time() { return in_prefix_time_; }
+
+      // Method which logs the metrics of this object
+      void log_metrics() const {
+        VLOG(1) << " > bytes_consumed = " << bytes_consumed_ << "\n"
+                << " > bytes_produced = " << bytes_produced_ << "\n"
+                << " > num_elements = " << num_elements_ << "\n"
+                << " > computation_time = " << computation_time_ << "\n"
+                << " > in_node_time = " << in_node_time_ << "\n"
+                << " > in_prefix_time = " << in_prefix_time_;
+      }
   };
 
   // This creates a DumpMetrics object, which represents a snapshot of the metrics
