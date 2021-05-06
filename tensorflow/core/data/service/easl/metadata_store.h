@@ -34,10 +34,17 @@ class ClientMetrics {
 
     class Metrics {
       public:
-        explicit Metrics(double get_next_time, double inter_arrival_time) 
-          : get_next_time_(get_next_time),
-            inter_arrival_time_(inter_arrival_time) {}
+        explicit Metrics(double get_next_time, double inter_arrival_time);
+        explicit Metrics(Metrics& other);
+          
+        void Update(Metrics& other);
 
+        void set_get_next_time(double x)       { get_next_time_ = x; }
+        void set_inter_arrival_time(double x)  { inter_arrival_time_ = x; }
+
+        int64 get_next_time()        { return get_next_time_; }
+        int64 inter_arrival_time()   { return inter_arrival_time_; }
+      
       private:
         double get_next_time_;
         double inter_arrival_time_;
@@ -54,15 +61,12 @@ class WorkerMetrics {
 
     class Metrics {
       public:
+        explicit Metrics(Metrics& other);
         explicit Metrics(int64 bytes_consumed, int64 bytes_produced, 
                          int64 num_elements, int64 computation_time, 
-                         double in_node_time, double in_prefix_time) :
-                         bytes_consumed_(bytes_consumed),
-                         bytes_produced_(bytes_produced),
-                         num_elements_(num_elements),
-                         computation_time_(computation_time),
-                         in_node_time_(in_node_time),
-                         in_prefix_time_(in_prefix_time) {}
+                         double in_node_time, double in_prefix_time);
+        
+        void Update(Metrics& other);
         
         void set_bytes_consumed(int64 x)   { bytes_consumed_ = x; }
         void set_bytes_produced(int64 x)   { bytes_produced_ = x; }
@@ -71,12 +75,12 @@ class WorkerMetrics {
         void set_in_node_time(double x)    { in_node_time_ = x; }
         void set_in_prefix_time(double x)  { in_prefix_time_ = x; }
 
-        int64 get_bytes_consumed()   { return bytes_consumed_; }
-        int64 get_bytes_produced()   { return bytes_produced_; }
-        int64 get_num_elements()     { return num_elements_; }
-        int64 get_computation_time() { return computation_time_; }
-        int64 get_in_node_time()     { return in_node_time_; }
-        int64 get_in_prefix_time()   { return in_prefix_time_; }
+        int64 bytes_consumed()   { return bytes_consumed_; }
+        int64 bytes_produced()   { return bytes_produced_; }
+        int64 num_elements()     { return num_elements_; }
+        int64 computation_time() { return computation_time_; }
+        double in_node_time()     { return in_node_time_; }
+        double in_prefix_time()   { return in_prefix_time_; }
 
       private:
         int64 bytes_consumed_;
@@ -93,11 +97,7 @@ class WorkerMetrics {
 
 class JobMetrics {
   public:
-    JobMetrics(int64 job_id, uint64 pipeline_fingerprint) 
-      : job_id_(job_id),
-        pipeline_fingerprint_(pipeline_fingerprint),
-        client_metrics_(), 
-        worker_metrics_() {}
+    JobMetrics(int64 job_id, uint64 pipeline_fingerprint);
 
     int64 job_id_;
     uint64 pipeline_fingerprint_;
@@ -114,13 +114,25 @@ class MetadataStore {
   // Returns the metrics for a job in the `metrics` parameter
   Status GetJobMetrics(int64 job_id, std::shared_ptr<JobMetrics> metrics) const;
 
-  // Update or create the metrics for a client
-  // Status UpdateClientMetrics(int64 job_id, int64 client_id, 
-  //                            const ClientMetrics::Metrics& metrics);
+  Status GetClientMetrics(int64 job_id, int64 client_id, 
+    std::shared_ptr<ClientMetrics::Metrics> metrics) const;
+
+  Status GetWorkerMetrics(int64 job_id, string worker_address, 
+    std::shared_ptr<WorkerMetrics::Metrics> metrics) const;
+
+  // Create a job entry
+  Status CreateJob(int64 job_id, uint64 pipeline_fingerprint);
+
+  // Remove job
+  Status RemoveJob(int64 job_id);
 
   // Update or create the metrics for a client
-  // Status UpdateWorkerMetrics(int64 job_id, string worker_address, 
-  //                            const WorkerMetrics::Metrics& metrics);
+  Status UpdateClientMetrics(int64 job_id, int64 client_id, 
+                             ClientMetrics::Metrics& metrics);
+
+  // Update or create the metrics for a client
+  Status UpdateWorkerMetrics(int64 job_id, string worker_address, 
+                             WorkerMetrics::Metrics& metrics);
  private:
   // Key is job id
   absl::flat_hash_map<int64, std::shared_ptr<JobMetrics>> metadata_;
