@@ -558,6 +558,9 @@ Status DataServiceDispatcherImpl::GetOrCreateJob(
     TF_RETURN_IF_ERROR(AcquireJobClientId(job, job_client_id));
     response->set_job_client_id(job_client_id);
     TF_RETURN_IF_ERROR(CreateTasksForJob(job, tasks));
+  
+    // EASL: Create an entry in the metadata for this
+    metadata_store_.CreateJob(job->job_id, request->dataset_id());
   }
   TF_RETURN_IF_ERROR(AssignTasks(tasks));
   VLOG(3) << "Created job " << job->job_id << " for CreateJob("

@@ -48,9 +48,9 @@ void WorkerMetrics::Metrics::Update(WorkerMetrics::Metrics& other) {
   in_prefix_time_ = other.in_prefix_time_; 
 }
 
-JobMetrics::JobMetrics(int64 job_id, uint64 pipeline_fingerprint) 
+JobMetrics::JobMetrics(int64 job_id, int64 dataset_id) 
       : job_id_(job_id),
-        pipeline_fingerprint_(pipeline_fingerprint),
+        dataset_id_(dataset_id),
         client_metrics_(), 
         worker_metrics_() {}
 
@@ -134,11 +134,11 @@ Status MetadataStore::UpdateWorkerMetrics(int64 job_id, string worker_address,
   return s;
 }
 
-Status MetadataStore::CreateJob(int64 job_id, uint64 pipeline_fingerprint) {
+Status MetadataStore::CreateJob(int64 job_id, int64 dataset_id) {
   auto it = metadata_.find(job_id);
   if (it == metadata_.end()) {
     std::shared_ptr<JobMetrics> job_metrics = std::make_shared<JobMetrics>(
-      job_id, pipeline_fingerprint);
+      job_id, dataset_id);
     metadata_.insert({job_id, job_metrics});
   }
   return Status::OK();

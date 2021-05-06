@@ -97,10 +97,10 @@ class WorkerMetrics {
 
 class JobMetrics {
   public:
-    JobMetrics(int64 job_id, uint64 pipeline_fingerprint);
+    JobMetrics(int64 job_id, int64 dataset_id);
 
     int64 job_id_;
-    uint64 pipeline_fingerprint_;
+    int64 dataset_id_;
     std::shared_ptr<ClientMetrics> client_metrics_;
     std::shared_ptr<WorkerMetrics> worker_metrics_;
 };
@@ -121,7 +121,7 @@ class MetadataStore {
     std::shared_ptr<WorkerMetrics::Metrics> metrics) const;
 
   // Create a job entry
-  Status CreateJob(int64 job_id, uint64 pipeline_fingerprint);
+  Status CreateJob(int64 job_id, int64 dataset_id);
 
   // Remove job
   Status RemoveJob(int64 job_id);
