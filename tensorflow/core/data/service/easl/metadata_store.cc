@@ -8,24 +8,15 @@ namespace tensorflow {
 namespace data {
 namespace easl {
 
-MetadataStore::MetadataStore() {}
+MetadataStore::MetadataStore() : metadata_() {}
 
-Status MetadataStore::UpdateMetadata(const uint64 &fingerprint,
-                                     const int64 &update) {
-  metadata_by_fingerprint_[fingerprint] = update;
-  return Status::OK();
-}
-
-Status MetadataStore::MetadataFromFingerprint(
-    uint64 fingerprint,
-    std::shared_ptr<int64> &metadata) const {
-
-  auto it = metadata_by_fingerprint_.find(fingerprint);
-  if (it == metadata_by_fingerprint_.end()) {
-    return errors::NotFound("Dataset fingerprint ", fingerprint, " not found");
+Status MetadataStore::GetJobMetrics(int64 job_id, 
+  std::shared_ptr<JobMetrics> metrics) const {
+  auto it = metadata_.find(job_id);
+  if (it == metadata_.end()) {
+    return errors::NotFound("Job with id ", job_id, " does not have metrics");
   }
-
-  *metadata = it->second;
+  metrics = it->second;
   return Status::OK();
 }
 
