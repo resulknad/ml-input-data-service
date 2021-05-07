@@ -47,7 +47,7 @@ NodeDef AddGetOp::CreateGetOpNode(MutableGraphView* graph, NodeDef* input) {
     config_.parameter_map()["cache_format"], graph);
   get_op_node.add_input(cache_format_node->name());
 
-  NodeDef* cache_compression = graph_utils::AddScalarConstNode<StringPiece>(
+  NodeDef* cache_compression = graph_utils::AddScalarConstNode<int32>(
     config_.parameter_map()["cache_compression"], graph);
   get_op_node.add_input(cache_compression->name());
 

@@ -25,7 +25,7 @@ class ServiceCacheGetOp::Dataset : public DatasetBase {
   Dataset(OpKernelContext* ctx, const std::string& path,
           const DataTypeVector& output_types,
           const std::vector<PartialTensorShape>& output_shapes,
-          const int32 cache_format, const std::string& cache_compression,
+          const int32 cache_format, const int32 cache_compression,
           const int32 parallelism);
 
   ~Dataset() override;
@@ -54,7 +54,7 @@ class ServiceCacheGetOp::Dataset : public DatasetBase {
   const DataTypeVector output_dtypes_;
   const std::vector<PartialTensorShape> output_shapes_;
   const int32 cache_format_;
-  const tstring cache_compression_;
+  const int32 cache_compression_;
   const int32 parallelism_;
 
 };
@@ -103,14 +103,15 @@ void ServiceCacheGetOp::MakeDataset(OpKernelContext* ctx,
   int32 cache_format;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kCacheFormat, &cache_format));
 
-  tstring cache_compression;
+  int32 cache_compression;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kCacheCompression, &cache_compression));
 
   int32 parallelism;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kParallelism, &parallelism));
 
   *output = new ServiceCacheGetOp::Dataset(
-      ctx, path, output_dtypes_, output_shapes_, parallelism);
+      ctx, path, output_dtypes_, output_shapes_,
+      cache_format, cache_compression, parallelism);
 }
 
 // -----------------------------------------------------------------------------
@@ -123,7 +124,7 @@ ServiceCacheGetOp::Dataset::Dataset(
     const DataTypeVector& output_dtypes,
     const std::vector<PartialTensorShape>& output_shapes,
     const int32 cache_format,
-    const std::string& cache_compression,
+    const int32 cache_compression,
     const int32 parallelism)
     : DatasetBase(DatasetContext(ctx)),
     path_(path),

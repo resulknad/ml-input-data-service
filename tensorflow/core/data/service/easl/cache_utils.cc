@@ -103,7 +103,7 @@ Status AddPutOperator(const DatasetDef& dataset, DatasetDef& updated_dataset,
 
   (config.mutable_parameter_map())["cache_format"].set_i(dispatcher_config
   .cache_format());
-  (config.mutable_parameter_map())["cache_compression"].set_placeholder
+  (config.mutable_parameter_map())["cache_compression"].set_i
   (dispatcher_config.cache_compression());
   (config.mutable_parameter_map())["cache_ops_parallelism"].set_i
   (dispatcher_config.cache_ops_parallelism());
@@ -159,7 +159,7 @@ Status AddGetOperator(const DatasetDef& dataset, DatasetDef& updated_dataset,
 
   (config.mutable_parameter_map())["cache_format"].set_i(dispatcher_config
   .cache_format());
-  (config.mutable_parameter_map())["cache_compression"].set_placeholder
+  (config.mutable_parameter_map())["cache_compression"].set_i
   (dispatcher_config.cache_compression());
   (config.mutable_parameter_map())["cache_ops_parallelism"].set_i
   (dispatcher_config.cache_ops_parallelism());

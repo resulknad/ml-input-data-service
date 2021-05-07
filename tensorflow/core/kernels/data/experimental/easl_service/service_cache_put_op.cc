@@ -24,7 +24,7 @@ class ServiceCachePutOp::Dataset : public DatasetBase {
  public:
    Dataset(OpKernelContext* ctx, const DatasetBase* input,
            const std::string& path, const int32 cache_format,
-           const std::string& cache_compression, const int32 parallelism);
+           const int32 cache_compression, const int32 parallelism);
 
    ~Dataset() override;
 
@@ -55,7 +55,7 @@ class ServiceCachePutOp::Dataset : public DatasetBase {
     const DatasetBase* const input_;
     const tstring path_;
     const int32 cache_format_;
-    const tstring cache_compression_;
+    const int32 cache_compression_;
     const int32 parallelism_;
 
 };
@@ -103,7 +103,7 @@ void ServiceCachePutOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
   int32 cache_format;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kCacheFormat, &cache_format));
 
-  tstring cache_compression;
+  int32 cache_compression;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kCacheCompression, &cache_compression));
 
   int32 parallelism;
@@ -122,7 +122,7 @@ ServiceCachePutOp::Dataset::Dataset(
     const DatasetBase* input,
     const std::string& path,
     const int32 cache_format,
-    const std::string& cache_compression,
+    const int32 cache_compression,
     const int32 parallelism)
     : DatasetBase(DatasetContext(ctx)), input_(input),
       path_(path), cache_format_(cache_format),

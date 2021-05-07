@@ -29,7 +29,7 @@ message DispatcherConfig {
   // The file format to use for cached data
   int32 cache_format = 8;
   // The compression scheme (if any) of the caching op
-  string cache_compression = 9;
+  int32 cache_compression = 9;
   // The number of parallel readers and writers to use for the caching ops.
   int32 cache_ops_parallelism = 10;
   // The scaling policy applied by the service
