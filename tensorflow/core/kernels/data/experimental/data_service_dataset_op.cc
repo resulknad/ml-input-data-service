@@ -358,7 +358,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
       results_.pop();
       // TODO (damien-aymon) remove wait, was just for testing.
-      std::this_thread::sleep_for(std::chrono::seconds(1));
+      // std::this_thread::sleep_for(std::chrono::seconds(1));
       worker_thread_cv_.notify_one();
 
       end_us = Env::Default()->NowMicros();
