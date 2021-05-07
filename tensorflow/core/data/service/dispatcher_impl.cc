@@ -308,13 +308,20 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
   // Process the incoming metrics
   for (int i = 0; i < request->tasks_size(); ++i) {
     const WorkerHeartbeatRequest::Task& task = request->tasks(i);
-    for (int j = 0; j < task.nodes_size(); ++j) {
-      const WorkerHeartbeatRequest::Task::Node& node = task.nodes(j);
-      VLOG(1) << "(DataServiceDispatcherImpl::WorkerHeartbeat) Metrics for node " << node.name();
-       for (int k = 0; k < node.metrics_size(); ++k) {
-        const WorkerHeartbeatRequest::Task::Node::Metric& metric = node.metrics(k);
-        VLOG(1) << " > (DataServiceDispatcherImpl::WorkerHeartbeat) Got metric: " 
-                << metric.name() << " " << metric.value();
+    
+    // Get the job for this task
+    std::shared_ptr<const Task> task_object;
+    Status s = state_.TaskFromId(task.id(), task_object);
+    
+    if (s.ok()) {
+      for (int j = 0; j < task.nodes_size(); ++j) {
+        const WorkerHeartbeatRequest::Task::Node& node = task.nodes(j);
+        VLOG(1) << "(DataServiceDispatcherImpl::WorkerHeartbeat) Metrics for node " << node.name();
+        for (int k = 0; k < node.metrics_size(); ++k) {
+          const WorkerHeartbeatRequest::Task::Node::Metric& metric = node.metrics(k);
+          VLOG(1) << " > (DataServiceDispatcherImpl::WorkerHeartbeat) Got metric: " 
+                  << metric.name() << " " << metric.value();
+        }
       }
     }
   }
