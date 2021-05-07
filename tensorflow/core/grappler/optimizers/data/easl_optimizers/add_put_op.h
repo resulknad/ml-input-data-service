@@ -37,7 +37,7 @@ class AddPutOp : public TFDataOptimizerBase {
  private:
   NodeDef CreatePutOpNode(MutableGraphView * graph, NodeDef* input);
 
-  const tensorflow::RewriterConfig_CustomGraphOptimizer config_;
+  tensorflow::RewriterConfig_CustomGraphOptimizer config_;
 
 };
 

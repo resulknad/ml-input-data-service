@@ -19,7 +19,7 @@ namespace easl {
 
 namespace {
   // Define constants here
-  constexpr char kCacheLocation[] = "./outputs/";
+  //constexpr char kCacheLocation[] = "./outputs/";
   //constexpr int8 kParallelism = 8;
   constexpr char kPutOpDataset[] = "ServiceCachePutDataset";
   constexpr char kOutputShapes[] = "output_shapes";
@@ -43,19 +43,19 @@ NodeDef AddPutOp::CreatePutOpNode(MutableGraphView* graph, NodeDef* input) {
   put_op_node.add_input(input->name());
 
   NodeDef* location_node = graph_utils::AddScalarConstNode<StringPiece>(
-    kCacheLocation, graph);
+    config_.parameter_map().at("path").placeholder(), graph);
   put_op_node.add_input(location_node->name());
 
   NodeDef* cache_format_node = graph_utils::AddScalarConstNode<int32>(
-    config_.parameter_map()["cache_format"], graph);
+    config_.parameter_map().at("cache_format").i(), graph);
   put_op_node.add_input(cache_format_node->name());
 
   NodeDef* cache_compression = graph_utils::AddScalarConstNode<int32>(
-  config_.parameter_map()["cache_compression"], graph);
+      config_.parameter_map().at("cache_compression").i(), graph);
   put_op_node.add_input(cache_compression->name());
 
   NodeDef* parallelism_node = graph_utils::AddScalarConstNode<int32>(
-    config_.parameter_map()["cache_ops_parallelism"], graph);
+    config_.parameter_map().at("cache_ops_parallelism").i(), graph);
   put_op_node.add_input(parallelism_node->name());
 
   // Copy over the relevant attributes from root of the prefix

@@ -198,7 +198,7 @@ Status ServiceCachePutOp::Dataset::Iterator::Initialize(
     IteratorContext* ctx) {
   VLOG(0) << "EASL - Initializing ServiceCachePutOp iterator";
   VLOG(0) << "EASL - File format: " << dataset()->cache_format_;
-  VLOG(0) << "EASL - Compression format: " << dataset()->compression_format_;
+  VLOG(0) << "EASL - parallelism format: " << dataset()->parallelism_;
   // TODO (damien-aymon) compression and file format are available as fields of dataset().
   // Use them for setting up the writers properly.
 

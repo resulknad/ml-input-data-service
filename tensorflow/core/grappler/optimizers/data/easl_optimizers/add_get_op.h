@@ -34,9 +34,9 @@ class AddGetOp : public TFDataOptimizerBase {
                 const GraphDef& optimize_output, double result) override;
 
  private:
-  NodeDef AddGetOp::CreateGetOpNode(MutableGraphView* graph, NodeDef* input);
+  NodeDef CreateGetOpNode(MutableGraphView* graph, NodeDef* input);
 
-  const tensorflow::RewriterConfig_CustomGraphOptimizer config_;
+  tensorflow::RewriterConfig_CustomGraphOptimizer config_;
 
 
  };

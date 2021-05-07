@@ -17,8 +17,8 @@ class ServiceCachePutOp : public UnaryDatasetOpKernel {
  public:
   static constexpr const char* const kDatasetType = "ServiceCachePut";
   static constexpr const char* const kPath = "path";
-static constexpr const char* const kCacheFormat = "cache_format";
-static constexpr const char* const kCacheCompression = "cache_compression";
+  static constexpr const char* const kCacheFormat = "cache_format";
+  static constexpr const char* const kCacheCompression = "cache_compression";
   static constexpr const char* const kParallelism = "parallelism";
 
   explicit ServiceCachePutOp(OpKernelConstruction* ctx);

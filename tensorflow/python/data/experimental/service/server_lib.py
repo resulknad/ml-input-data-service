@@ -82,7 +82,7 @@ class DispatcherConfig(
               job_gc_timeout_ms=None,
               cache_policy=1,
               cache_format=1,
-              cache_compression=1,
+              cache_compression="",
               cache_ops_parallelism=8,
               scaling_policy=1):
     if protocol is None:
@@ -91,6 +91,16 @@ class DispatcherConfig(
       job_gc_check_interval_ms = 10 * 60 * 1000  # 10 minutes.
     if job_gc_timeout_ms is None:
       job_gc_timeout_ms = 5 * 60 * 1000  # 5 minutes.
+    """
+    if cache_policy is None:
+      cache_policy=1
+    if cache_format is None:
+      cache_format=1
+    if cache_ops_parallelism is None:
+      cache_ops_parallelism = 8
+    if scaling_policy is None:
+      scaling_policy = 1"""
+
     return super(DispatcherConfig,
                  cls).__new__(cls, port, protocol, work_dir,
                               fault_tolerant_mode, job_gc_check_interval_ms,
@@ -159,7 +169,12 @@ class DispatchServer(object):
         work_dir=config.work_dir,
         fault_tolerant_mode=config.fault_tolerant_mode,
         job_gc_check_interval_ms=config.job_gc_check_interval_ms,
-        job_gc_timeout_ms=config.job_gc_timeout_ms)
+        job_gc_timeout_ms=config.job_gc_timeout_ms,
+        cache_policy=config.cache_policy,
+        cache_format=config.cache_format,
+        cache_compression=config.cache_compression,
+        cache_ops_parallelism=config.cache_ops_parallelism,
+        scaling_policy=config.scaling_policy)
     self._server = _pywrap_server_lib.TF_DATA_NewDispatchServer(
         config_proto.SerializeToString())
     if start:

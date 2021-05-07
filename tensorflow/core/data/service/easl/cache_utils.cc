@@ -101,12 +101,14 @@ Status AddPutOperator(const DatasetDef& dataset, DatasetDef& updated_dataset,
   // Transfer arguments from dispatcher config to optimizer config.
   tensorflow::RewriterConfig_CustomGraphOptimizer config;
 
-  (config.mutable_parameter_map())["cache_format"].set_i(dispatcher_config
-  .cache_format());
-  (config.mutable_parameter_map())["cache_compression"].set_i
-  (dispatcher_config.cache_compression());
-  (config.mutable_parameter_map())["cache_ops_parallelism"].set_i
-  (dispatcher_config.cache_ops_parallelism());
+  // TODO - set path where to store graph.
+  (*(config.mutable_parameter_map()))["path"].set_placeholder("./outputs/");
+  (*(config.mutable_parameter_map()))["cache_format"].set_i(
+    dispatcher_config.cache_format());
+  (*(config.mutable_parameter_map()))["cache_compression"].set_i(
+    dispatcher_config.cache_compression());
+  (*(config.mutable_parameter_map()))["cache_ops_parallelism"].set_i(
+    dispatcher_config.cache_ops_parallelism());
 
   optimizer.Init(&config);
 
@@ -157,12 +159,14 @@ Status AddGetOperator(const DatasetDef& dataset, DatasetDef& updated_dataset,
   // Transfer arguments from dispatcher config to optimizer config.
   tensorflow::RewriterConfig_CustomGraphOptimizer config;
 
-  (config.mutable_parameter_map())["cache_format"].set_i(dispatcher_config
-  .cache_format());
-  (config.mutable_parameter_map())["cache_compression"].set_i
-  (dispatcher_config.cache_compression());
-  (config.mutable_parameter_map())["cache_ops_parallelism"].set_i
-  (dispatcher_config.cache_ops_parallelism());
+  // TODO - set path where to store graph.
+  (*(config.mutable_parameter_map()))["path"].set_placeholder("./outputs/");
+  (*(config.mutable_parameter_map()))["cache_format"].set_i(
+    dispatcher_config.cache_format());
+  (*(config.mutable_parameter_map()))["cache_compression"].set_i(
+    dispatcher_config.cache_compression());
+  (*(config.mutable_parameter_map()))["cache_ops_parallelism"].set_i(
+    dispatcher_config.cache_ops_parallelism());
 
   optimizer.Init(&config);
 
