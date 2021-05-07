@@ -560,6 +560,8 @@ Status DataServiceDispatcherImpl::GetOrCreateJob(
     TF_RETURN_IF_ERROR(CreateTasksForJob(job, tasks));
   
     // EASL: Create an entry in the metadata for this
+    VLOG(1) << "(DataServiceDispatcherImpl::GetOrCreateJob) Adding a job to "
+            << "the metadata.";
     metadata_store_.CreateJob(job->job_id, request->dataset_id());
   }
   TF_RETURN_IF_ERROR(AssignTasks(tasks));
@@ -1026,7 +1028,14 @@ Status DataServiceDispatcherImpl::GcOldJobs() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       update.mutable_finish_task()->set_task_id(task->task_id);
       TF_RETURN_IF_ERROR(state_.Apply(update));
     }
+
     DCHECK(job->finished);
+    // EASL: Removing the job from the metadata
+    VLOG(1) << "(DataServiceDispatcherImpl::GcOldJobs) Removing a job from "
+        << "the metadata.";
+    if (job->finished) {
+      metadata_store_.RemoveJob(job->job_id);
+    }
   }
   return Status::OK();
 }
