@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/model_dataset_op.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tensorflow/core/framework/model.h"
 
 namespace tensorflow {
 namespace data {

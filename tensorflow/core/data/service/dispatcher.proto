@@ -140,6 +140,9 @@ message ClientHeartbeatRequest {
   oneof optional_blocked_round {
     int64 blocked_round = 4;
   }
+
+  double avg_get_next_processing_time = 5;
+  double avg_inter_arrival_time = 6;
 }
 
 message ClientHeartbeatResponse {
