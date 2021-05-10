@@ -124,7 +124,7 @@ void MultiThreadedAsyncWriter::Initialize(Env *env, int64 file_index, const std:
 }
 
 void MultiThreadedAsyncWriter::Write(const std::vector<Tensor>& tensors) {
-  VLOG(0) << "EASL - Entering Write (Multithreaded Async Writer)"
+  VLOG(0) << "EASL - Entering Write (Multithreaded Async Writer)";
   if(!first_row_info_set_) {
     for(Tensor t : tensors) {
       bytes_per_row_ += t.TotalBytes();
