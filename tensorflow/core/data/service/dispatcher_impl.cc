@@ -67,6 +67,14 @@ constexpr std::array<const char*, 8> kNodeNameSharingOps = {
     "MutableHashTableOfTensorsV2",
 };
 
+// EASL: Worker metrics names
+constexpr const char kBytesConsumed[] = "bytes_consumed";
+constexpr const char kBytesProduced[] = "bytes_produced";
+constexpr const char kNumElements[] = "num_elements";
+constexpr const char kComputationTime[] = "computation_time";
+constexpr const char kInNodeTime[] = "in_node_time";
+constexpr const char kInPrefixTime[] = "in_prefix_time";
+
 using Dataset = DispatcherState::Dataset;
 using Worker = DispatcherState::Worker;
 using NamedJobKey = DispatcherState::NamedJobKey;
@@ -305,23 +313,26 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
   TF_RETURN_IF_ERROR(
       FindNewTasks(worker_address, current_tasks, assigned_tasks, response));
 
-  // Process the incoming metrics
+  // Update the metadata with the incoming metrics
   for (int i = 0; i < request->tasks_size(); ++i) {
-    const WorkerHeartbeatRequest::Task& task = request->tasks(i);
+    auto task = request->tasks(i);
     
     // Get the job for this task
     std::shared_ptr<const Task> task_object;
     Status s = state_.TaskFromId(task.id(), task_object);
-    
+
     if (s.ok()) {
+      auto job_id = task_object->job->job_id;
       for (int j = 0; j < task.nodes_size(); ++j) {
-        const WorkerHeartbeatRequest::Task::Node& node = task.nodes(j);
-        VLOG(1) << "(DataServiceDispatcherImpl::WorkerHeartbeat) Metrics for node " << node.name();
-        for (int k = 0; k < node.metrics_size(); ++k) {
-          const WorkerHeartbeatRequest::Task::Node::Metric& metric = node.metrics(k);
-          VLOG(1) << " > (DataServiceDispatcherImpl::WorkerHeartbeat) Got metric: " 
-                  << metric.name() << " " << metric.value();
-        }
+        auto metrics = task.mutable_nodes(j)->mutable_metrics();
+        easl::NodeMetrics::Metrics node_metrics((*metrics)[kBytesConsumed], 
+          (*metrics)[kBytesProduced], (*metrics)[kNumElements], 
+          (*metrics)[kComputationTime], (*metrics)[kInNodeTime], 
+          (*metrics)[kInPrefixTime]);
+
+        metadata_store_.UpdateInputPipelineMetrics(job_id, 
+          task.mutable_nodes(j)->name(), request->worker_address(), 
+          node_metrics);
       }
     }
   }
@@ -886,6 +897,13 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
         "could be caused by a dispatcher restart.");
   }
   TF_RETURN_IF_ERROR(s);
+
+  // EASL: Update the client metrics
+  easl::ModelMetrics::Metrics metrics(request->avg_get_next_processing_time(), 
+    request->avg_inter_arrival_time());
+  metadata_store_.UpdateModelMetrics(job->job_id, request->job_client_id(), 
+    metrics);
+
   if (request->optional_current_round_case() ==
       ClientHeartbeatRequest::kCurrentRound) {
     round_robin_rounds_[request->job_client_id()] =

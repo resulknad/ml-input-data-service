@@ -254,7 +254,9 @@ class DataServiceDispatcherImpl {
   Status ApplyWithoutJournaling(const Update& update)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // A thread which periodically checks for jobs to clean up.
-  void JobGcThread();
+//   void JobGcThread();
+  // A thread which periodically decides which jobs to cache or use cache on 
+  void JobCachingThread();
   // Scans for old jobs and marks them as finished.
   Status GcOldJobs() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Gets a `DatasetDef` from `dataset_store_` for the given dataset id, and
@@ -300,6 +302,7 @@ class DataServiceDispatcherImpl {
   // Condition variable for waking up the job gc thread.
   condition_variable job_gc_thread_cv_;
   std::unique_ptr<Thread> job_gc_thread_;
+  std::unique_ptr<Thread> caching_decision_thread_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(DataServiceDispatcherImpl);
 };

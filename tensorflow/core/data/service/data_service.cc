@@ -34,6 +34,14 @@ namespace {
 constexpr const char kParallelEpochs[] = "parallel_epochs";
 constexpr const char kDistributedEpoch[] = "distributed_epoch";
 
+// EASL: Worker metrics names
+constexpr const char kBytesConsumed[] = "bytes_consumed";
+constexpr const char kBytesProduced[] = "bytes_produced";
+constexpr const char kNumElements[] = "num_elements";
+constexpr const char kComputationTime[] = "computation_time";
+constexpr const char kInNodeTime[] = "in_node_time";
+constexpr const char kInPrefixTime[] = "in_prefix_time";
+
 }  // namespace
 
 Status ParseProcessingMode(const std::string& s, ProcessingMode& mode) {
@@ -81,29 +89,13 @@ Status DataServiceDispatcherClient::WorkerHeartbeat(
       node->set_name(node_metrics.first);
       
       // Set the metrics of this node
-      WorkerHeartbeatRequest::Task::Node::Metric* metric = node->add_metrics();
-      metric->set_name("bytes_consumed");
-      metric->set_value(node_metrics.second.bytes_consumed());
-
-      metric = node->add_metrics();
-      metric->set_name("bytes_produced");
-      metric->set_value(node_metrics.second.bytes_produced());
-
-      metric = node->add_metrics();
-      metric->set_name("num_elements");
-      metric->set_value(node_metrics.second.num_elements());
-
-      metric = node->add_metrics();
-      metric->set_name("computation_time");
-      metric->set_value(node_metrics.second.computation_time());
-
-      metric = node->add_metrics();
-      metric->set_name("in_node_time");
-      metric->set_value(node_metrics.second.in_node_time());
-
-      metric = node->add_metrics();
-      metric->set_name("in_prefix_time");
-      metric->set_value(node_metrics.second.in_prefix_time());      
+      auto metrics = node->mutable_metrics();
+      (*metrics)[kBytesConsumed] = node_metrics.second.bytes_consumed();
+      (*metrics)[kBytesProduced] = node_metrics.second.bytes_produced();
+      (*metrics)[kNumElements] = node_metrics.second.num_elements();
+      (*metrics)[kComputationTime] = node_metrics.second.computation_time();
+      (*metrics)[kInNodeTime] = node_metrics.second.in_node_time();
+      (*metrics)[kInPrefixTime] = node_metrics.second.in_prefix_time();
     }
   }
 
