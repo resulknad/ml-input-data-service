@@ -133,6 +133,9 @@ void MultiThreadedAsyncWriter::Write(const std::vector<Tensor>& tensors) {
     first_row_info_set_ = true;
   }
   mutex_lock l(mu_);
+
+  VLOG(0) << "ProducerSpace available: " << ProducerSpaceAvailable();
+
   mu_.Await(tensorflow::Condition(this,
             &MultiThreadedAsyncWriter::ProducerSpaceAvailable));
 
