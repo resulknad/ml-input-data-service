@@ -28,23 +28,23 @@ const char kCompression[] = ""; // can be SNAPPY, GZIP, ZLIB, "" for none.
 Writer::Writer(Env* env,
     const std::string& target_dir, const DataTypeVector& output_dtypes,
     const std::vector<PartialTensorShape>& output_shapes, 
-    const int writer_count) : env_(env), target_dir_(target_dir), 
+    const int writer_count, const int writer_version) : env_(env), target_dir_(target_dir),
     output_dtypes_(output_dtypes), output_shapes_(output_shapes), 
-    writer_count_(writer_count) {}  // Constructor, store references in object
+    writer_count_(writer_count), writer_version_(writer_version) {}  // Constructor, store references in object
 
 Writer::~Writer() {}  // ~ Destructor
 
 Status Writer::Initialize(){
   // TODO (damien-aymon) add constant for writer version.
 
-  if(kWriterVersion == 0) { // 0 -> arrow
+  if(writer_version_ == 0) { // 0 -> arrow
     async_writer_ = std::make_unique<arrow_async_writer::ArrowAsyncWriter>(writer_count_);
   } else {
     async_writer_ = std::make_unique<MultiThreadedAsyncWriter>(writer_count_);
   }
 
   async_writer_->Initialize(env_, /*file_index*/ 0, target_dir_, /*checkpoint_id*/ 0,
-                            kCompression, kWriterVersion, output_dtypes_,
+                            kCompression, writer_version_, output_dtypes_,
           /*done*/ [this](Status s){
               // TODO (damien-aymon) check and propagate errors here!
               if (!s.ok()) {
@@ -210,12 +210,13 @@ Status MultiThreadedAsyncWriter::WriterThread(Env* env,
 // -----------------------------------------------------------------------------
 
 Reader::Reader(Env *env, const std::string &target_dir, const DataTypeVector& output_dtypes,
-        const std::vector<PartialTensorShape>& output_shapes, const int reader_count)
-        : target_dir_(target_dir), env_(env), output_dtypes_(output_dtypes), reader_count_(reader_count) {}
+        const std::vector<PartialTensorShape>& output_shapes, const int reader_count, const int reader_version)
+        : target_dir_(target_dir), env_(env), output_dtypes_(output_dtypes), reader_count_(reader_count),
+        reader_version_(reader_version){}
 
 Status Reader::Initialize() {
 
-  if(kWriterVersion == 0) { // 0 -> arrow
+  if(reader_version_ == 0) { // 0 -> arrow
     async_reader_ = std::make_unique<arrow_async_reader::ArrowAsyncReader>(env_, target_dir_, output_dtypes_,
                                                                output_shapes_, reader_count_);
   } else {

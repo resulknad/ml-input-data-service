@@ -81,7 +81,8 @@ class Writer {
          const std::string& target_dir,
          const DataTypeVector& output_dtypes,
          const std::vector<PartialTensorShape>& output_shapes,
-         const int writer_count = 8);
+         const int writer_count = 8,
+         const int writer_version = 0);
 
   Status Write(const std::vector<Tensor>& tensors);
 
@@ -96,6 +97,7 @@ class Writer {
       Env* env, const std::string& path, const DataTypeVector& output_dtypes,
       const std::vector<PartialTensorShape>& output_shapes);
 
+  const int writer_version_;
   Env* env_;
   const int writer_count_;
   const std::string target_dir_;
@@ -151,12 +153,14 @@ public:
            const std::string &target_dir,
            const DataTypeVector& output_dtypes,
            const std::vector<PartialTensorShape>& output_shapes,
-           const int reader_count = 8);
+           const int reader_count = 8,
+           const int reader_version = 0);
 
     Status Initialize();
 
     Status Read(std::vector<Tensor>* &read_tensors, bool* end_of_sequence);
 private:
+    const int reader_version_;
     Env* env_;
     const int reader_count_;
     const std::string target_dir_;

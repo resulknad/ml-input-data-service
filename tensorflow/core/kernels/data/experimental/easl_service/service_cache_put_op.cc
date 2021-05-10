@@ -205,7 +205,7 @@ Status ServiceCachePutOp::Dataset::Iterator::Initialize(
   writer_ =
       std::make_unique<tensorflow::data::easl::service_cache_util::Writer>(
           ctx->env(), dataset()->path_, dataset()->output_dtypes(),
-          dataset()->output_shapes(), dataset()->parallelism_);
+          dataset()->output_shapes(), dataset()->parallelism_, dataset()->cache_format_);
   writer_->Initialize();
 
   return dataset()->input_->MakeIterator(
