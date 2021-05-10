@@ -124,6 +124,7 @@ void MultiThreadedAsyncWriter::Initialize(Env *env, int64 file_index, const std:
 }
 
 void MultiThreadedAsyncWriter::Write(const std::vector<Tensor>& tensors) {
+  VLOG(0) << "EASL - Entering Write (Multithreaded Async Writer)"
   if(!first_row_info_set_) {
     for(Tensor t : tensors) {
       bytes_per_row_ += t.TotalBytes();
@@ -138,7 +139,7 @@ void MultiThreadedAsyncWriter::Write(const std::vector<Tensor>& tensors) {
   snapshot_util::ElementOrEOF element;
   element.value = tensors;
   deque_.push_back(std::move(element));
-  VLOG(0) << "EASL - ServiceCacheUtils - WriterQueue num elements: " << deque_.size();
+  VLOG(0) << "EASL - ServiceCacheUtils - WriterQueue num elements: " << deque_.size() << "  thresh" << producer_threshold_;
 }
 
 void MultiThreadedAsyncWriter::SignalEOF() {
@@ -186,11 +187,12 @@ Status MultiThreadedAsyncWriter::WriterThread(Env* env,
   LOG(INFO) << "(Writer_" << writer_id << ") Starting to write "; 
 
   while (true) {
+    LOG(INFO) << "(Writer_" << writer_id << ") Producer queue size - "  << deque_.size() << "  bpr: " << bytes_per_row_;
     snapshot_util::ElementOrEOF be;
     Consume(&be);
 
     LOG(INFO) << "(Writer_" << writer_id << ") Read - " 
-      << be.end_of_sequence << " - Total: " << ++count << " - Queue: " << deque_.size();
+      << be.end_of_sequence << " - Total: " << ++count;
     if (be.end_of_sequence) {
       writer->Close();
       LOG(INFO) << "(Writer_" << writer_id << ") Closed w/ total read " 
