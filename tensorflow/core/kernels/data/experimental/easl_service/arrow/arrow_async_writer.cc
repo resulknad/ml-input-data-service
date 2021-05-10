@@ -106,6 +106,7 @@ void ArrowAsyncWriter::Write(const std::vector<Tensor> &tensors) {
   MultiThreadedAsyncWriter::Write(tensors);
   if(first_row_info_set_ && ! first_row_shape_set_) {
     metadata_->SetRowShape(first_row_shape_);
+    first_row_shape_set_ = true;
   }
 }
 
