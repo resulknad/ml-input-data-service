@@ -32,7 +32,9 @@ from tensorflow.python.util.tf_export import tf_export
 class DispatcherConfig(
     collections.namedtuple("DispatcherConfig", [
         "port", "protocol", "work_dir", "fault_tolerant_mode",
-        "job_gc_check_interval_ms", "job_gc_timeout_ms"
+        "job_gc_check_interval_ms", "job_gc_timeout_ms", "cache_policy",
+        "cache_format", "cache_compression", "cache_ops_parallelism",
+        "scaling_policy"
     ])):
   """Configuration class for tf.data service dispatchers.
 
@@ -60,6 +62,15 @@ class DispatcherConfig(
       around longer with no consumers. This is useful if there is a large gap in
       time between when consumers read from the job. A lower value will reduce
       the time it takes to reclaim the resources from expired jobs.
+
+    EASL
+    cache_policy: The cache policy applied by the dispatcher (e.g. no-chache,
+      all-cache..).
+    cache_format: The file format used for the cache of the service.
+    cache_compression: The compression schema (if any) to use for the caching ops
+    cache_ops_parallelism: The number of parallel threads the caching ops
+      shoujld use for reading/writing to cache
+    scaling_policy: The scaling policy applied by the dispatcher.
   """
 
   def __new__(cls,
@@ -68,17 +79,33 @@ class DispatcherConfig(
               work_dir=None,
               fault_tolerant_mode=False,
               job_gc_check_interval_ms=None,
-              job_gc_timeout_ms=None):
+              job_gc_timeout_ms=None,
+              cache_policy=1,
+              cache_format=1,
+              cache_compression="",
+              cache_ops_parallelism=8,
+              scaling_policy=1):
     if protocol is None:
       protocol = _pywrap_utils.TF_DATA_DefaultProtocol()
     if job_gc_check_interval_ms is None:
       job_gc_check_interval_ms = 10 * 60 * 1000  # 10 minutes.
     if job_gc_timeout_ms is None:
       job_gc_timeout_ms = 5 * 60 * 1000  # 5 minutes.
+    """
+    if cache_policy is None:
+      cache_policy=1
+    if cache_format is None:
+      cache_format=1
+    if cache_ops_parallelism is None:
+      cache_ops_parallelism = 8
+    if scaling_policy is None:
+      scaling_policy = 1"""
+
     return super(DispatcherConfig,
                  cls).__new__(cls, port, protocol, work_dir,
                               fault_tolerant_mode, job_gc_check_interval_ms,
-                              job_gc_timeout_ms)
+                              job_gc_timeout_ms, cache_policy, cache_format,
+                              cache_compression, cache_ops_parallelism, scaling_policy)
 
 
 @tf_export("data.experimental.service.DispatchServer", v1=[])
@@ -142,7 +169,12 @@ class DispatchServer(object):
         work_dir=config.work_dir,
         fault_tolerant_mode=config.fault_tolerant_mode,
         job_gc_check_interval_ms=config.job_gc_check_interval_ms,
-        job_gc_timeout_ms=config.job_gc_timeout_ms)
+        job_gc_timeout_ms=config.job_gc_timeout_ms,
+        cache_policy=config.cache_policy,
+        cache_format=config.cache_format,
+        cache_compression=config.cache_compression,
+        cache_ops_parallelism=config.cache_ops_parallelism,
+        scaling_policy=config.scaling_policy)
     self._server = _pywrap_server_lib.TF_DATA_NewDispatchServer(
         config_proto.SerializeToString())
     if start:

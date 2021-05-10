@@ -606,6 +606,7 @@ class Node {
 
   public:
 
+  // EASL - Used for statistics monitoring at the service workers.
   class MetricDump {
     const int64 bytes_consumed_;
     const int64 bytes_produced_;

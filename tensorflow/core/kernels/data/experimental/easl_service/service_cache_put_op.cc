@@ -13,6 +13,8 @@ namespace easl{
 
 /* static */ constexpr const char* const ServiceCachePutOp::kDatasetType;
 /* static */ constexpr const char* const ServiceCachePutOp::kPath;
+/* static */ constexpr const char* const ServiceCachePutOp::kCacheFormat;
+/* static */ constexpr const char* const ServiceCachePutOp::kCacheCompression;
 /* static */ constexpr const char* const ServiceCachePutOp::kParallelism;
 
 
@@ -21,7 +23,8 @@ namespace easl{
 class ServiceCachePutOp::Dataset : public DatasetBase {
  public:
    Dataset(OpKernelContext* ctx, const DatasetBase* input,
-           const std::string& path, const int8 parallelism);
+           const std::string& path, const int32 cache_format,
+           const int32 cache_compression, const int32 parallelism);
 
    ~Dataset() override;
 
@@ -51,6 +54,8 @@ class ServiceCachePutOp::Dataset : public DatasetBase {
 
     const DatasetBase* const input_;
     const tstring path_;
+    const int32 cache_format_;
+    const int32 cache_compression_;
     const int32 parallelism_;
 
 };
@@ -95,10 +100,17 @@ void ServiceCachePutOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
   tstring path;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kPath, &path));
 
-  int8 parallelism;
+  int32 cache_format;
+  OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kCacheFormat, &cache_format));
+
+  int32 cache_compression;
+  OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kCacheCompression, &cache_compression));
+
+  int32 parallelism;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kParallelism, &parallelism));
 
-  *output = new ServiceCachePutOp::Dataset(ctx, input, path, parallelism);
+  *output = new ServiceCachePutOp::Dataset(
+      ctx, input, path, cache_format, cache_compression, parallelism);
 }
 
 // -----------------------------------------------------------------------------
@@ -109,9 +121,12 @@ ServiceCachePutOp::Dataset::Dataset(
     OpKernelContext* ctx,
     const DatasetBase* input,
     const std::string& path,
-    const int8 parallelism)
+    const int32 cache_format,
+    const int32 cache_compression,
+    const int32 parallelism)
     : DatasetBase(DatasetContext(ctx)), input_(input),
-      path_(path), parallelism_(parallelism) {
+      path_(path), cache_format_(cache_format),
+      cache_compression_(cache_compression), parallelism_(parallelism) {
   input_->Ref();
 }
 
@@ -162,6 +177,8 @@ Status ServiceCachePutOp::Dataset::AsGraphDefInternal(
   Node* parallelism = nullptr;
   TF_RETURN_IF_ERROR(b->AddScalar(parallelism_, &parallelism));
 
+  // TODO(damien-aymon) add all fields to graph..)
+
   return b->AddDataset(
       this,
       /*inputs=*/
@@ -180,6 +197,10 @@ ServiceCachePutOp::Dataset::Iterator::Iterator(const Params& params)
 Status ServiceCachePutOp::Dataset::Iterator::Initialize(
     IteratorContext* ctx) {
   VLOG(0) << "EASL - Initializing ServiceCachePutOp iterator";
+  VLOG(0) << "EASL - File format: " << dataset()->cache_format_;
+  VLOG(0) << "EASL - parallelism format: " << dataset()->parallelism_;
+  // TODO (damien-aymon) compression and file format are available as fields of dataset().
+  // Use them for setting up the writers properly.
 
   writer_ =
       std::make_unique<tensorflow::data::easl::service_cache_util::Writer>(

@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/data/standalone.h"
 #include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
 
@@ -37,6 +38,9 @@ class TaskIterator {
                          bool& end_of_sequence) = 0;
   // Reports the cardinality of the dataset that created this iterator.
   virtual int64 Cardinality() const = 0;
+
+  // EASL - Gets a metrics dump from the underlying iterator.
+  virtual absl::flat_hash_map<string, model::Node::MetricDump> GetMetrics() = 0;
 };
 
 // Implementation of TaskIterator wrapping a standalone iterator.
@@ -49,6 +53,9 @@ class StandaloneTaskIterator : public TaskIterator {
                          std::unique_ptr<standalone::Iterator> iterator);
   Status GetNext(std::vector<Tensor>& element, bool& end_of_sequence) override;
   int64 Cardinality() const override;
+
+  // EASL - Gets a metrics dump from the underlying iterator.
+  absl::flat_hash_map<string, model::Node::MetricDump> GetMetrics() override;
 
  private:
   std::unique_ptr<standalone::Dataset> dataset_;
@@ -68,6 +75,9 @@ class TaskRunner {
   // Gets the next element for the given request.
   virtual Status GetNext(const GetElementRequest& req,
                          GetElementResult& result) = 0;
+
+  // EASL - Gets a metrics dump from the underlying TaskIterator
+  virtual absl::flat_hash_map<string, model::Node::MetricDump> GetMetrics() = 0;
 };
 
 // A task runner which provides elements on a first-come first-served basis.
@@ -78,6 +88,8 @@ class FirstComeFirstServedTaskRunner : public TaskRunner {
       std::unique_ptr<TaskIterator> iterator);
   Status GetNext(const GetElementRequest& req,
                  GetElementResult& result) override;
+
+  absl::flat_hash_map<string, model::Node::MetricDump> GetMetrics() override;
 
  private:
   mutex mu_;
@@ -113,6 +125,9 @@ class PrefetchThread {
   Status GetStatus();
 
  private:
+  // EASL - For access to iterator_
+  friend class RoundRobinTaskRunner;
+
   const std::unique_ptr<TaskIterator> iterator_;
   const int64 round_size_;
   mutex mu_;
@@ -156,6 +171,8 @@ class RoundRobinTaskRunner : public TaskRunner {
 
   Status GetNext(const GetElementRequest& req,
                  GetElementResult& result) override;
+
+  absl::flat_hash_map<string, model::Node::MetricDump> GetMetrics() override;
 
  private:
   // Prepares a full round of data. `wait_us` indicates how long to wait before
