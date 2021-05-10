@@ -124,7 +124,17 @@ void MultiThreadedAsyncWriter::Initialize(Env *env, int64 file_index, const std:
 }
 
 void MultiThreadedAsyncWriter::Write(const std::vector<Tensor>& tensors) {
+  if(!first_row_info_set_) {
+    for(Tensor t : tensors) {
+      bytes_per_row_ += t.TotalBytes();
+      first_row_shape_.push_back(t.shape());
+    }
+    first_row_info_set_ = true;
+  }
   mutex_lock l(mu_);
+  mu_.Await(tensorflow::Condition(this,
+            &MultiThreadedAsyncWriter::ProducerSpaceAvailable));
+
   snapshot_util::ElementOrEOF element;
   element.value = tensors;
   deque_.push_back(std::move(element));
@@ -147,6 +157,10 @@ void MultiThreadedAsyncWriter::Consume(snapshot_util::ElementOrEOF* be) {
       &MultiThreadedAsyncWriter::ElementAvailable));
   *be = deque_.front();
   deque_.pop_front();
+}
+
+bool MultiThreadedAsyncWriter::ProducerSpaceAvailable() {
+  return (deque_.size() * bytes_per_row_) < producer_threshold_;
 }
 
 bool MultiThreadedAsyncWriter::ElementAvailable() { return !deque_.empty(); }

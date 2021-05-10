@@ -53,6 +53,13 @@ class MultiThreadedAsyncWriter {
   mutex mu_;
   std::deque<snapshot_util::ElementOrEOF> deque_ TF_GUARDED_BY(mu_);
 
+  // look at first row of dataset to infer bytes per row and dataset shape
+  bool ProducerSpaceAvailable() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  const uint64 producer_threshold_ = 1e9;  // allow producer queue to hold 1 GB
+  bool first_row_info_set_ = false;
+  std::vector<TensorShape> first_row_shape_;
+  uint64 bytes_per_row_;
+
   // This has to be last. During destruction, we need to make sure that the
   // Thread object is destroyed first as its destructor blocks on thread
   // completion. If there are other member variables after this, they may get

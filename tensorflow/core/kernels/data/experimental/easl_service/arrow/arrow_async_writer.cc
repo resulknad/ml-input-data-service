@@ -103,15 +103,10 @@ Status ArrowAsyncWriter::WriterThread(Env* env, const std::string& shard_directo
 }
 
 void ArrowAsyncWriter::Write(const std::vector<Tensor> &tensors) {
-  if(!first_row_shape_set_) {
-    std::vector<TensorShape> first_row_shape;
-    for(Tensor t : tensors) {
-      first_row_shape.push_back(t.shape());
-    }
-    metadata_->SetRowShape(first_row_shape);
-    first_row_shape_set_ = true;
-  }
   MultiThreadedAsyncWriter::Write(tensors);
+  if(first_row_info_set_ && ! first_row_shape_set_) {
+    metadata_->SetRowShape(first_row_shape_);
+  }
 }
 
 } // namespace arrow_async_wirter
