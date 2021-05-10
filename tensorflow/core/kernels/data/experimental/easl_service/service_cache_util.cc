@@ -22,7 +22,7 @@ std::string GetFileName(const std::string& shard_directory,
 }
 
 constexpr const char* const kMetadataFilename = "service_cache.metadata";
-const int64 kWriterVersion = 2; // 0 --> ArrowWriter; 2 --> TFRecordWriter
+const int64 kWriterVersion = 0; // 0 --> ArrowWriter; 2 --> TFRecordWriter
 const char kCompression[] = ""; // can be SNAPPY, GZIP, ZLIB, "" for none.
 
 Writer::Writer(Env* env,
@@ -190,7 +190,7 @@ Status MultiThreadedAsyncWriter::WriterThread(Env* env,
     Consume(&be);
 
     LOG(INFO) << "(Writer_" << writer_id << ") Read - " 
-      << be.end_of_sequence << " - Total: " << ++count;
+      << be.end_of_sequence << " - Total: " << ++count << " - Queue: " << deque_.size();
     if (be.end_of_sequence) {
       writer->Close();
       LOG(INFO) << "(Writer_" << writer_id << ") Closed w/ total read " 
