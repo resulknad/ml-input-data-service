@@ -164,7 +164,8 @@ void MultiThreadedAsyncWriter::Consume(snapshot_util::ElementOrEOF* be) {
 }
 
 bool MultiThreadedAsyncWriter::ProducerSpaceAvailable() {
-  return (deque_.size() * bytes_per_row_) < producer_threshold_;
+  // return (deque_.size() * bytes_per_row_) < producer_threshold_;
+  return true;
 }
 
 bool MultiThreadedAsyncWriter::ElementAvailable() { return !deque_.empty(); }
