@@ -29,7 +29,7 @@ public:
                         uint64 checkpoint_id, const std::string& compression,
                         int64 version, DataTypeVector output_types) override;
 private:
-    const uint64 memoryThreshold = 1 << 31;  // 2 GB
+    const uint64 memoryThreshold = 1e9;  // 1 GB
     std::shared_ptr<ArrowUtil::ArrowMetadata> metadata_;
     bool first_row_shape_set_ = false;
 

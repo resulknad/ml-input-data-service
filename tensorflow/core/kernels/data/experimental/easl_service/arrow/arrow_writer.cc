@@ -183,7 +183,7 @@ Status ArrowWriter::WriteTensors(std::vector<Tensor> &tensors) {
      tensor_data_[current_col_idx_].push_back(t.tensor_data().data());
    }
 
-    VLOG(0) << "ArrowWriter - WriteTensors - Added data_buffer to corresponding column " << current_col_idx_;
+//    VLOG(0) << "ArrowWriter - WriteTensors - Added data_buffer to corresponding column " << current_col_idx_;
     current_col_idx_ = (current_col_idx_ + 1) % ncols_;
 
     // make ArrowWriter owner of tensors s.t. buffers don't get de-allocated.

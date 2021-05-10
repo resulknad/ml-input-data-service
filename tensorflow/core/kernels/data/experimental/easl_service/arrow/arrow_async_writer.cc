@@ -34,7 +34,7 @@ Status ArrowAsyncWriter::WriterThread(Env* env, const std::string& shard_directo
                     int64 version, DataTypeVector output_types) {
 
   uint64_t storageEstimate = 0; // estimated storage space on disk in bytes
-  uint64_t rowStorage = 0; // storage size of a single dataset row (single be.value). Assume all have the same size.
+  uint64_t bytes_per_row = 0; // storage size of a single dataset row (single be.value). Assume all have the same size.
   uint64 split_id = 0; // name all produced arrow files by this thread
 
   TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(shard_directory));
@@ -67,19 +67,22 @@ Status ArrowAsyncWriter::WriterThread(Env* env, const std::string& shard_directo
     }
 
     // update memory estimate:
-    if(rowStorage == 0) {
+    if(bytes_per_row == 0) {
       std::vector<Tensor> &tensors = be.value;
       for(Tensor t : tensors) {
-        rowStorage += t.TotalBytes();
+        bytes_per_row += t.TotalBytes();
       }
-    } else {
-      storageEstimate += rowStorage;
     }
 
+    storageEstimate += bytes_per_row;
+
+    LOG(INFO) << "ArrowAsyncWriter - storageEstimate: " << storageEstimate << "  bytes_per_row: "
+                 "" << bytes_per_row << "   Memory threshold: " << memoryThreshold / writer_count_;
+
     // create new reader if memoryThreshold exceeded
-    if(storageEstimate > memoryThreshold) {
+    if(storageEstimate > memoryThreshold / writer_count_) {
       TF_RETURN_IF_ERROR(arrowWriter->Close());
-      storageEstimate = rowStorage; // reset storage estimate
+      storageEstimate = bytes_per_row; // reset storage estimate
       // create new writer for remaining tensors:
       arrowWriter = absl::make_unique<ArrowWriter>();
       TF_RETURN_IF_ERROR(arrowWriter->Create(env, GetFileName(shard_directory, writer_id, ++split_id),

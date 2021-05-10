@@ -5,8 +5,6 @@
 #include "tensorflow/core/kernels/data/experimental/easl_service/arrow/arrow_async_writer.h"
 #include "tensorflow/core/kernels/data/experimental/easl_service/arrow/arrow_async_reader.h"
 
-
-
 namespace tensorflow {
 namespace data {
 namespace easl{
@@ -130,6 +128,7 @@ void MultiThreadedAsyncWriter::Write(const std::vector<Tensor>& tensors) {
   snapshot_util::ElementOrEOF element;
   element.value = tensors;
   deque_.push_back(std::move(element));
+  VLOG(0) << "EASL - ServiceCacheUtils - WriterQueue num elements: " << deque_.size();
 }
 
 void MultiThreadedAsyncWriter::SignalEOF() {
