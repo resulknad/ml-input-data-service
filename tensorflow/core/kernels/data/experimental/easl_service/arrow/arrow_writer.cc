@@ -148,20 +148,25 @@ Status ArrowWriter::WriteTensors(std::vector<Tensor> &tensors) {
   VLOG(0) << "ArrowWriter - WriteTensors - Invoked. dims_initialized = " << tensor_data_len_initialized_;
 
   for(Tensor t : tensors) {
+    VLOG(0) << "ArrowWriter - WriteTensors - processing tensor with " << t.NumElements() << " elements";
     // need to get size of tensor buffer for conversion.
     if(!tensor_data_len_initialized_) {
+      VLOG(0) << "ArrowWriter - WriteTensors - Initializing tensor_data_len_ --> Reading Total Bytes: " << t.TotalBytes();
+
       tensor_data_len_.push_back(t.TotalBytes());
       tensor_data_len_initialized_ = tensor_data_len_.size() >= ncols_;
     }
 
     // check whether shape of current tensor conforms to shape of other tensors in the same column
     if(t.shape() != shapes_[current_col_idx_]) {
-      VLOG(0) << "Tensor not conforming to col shape -> adding partial tensor";
+      VLOG(0) << "ArrowWriter - WriteTensors - Tensor not conforming to col shape -> adding partial tensor";
       partial_shapes_.push_back(t.shape());
       last_row_len_.push_back(t.TotalBytes());
     }
 
    if(arrow_dtypes_[current_col_idx_]->Equals(arrow::utf8())) {
+     VLOG(0) << "ArrowWriter - WriteTensors - Processing String data...";
+
 	    // get string data for tensor
       auto str_data = reinterpret_cast<const tstring*>(t.data());
 
@@ -179,11 +184,13 @@ Status ArrowWriter::WriteTensors(std::vector<Tensor> &tensors) {
      // accumulate buffers in correct column:
      tensor_data_[current_col_idx_].push_back((const char*) str_refs);
    } else { // if not a string, it is a simple data type -> don't touch data
+     VLOG(0) << "ArrowWriter - WriteTensors - Processing non-string data...";
+
      // accumulate buffers in correct column:
      tensor_data_[current_col_idx_].push_back(t.tensor_data().data());
    }
 
-//    VLOG(0) << "ArrowWriter - WriteTensors - Added data_buffer to corresponding column " << current_col_idx_;
+    VLOG(0) << "ArrowWriter - WriteTensors - Added data_buffer to corresponding column " << current_col_idx_;
     current_col_idx_ = (current_col_idx_ + 1) % ncols_;
 
     // make ArrowWriter owner of tensors s.t. buffers don't get de-allocated.

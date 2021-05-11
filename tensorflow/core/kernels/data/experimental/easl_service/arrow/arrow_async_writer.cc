@@ -105,6 +105,7 @@ Status ArrowAsyncWriter::WriterThread(Env* env, const std::string& shard_directo
 void ArrowAsyncWriter::Write(const std::vector<Tensor> &tensors) {
   MultiThreadedAsyncWriter::Write(tensors);
   if(first_row_info_set_ && ! first_row_shape_set_) {
+    VLOG(0) << "ArrowAsyncWriter - Write - Set row shape to metadata";
     metadata_->SetRowShape(first_row_shape_);
     first_row_shape_set_ = true;
   }
