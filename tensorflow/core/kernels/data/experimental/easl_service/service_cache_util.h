@@ -58,7 +58,7 @@ class MultiThreadedAsyncWriter {
   const uint64 producer_threshold_ = 1e9;  // allow producer queue to hold 1 GB
   bool first_row_info_set_ = false;
   std::vector<TensorShape> first_row_shape_;
-  uint64 bytes_per_row_;
+  uint64 bytes_per_row_ = 0;
 
   // This has to be last. During destruction, we need to make sure that the
   // Thread object is destroyed first as its destructor blocks on thread
