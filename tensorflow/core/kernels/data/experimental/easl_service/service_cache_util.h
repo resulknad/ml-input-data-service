@@ -140,7 +140,13 @@ class MultiThreadedAsyncReader {
   std::vector<PartialTensorShape> output_shapes_;
   Env* env_;
 
-//   std::unique_ptr<snapshot_util::Reader> reader_;
+
+  bool ProducerSpaceAvailable() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  const uint64 producer_threshold_ = 1e9;  // allow producer queue to hold 1 GB
+  bool first_row_info_set_ = false;
+  uint64 bytes_per_row_ = 0;
+
+    //   std::unique_ptr<snapshot_util::Reader> reader_;
   std::deque<string> file_names_ TF_GUARDED_BY(mu_);
   std::deque<Tensor> tensors_ TF_GUARDED_BY(mu_add_);
   std::unique_ptr<thread::ThreadPool> thread_pool_;

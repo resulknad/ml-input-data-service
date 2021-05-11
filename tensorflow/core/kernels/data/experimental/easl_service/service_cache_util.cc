@@ -129,7 +129,6 @@ void MultiThreadedAsyncWriter::Write(const std::vector<Tensor>& tensors) {
     for(Tensor t : tensors) {
       bytes_per_row_ += t.TotalBytes();
       VLOG(0) << "EASL bytes per row: " << bytes_per_row_;
-      first_row_shape_.push_back(t.shape());
     }
     first_row_info_set_ = true;
   }
@@ -293,8 +292,20 @@ void MultiThreadedAsyncReader::Consume(string* s, bool* end_of_sequence) {
   }
 }
 
+bool MultiThreadedAsyncReader::ProducerSpaceAvailable() {
+  return (tensors_.size() * bytes_per_row_) < producer_threshold_;
+}
+
 void MultiThreadedAsyncReader::Add(std::vector<Tensor>& tensors) {
   mutex_lock l(mu_add_);
+  if(!first_row_info_set_) {
+    for(int i = 0; i < output_shapes_.size(); i++) {  // TODO: find better solution to get num columns
+      bytes_per_row_ += tensors[i].TotalBytes();
+      VLOG(0) << "EASL bytes per row: " << bytes_per_row_;
+    }
+    first_row_info_set_ = true;
+  }
+  mu_add_.Await(Condition(this, &MultiThreadedAsyncReader::ProducerSpaceAvailable));
   for (const auto& t : tensors)
     tensors_.push_back(t);
 
@@ -366,7 +377,7 @@ Status MultiThreadedAsyncReader::Read(std::vector<Tensor>* &read_tensors, bool* 
 
   VLOG(0) << "(Reader) Task is getting invoked... Reading " << n;
   while(true){
-    if(!tensors_.empty()){
+    if(!tensors_.empty()) {
       while (n > 0) {
         n--;
         read_tensors->push_back(tensors_.front());
