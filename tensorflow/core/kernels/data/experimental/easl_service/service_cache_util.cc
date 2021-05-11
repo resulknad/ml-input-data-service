@@ -128,13 +128,12 @@ void MultiThreadedAsyncWriter::Write(const std::vector<Tensor>& tensors) {
   if(!first_row_info_set_) {
     for(Tensor t : tensors) {
       bytes_per_row_ += t.TotalBytes();
+      VLOG(0) << "EASL bytes per row: " << bytes_per_row_;
       first_row_shape_.push_back(t.shape());
     }
     first_row_info_set_ = true;
   }
   mutex_lock l(mu_);
-
-  VLOG(0) << "ProducerSpace available: " << ProducerSpaceAvailable();
 
   mu_.Await(tensorflow::Condition(this,
             &MultiThreadedAsyncWriter::ProducerSpaceAvailable));
@@ -142,7 +141,6 @@ void MultiThreadedAsyncWriter::Write(const std::vector<Tensor>& tensors) {
   snapshot_util::ElementOrEOF element;
   element.value = tensors;
   deque_.push_back(std::move(element));
-  VLOG(0) << "EASL - ServiceCacheUtils - WriterQueue num elements: " << deque_.size() << "  thresh" << producer_threshold_;
 }
 
 void MultiThreadedAsyncWriter::SignalEOF() {
@@ -164,8 +162,7 @@ void MultiThreadedAsyncWriter::Consume(snapshot_util::ElementOrEOF* be) {
 }
 
 bool MultiThreadedAsyncWriter::ProducerSpaceAvailable() {
-  // return (deque_.size() * bytes_per_row_) < producer_threshold_;
-  return true;
+   return (deque_.size() * bytes_per_row_) < producer_threshold_;
 }
 
 bool MultiThreadedAsyncWriter::ElementAvailable() { return !deque_.empty(); }
@@ -191,7 +188,6 @@ Status MultiThreadedAsyncWriter::WriterThread(Env* env,
   LOG(INFO) << "(Writer_" << writer_id << ") Starting to write "; 
 
   while (true) {
-    LOG(INFO) << "(Writer_" << writer_id << ") Producer queue size - "  << deque_.size() << "  bpr: " << bytes_per_row_;
     snapshot_util::ElementOrEOF be;
     Consume(&be);
 
