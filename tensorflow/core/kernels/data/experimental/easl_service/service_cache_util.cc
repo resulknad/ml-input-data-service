@@ -293,16 +293,15 @@ void MultiThreadedAsyncReader::Consume(string* s, bool* end_of_sequence) {
 }
 
 bool MultiThreadedAsyncReader::ProducerSpaceAvailable() {
-  return (tensors_.size() * bytes_per_row_) < producer_threshold_;
+  return (tensors_.size() * bytes_per_tensor_) < producer_threshold_;
 }
 
 void MultiThreadedAsyncReader::Add(std::vector<Tensor>& tensors) {
+  VLOG(0) << "EASL - entering read - Add";
   mutex_lock l(mu_add_);
   if(!first_row_info_set_) {
-    for(int i = 0; i < output_shapes_.size(); i++) {  // TODO: find better solution to get num columns
-      bytes_per_row_ += tensors[i].TotalBytes();
-      VLOG(0) << "EASL bytes per row: " << bytes_per_row_;
-    }
+    bytes_per_tensor_ = tensors[0].TotalBytes();  // TODO: this assumes all tensors equal shape --> change!
+    VLOG(0) << "EASL - set bytes per tensor: " << bytes_per_tensor_;
     first_row_info_set_ = true;
   }
   mu_add_.Await(Condition(this, &MultiThreadedAsyncReader::ProducerSpaceAvailable));
