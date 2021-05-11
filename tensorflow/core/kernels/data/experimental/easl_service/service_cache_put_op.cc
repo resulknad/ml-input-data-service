@@ -174,15 +174,19 @@ Status ServiceCachePutOp::Dataset::AsGraphDefInternal(
   Node* path = nullptr;
   TF_RETURN_IF_ERROR(b->AddScalar(path_, &path));
 
+  Node* cache_format = nullptr;
+  TF_RETURN_IF_ERROR(b->AddScalar(cache_format_, &cache_format));
+
+  Node* cache_compression = nullptr;
+  TF_RETURN_IF_ERROR(b->AddScalar(cache_compression_, &cache_compression));
+
   Node* parallelism = nullptr;
   TF_RETURN_IF_ERROR(b->AddScalar(parallelism_, &parallelism));
-
-  // TODO(damien-aymon) add all fields to graph..)
 
   return b->AddDataset(
       this,
       /*inputs=*/
-      {input_graph_node, path, parallelism},
+      {input_graph_node, path, cache_format, cache_compression, parallelism},
       output);
 }
 
