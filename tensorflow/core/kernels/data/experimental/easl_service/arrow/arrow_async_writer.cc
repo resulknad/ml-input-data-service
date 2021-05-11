@@ -6,6 +6,11 @@
 #include "tensorflow/core/kernels/data/experimental/easl_service/arrow/arrow_writer.h"
 #include "tensorflow/core/platform/stringprintf.h"
 
+#include "tensorflow/core/kernels/data/experimental/easl_service/service_cache_util.h"
+#include "tensorflow/core/platform/stringprintf.h"
+#include "tensorflow/core/protobuf/service_cache.pb.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
+
 namespace tensorflow {
 namespace data {
 namespace easl{
@@ -102,13 +107,28 @@ Status ArrowAsyncWriter::WriterThread(Env* env, const std::string& shard_directo
   return Status::OK();
 }
 
+bool ArrowAsyncWriter::ProducerSpaceAvailable() {
+  return (deque_.size() * bytes_per_row_) < producer_threshold_;
+}
+
 void ArrowAsyncWriter::Write(const std::vector<Tensor> &tensors) {
-  MultiThreadedAsyncWriter::Write(tensors);
-  if(first_row_info_set_ && ! first_row_shape_set_) {
-    VLOG(0) << "ArrowAsyncWriter - Write - Set row shape to metadata";
-    metadata_->SetRowShape(first_row_shape_);
-    first_row_shape_set_ = true;
+  VLOG(0) << "EASL - Entering Write (Arrow Async Writer)";
+
+  if(!first_row_info_set_) {
+    for(Tensor t : tensors) {
+      bytes_per_row_ += t.TotalBytes();
+      VLOG(0) << "EASL bytes per row: " << bytes_per_row_;
+      first_row_shape_.push_back(t.shape());
+    }
+    first_row_info_set_ = true;
   }
+  metadata_->SetRowShape(first_row_shape_);
+  mutex_lock l(mu_);
+  mu_.Await( Condition(this, &ArrowAsyncWriter::ProducerSpaceAvailable));
+
+  snapshot_util::ElementOrEOF element;
+  element.value = tensors;
+  deque_.push_back(std::move(element));
 }
 
 } // namespace arrow_async_wirter

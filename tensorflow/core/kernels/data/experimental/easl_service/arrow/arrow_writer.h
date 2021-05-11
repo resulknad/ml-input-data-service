@@ -27,23 +27,22 @@ public:
     Status WriteTensors(std::vector<Tensor> &tensors);
 
 private:
-    void InitDims(Tensor &t);
     arrow::Compression::type getArrowCompressionType();
 
     std::shared_ptr<ArrowUtil::ArrowMetadata> metadata_;
-    Env *env_{};
+    Env *env_;
     std::string filename_;
     string compression_type_;
     DataTypeVector dtypes_;
     arrow::DataTypeVector arrow_dtypes_;
-    int32_t ncols_{};
-    int32_t current_col_idx_{};
+    int32_t ncols_ = 0;
+    int32_t current_col_idx_ = 0;
 
     std::vector<TensorShape> shapes_;
     std::vector<TensorShape> partial_shapes_;
 
     // initially false, true after first row has been read (implicitly get TensorShape)
-    bool tensor_data_len_initialized_{};
+    bool tensor_data_len_initialized_;
 
     std::vector<std::vector<const char *>> tensor_data_;
     std::vector<uint64> tensor_data_len_;
@@ -51,7 +50,7 @@ private:
     std::vector<uint64> last_row_len_;
 
     // memory allocator for string buffers
-    Allocator* string_allocator_{};
+    Allocator* string_allocator_;
 
     // prevents memory pool from de-allocating tensor data buffs
     std::deque<Tensor> tensors_;

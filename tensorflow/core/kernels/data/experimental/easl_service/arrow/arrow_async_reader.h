@@ -32,7 +32,7 @@ public:
                         std::vector<PartialTensorShape> output_shapes);
 
 private:
-    std::shared_ptr<ArrowMetadata> metadata_;  // TODO: shared pointer
+    std::shared_ptr<ArrowMetadata> metadata_;
 };
 
 } // namespace arrow_async_wirter

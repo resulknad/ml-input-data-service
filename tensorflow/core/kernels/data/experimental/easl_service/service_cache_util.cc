@@ -135,7 +135,7 @@ void MultiThreadedAsyncWriter::Write(const std::vector<Tensor>& tensors) {
   }
   mutex_lock l(mu_);
 
-  mu_.Await(tensorflow::Condition(this,
+  mu_.Await(Condition(this,
             &MultiThreadedAsyncWriter::ProducerSpaceAvailable));
 
   snapshot_util::ElementOrEOF element;
