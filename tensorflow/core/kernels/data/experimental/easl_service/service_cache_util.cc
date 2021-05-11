@@ -133,6 +133,9 @@ void MultiThreadedAsyncWriter::Write(const std::vector<Tensor>& tensors) {
     first_row_info_set_ = true;
   }
   mutex_lock l(mu_);
+
+  VLOG(0) << "ProducerSpace available: " << ProducerSpaceAvailable();
+
   mu_.Await(tensorflow::Condition(this,
             &MultiThreadedAsyncWriter::ProducerSpaceAvailable));
 
@@ -161,7 +164,8 @@ void MultiThreadedAsyncWriter::Consume(snapshot_util::ElementOrEOF* be) {
 }
 
 bool MultiThreadedAsyncWriter::ProducerSpaceAvailable() {
-  return (deque_.size() * bytes_per_row_) < producer_threshold_;
+  // return (deque_.size() * bytes_per_row_) < producer_threshold_;
+  return true;
 }
 
 bool MultiThreadedAsyncWriter::ElementAvailable() { return !deque_.empty(); }
