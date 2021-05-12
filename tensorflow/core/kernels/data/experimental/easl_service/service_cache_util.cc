@@ -133,7 +133,7 @@ void MultiThreadedAsyncWriter::Write(const std::vector<Tensor>& tensors) {
     first_row_info_set_ = true;
   }
   mutex_lock l(mu_);
-
+  VLOG(0) << "****************** Reader Queue Size: " << deque_.size() << "  of max:  " << producer_threshold_ / bytes_per_row_;
   mu_.Await(Condition(this,
             &MultiThreadedAsyncWriter::ProducerSpaceAvailable));
 
@@ -304,6 +304,7 @@ void MultiThreadedAsyncReader::Add(std::vector<Tensor>& tensors) {
     VLOG(0) << "EASL - set bytes per tensor: " << bytes_per_tensor_;
     first_row_info_set_ = true;
   }
+  VLOG(0) << "****************** Reader Queue Size: " << tensors_.size() << "  of max:  " << producer_threshold_ / bytes_per_tensor_;
   mu_add_.Await(Condition(this, &MultiThreadedAsyncReader::ProducerSpaceAvailable));
   for (const auto& t : tensors)
     tensors_.push_back(t);
@@ -313,11 +314,6 @@ void MultiThreadedAsyncReader::Add(std::vector<Tensor>& tensors) {
 
 Status MultiThreadedAsyncReader::ReaderThread(Env *env, uint64 writer_id, int64 version,
   DataTypeVector output_types, std::vector<PartialTensorShape> output_shapes) {
-
-  // Debugging
-  std:string d_string = DataTypeVectorString(output_types);
-  LOG(INFO) << "(Reader_" << writer_id << ") Starting reading task\n\tREADING D_TYPE:\t" << d_string;
-
 
   tensorflow::profiler::TraceMe activity(
           "EASLReaderThread", tensorflow::profiler::TraceMeLevel::kVerbose);
