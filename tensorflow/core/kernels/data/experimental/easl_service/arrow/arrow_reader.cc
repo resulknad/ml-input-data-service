@@ -35,8 +35,6 @@ Status ArrowReader::Initialize(Env *env, const std::string &filename, const stri
   this->current_batch_idx_ = -1; // gets increased upon every invocation of read_tensors
   this->current_row_idx_ = 0;
 
-  VLOG(0) << "ArrowReader - Initialize - Initialized with the following parameters:\n"
-                   "Filename: " << filename_ << "\nCompression_Type: " << compression_type_;
 
   // TODO: maybe use env to open file, here I use the built-in functionality of arrow.
   // open file and read table
@@ -57,14 +55,11 @@ Status ArrowReader::Initialize(Env *env, const std::string &filename, const stri
     CHECK_ARROW(tr.ReadNext(&batch));
   }
 
-  VLOG(0) << "ArrowReader - Initialize - finished reading table into recordbatches.\n"
-             "Num record batches: " << record_batches_.size();
   return Status::OK();
 }
 
 
 Status ArrowReader::InitShapesAndTypes() {
-  VLOG(0) << "ArrowReader - InitShapesAndTypes - Implicitly extracting shapes and dtypes from arrow format...";
   for(int i = 0; i < current_batch_->num_columns(); i++) {
     std::shared_ptr<arrow::Array> arr = current_batch_->column(i);
 
@@ -78,10 +73,6 @@ Status ArrowReader::InitShapesAndTypes() {
     this->dtypes_.push_back(output_type);
     this->shapes_.push_back(output_shape);
 
-    VLOG(0) << "ArrowReader - InitShapesAndTypes - \n"
-               "DataType: " << DataTypeString(output_type) << "\n"
-               "Shape: " << output_shape.DebugString() << "\n"
-               "Column: " << i;
   }
   shapes_initialized_ = true;
   return Status::OK();
@@ -110,7 +101,6 @@ Status ArrowReader::ReadTensors(std::vector<Tensor> *read_tensors) {
 
       if(partial_batch) {  // if partial batch in last row
         output_shape = this->partial_shapes[j];
-        VLOG(0) << "ArrowReader - ReadTensors - Reading Partial Batch";
       } else {
         output_shape = this->shapes_[j];
       }
@@ -120,19 +110,15 @@ Status ArrowReader::ReadTensors(std::vector<Tensor> *read_tensors) {
 
       // String arrays and normal arrays have different shapes in experimental.
       if(output_type == DataType::DT_STRING || !experimental_) {
-        VLOG(0) << "ArrowReader - ReadTensors - Standard Assign Tensor";
         TF_RETURN_IF_ERROR(ArrowUtil::AssignTensor(arr, i, &tensor));
       } else {
-        VLOG(0) << "ArrowReader - ReadTensors - Experimental Assign Tensor";
         TF_RETURN_IF_ERROR(ArrowUtil::AssignTensorExperimental(arr, i, &tensor));
       }
 
       if(partial_batch) {
         metadata_->AddLastRowBatch(tensor);
-        VLOG(0) << "ArrowReader - ReadTensors - Added partial batch to metadata";
       } else {
         read_tensors->emplace_back(std::move(tensor));
-        VLOG(0) << "ArrowReader - ReadTensors - Successfully assigned tensor";
       }
     }
     current_row_idx_++;
@@ -144,10 +130,8 @@ Status ArrowReader::ReadTensors(std::vector<Tensor> *read_tensors) {
 
 Status ArrowReader::NextBatch() {
   if (++current_batch_idx_ < record_batches_.size()) {
-    VLOG(0) << "ArrowReader - NextBatch - getting next batch at idx=" << current_batch_idx_;
     current_batch_ = record_batches_[current_batch_idx_];
   } else  {
-    VLOG(0) << "ArrowReader - NextBatch - finished reading all record batches";
     return Status(error::OUT_OF_RANGE, "finished reading all record batches");
   }
   return Status::OK();

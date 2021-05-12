@@ -134,7 +134,6 @@ ServiceCachePutOp::Dataset::~Dataset() { input_->Unref(); }
 
 std::unique_ptr<IteratorBase>
 ServiceCachePutOp::Dataset::MakeIteratorInternal(const string& prefix) const {
-  VLOG(0) << "EASL - prefix to put op: " << prefix;
   return absl::make_unique<Iterator>(
       Iterator::Params{this, absl::StrCat(prefix, "::ServiceCachePut")});
 }
@@ -200,9 +199,6 @@ ServiceCachePutOp::Dataset::Iterator::Iterator(const Params& params)
 
 Status ServiceCachePutOp::Dataset::Iterator::Initialize(
     IteratorContext* ctx) {
-  VLOG(0) << "EASL - Initializing ServiceCachePutOp iterator";
-  VLOG(0) << "EASL - File format: " << dataset()->cache_format_;
-  VLOG(0) << "EASL - parallelism format: " << dataset()->parallelism_;
   // TODO (damien-aymon) compression and file format are available as fields of dataset().
   // Use them for setting up the writers properly.
 
@@ -229,7 +225,6 @@ Status ServiceCachePutOp::Dataset::Iterator::RestoreInternal(
 Status ServiceCachePutOp::Dataset::Iterator::GetNextInternal(
     IteratorContext* ctx, std::vector<Tensor>* out_tensors,
     bool* end_of_sequence) {
-  VLOG(0) << "EASL - enter cache put get next";
   mutex_lock l(mu_);
 
   TF_RETURN_IF_ERROR(input_impl_->GetNext(ctx, out_tensors, end_of_sequence));

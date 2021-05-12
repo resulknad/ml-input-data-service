@@ -108,7 +108,6 @@ void MultiThreadedAsyncWriter::Initialize(Env *env, int64 file_index, const std:
   thread_pool_ = absl::make_unique<thread::ThreadPool>(env, ThreadOptions(),
            absl::StrCat("thread_pool_", file_index), writer_count_, false);
 
-  LOG(INFO) << "(MultiThreadedAsyncWriter) Starting ThreadPool";
   for (int i = 0; i < writer_count_; ++i) {
     thread_pool_->Schedule(
             [this, env, shard_directory, checkpoint_id, compression, version,
@@ -120,15 +119,12 @@ void MultiThreadedAsyncWriter::Initialize(Env *env, int64 file_index, const std:
     );
 
   }
-  LOG(INFO) << "(MultiThreadedAsyncWriter) Finished Starting ThreadPool";
 }
 
 void MultiThreadedAsyncWriter::Write(const std::vector<Tensor>& tensors) {
-  VLOG(0) << "EASL - Entering Write (Multithreaded Async Writer)";
   if(!first_row_info_set_) {
     for(Tensor t : tensors) {
       bytes_per_row_ += t.TotalBytes();
-      VLOG(0) << "EASL bytes per row: " << bytes_per_row_;
     }
     first_row_info_set_ = true;
   }
@@ -175,7 +171,6 @@ Status MultiThreadedAsyncWriter::WriterThread(Env* env,
   // TODO (damien-aymon) Push this to the specific writers, so that we can make
   // the async writer more general (e.g. different file system, gs://, etc...)
   TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(shard_directory));
-  LOG(INFO) << "(Writer_" << writer_id << ") Created Dir ";
 
   std::unique_ptr<snapshot_util::Writer> writer;
 
@@ -184,17 +179,13 @@ Status MultiThreadedAsyncWriter::WriterThread(Env* env,
           compression, version, std::move(output_types), &writer));
 
   int count = 0;
-  LOG(INFO) << "(Writer_" << writer_id << ") Starting to write "; 
 
   while (true) {
     snapshot_util::ElementOrEOF be;
     Consume(&be);
 
-    LOG(INFO) << "(Writer_" << writer_id << ") Read - " 
-      << be.end_of_sequence << " - Total: " << ++count;
     if (be.end_of_sequence) {
       writer->Close();
-      LOG(INFO) << "(Writer_" << writer_id << ") Closed w/ total read " 
                 << count;
       break;
     }
@@ -268,7 +259,6 @@ Status MultiThreadedAsyncReader::Initialize() {
   thread_pool_ = absl::make_unique<thread::ThreadPool>(env_, ThreadOptions(),  
       absl::StrCat("reader_thread_pool", reader_count_), reader_count_, false);
 
-  LOG(INFO) << "(Reader) Starting ThreadPool"; 
   for (int i = 0; i < reader_count_; ++i) {
     thread_pool_->Schedule(
       [this, i] {
@@ -277,7 +267,6 @@ Status MultiThreadedAsyncReader::Initialize() {
         }
     );
   }
-  LOG(INFO) << "(Reader) Finished Starting ThreadPool";
 }
 
 void MultiThreadedAsyncReader::Consume(string* s, bool* end_of_sequence) {
@@ -297,7 +286,6 @@ bool MultiThreadedAsyncReader::ProducerSpaceAvailable() {
 }
 
 void MultiThreadedAsyncReader::Add(std::vector<Tensor>& tensors) {
-  VLOG(0) << "EASL - entering read - Add";
   mutex_lock l(mu_add_);
   if(!first_row_info_set_) {
     bytes_per_tensor_ = tensors[0].TotalBytes();  // TODO: this assumes all tensors equal shape --> change!
@@ -323,10 +311,8 @@ Status MultiThreadedAsyncReader::ReaderThread(Env *env, uint64 writer_id, int64 
   while (!end_of_sequence) {
     std::string file_path;
     Consume(&file_path, &end_of_sequence);
-    LOG(INFO) << "(Reader_" << writer_id << ") Got file " << file_path;
 
     if (!end_of_sequence) {
-      LOG(INFO) << "(Reader_" << writer_id << ") Reading file " << file_path;
 
       std::unique_ptr<snapshot_util::Reader> reader;
 
@@ -334,7 +320,6 @@ Status MultiThreadedAsyncReader::ReaderThread(Env *env, uint64 writer_id, int64 
                                     version, output_types, &reader);
 
 
-      LOG(INFO) << "(Reader_" << writer_id << ") Starting to read file " << file_path;
       int64 count = 0;
       bool eof = false;
       while (!eof) {
@@ -344,7 +329,6 @@ Status MultiThreadedAsyncReader::ReaderThread(Env *env, uint64 writer_id, int64 
         if (errors::IsOutOfRange(s)) {
           eof = true;  // can't break because of TFRecordReader.
         } else if(s != Status::OK()) {
-          LOG(INFO) << "Internal error in TFRecordReader. " << s.ToString();
           return s;
         }
 
@@ -352,8 +336,6 @@ Status MultiThreadedAsyncReader::ReaderThread(Env *env, uint64 writer_id, int64 
           Add(tensors);
         }
       }
-      LOG(INFO) << "(Reader_" << writer_id << ") Finished reading file " << file_path
-      << " with " << count << " elements.";
     }
   }
 
@@ -361,7 +343,6 @@ Status MultiThreadedAsyncReader::ReaderThread(Env *env, uint64 writer_id, int64 
   num_readers_done_++;
   read_cv_.notify_one();
 
-  LOG(INFO) << "(Reader_" << writer_id << ") Finishing reading task";
   return Status::OK();
 }
 
@@ -370,7 +351,6 @@ Status MultiThreadedAsyncReader::Read(std::vector<Tensor>* &read_tensors, bool* 
   *end_of_sequence = false;
   int64 n = output_dtypes_.size();
 
-  VLOG(0) << "(Reader) Task is getting invoked... Reading " << n;
   while(true){
     if(!tensors_.empty()) {
       while (n > 0) {
@@ -378,17 +358,14 @@ Status MultiThreadedAsyncReader::Read(std::vector<Tensor>* &read_tensors, bool* 
         read_tensors->push_back(tensors_.front());
         tensors_.pop_front();
       }
-      LOG(INFO) << "(Reader) Task have read " << n;
       return Status::OK();
     } else {
       if(num_readers_done_ == reader_count_){
         *end_of_sequence = true;
         
-        LOG(INFO) << "(Reader) End of sequence reached, returning empty.";
         return Status::OK();
       }
       // Readers are not done, waiting on data...
-      LOG(INFO) << "(Reader) Task could not read, waiting... ";
       read_cv_.wait(l);
     }
   }

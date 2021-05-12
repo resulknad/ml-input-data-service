@@ -138,7 +138,6 @@ ServiceCacheGetOp::Dataset::~Dataset() {}
 
 std::unique_ptr<IteratorBase>
 ServiceCacheGetOp::Dataset::MakeIteratorInternal(const string& prefix) const {
-  VLOG(0) << "EASL - prefix to get op: " << prefix;
   return absl::make_unique<Iterator>(
       Iterator::Params{this, absl::StrCat(prefix, "::ServiceCacheGet")});
 }
@@ -193,12 +192,8 @@ ServiceCacheGetOp::Dataset::Iterator::Iterator(const Params& params)
 
 Status ServiceCacheGetOp::Dataset::Iterator::Initialize(
     IteratorContext* ctx) {
-  VLOG(0) << "EASL - Initializing ServiceCacheGet iterator";
-  VLOG(0) << "EASL - File format: " << dataset()->cache_format_;
-  VLOG(0) << "EASL - Compression format: " << dataset()->cache_compression_;
 
   for(auto dt: dataset()->output_dtypes_){
-    VLOG(0) << DataTypeString(dt);
   }
   reader_ =
       std::make_unique<tensorflow::data::easl::service_cache_util::Reader>(
@@ -222,11 +217,9 @@ Status ServiceCacheGetOp::Dataset::Iterator::GetNextInternal(
     IteratorContext* ctx, std::vector<Tensor>* out_tensors,
     bool* end_of_sequence) {
   mutex_lock l(mu_);
-  VLOG(0) << "EASL - entered cache get GetNextInternal";
   auto model = ctx->model();
 
   if(model){
-    VLOG(0) << "EASL - serviceCacheGet: there is indeed a model here...";
   }
   return reader_->Read(out_tensors, end_of_sequence);
 }

@@ -38,19 +38,6 @@ ArrowMetadata::ArrowMetadata() {
 
 Status ArrowMetadata::WriteData(const std::string& path) {
 
-  VLOG(0) << "ArrowUtil - WriteData - WriteData Called. Path = " << path;
-
-  for(TensorShape s : shapes_) {
-    VLOG(0) << "ArrowUtil - WriteData - TensorShape = " << s.DebugString();
-  }
-
-  for(auto t : partial_batch_shapes_) {
-    for(auto k : t.second) {
-      VLOG(0) << "ArrowUtil - WriteData - PartialTensorShape = " << k.DebugString();
-    }
-  }
-
-
   arrow::MemoryPool* pool = arrow::default_memory_pool();
 
   std::vector<std::shared_ptr<arrow::Array>> arrays;
@@ -71,7 +58,6 @@ Status ArrowMetadata::WriteData(const std::string& path) {
   std::string header = experimental_ ? "experimental" : "standard";
   schema_vector.push_back(arrow::field(header, rowShapeArr->type()));
 
-  VLOG(0) << "ArrowUtil - WriteData - Built Arrays";
 
 
   auto itr = partial_batch_shapes_.begin();
@@ -92,8 +78,6 @@ Status ArrowMetadata::WriteData(const std::string& path) {
     arrays.push_back(partialShapesArr);
     schema_vector.push_back(arrow::field(col_name, partialShapesArr->type()));
   }
-
-  VLOG(0) << "ArrowUtil - WriteData - Built Partial Batch Arrays";
 
 
   // create schema
@@ -116,8 +100,6 @@ Status ArrowMetadata::WriteData(const std::string& path) {
   };
   arrow::ipc::feather::WriteTable(*table, file.get(), wp);
 
-  VLOG(0) << "ArrowUtil - WriteData - Written Table";
-
   return Status::OK();
 }
 
@@ -127,7 +109,6 @@ Status ArrowMetadata::WriteMetadataToFile(const std::string& path) {
   if(num_worker_threads_ == 0) {
     WriteData(path);
   }
-  VLOG(0) << "ArrowUtil - WriteMetadataToFile successfully";
 
   return Status::OK();
 }
@@ -147,8 +128,6 @@ Status ArrowMetadata::ReadMetadataFromFile(Env* env, const std::string& path) {
   this->partial_batch_shapes_.clear();
   this->shapes_.clear();
 
-  VLOG(0) << "ArrowUtil - ReadMetadataFromFile - cleared buffs";
-
   // open file
   std::shared_ptr<arrow::Table> table;
   std::shared_ptr<arrow::io::MemoryMappedFile> mm_file;
@@ -157,8 +136,6 @@ Status ArrowMetadata::ReadMetadataFromFile(Env* env, const std::string& path) {
   std::shared_ptr<arrow::ipc::feather::Reader> reader;
   reader = arrow::ipc::feather::Reader::Open(mm_file).MoveValueUnsafe();
   reader->Read(&table);
-
-  VLOG(0) << "ArrowUtil - ReadMetadataFromFile - loaded file";
 
   arrow::TableBatchReader tr(*table.get());
   std::shared_ptr<arrow::RecordBatch> batch;
@@ -201,8 +178,6 @@ Status ArrowMetadata::ReadMetadataFromFile(Env* env, const std::string& path) {
     partial_batch_shapes_.insert({col_name, partial_shapes});
   }
 
-  VLOG(0) << "ArrowUtil - Successfully Read Metadata from file";
-
   return Status::OK();
 }
 
@@ -210,7 +185,6 @@ Status ArrowMetadata::AddPartialBatch(const string& doc, const std::vector<Tenso
   mutex_lock l(mu_);  // unlocked automatically upon function return
   this->partial_batch_shapes_.insert({doc, last_batch_shape});
   this->partial_batching_ = true;
-  VLOG(0) << "ArrowUtil - AddPartialBatch successfully";
 
   return Status::OK();
 }
@@ -219,12 +193,9 @@ Status ArrowMetadata::GetPartialBatches(string doc, std::vector<TensorShape> *ou
   auto it = partial_batch_shapes_.find(doc);
   if (it != partial_batch_shapes_.end()) {
     *out_last_batch_shape = partial_batch_shapes_[doc];
-    VLOG(0) << "ArrowUtil - GetPartialBatch --> partial batch file";
 
   } else {  // no partial batches for this file
     // do nothing as out_last_batch_shape points to empty vector already
-    VLOG(0) << "ArrowUtil - GetPartialBatch --> not partial batch file";
-
   }
   return Status::OK();
 }
@@ -235,7 +206,6 @@ bool ArrowMetadata::IsPartialBatching() {
 
 Status ArrowMetadata::GetRowShape(std::vector<TensorShape> *out_row_shape) {
   *out_row_shape = shapes_;
-  VLOG(0) << "ArrowUtil - GetRowShape successfully";
 
   return Status::OK();
 }
@@ -245,7 +215,6 @@ Status ArrowMetadata::SetRowShape(std::vector<TensorShape> row_shape) {  //TODO:
     mutex_lock l(mu_);  // unlocked automatically upon function return
     this->shapes_ = std::move(row_shape);
   }
-  VLOG(0) << "ArrowUtil - SetRowShape successfully";
 
   return Status::OK();
 }
@@ -253,7 +222,6 @@ Status ArrowMetadata::SetRowShape(std::vector<TensorShape> row_shape) {  //TODO:
 Status ArrowMetadata::RegisterWorker() {
   mutex_lock l(mu_);  // unlocked automatically upon function return
   num_worker_threads_++;
-  VLOG(0) << "Registered worker, worker count = " << num_worker_threads_;
   return Status::OK();
 }
 
@@ -338,7 +306,6 @@ public:
                       int64 batch_size, ::tensorflow::DataType* out_dtype,
                       TensorShape* out_shape) {
 
-      VLOG(0) << "ArrowUtil - AssignSpec - Invoked";
 
       i_ = i;  // we want to get i-th element of array -> tensor data
       batch_size_ = batch_size;
@@ -357,7 +324,6 @@ public:
 protected:
     template <typename ArrayType>
     arrow::Status VisitPrimitive(const ArrayType& array) {
-      VLOG(0) << "ArrowUtil - AssignSpecImpl - VisitPrimitive - Invoked";
 
       if (out_dtype_ != nullptr) {
         GetTensorFlowType(array.type(), out_dtype_);
@@ -387,7 +353,6 @@ protected:
 #undef VISIT_PRIMITIVE
 
     virtual arrow::Status Visit(const arrow::ListArray& array) override {
-      VLOG(0) << "ArrowUtil - AssignSpecImpl - VisitPrimitive - Invoked";
 
       // values in the outermost array are tensors with their corresponding dimensionality and can
       // be indexed by i_. if we flatten first dimension, value_offset(i_) gives the new idx.
@@ -450,7 +415,6 @@ public:
 
 protected:
     virtual arrow::Status Visit(const arrow::BooleanArray& array) {
-      VLOG(0) << "ArrowUtil - ArrowAssignTensorImpl - Visit(BooleanArray) - Invoked";
 
       // Must copy one value at a time because Arrow stores values as bits
       auto shape = out_tensor_->shape();
@@ -467,7 +431,6 @@ protected:
 
     template <typename ArrayType>
     arrow::Status VisitFixedWidth(const ArrayType& array) {
-      VLOG(0) << "ArrowUtil - ArrowAssignTensorImpl - VisitFixedWidth - Invoked";
 
 
       const auto& fw_type =
@@ -511,7 +474,6 @@ return VisitFixedWidth(array);                          \
 #undef VISIT_FIXED_WITH
 
     virtual arrow::Status Visit(const arrow::ListArray& array) override {
-      VLOG(0) << "ArrowUtil - ArrowAssignTensorImpl - Visit(ListArray) - Invoked";
 
       int32 values_offset = array.value_offset(i_);   // i_ is always 0 except for the outermost call
       int32 curr_array_length = array.value_length(i_);
@@ -916,10 +878,8 @@ arrow::Status GetArrayFromDataExperimental(
         std::vector<const char *>& data_column,
         std::shared_ptr<arrow::Array>* out_array,
         int64 last_buff_len) {
-  VLOG(0) << "ArrowUtil - GetArrayFromDataExperimental - Invoked";
   arrow::StringBuilder data_builder(arrow::default_memory_pool());
 
-  VLOG(0) << "ArrowUtil - GetArrayFromDataExperimental - Created DataBuilder";
 
   for(int i = 0; i < data_column.size() - 1; i++) {
     const char* buff = data_column[i];
@@ -927,14 +887,10 @@ arrow::Status GetArrayFromDataExperimental(
   }
   // last tensor possibly partially batched data
   const char* buff = data_column[data_column.size() - 1];
-  ARROW_RETURN_NOT_OK(data_builder.Append(buff, last_buff_len));
 
-  VLOG(0) << "ArrowUtil - GetArrayFromDataExperimental - Appended Values";
 
   std::shared_ptr<arrow::Array> arrow_array;
   ARROW_RETURN_NOT_OK(data_builder.Finish(&arrow_array));
-
-  VLOG(0) << "ArrowUtil - GetArrayFromDataExperimental - Appended Values";
 
   *out_array = arrow_array;
 
@@ -945,8 +901,6 @@ Status AssignTensorExperimental(
         std::shared_ptr<arrow::Array> array,
         int64 i,
         Tensor* out_tensor) {
-
-  VLOG(0) << "ArrowUtil - AssignTensorExperimental - Invoked";
 
   arrow::StringArray* str_arr = dynamic_cast<arrow::StringArray*>(array.get());
 

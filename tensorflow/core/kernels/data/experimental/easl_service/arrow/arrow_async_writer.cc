@@ -28,9 +28,7 @@ namespace {
 
 ArrowAsyncWriter::ArrowAsyncWriter(const int writer_count) : MultiThreadedAsyncWriter(writer_count) {
   metadata_ = std::make_shared<ArrowUtil::ArrowMetadata>();
-  VLOG(0) << "ArrowAsyncWriter created";
   metadata_->SetExperimental(experimental_);
-  VLOG(0) << "ArrowAsyncWriter setting experimental";
 
 }
 
@@ -43,7 +41,6 @@ Status ArrowAsyncWriter::WriterThread(Env* env, const std::string& shard_directo
   uint64 split_id = 0; // name all produced arrow files by this thread
 
   TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(shard_directory));
-  LOG(INFO) << "(Writer_" << writer_id << ") Created Dir ";
 
   // register thread for concurrently writing to arrowMetadata file
   metadata_->RegisterWorker();
@@ -53,7 +50,6 @@ Status ArrowAsyncWriter::WriterThread(Env* env, const std::string& shard_directo
   arrowWriter = absl::make_unique<ArrowWriter>();
 
   int count = 0;
-  LOG(INFO) << "(Writer_" << writer_id << ") Starting to write ";
 
   // consume first tensor before creating arrow writer -> metadata needs row shape first
   snapshot_util::ElementOrEOF be;
@@ -62,12 +58,8 @@ Status ArrowAsyncWriter::WriterThread(Env* env, const std::string& shard_directo
                                          compression, output_types, metadata_));
 
   while (true) {
-    LOG(INFO) << "(Writer_" << writer_id << ") Read - EOF: "
-              << be.end_of_sequence << " - Total Rows: " << ++count;
     if (be.end_of_sequence) {
       TF_RETURN_IF_ERROR(arrowWriter->Close());
-      LOG(INFO) << "(Writer_" << writer_id << ") Closed w/ total read "
-                << count;
       break;
     }
 
@@ -81,9 +73,6 @@ Status ArrowAsyncWriter::WriterThread(Env* env, const std::string& shard_directo
 
     storageEstimate += bytes_per_row;
 
-    LOG(INFO) << "ArrowAsyncWriter - storageEstimate: " << storageEstimate << "  bytes_per_row: "
-                 "" << bytes_per_row << "   Memory threshold: " << memoryThreshold / writer_count_;
-
     // create new reader if memoryThreshold exceeded
     if(storageEstimate > memoryThreshold / writer_count_) {
       TF_RETURN_IF_ERROR(arrowWriter->Close());
@@ -92,8 +81,6 @@ Status ArrowAsyncWriter::WriterThread(Env* env, const std::string& shard_directo
       arrowWriter = absl::make_unique<ArrowWriter>();
       TF_RETURN_IF_ERROR(arrowWriter->Create(env, GetFileName(shard_directory, writer_id, ++split_id),
                                              compression, output_types, metadata_));
-      LOG(INFO) << "(Writer_" << writer_id << ") Exceeded memory threshold, created new file (split_id = "
-                                              "" << split_id <<")...";
     }
 
     TF_RETURN_IF_ERROR(arrowWriter->WriteTensors(be.value));
@@ -112,12 +99,10 @@ bool ArrowAsyncWriter::ProducerSpaceAvailable() {
 }
 
 void ArrowAsyncWriter::Write(const std::vector<Tensor> &tensors) {
-  VLOG(0) << "EASL - Entering Write (Arrow Async Writer)";
 
   if(!first_row_info_set_) {
     for(Tensor t : tensors) {
       bytes_per_row_ += t.TotalBytes();
-      VLOG(0) << "EASL bytes per row: " << bytes_per_row_;
       first_row_shape_.push_back(t.shape());
     }
     first_row_info_set_ = true;

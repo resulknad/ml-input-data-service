@@ -13,7 +13,6 @@ namespace arrow_async_reader{
 ArrowAsyncReader::ArrowAsyncReader(Env *env, const std::string &target_dir, const DataTypeVector &output_dtypes,
         const std::vector<PartialTensorShape> &output_shapes, int reader_count) :
         MultiThreadedAsyncReader(env, target_dir, output_dtypes, output_shapes, reader_count) {
-  VLOG(0) << "Arrow Async Reader Created, reading metadata...";
   metadata_ = std::make_shared<ArrowUtil::ArrowMetadata>();
   metadata_->ReadMetadataFromFile(env, target_dir);
 }
@@ -24,7 +23,6 @@ Status ArrowAsyncReader::ReaderThread(
         std::vector<PartialTensorShape> output_shapes) {
 
 
-  LOG(INFO) << "(Reader_" << writer_id << ") Starting reading task\n\tREADING D_TYPE:\t";
   metadata_->RegisterWorker();
 
   tensorflow::profiler::TraceMe activity(
@@ -35,10 +33,8 @@ Status ArrowAsyncReader::ReaderThread(
   while (!end_of_sequence) {
     std::string file_path;
     Consume(&file_path, &end_of_sequence);
-    LOG(INFO) << "(Reader_" << writer_id << ") Got file " << file_path;
 
     if (!end_of_sequence) {
-      LOG(INFO) << "(Reader_" << writer_id << ") Reading file " << file_path;
 
       std::unique_ptr<ArrowReader> arrowReader;
 
@@ -47,11 +43,9 @@ Status ArrowAsyncReader::ReaderThread(
               output_types, output_shapes, metadata_);
 
       if(s != Status::OK()) {
-        LOG(INFO) << "Internal error in ArrowReader " << s.ToString();
         return s;
       }
 
-      LOG(INFO) << "(Reader_" << writer_id << ") Starting to read file " << file_path;
       int64 count = 0;
       bool eof = false;
       while (!eof) {
@@ -61,7 +55,6 @@ Status ArrowAsyncReader::ReaderThread(
         if (errors::IsOutOfRange(s)) {
           eof = true;  // can't break because of TFRecordReader.
         } else if(s != Status::OK()) {
-          LOG(INFO) << "Internal error in ArrowReader " << s.ToString();
           return s;
         }
 
@@ -69,8 +62,6 @@ Status ArrowAsyncReader::ReaderThread(
           Add(tensors);
         }
       }
-      LOG(INFO) << "(Reader_" << writer_id << ") Finished reading file " << file_path
-                << " with " << count << " elements.";
     }
   }
 
@@ -85,7 +76,6 @@ Status ArrowAsyncReader::ReaderThread(
   num_readers_done_++;
   read_cv_.notify_one();
 
-  LOG(INFO) << "(Reader_" << writer_id << ") Finishing reading task";
   return Status::OK();
 }
 

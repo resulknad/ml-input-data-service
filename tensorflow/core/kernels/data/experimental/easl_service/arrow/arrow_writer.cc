@@ -20,7 +20,6 @@ Status ArrowWriter::Create(Env *env, const std::string &filename,
                          const DataTypeVector &dtypes,
                          std::shared_ptr<ArrowUtil::ArrowMetadata> metadata) {
 
-  VLOG(0) << "ArrowWriter - Create - Invoked";
 
   this->metadata_ = metadata;
   this->env_ = env;
@@ -49,7 +48,6 @@ Status ArrowWriter::Create(Env *env, const std::string &filename,
     std::vector<const char *> col;
     tensor_data_.push_back(col);
   }
-  VLOG(0) << "ArrowWriter - Create - Finished";
 
   return Status::OK();
 }
@@ -67,7 +65,6 @@ arrow::Compression::type ArrowWriter::getArrowCompressionType(){
 
 Status ArrowWriter::Close() {
 
-  VLOG(0) << "ArrowWriter - Close - invoked. Dims_initialized: " << tensor_data_len_initialized_;
   // check if writer has any data, if not just return.
   if(!tensor_data_len_initialized_) {
     return Status::OK();
@@ -81,7 +78,6 @@ Status ArrowWriter::Close() {
     std::shared_ptr<arrow::Array> arr_ptr;
 
     if(arrow_dtypes_[i]->Equals(arrow::utf8()) || !metadata_->IsExperimental()) {
-      VLOG(0) << "ArrowWriter - Close - GetArray String";
       // check for partial batches
       auto last_tensor_dims = !partial_shapes_.empty() ? partial_shapes_[i].dim_sizes() : shapes_[i].dim_sizes();
       CHECK_ARROW(ArrowUtil::GetArrayFromData(
@@ -94,7 +90,6 @@ Status ArrowWriter::Close() {
         }
       }
     } else {
-      VLOG(0) << "ArrowWriter - Close - GetArray Experimental";
       // check for partial batches
       auto last_row_len = !partial_shapes_.empty() ? last_row_len_[i] : tensor_data_len_[i];
       CHECK_ARROW(ArrowUtil::GetArrayFromDataExperimental(
@@ -105,7 +100,6 @@ Status ArrowWriter::Close() {
     schema_vector.push_back(arrow::field(std::to_string(i), arr_ptr->type()));
   }
 
-  VLOG(0) << "ArrowWriter - Close - conversion to arrow arrays finished";
 
 
   // create schema from fields
@@ -113,7 +107,6 @@ Status ArrowWriter::Close() {
   std::shared_ptr<arrow::Table> table;
   table = arrow::Table::Make(schema, arrays);
 
-  VLOG(0) << "ArrowWriter - Close - table created";
 
 
   // write table to file:
@@ -130,7 +123,6 @@ Status ArrowWriter::Close() {
   CHECK_ARROW(arrow::ipc::feather::WriteTable(*table, file.get(), wp));
   CHECK_ARROW(file->Close());
 
-  VLOG(0) << "ArrowWriter - Close - written table to file";
 
   tensor_data_.clear();
   tensors_.clear();
@@ -145,13 +137,10 @@ Status ArrowWriter::Close() {
 
 // Assumption: tensors contains one row of the table.
 Status ArrowWriter::WriteTensors(std::vector<Tensor> &tensors) {
-  VLOG(0) << "ArrowWriter - WriteTensors - Invoked. dims_initialized = " << tensor_data_len_initialized_;
 
   for(Tensor t : tensors) {
-    VLOG(0) << "ArrowWriter - WriteTensors - processing tensor with " << t.NumElements() << " elements";
     // need to get size of tensor buffer for conversion.
     if(!tensor_data_len_initialized_) {
-      VLOG(0) << "ArrowWriter - WriteTensors - Initializing tensor_data_len_ --> Reading Total Bytes: " << t.TotalBytes();
 
       tensor_data_len_.push_back(t.TotalBytes());
       tensor_data_len_initialized_ = tensor_data_len_.size() >= ncols_;
@@ -159,13 +148,11 @@ Status ArrowWriter::WriteTensors(std::vector<Tensor> &tensors) {
 
     // check whether shape of current tensor conforms to shape of other tensors in the same column
     if(t.shape() != shapes_[current_col_idx_]) {
-      VLOG(0) << "ArrowWriter - WriteTensors - Tensor not conforming to col shape -> adding partial tensor";
       partial_shapes_.push_back(t.shape());
       last_row_len_.push_back(t.TotalBytes());
     }
 
    if(arrow_dtypes_[current_col_idx_]->Equals(arrow::utf8())) {
-     VLOG(0) << "ArrowWriter - WriteTensors - Processing String data...";
 
 	    // get string data for tensor
       auto str_data = reinterpret_cast<const tstring*>(t.data());
@@ -184,13 +171,11 @@ Status ArrowWriter::WriteTensors(std::vector<Tensor> &tensors) {
      // accumulate buffers in correct column:
      tensor_data_[current_col_idx_].push_back((const char*) str_refs);
    } else { // if not a string, it is a simple data type -> don't touch data
-     VLOG(0) << "ArrowWriter - WriteTensors - Processing non-string data...";
 
      // accumulate buffers in correct column:
      tensor_data_[current_col_idx_].push_back(t.tensor_data().data());
    }
 
-    VLOG(0) << "ArrowWriter - WriteTensors - Added data_buffer to corresponding column " << current_col_idx_;
     current_col_idx_ = (current_col_idx_ + 1) % ncols_;
 
     // make ArrowWriter owner of tensors s.t. buffers don't get de-allocated.
