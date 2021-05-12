@@ -186,7 +186,6 @@ Status MultiThreadedAsyncWriter::WriterThread(Env* env,
 
     if (be.end_of_sequence) {
       writer->Close();
-                << count;
       break;
     }
 
