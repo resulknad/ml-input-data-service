@@ -1664,8 +1664,10 @@ Model::ModelMetrics Model::CollectMetrics() {
     }
   }
 
+  VLOG(1) << "(Model::CollectMetrics::BFS) Printing node order ";
   while (!queue.empty()) {
     auto node = queue.front();
+    VLOG(1) << "(Model::CollectMetrics::BFS) > " << node->long_name();
     queue.pop_front();
     stack.push_front(node);
 
@@ -1696,13 +1698,13 @@ Model::ModelMetrics Model::CollectMetrics() {
   }
 
   // Debug code below
-  // for (const auto& entry : *metrics) {
-  //   VLOG(1) << "(Model::CollectMetrics::Metrics) At node " << entry.first;
-  //   VLOG(1) << " > Node time " << node_times[entry.first];
-  //   VLOG(1) << " > Prefix time " << prefix_times[entry.first];
-  //   VLOG(1) << " > Printing logs ";
-  //   entry.second.log_metrics();
-  // }
+  for (const auto& entry : *metrics) {
+    VLOG(1) << "(Model::CollectMetrics::Metrics) At node " << entry.first;
+    // VLOG(1) << " > Node time " << node_times[entry.first];
+    // VLOG(1) << " > Prefix time " << prefix_times[entry.first];
+    VLOG(1) << " > Printing logs ";
+    entry.second.log_metrics();
+  }
 
   return metrics;
 }

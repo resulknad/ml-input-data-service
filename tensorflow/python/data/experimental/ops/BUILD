@@ -369,6 +369,19 @@ py_library(
 )
 
 py_library(
+    name = "sleep",
+    srcs = ["sleep.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":scan_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:util",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
+py_library(
     name = "snapshot",
     srcs = [
         "snapshot.py",
@@ -535,6 +548,7 @@ py_library(
         ":scan_ops",
         ":service_cache_ops",
         ":shuffle_ops",
+        ":sleep",
         ":snapshot",
         ":stats_ops",
         ":take_while_ops",
