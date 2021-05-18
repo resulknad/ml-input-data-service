@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
+#include "tensorflow/core/platform/threadpool.h"
 
 namespace tensorflow {
 namespace data {
@@ -128,16 +129,46 @@ class SleepDatasetOp : public UnaryDatasetOpKernel {
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
                              bool* end_of_sequence) override {
-        mutex_lock l(mu_);
-        // RecordStop(ctx);
-        bool cancelled = mu_.AwaitWithDeadline(
-            Condition(&cancelled_),
-            EnvTime::NowNanos() +
-                dataset()->sleep_microseconds_ * EnvTime::kMicrosToNanos);
-        // RecordStart(ctx);
-        if (cancelled) {
-          return errors::Cancelled("Operation was cancelled");
-        }
+        const int64 sleep_microseconds = dataset()->sleep_microseconds_;
+        Notification n1, n2, n3, n4;
+        auto thread_pool = absl::make_unique<thread::ThreadPool>(ctx->env(), 
+          ThreadOptions(), "Sleep_Thread_Pool", 4, false);
+
+        VLOG(1) << "(SleepDatasetOp::GetNextInternal) Starting sleep thread 1";
+        thread_pool->Schedule([sleep_microseconds, &n1] {
+          std::this_thread::sleep_for(
+            std::chrono::microseconds(sleep_microseconds));
+          n1.Notify();
+        });
+
+        VLOG(1) << "(SleepDatasetOp::GetNextInternal) Starting sleep thread 2";
+        thread_pool->Schedule([sleep_microseconds, &n2] {
+          std::this_thread::sleep_for(
+            std::chrono::microseconds(sleep_microseconds));
+          n2.Notify();
+        });
+
+        VLOG(1) << "(SleepDatasetOp::GetNextInternal) Starting sleep thread 3";
+        thread_pool->Schedule([sleep_microseconds, &n3] {
+          std::this_thread::sleep_for(
+            std::chrono::microseconds(sleep_microseconds));
+          n3.Notify();
+        });
+
+        VLOG(1) << "(SleepDatasetOp::GetNextInternal) Starting sleep thread 4";
+        thread_pool->Schedule([sleep_microseconds, &n4] {
+          std::this_thread::sleep_for(
+            std::chrono::microseconds(sleep_microseconds));
+          n4.Notify();
+        });
+
+        VLOG(1) << "(SleepDatasetOp::GetNextInternal) Waiting for notifications";
+        n1.WaitForNotification();
+        n2.WaitForNotification();
+        n3.WaitForNotification();
+        n4.WaitForNotification();
+        VLOG(1) << "(SleepDatasetOp::GetNextInternal) Got all notifications";
+
         return input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
       }
 
