@@ -29,7 +29,7 @@ class MultiThreadedAsyncWriter {
  public:
   MultiThreadedAsyncWriter(const int writer_count);
 
-  void Initialize(Env* env, int64 file_index,
+  virtual void Initialize(Env* env, int64 file_index,
                   const std::string& shard_directory, uint64 checkpoint_id,
                   const std::string& compression, int64 version,
                   const DataTypeVector& output_types,
@@ -37,11 +37,11 @@ class MultiThreadedAsyncWriter {
 
   // Writes the given tensors. The method is non-blocking and returns without
   // waiting for the element to be written.
-  virtual void Write(const std::vector<Tensor>& tensors) TF_LOCKS_EXCLUDED(mu_);
+  virtual void Write(std::vector<Tensor>* tensors) TF_LOCKS_EXCLUDED(mu_);
 
   // Signals the end of input. The method is non-blocking and returns without
   // waiting for the writer to be closed.
-  void SignalEOF() TF_LOCKS_EXCLUDED(mu_);
+  virtual void SignalEOF() TF_LOCKS_EXCLUDED(mu_);
 
  protected:
   void Consume(snapshot_util::ElementOrEOF* be) TF_LOCKS_EXCLUDED(mu_);
@@ -84,7 +84,7 @@ class Writer {
          const int writer_count = 8,
          const int writer_version = 0);
 
-  Status Write(const std::vector<Tensor>& tensors);
+  Status Write(std::vector<Tensor>* tensors);
 
   Status Close();
 

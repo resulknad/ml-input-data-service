@@ -238,8 +238,7 @@ Status ServiceCachePutOp::Dataset::Iterator::GetNextInternal(
     
     return Status::OK();
   }
-  std::vector<Tensor> tensors = *out_tensors;
-  return writer_->Write(tensors);
+  return writer_->Write(out_tensors);
 }
 
 namespace {

@@ -37,7 +37,6 @@ Status ArrowAsyncWriter::WriterThread(Env* env, const std::string& shard_directo
                     int64 version, DataTypeVector output_types) {
 
   uint64_t storageEstimate = 0; // estimated storage space on disk in bytes
-  uint64_t bytes_per_row = 0; // storage size of a single dataset row (single be.value). Assume all have the same size.
   uint64 split_id = 0; // name all produced arrow files by this thread
 
   TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(shard_directory));
@@ -48,8 +47,6 @@ Status ArrowAsyncWriter::WriterThread(Env* env, const std::string& shard_directo
   // create arrow writer
   std::unique_ptr<ArrowWriter> arrowWriter;
   arrowWriter = absl::make_unique<ArrowWriter>();
-
-  int count = 0;
 
   // consume first tensor before creating arrow writer -> metadata needs row shape first
   snapshot_util::ElementOrEOF be;
@@ -63,20 +60,12 @@ Status ArrowAsyncWriter::WriterThread(Env* env, const std::string& shard_directo
       break;
     }
 
-    // update memory estimate:
-    if(bytes_per_row == 0) {
-      std::vector<Tensor> &tensors = be.value;
-      for(Tensor t : tensors) {
-        bytes_per_row += t.TotalBytes();
-      }
-    }
-
-    storageEstimate += bytes_per_row;
+    storageEstimate += bytes_per_row_;
 
     // create new reader if memoryThreshold exceeded
     if(storageEstimate > memoryThreshold / writer_count_) {
       TF_RETURN_IF_ERROR(arrowWriter->Close());
-      storageEstimate = bytes_per_row; // reset storage estimate
+      storageEstimate = bytes_per_row_; // reset storage estimate
       // create new writer for remaining tensors:
       arrowWriter = absl::make_unique<ArrowWriter>();
       TF_RETURN_IF_ERROR(arrowWriter->Create(env, GetFileName(shard_directory, writer_id, ++split_id),
@@ -98,10 +87,10 @@ bool ArrowAsyncWriter::ProducerSpaceAvailable() {
   return (deque_.size() * bytes_per_row_) < producer_threshold_;
 }
 
-void ArrowAsyncWriter::Write(const std::vector<Tensor> &tensors) {
+void ArrowAsyncWriter::Write(std::vector<Tensor> *tensors) {
 
   if(!first_row_info_set_) {
-    for(Tensor t : tensors) {
+    for(Tensor t : *tensors) {
       bytes_per_row_ += t.TotalBytes();
       first_row_shape_.push_back(t.shape());
     }
@@ -112,7 +101,7 @@ void ArrowAsyncWriter::Write(const std::vector<Tensor> &tensors) {
   mu_.Await( Condition(this, &ArrowAsyncWriter::ProducerSpaceAvailable));
 
   snapshot_util::ElementOrEOF element;
-  element.value = tensors;
+  element.value = *tensors;
   deque_.push_back(std::move(element));
 }
 

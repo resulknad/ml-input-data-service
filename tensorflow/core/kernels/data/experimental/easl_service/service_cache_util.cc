@@ -59,7 +59,7 @@ Status Writer::Initialize(){
   return WriteMetadataFile(env_, target_dir_, output_dtypes_, output_shapes_);
 }
 
-Status Writer::Write(const std::vector<Tensor>& tensors){
+Status Writer::Write(std::vector<Tensor>* tensors){
   async_writer_->Write(tensors);
   // TODO (damien-aymon) check for errors in the async writer
   return Status::OK();
@@ -121,9 +121,9 @@ void MultiThreadedAsyncWriter::Initialize(Env *env, int64 file_index, const std:
   }
 }
 
-void MultiThreadedAsyncWriter::Write(const std::vector<Tensor>& tensors) {
+void MultiThreadedAsyncWriter::Write(std::vector<Tensor>* tensors) {
   if(!first_row_info_set_) {
-    for(Tensor t : tensors) {
+    for(Tensor t : *tensors) {
       bytes_per_row_ += t.TotalBytes();
     }
     first_row_info_set_ = true;
@@ -134,7 +134,7 @@ void MultiThreadedAsyncWriter::Write(const std::vector<Tensor>& tensors) {
             &MultiThreadedAsyncWriter::ProducerSpaceAvailable));
 
   snapshot_util::ElementOrEOF element;
-  element.value = tensors;
+  element.value = *tensors;
   deque_.push_back(std::move(element));
 }
 
