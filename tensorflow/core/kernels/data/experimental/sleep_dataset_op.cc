@@ -134,40 +134,40 @@ class SleepDatasetOp : public UnaryDatasetOpKernel {
         auto thread_pool = absl::make_unique<thread::ThreadPool>(ctx->env(), 
           ThreadOptions(), "Sleep_Thread_Pool", 4, false);
 
-        VLOG(1) << "(SleepDatasetOp::GetNextInternal) Starting sleep thread 1";
+        VLOG(2) << "(SleepDatasetOp::GetNextInternal) Starting sleep thread 1";
         thread_pool->Schedule([sleep_microseconds, &n1] {
           std::this_thread::sleep_for(
             std::chrono::microseconds(sleep_microseconds));
           n1.Notify();
         });
 
-        VLOG(1) << "(SleepDatasetOp::GetNextInternal) Starting sleep thread 2";
+        VLOG(2) << "(SleepDatasetOp::GetNextInternal) Starting sleep thread 2";
         thread_pool->Schedule([sleep_microseconds, &n2] {
           std::this_thread::sleep_for(
             std::chrono::microseconds(sleep_microseconds));
           n2.Notify();
         });
 
-        VLOG(1) << "(SleepDatasetOp::GetNextInternal) Starting sleep thread 3";
+        VLOG(2) << "(SleepDatasetOp::GetNextInternal) Starting sleep thread 3";
         thread_pool->Schedule([sleep_microseconds, &n3] {
           std::this_thread::sleep_for(
             std::chrono::microseconds(sleep_microseconds));
           n3.Notify();
         });
 
-        VLOG(1) << "(SleepDatasetOp::GetNextInternal) Starting sleep thread 4";
+        VLOG(2) << "(SleepDatasetOp::GetNextInternal) Starting sleep thread 4";
         thread_pool->Schedule([sleep_microseconds, &n4] {
           std::this_thread::sleep_for(
             std::chrono::microseconds(sleep_microseconds));
           n4.Notify();
         });
 
-        VLOG(1) << "(SleepDatasetOp::GetNextInternal) Waiting for notifications";
+        VLOG(2) << "(SleepDatasetOp::GetNextInternal) Waiting for notifications";
         n1.WaitForNotification();
         n2.WaitForNotification();
         n3.WaitForNotification();
         n4.WaitForNotification();
-        VLOG(1) << "(SleepDatasetOp::GetNextInternal) Got all notifications";
+        VLOG(2) << "(SleepDatasetOp::GetNextInternal) Got all notifications";
 
         return input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
       }
