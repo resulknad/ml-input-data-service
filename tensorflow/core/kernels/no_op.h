@@ -23,7 +23,11 @@ namespace tensorflow {
 class NoOp : public OpKernel {
  public:
   explicit NoOp(OpKernelConstruction* context) : OpKernel(context) {}
-  void Compute(OpKernelContext* context) override {}
+  void Compute(OpKernelContext* context) override {
+    const int64 sleep_time_micro = context->input(0).flat<int64>()(0);
+    std::this_thread::sleep_for(
+            std::chrono::microseconds(sleep_time_micro));
+  }
   bool IsExpensive() override { return false; }
 };
 

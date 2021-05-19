@@ -18,6 +18,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-REGISTER_OP("NoOp").SetShapeFn(shape_inference::NoOutputs);
+REGISTER_OP("NoOp")
+    .Input("wait_time_micro: int64")
+    .SetShapeFn(shape_inference::NoOutputs);
 
 }  // namespace tensorflow
