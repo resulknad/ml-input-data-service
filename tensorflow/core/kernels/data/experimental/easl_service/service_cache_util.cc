@@ -300,7 +300,11 @@ void MultiThreadedAsyncReader::Add(std::vector<Tensor>& tensors) {
   VLOG(0) << "EASL - entering read - Add";
   mutex_lock l(mu_add_);
   if(!first_row_info_set_) {
-    bytes_per_tensor_ = tensors[0].TotalBytes();  // TODO: this assumes all tensors equal shape --> change!
+    uint64 bytes_per_row = 0;
+    for (Tensor t : tensors) {
+      bytes_per_row += t.TotalBytes();
+    }
+    bytes_per_tensor_ = uint64(bytes_per_row / tensors.size());  // TODO: this is an entire division, might need an update.
     VLOG(0) << "EASL - set bytes per tensor: " << bytes_per_tensor_;
     first_row_info_set_ = true;
   }
