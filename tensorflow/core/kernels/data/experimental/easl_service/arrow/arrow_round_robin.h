@@ -24,12 +24,6 @@ public:
 
     void Write(std::vector<Tensor>* tensors) override;
 
-    void Initialize(Env* env, int64 file_index,
-                    const std::string& shard_directory, uint64 checkpoint_id,
-                    const std::string& compression, int64 version,
-                    const DataTypeVector& output_types,
-                    std::function<void(Status)> done) override;
-
     Status WriterThread(Env* env, const std::string& shard_directory,
                         uint64 checkpoint_id, const std::string& compression,
                         int64 version, DataTypeVector output_types) override;
@@ -42,8 +36,11 @@ private:
 
   // threshold used to control bytes in producer vec. Default or set via version (TODO)
   size_t thresh_ = 1e9;
+  size_t available_row_capacity_ = 0;  // how many rows can be inserted without checking bytes_written?
   mutex mu_by_;
-  size_t tensor_bytes_in_mem_ = 0;  // guarded by mu_by_, gets reduced once writer releases tensors.
+  size_t bytes_written_ = 0;  // guraded by mu_by_ --> bytes written out to disk by writers
+  size_t bytes_received_ = 0;  // bytes received by iterator. Make sure bytes_received_ - bytes_written < thresh_
+  condition_variable capacity_available_;  // if pipeline full, iterator thread waits until capacity available
 };
 
 class ArrowWriter {
