@@ -901,8 +901,8 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
   // EASL: Update the client metrics
   easl::ModelMetrics::Metrics metrics(request->avg_get_next_processing_time(), 
     request->avg_inter_arrival_time());
-  // metadata_store_.UpdateModelMetrics(job->job_id, request->job_client_id(), 
-  //   metrics);
+  metadata_store_.UpdateModelMetrics(job->job_id, request->job_client_id(), 
+    metrics);
 
   if (request->optional_current_round_case() ==
       ClientHeartbeatRequest::kCurrentRound) {

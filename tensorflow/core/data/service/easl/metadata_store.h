@@ -52,7 +52,7 @@ class ModelMetrics {
 
     // Update the values for a client
     Status UpdateClientMetrics(int64 client_id, Metrics& metrics);
-    Status GetClientMetrics(int64 client_id, Metrics* metrics);
+    Status GetClientMetrics(int64 client_id, Metrics** metrics);
 
     // The keys are the client id
     MetricsCollection metrics_;
@@ -99,7 +99,7 @@ class NodeMetrics {
 
     // Get or update the metrics of a worker
     Status UpdateWorkerMetrics(string worker_address, Metrics& metrics);
-    Status GetWorkerMetrics(string worker_address, Metrics* metrics);
+    Status GetWorkerMetrics(string worker_address, Metrics** metrics);
   
     // The key here is the worker address
     MetricsCollection metrics_;
@@ -114,7 +114,7 @@ class InputPipelineMetrics {
     InputPipelineMetrics() {}
 
     // Get the metrics for a single node
-    Status GetNodeMetrics(string long_name, NodeMetrics* metrics);
+    Status GetNodeMetrics(string long_name, NodeMetrics** metrics);
 
     // Get the metrics from the same worker for each node in the graph 
     Status GetWorkerMetrics(string worker_address, 
@@ -151,12 +151,12 @@ class MetadataStore {
   Status RemoveJob(int64 job_id);
 
   // Get metrics
-  Status GetJobMetrics(int64 job_id, JobMetrics* metrics) const;
+  Status GetJobMetrics(int64 job_id, JobMetrics** metrics) const;
 
-  Status GetModelMetrics(int64 job_id, ModelMetrics* metrics) const;
+  Status GetModelMetrics(int64 job_id, ModelMetrics** metrics) const;
 
   Status GetInputPipelineMetrics(int64 job_id, 
-    InputPipelineMetrics* metrics) const;
+    InputPipelineMetrics** metrics) const;
 
   // Update or create the metrics for a client
   Status UpdateModelMetrics(int64 job_id, int64 client_id, 
