@@ -35,11 +35,10 @@ Status ModelMetrics::UpdateClientMetrics(int64 client_id,
   return Status::OK();
 }
 
-Status ModelMetrics::GetClientMetrics(int64 client_id, 
-  std::shared_ptr<Metrics> metrics) {
+Status ModelMetrics::GetClientMetrics(int64 client_id, Metrics* metrics) {
   auto it = metrics_.find(client_id);
   if (it != metrics_.end()) {
-    metrics = it->second;
+    metrics = it->second.get();
     return Status::OK();
   }
   return errors::NotFound("No metrics under the client with id ", client_id);
@@ -85,11 +84,10 @@ Status NodeMetrics::UpdateWorkerMetrics(string worker_address,
   return Status::OK();
 }
 
-Status NodeMetrics::GetWorkerMetrics(string worker_address, 
-  std::shared_ptr<Metrics> metrics) {
+Status NodeMetrics::GetWorkerMetrics(string worker_address, Metrics* metrics) {
   auto it = metrics_.find(worker_address);
   if (it != metrics_.end()) {
-    metrics = it->second;
+    metrics = it->second.get();
     return Status::OK();
   }
   return errors::NotFound("No metrics under the worker with address ", 
@@ -98,19 +96,19 @@ Status NodeMetrics::GetWorkerMetrics(string worker_address,
 
 // Input pipeline metrics
 Status InputPipelineMetrics::GetNodeMetrics(string long_name, 
-  std::shared_ptr<NodeMetrics> metrics) {
+  NodeMetrics* metrics) {
   auto it = metrics_.find(long_name);
   if (it != metrics_.end()) {
-    metrics = it->second;
+    metrics = it->second.get();
     return Status::OK();
   }
   return errors::NotFound("No metrics for node ", long_name); 
 }
 
 Status InputPipelineMetrics::GetWorkerMetrics(string worker_address, 
-  NodeMetrics::MetricsCollection& metrics) {
+  absl::flat_hash_map<string, NodeMetrics::Metrics*>& metrics) {
   for (auto& entry : metrics_) {
-    std::shared_ptr<NodeMetrics::Metrics> node_metrics;
+    NodeMetrics::Metrics* node_metrics;
     Status s = entry.second->GetWorkerMetrics(worker_address, node_metrics);
     if (s.ok()) {
       metrics.insert({entry.first, node_metrics});
@@ -121,13 +119,20 @@ Status InputPipelineMetrics::GetWorkerMetrics(string worker_address,
 
 Status InputPipelineMetrics::UpdateNodeMetrics(string long_name, 
   string worker_address, NodeMetrics::Metrics& metrics) {
-  auto it = metrics_.find(long_name);
+  VLOG(2) << "(InputPipelineMetrics::UpdateNodeMetrics) Trying to find " <<
+    long_name;
+  auto it = metrics_.find(long_name); 
   if (it == metrics_.end()) {
+    VLOG(2) << "(InputPipelineMetrics::UpdateNodeMetrics) Not found, now adding";
     auto node_metrics = std::make_shared<NodeMetrics>();
     node_metrics->UpdateWorkerMetrics(worker_address, metrics);
+    VLOG(2) << "(InputPipelineMetrics::UpdateNodeMetrics) Done 1.1";
     metrics_.insert({long_name, node_metrics});
+    VLOG(2) << "(InputPipelineMetrics::UpdateNodeMetrics) Done 1.2";
   } else {
+    VLOG(2) << "(InputPipelineMetrics::UpdateNodeMetrics) Found, now updating";
     it->second->UpdateWorkerMetrics(worker_address, metrics);
+    VLOG(2) << "(InputPipelineMetrics::UpdateNodeMetrics) Done 2.1";
   }
   return Status::OK();
 }
@@ -136,59 +141,59 @@ Status InputPipelineMetrics::UpdateNodeMetrics(string long_name,
 JobMetrics::JobMetrics(int64 job_id, int64 dataset_id) 
       : job_id_(job_id),
         dataset_id_(dataset_id),
-        model_metrics_(), 
-        input_pipeline_metrics_() {}
+        model_metrics_(std::make_shared<ModelMetrics>()), 
+        input_pipeline_metrics_(std::make_shared<InputPipelineMetrics>()) {}
 
 // Metadata store 
-MetadataStore::MetadataStore() : metadata_() {}
-
 Status MetadataStore::CreateJob(int64 job_id, int64 dataset_id) {
   auto it = metadata_.find(job_id);
   if (it == metadata_.end()) {
     auto job_metrics = std::make_shared<JobMetrics>(job_id, dataset_id);
     metadata_.insert({job_id, job_metrics});
+    VLOG(2) << "(MetadataStore::CreateJob) Created job with id " << job_id 
+            << " and dataset id " << dataset_id;
   }
   return Status::OK();
 }
 
 Status MetadataStore::RemoveJob(int64 job_id) {
   metadata_.erase(job_id);
+  VLOG(2) << "(MetadataStore::RemoveJob) Removed job with id " << job_id;
   return Status::OK();
 }
 
-Status MetadataStore::GetJobMetrics(int64 job_id, 
-  std::shared_ptr<JobMetrics> metrics) const {
+Status MetadataStore::GetJobMetrics(int64 job_id, JobMetrics* metrics) const {
   auto it = metadata_.find(job_id);
   if (it == metadata_.end()) {
     return errors::NotFound("Job with id ", job_id, " does not have metrics");
   }
-  metrics = it->second;
+  metrics = it->second.get();
   return Status::OK();
 }
 
 Status MetadataStore::GetModelMetrics(int64 job_id, 
-  std::shared_ptr<ModelMetrics> metrics) const {
-  std::shared_ptr<JobMetrics> job_metrics;
+  ModelMetrics* metrics) const {
+  JobMetrics* job_metrics;
   Status s = GetJobMetrics(job_id, job_metrics);
   if (s.ok()) {
-    metrics = job_metrics->model_metrics_;
+    metrics = job_metrics->model_metrics_.get();
   }
   return s;
 }
 
 Status MetadataStore::GetInputPipelineMetrics(int64 job_id, 
-  std::shared_ptr<InputPipelineMetrics> metrics) const {
-  std::shared_ptr<JobMetrics> job_metrics;
+  InputPipelineMetrics* metrics) const {
+  JobMetrics* job_metrics;
   Status s = GetJobMetrics(job_id, job_metrics);
   if (s.ok()) {
-    metrics = job_metrics->input_pipeline_metrics_;
+    metrics = job_metrics->input_pipeline_metrics_.get();
   }
   return s;
 }
 
 Status MetadataStore::UpdateModelMetrics(int64 job_id, int64 client_id, 
   ModelMetrics::Metrics& metrics) {
-  std::shared_ptr<ModelMetrics> model_metrics;
+  ModelMetrics* model_metrics;
   Status s = GetModelMetrics(job_id, model_metrics);
   if (s.ok()) {
     model_metrics->UpdateClientMetrics(client_id, metrics);
@@ -199,11 +204,14 @@ Status MetadataStore::UpdateModelMetrics(int64 job_id, int64 client_id,
 
 Status MetadataStore::UpdateInputPipelineMetrics(int64 job_id, 
   string node_long_name, string worker_address, NodeMetrics::Metrics& metrics) {
-  std::shared_ptr<InputPipelineMetrics> pipeline_metrics;
+  InputPipelineMetrics* pipeline_metrics;
   Status s = GetInputPipelineMetrics(job_id, pipeline_metrics);
+  VLOG(2) << "(MetadataStore::UpdateInputPipelineMetrics) Updating " << job_id;
   if (s.ok()) {
+    VLOG(2) << "(MetadataStore::UpdateInputPipelineMetrics) Found the entry";
     pipeline_metrics->UpdateNodeMetrics(node_long_name, worker_address, 
       metrics);
+    VLOG(2) << "(MetadataStore::UpdateInputPipelineMetrics) Updated the entry successfully";
   } 
   // if s != ok --> no such job exists
   return s;

@@ -48,11 +48,11 @@ class ModelMetrics {
     using MetricsCollection = 
       absl::flat_hash_map<int64, std::shared_ptr<ModelMetrics::Metrics>>;
 
-    ModelMetrics() : metrics_() {}
+    ModelMetrics() {}
 
     // Update the values for a client
     Status UpdateClientMetrics(int64 client_id, Metrics& metrics);
-    Status GetClientMetrics(int64 client_id, std::shared_ptr<Metrics> metrics);
+    Status GetClientMetrics(int64 client_id, Metrics* metrics);
 
     // The keys are the client id
     MetricsCollection metrics_;
@@ -95,12 +95,11 @@ class NodeMetrics {
     using MetricsCollection =
       absl::flat_hash_map<string, std::shared_ptr<NodeMetrics::Metrics>>;
 
-    NodeMetrics() : metrics_() {}
+    NodeMetrics() {}
 
     // Get or update the metrics of a worker
     Status UpdateWorkerMetrics(string worker_address, Metrics& metrics);
-    Status GetWorkerMetrics(string worker_address, 
-      std::shared_ptr<Metrics> metrics);
+    Status GetWorkerMetrics(string worker_address, Metrics* metrics);
   
     // The key here is the worker address
     MetricsCollection metrics_;
@@ -112,15 +111,14 @@ class InputPipelineMetrics {
     using MetricsCollection = 
       absl::flat_hash_map<string, std::shared_ptr<NodeMetrics>>;
 
-    InputPipelineMetrics() : metrics_() {}
+    InputPipelineMetrics() {}
 
     // Get the metrics for a single node
-    Status GetNodeMetrics(string long_name, 
-      std::shared_ptr<NodeMetrics> metrics);
+    Status GetNodeMetrics(string long_name, NodeMetrics* metrics);
 
     // Get the metrics from the same worker for each node in the graph 
     Status GetWorkerMetrics(string worker_address, 
-      NodeMetrics::MetricsCollection& metrics);
+      absl::flat_hash_map<string, NodeMetrics::Metrics*>& metrics);
 
     // Methods for setting data
     Status UpdateNodeMetrics(string long_name, string worker_address, 
@@ -142,7 +140,7 @@ class JobMetrics {
 
 class MetadataStore {
  public:
-  MetadataStore();
+  MetadataStore() {}
   MetadataStore(const MetadataStore &) = delete;
   MetadataStore &operator=(const MetadataStore &) = delete;
 
@@ -153,13 +151,12 @@ class MetadataStore {
   Status RemoveJob(int64 job_id);
 
   // Get metrics
-  Status GetJobMetrics(int64 job_id, std::shared_ptr<JobMetrics> metrics) const;
+  Status GetJobMetrics(int64 job_id, JobMetrics* metrics) const;
 
-  Status GetModelMetrics(int64 job_id, 
-    std::shared_ptr<ModelMetrics> metrics) const;
+  Status GetModelMetrics(int64 job_id, ModelMetrics* metrics) const;
 
   Status GetInputPipelineMetrics(int64 job_id, 
-    std::shared_ptr<InputPipelineMetrics> metrics) const;
+    InputPipelineMetrics* metrics) const;
 
   // Update or create the metrics for a client
   Status UpdateModelMetrics(int64 job_id, int64 client_id, 

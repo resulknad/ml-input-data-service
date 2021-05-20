@@ -526,7 +526,7 @@ Status DataServiceDispatcherImpl::RegisterDataset(uint64 fingerprint,
   TF_RETURN_IF_ERROR(dataset_store_->Put(
       service::easl::cache_utils::DatasetGetKey(dataset_id, fingerprint),
       get_dataset));
-  VLOG(0) << "Added put/get versions for dataset fingerprint" << fingerprint;
+  VLOG(0) << "Added put/get versions for dataset fingerprint " << fingerprint;
 
   TF_RETURN_IF_ERROR(
       dataset_store_->Put(DatasetKey(dataset_id, fingerprint), dataset));
@@ -886,7 +886,7 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
   mutex_lock l(mu_);
   // TODO (damien-aymon) revert back to level 4
   VLOG(0) << "Received heartbeat from client id " << request->job_client_id();
-  VLOG(0) << "Avg inter-arrival time" << request->avg_inter_arrival_time();
+  VLOG(0) << "Avg inter-arrival time " << request->avg_inter_arrival_time();
 
   std::shared_ptr<const Job> job;
   Status s = state_.JobForJobClientId(request->job_client_id(), job);
@@ -901,8 +901,8 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
   // EASL: Update the client metrics
   easl::ModelMetrics::Metrics metrics(request->avg_get_next_processing_time(), 
     request->avg_inter_arrival_time());
-  metadata_store_.UpdateModelMetrics(job->job_id, request->job_client_id(), 
-    metrics);
+  // metadata_store_.UpdateModelMetrics(job->job_id, request->job_client_id(), 
+  //   metrics);
 
   if (request->optional_current_round_case() ==
       ClientHeartbeatRequest::kCurrentRound) {
