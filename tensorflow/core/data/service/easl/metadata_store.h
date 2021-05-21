@@ -166,9 +166,14 @@ class MetadataStore {
   Status UpdateInputPipelineMetrics(int64 job_id, string node_long_name, 
     string worker_address, NodeMetrics::Metrics& metrics);
 
+  // Manage jobs to be evaluated
+  Status GetJobsForEval(absl::flat_hash_set<int64>& jobs);
+  Status MarkJobAsEvaluated(int64 job_id);
+
  private:
   // Key is job id
   absl::flat_hash_map<int64, std::shared_ptr<JobMetrics>> metadata_;
+  absl::flat_hash_set<int64> jobs_to_evaluate_;
 };
 
 } // namespace easl

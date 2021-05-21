@@ -149,6 +149,7 @@ Status MetadataStore::CreateJob(int64 job_id, int64 dataset_id) {
   if (it == metadata_.end()) {
     auto job_metrics = std::make_shared<JobMetrics>(job_id, dataset_id);
     metadata_.insert({job_id, job_metrics});
+    jobs_to_evaluate_.insert(job_id);
     VLOG(2) << "(MetadataStore::CreateJob) Created job with id " << job_id 
             << " and dataset id " << dataset_id;
   }
@@ -211,6 +212,18 @@ Status MetadataStore::UpdateInputPipelineMetrics(int64 job_id,
   } 
   // if s != ok --> no such job exists
   return s;
+}
+
+Status MetadataStore::GetJobsForEval(absl::flat_hash_set<int64>& jobs) {
+  jobs = jobs_to_evaluate_;
+  return Status::OK();
+}
+
+Status MetadataStore::MarkJobAsEvaluated(int64 job_id) {
+  int count = jobs_to_evaluate_.erase(job_id);
+  // return count == 1 ? Status::OK() : errors::IsNotFound(
+  //   "Could not find " + job_id);
+  return Status::OK();
 }
 
 } // namespace easl
