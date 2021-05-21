@@ -210,6 +210,18 @@ Status ArrowMetadata::GetRowShape(std::vector<TensorShape> *out_row_shape) {
   return Status::OK();
 }
 
+Status ArrowMetadata::GetRowDType(std::vector<DataType> *out_row_dtype) {
+  *out_row_dtype = dtypes_;
+  return Status::OK();
+}
+
+Status ArrowMetadata::SetRowDType(std::vector<DataType> row_dtypes) {
+  if(dtypes_.empty()) {
+    this->dtypes_ = std::move(row_dtypes);
+  }
+  return Status::OK();
+}
+
 Status ArrowMetadata::SetRowShape(std::vector<TensorShape> row_shape) {  //TODO: probably don't need lock here
   if(shapes_.empty()) {
     mutex_lock l(mu_);  // unlocked automatically upon function return

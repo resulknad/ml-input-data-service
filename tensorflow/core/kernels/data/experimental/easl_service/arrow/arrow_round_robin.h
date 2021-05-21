@@ -17,6 +17,12 @@ namespace service_cache_util {
 namespace arrow_round_robin {
 
 
+struct TensorData {
+    std::vector<std::vector<Tensor>>* tensor_batch;
+    size_t byte_count = 0;
+    bool end_of_sequence = false;
+};
+
 
 class ArrowRoundRobinWriter : public MultiThreadedAsyncWriter {
 public:
@@ -28,19 +34,32 @@ public:
                         uint64 checkpoint_id, const std::string& compression,
                         int64 version, DataTypeVector output_types) override;
 
+    Status ArrowWrite(const std::string& shard_directory, TensorData dat);
+
     void SignalEOF();
 private:
 
-  // store tensors until a writerthread "consumes" them
-  std::vector<std::vector<Tensor>*>* tensor_batch_;
+    void ConsumeTensors(TensorData* dat_out);
 
-  // threshold used to control bytes in producer vec. Default or set via version (TODO)
-  size_t thresh_ = 1e9;
-  size_t available_row_capacity_ = 0;  // how many rows can be inserted without checking bytes_written?
-  mutex mu_by_;
-  size_t bytes_written_ = 0;  // guraded by mu_by_ --> bytes written out to disk by writers
-  size_t bytes_received_ = 0;  // bytes received by iterator. Make sure bytes_received_ - bytes_written < thresh_
-  condition_variable capacity_available_;  // if pipeline full, iterator thread waits until capacity available
+
+    // store tensors until a writer thread "consumes" them
+    std::deque<TensorData> deque_ TF_GUARDED_BY(mu_);
+    TensorData current_batch_;
+
+    // arrow metadata
+    std::shared_ptr<ArrowUtil::ArrowMetadata> metadata_;
+    std::vector<DataType> first_row_dtype_;
+    std::vector<size_t> tensor_data_len_;
+
+    // threshold used to control bytes in entire writer pipeline. Default or set via version (TODO)
+    size_t thresh_ = 1e9;
+    size_t max_batch_size_ = 1e8;  // wait for this amount of data until waking up writer -> set by constructor
+    size_t available_row_capacity_ = 0;  // how many rows can be inserted without checking bytes_written?
+    mutex mu_by_;
+    size_t bytes_written_ = 0;  // guraded by mu_by_ --> bytes written out to disk by writers
+    size_t bytes_received_ = 0;  // bytes received by iterator. Make sure bytes_received_ - bytes_written < thresh_
+    condition_variable capacity_available_;  // if pipeline full, iterator thread waits until capacity available
+    condition_variable tensors_available_;  // if pipeline empty, writer-threads sleep until tensors available
 };
 
 class ArrowWriter {

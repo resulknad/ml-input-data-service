@@ -65,6 +65,10 @@ public:
 
     Status GetRowShape(std::vector<TensorShape>* out_row_shape);
 
+    Status GetRowDType(std::vector<DataType>* out_row_dtype);
+
+    Status SetRowDType(std::vector<DataType> row_dtype);
+
     /// \brief (general) shape of all dataset rows, one shape per dataset column. If
     /// batching is enabled, there may be tensors in the last row of the dataset that have a
     /// different shape and thus don't conform to this shape specification (see AddPartialBatch).
@@ -91,6 +95,7 @@ private:
     bool partial_batching_ = false;
     bool experimental_ = true;
     std::vector<TensorShape> shapes_;
+    std::vector<DataType> dtypes_;
     int num_worker_threads_ TF_GUARDED_BY(mu_); // num writer_threads still actively writing
     std::map<string, std::vector<TensorShape>> partial_batch_shapes_ TF_GUARDED_BY(mu_);
 };
