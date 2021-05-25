@@ -81,8 +81,8 @@ class DispatcherConfig(
               job_gc_check_interval_ms=None,
               job_gc_timeout_ms=None,
               cache_policy=1,
-              cache_format=1,
-              cache_compression="",
+              cache_format=2,
+              cache_compression=1,
               cache_ops_parallelism=8,
               scaling_policy=1):
     if protocol is None:
