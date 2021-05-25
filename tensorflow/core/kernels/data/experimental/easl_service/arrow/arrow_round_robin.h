@@ -2,8 +2,8 @@
 // Created by simon on 24.04.21.
 //
 
-#ifndef ML_INPUT_DATA_SERVICE_ARROW_ASYNC_WRITER_H
-#define ML_INPUT_DATA_SERVICE_ARROW_ASYNC_WRITER_H
+#ifndef ML_INPUT_DATA_SERVICE_ARROW_ROUND_ROBIN_H
+#define ML_INPUT_DATA_SERVICE_ARROW_ROUND_ROBIN_H
 
 #include "tensorflow/core/kernels/data/experimental/snapshot_util.h"
 #include "tensorflow/core/framework/types.h"
@@ -62,14 +62,10 @@ private:
     condition_variable tensors_available_;  // if pipeline empty, writer-threads sleep until tensors available
 };
 
-class ArrowWriter {
-
-};
-
 } // namespace arrow_round_robin
 } // namespace service_cache_util
 } // namespace easl
 } // namespace data
 } // namespace tensorflow
 
-#endif //ML_INPUT_DATA_SERVICE_ARROW_ASYNC_WRITER_H
+#endif //ML_INPUT_DATA_SERVICE_ARROW_ROUND_ROBIN_H

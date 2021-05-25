@@ -7,7 +7,6 @@
 #include "tensorflow/core/platform/stringprintf.h"
 #include "arrow/ipc/feather.h"
 #include "arrow/io/file.h"
-#include "tensorflow/core/protobuf/service_cache.pb.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 
 
