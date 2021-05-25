@@ -279,6 +279,10 @@ Status ArrowRoundRobinWriter::WriterThread(tensorflow::Env *env,
 
   VLOG(0) << "ARR - Writer " << writer_id << " de-registering and exiting...";
   metadata_->WriteMetadataToFile(shard_directory);  // de-registers worker, if last write out to disk
+
+  VLOG(0) << "ARR - Writer " << writer_id << " successfully de-registered. EXIT";
+
+  return Status::OK();
 }
 
 void ArrowRoundRobinWriter::SignalEOF() {

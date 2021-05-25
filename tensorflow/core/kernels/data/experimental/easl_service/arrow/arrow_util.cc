@@ -45,6 +45,11 @@ Status ArrowMetadata::WriteData(const std::string& path) {
 
   std::shared_ptr<arrow::Array> rowShapeArr;
   arrow::StringBuilder rowShapeBuilder(pool);
+
+  VLOG(0) << "Writing metadata to directory [" << path << "].";
+  VLOG(0) << "Number of tensor shapes: [" << shapes_.size() << "].";
+  VLOG(0) << "Partial batches: [" << partial_batching_ << "].";
+
   for(TensorShape &s : shapes_) {
     TensorShapeProto p;
     s.AsProto(&p);
