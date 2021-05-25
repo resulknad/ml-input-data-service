@@ -19,7 +19,7 @@ class AddGetOp : public TFDataOptimizerBase {
 
   Status Init(
     const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
-    // Ignore configuration
+    config_ = *config;
     return Status::OK();
   }
   
@@ -33,7 +33,13 @@ class AddGetOp : public TFDataOptimizerBase {
   void Feedback(Cluster* cluster, const GrapplerItem& item,
                 const GraphDef& optimize_output, double result) override;
 
-};
+ private:
+  NodeDef CreateGetOpNode(MutableGraphView* graph, NodeDef* input);
+
+  tensorflow::RewriterConfig_CustomGraphOptimizer config_;
+
+
+ };
 
 } // namespace easl
 } // namespace grappler

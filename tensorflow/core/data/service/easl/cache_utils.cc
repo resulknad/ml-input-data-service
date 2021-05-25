@@ -24,9 +24,9 @@ Status DoBFS(NodeDef* sink_node, GraphDef& graph_def, string prefix) {
   std::queue<NodeDef*> bfs_queue;
   bfs_queue.push(sink_node);
 
-  VLOG(1) << "(" << prefix << ") BFS @ current_node: " 
+  VLOG(1) << "(" << prefix << ") BFS @ current_node: "
           << "Root --> " << sink_node->op();
-  
+
   while (!bfs_queue.empty()) {
     NodeDef* current_node = bfs_queue.front();
     bfs_queue.pop();
@@ -36,12 +36,12 @@ Status DoBFS(NodeDef* sink_node, GraphDef& graph_def, string prefix) {
     for (int i = 0; i < current_node->input_size(); ++i) {
       if (!visited.contains(current_node->input(i))) {
         int idx = tensorflow::grappler::graph_utils::FindGraphNodeWithName(
-          current_node->input(i), graph_def);
+            current_node->input(i), graph_def);
         NodeDef* neighbor_node = graph_def.mutable_node(idx);
         bfs_queue.push(neighbor_node);
 
-        VLOG(1) << "(" << prefix << ") BFS @ current_node: " 
-                << SummarizeNodeDef(*current_node) << " --> " 
+        VLOG(1) << "(" << prefix << ") BFS @ current_node: "
+                << SummarizeNodeDef(*current_node) << " --> "
                 << SummarizeNodeDef(*neighbor_node);
       }
     }
@@ -68,7 +68,7 @@ Status DatasetKey(const ::tensorflow::data::easl::CacheState& cache_state,
     dataset_key =
         absl::StrCat("id_", dataset_id, "_fp_", fingerprint, "_get");
     VLOG(0) << "Use get dataset for fingerprint " << fingerprint
-                 << " at worker " << worker_address;
+            << " at worker " << worker_address;
     return Status::OK();
   }
 
@@ -79,28 +79,41 @@ Status DatasetKey(const ::tensorflow::data::easl::CacheState& cache_state,
     dataset_key =
         absl::StrCat("id_", dataset_id, "_fp_", fingerprint, "_put");
     VLOG(0) << "Use put dataset for fingerprint " << fingerprint
-                 << " at worker " << worker_address;
+            << " at worker " << worker_address;
     return Status::OK();
   }
 
   dataset_key =
       absl::StrCat("id_", dataset_id, "_fp_", fingerprint);
   VLOG(0) << "Use standard dataset for fingerprint " << fingerprint
-               << " at worker " << worker_address;
+          << " at worker " << worker_address;
   return Status::OK();
 }
 
-Status AddPutOperator(const DatasetDef& dataset, DatasetDef& updated_dataset) {
+Status AddPutOperator(const DatasetDef& dataset, DatasetDef& updated_dataset,
+                      const experimental::DispatcherConfig& dispatcher_config) {
+  // TODO remove this.
   updated_dataset = dataset;
   return Status::OK();
-  
   VLOG(1) << "(AddPutOperator) At the start of the method";
   // Copy over the original dataset
-  updated_dataset = dataset; 
+  updated_dataset = dataset;
 
-  // Initialize the optimizer  
+  // Initialize the optimizer
   tensorflow::grappler::easl::AddPutOp optimizer;
-  optimizer.Init(nullptr);
+  // Transfer arguments from dispatcher config to optimizer config.
+  tensorflow::RewriterConfig_CustomGraphOptimizer config;
+
+  // TODO - set path where to store graph.
+  (*(config.mutable_parameter_map()))["path"].set_placeholder("./outputs/");
+  (*(config.mutable_parameter_map()))["cache_format"].set_i(
+      dispatcher_config.cache_format());
+  (*(config.mutable_parameter_map()))["cache_compression"].set_i(
+      dispatcher_config.cache_compression());
+  (*(config.mutable_parameter_map()))["cache_ops_parallelism"].set_i(
+      dispatcher_config.cache_ops_parallelism());
+
+  optimizer.Init(&config);
 
   // Get the graph def and wrap it in a GrapplerItem
   GraphDef* graph_def = updated_dataset.mutable_graph();
@@ -123,7 +136,7 @@ Status AddPutOperator(const DatasetDef& dataset, DatasetDef& updated_dataset) {
 
   // Do BFS
   DoBFS(sink, *graph_def, "AddPutOperator");
-  
+
   // Create the MuttableGraphView
   tensorflow::grappler::MutableGraphView graph(graph_def);
   optimizer.ApplyOptimization(graph, sink, graph_def);
@@ -134,21 +147,36 @@ Status AddPutOperator(const DatasetDef& dataset, DatasetDef& updated_dataset) {
   // Disconnect the 'Sink' node
   // sink->mutable_input()->Clear();
   VLOG(1) << "(AddPutOperator) At the end of the method";
-  
+
   return Status::OK();
 }
 
-Status AddGetOperator(const DatasetDef& dataset, DatasetDef& updated_dataset){
+
+Status AddGetOperator(const DatasetDef& dataset, DatasetDef& updated_dataset,
+                      const experimental::DispatcherConfig& dispatcher_config){
+  // TODO remove this.
   updated_dataset = dataset;
   return Status::OK();
 
   VLOG(1) << "(AddGetOperator) At the start of the method";
   // Copy over the original dataset
-  updated_dataset = dataset; 
+  updated_dataset = dataset;
 
   // Initialize the optimizer  
   tensorflow::grappler::easl::AddGetOp optimizer;
-  optimizer.Init(nullptr);
+  // Transfer arguments from dispatcher config to optimizer config.
+  tensorflow::RewriterConfig_CustomGraphOptimizer config;
+
+  // TODO - set path where to store graph.
+  (*(config.mutable_parameter_map()))["path"].set_placeholder("./outputs/");
+  (*(config.mutable_parameter_map()))["cache_format"].set_i(
+      dispatcher_config.cache_format());
+  (*(config.mutable_parameter_map()))["cache_compression"].set_i(
+      dispatcher_config.cache_compression());
+  (*(config.mutable_parameter_map()))["cache_ops_parallelism"].set_i(
+      dispatcher_config.cache_ops_parallelism());
+
+  optimizer.Init(&config);
 
   // Get the graph def and wrap it in a GrapplerItem
   GraphDef* graph_def = updated_dataset.mutable_graph();

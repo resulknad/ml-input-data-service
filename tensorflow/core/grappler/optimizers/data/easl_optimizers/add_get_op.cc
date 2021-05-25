@@ -18,7 +18,7 @@ namespace grappler {
 namespace easl {
 namespace {
   // Define constants here
-  constexpr char kCacheLocation[] = "./outputs/";
+  //constexpr char kCacheLocation[] = "./outputs/";
   constexpr int8 kParallelism = 8;
   constexpr char kPutOpDataset[] = "ServiceCacheGetDataset";
   constexpr char kOutputShapes[] = "output_shapes";
@@ -27,43 +27,53 @@ namespace {
   constexpr char kTargetNode[] = "ParallelMapDatasetV2";
   constexpr int kTargetInputSize = 2;
 
-  NodeDef CreateGetOpNode(MutableGraphView* graph, NodeDef* input) {
-    NodeDef get_op_node;
-
-    // Give a unique name to the op
-    graph_utils::SetUniqueGraphNodeName("get_op_dataset",
-        graph->graph(), &get_op_node);
-
-    // Set the node's operation and input.
-    get_op_node.set_op(kPutOpDataset);
-
-    NodeDef* location_node = graph_utils::AddScalarConstNode<StringPiece>(
-        kCacheLocation, graph); 
-    get_op_node.add_input(location_node->name());
-    NodeDef* parallelism_node = graph_utils::AddScalarConstNode<int>(
-        kParallelism, graph); 
-    get_op_node.add_input(parallelism_node->name());
-
-    // Copy over the relevant attributes from root of the prefix
-    // TODO cleanup dirty hack (see add-put-op)
-    VLOG(0) << "before copying attribures";
-    graph_utils::CopyAttribute(kOutputShapes, *input, &get_op_node);
-    auto it = input->attr().find(kOutputTypes);
-    if(it != input->attr().end()){
-      (*get_op_node.mutable_attr())[kOutputTypes] = it->second;
-    } else {
-      it = input->attr().find("Toutput_types");
-      (*get_op_node.mutable_attr())[kOutputTypes] = it->second;
-    }
-    /*// VLOG(1) << "(CreateGetOpNode) Copying over the attributes";
-    for (auto key : {kOutputShapes, kOutputTypes}) {
-      // VLOG(1) << "(CreateGetOpNode) Copying over the attribute: " << key;
-      graph_utils::CopyAttribute(key, *input, &get_op_node);
-    }*/
-
-    return get_op_node;
-  }
 } // namespace
+
+NodeDef AddGetOp::CreateGetOpNode(MutableGraphView* graph, NodeDef* input) {
+  NodeDef get_op_node;
+
+  // Give a unique name to the op
+  graph_utils::SetUniqueGraphNodeName("get_op_dataset",
+  graph->graph(), &get_op_node);
+
+  // Set the node's operation and input.
+  get_op_node.set_op(kPutOpDataset);
+
+  NodeDef* location_node = graph_utils::AddScalarConstNode<StringPiece>(
+    config_.parameter_map().at("path").placeholder(), graph);
+  get_op_node.add_input(location_node->name());
+
+  NodeDef* cache_format_node = graph_utils::AddScalarConstNode<int32>(
+  config_.parameter_map().at("cache_format").i(), graph);
+  get_op_node.add_input(cache_format_node->name());
+
+  NodeDef* cache_compression = graph_utils::AddScalarConstNode<int32>(
+  config_.parameter_map().at("cache_compression").i(), graph);
+  get_op_node.add_input(cache_compression->name());
+
+  NodeDef* parallelism_node = graph_utils::AddScalarConstNode<int32>(
+    config_.parameter_map().at("cache_ops_parallelism").i(), graph);
+  get_op_node.add_input(parallelism_node->name());
+
+  // Copy over the relevant attributes from root of the prefix
+  // TODO cleanup dirty hack (see add-put-op)
+  VLOG(0) << "before copying attribures";
+  graph_utils::CopyAttribute(kOutputShapes, *input, &get_op_node);
+  auto it = input->attr().find(kOutputTypes);
+  if (it != input->attr().end()){
+    (*get_op_node.mutable_attr())[kOutputTypes] = it->second;
+  } else {
+    it = input->attr().find("Toutput_types");
+    (*get_op_node.mutable_attr())[kOutputTypes] = it->second;
+  }
+  /*// VLOG(1) << "(CreateGetOpNode) Copying over the attributes";
+  for (auto key : {kOutputShapes, kOutputTypes}) {
+    // VLOG(1) << "(CreateGetOpNode) Copying over the attribute: " << key;
+    graph_utils::CopyAttribute(key, *input, &get_op_node);
+  }*/
+
+  return get_op_node;
+}
 
 Status AddGetOp::ApplyOptimization(MutableGraphView &graph, NodeDef *sink_node, 
                                    GraphDef *output) {

@@ -516,17 +516,19 @@ Status DataServiceDispatcherImpl::RegisterDataset(uint64 fingerprint,
   // EASL - Create and store put/get versions of this dataset def.
   DatasetDef put_dataset;
   TF_RETURN_IF_ERROR(
-      service::easl::cache_utils::AddPutOperator(dataset, put_dataset));
+      service::easl::cache_utils::AddPutOperator(
+          dataset, put_dataset, config_));
   TF_RETURN_IF_ERROR(dataset_store_->Put(
   service::easl::cache_utils::DatasetPutKey(dataset_id, fingerprint),
       put_dataset));
   DatasetDef get_dataset;
   TF_RETURN_IF_ERROR(
-      service::easl::cache_utils::AddGetOperator(dataset, get_dataset));
+      service::easl::cache_utils::AddGetOperator(
+          dataset, get_dataset, config_));
   TF_RETURN_IF_ERROR(dataset_store_->Put(
       service::easl::cache_utils::DatasetGetKey(dataset_id, fingerprint),
       get_dataset));
-  VLOG(0) << "Added put/get versions for dataset fingerprint" << fingerprint;
+  VLOG(0) << "Added put/get versions for dataset fingerprint " << fingerprint;
 
   TF_RETURN_IF_ERROR(
       dataset_store_->Put(DatasetKey(dataset_id, fingerprint), dataset));

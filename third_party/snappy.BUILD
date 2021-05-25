@@ -17,7 +17,10 @@ cc_library(
         "snappy-stubs-internal.h",
         "snappy-stubs-public.h",
     ],
-    hdrs = ["snappy.h"],
+    hdrs = [
+        "snappy.h",
+        "snappy-stubs-public.h", #simonsom
+    ],
     copts = ["-DHAVE_CONFIG_H"] + select({
         "@org_tensorflow//tensorflow:windows": [],
         "//conditions:default": [
@@ -27,6 +30,7 @@ cc_library(
             "-Wno-implicit-function-declaration",
         ],
     }),
+    includes = ["."], #simonsom
     defines = select({
         "@org_tensorflow//tensorflow:windows": [],
         "//conditions:default": ["HAVE_SYS_UIO_H"],

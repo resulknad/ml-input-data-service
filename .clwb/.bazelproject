@@ -4,18 +4,15 @@ directories:
   .
 
 # Automatically includes all relevant targets under the 'directories' above
-derive_targets_from_directories: false
+derive_targets_from_directories: true
 
 targets:
-  # If source code isn't resolving, add additional targets that compile it here
   //tensorflow/tools/pip_package:build_pip_package
+  # If source code isn't resolving, add additional targets that compile it here
 
-build_flags:
-  --python_path=/usr/bin/python3
 additional_languages:
   # Uncomment any additional languages you want supported
   # dart
   # javascript
-  python
+  # python
   # typescript
-  python
