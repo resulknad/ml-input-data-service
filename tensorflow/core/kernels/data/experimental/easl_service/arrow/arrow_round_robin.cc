@@ -150,10 +150,10 @@ Status ArrowRoundRobinWriter::ArrowWrite(const std::string &filename, TensorData
   std::vector<std::shared_ptr<arrow::Array>> arrays;
   std::vector<std::shared_ptr<arrow::Field>> schema_vector;
 
-  std::vector<arrow::StringBuilder> data_builders;
+  std::vector<arrow::StringBuilder*> data_builders;
   for(int i = 0; i < ncols; i++) {
     arrow::StringBuilder data_builder(arrow::default_memory_pool());
-    data_builders.push_back(std::move(data_builder));
+    data_builders.push_back(&data_builder);
     std::shared_ptr<arrow::Array> arr_ptr;
     arrays.push_back(arr_ptr);
   }
@@ -193,14 +193,14 @@ Status ArrowRoundRobinWriter::ArrowWrite(const std::string &filename, TensorData
 
     for(int j = 0; j < row.size(); j++) {
       const char* buff = row[j].tensor_data().data();
-      data_builders[j].Append(buff, data_len[j]);
+      data_builders[j]->Append(buff, data_len[j]);
     }
   }
 
 
   // finish arrays and construct schema_vector
   for(int i = 0; i < ncols; i++) {
-    data_builders[i].Finish(&arrays[i]);
+    data_builders[i]->Finish(&arrays[i]);
     schema_vector.push_back(arrow::field(std::to_string(i), arrays[i]->type()));
   }
 
