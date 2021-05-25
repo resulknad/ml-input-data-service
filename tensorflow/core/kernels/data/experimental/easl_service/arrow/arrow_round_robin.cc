@@ -25,8 +25,6 @@ namespace {
   }
 }
 
-
-
 ArrowRoundRobinWriter::ArrowRoundRobinWriter(const int writer_count)
         : MultiThreadedAsyncWriter(writer_count) {
   metadata_ = std::make_shared<ArrowUtil::ArrowMetadata>();
