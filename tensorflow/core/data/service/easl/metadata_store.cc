@@ -10,17 +10,18 @@ namespace easl {
 
 
 // Metrics from the Client
-ModelMetrics::Metrics::Metrics(double get_next_time, double inter_arrival_time) 
-  : get_next_time_(get_next_time),
-    inter_arrival_time_(inter_arrival_time) {}
+ModelMetrics::Metrics::Metrics(double get_next_time_ms, 
+  double inter_arrival_time_ms) 
+  : get_next_time_ms_(get_next_time_ms),
+    inter_arrival_time_ms_(inter_arrival_time_ms) {}
 
 ModelMetrics::Metrics::Metrics(ModelMetrics::Metrics& other) 
-  : get_next_time_(other.get_next_time()),
-    inter_arrival_time_(other.inter_arrival_time()) {}
+  : get_next_time_ms_(other.get_next_time_ms()),
+    inter_arrival_time_ms_(other.inter_arrival_time_ms()) {}
 
 void ModelMetrics::Metrics::Update(ModelMetrics::Metrics& other) {
-  get_next_time_ = other.get_next_time_;
-  inter_arrival_time_ = other.inter_arrival_time_;
+  get_next_time_ms_ = other.get_next_time_ms_;
+  inter_arrival_time_ms_ = other.inter_arrival_time_ms_;
 }
 
 Status ModelMetrics::UpdateClientMetrics(int64 client_id, 
@@ -52,26 +53,26 @@ NodeMetrics::Metrics::Metrics(NodeMetrics::Metrics& other)
     bytes_produced_(other.bytes_produced()),
     num_elements_(other.num_elements()),
     computation_time_(other.computation_time()),
-    in_node_time_(other.in_node_time()),
-    in_prefix_time_(other.in_prefix_time()) {}
+    in_node_time_ms_(other.in_node_time_ms()),
+    in_prefix_time_ms_(other.in_prefix_time_ms()) {}
 
 NodeMetrics::Metrics::Metrics(int64 bytes_consumed, int64 bytes_produced, 
-  int64 num_elements, int64 computation_time, double in_node_time, 
-  double in_prefix_time) 
+  int64 num_elements, int64 computation_time, double in_node_time_ms, 
+  double in_prefix_time_ms) 
   : bytes_consumed_(bytes_consumed),
     bytes_produced_(bytes_produced),
     num_elements_(num_elements),
     computation_time_(computation_time),
-    in_node_time_(in_node_time),
-    in_prefix_time_(in_prefix_time) {}
+    in_node_time_ms_(in_node_time_ms),
+    in_prefix_time_ms_(in_prefix_time_ms) {}
 
 void NodeMetrics::Metrics::Update(NodeMetrics::Metrics& other) {
   bytes_consumed_ = other.bytes_consumed_;
   bytes_produced_ = other.bytes_produced_;
   num_elements_ = other.num_elements_;
   computation_time_ = other.computation_time_;
-  in_node_time_ = other.in_node_time_;
-  in_prefix_time_ = other.in_prefix_time_; 
+  in_node_time_ms_ = other.in_node_time_ms_;
+  in_prefix_time_ms_ = other.in_prefix_time_ms_; 
 }
 
 Status NodeMetrics::UpdateWorkerMetrics(string worker_address, 

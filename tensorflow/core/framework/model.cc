@@ -1675,7 +1675,8 @@ Model::ModelMetrics Model::CollectMetrics() {
 
     // prefix_times[node->long_name()] = node->TotalProcessingTime(nullptr);
     auto node_metrics = node->SnapshotCurrentMetrics();
-    node_metrics.set_in_node_time(node_times[node->long_name()]);
+    node_metrics.set_in_node_time(node_times[node->long_name()] / 
+      EnvTime::kMillisToMicros);
     metrics->insert({node->long_name(), node_metrics});
   }
 
@@ -1692,7 +1693,8 @@ Model::ModelMetrics Model::CollectMetrics() {
 
   // Update the prefix times in the metrics data structure
   for (auto& entry : *metrics) {
-    entry.second.set_in_prefix_time(final_times[entry.first]);
+    entry.second.set_in_prefix_time(final_times[entry.first] / 
+      EnvTime::kMillisToMicros);
   }
 
   // Debug code below

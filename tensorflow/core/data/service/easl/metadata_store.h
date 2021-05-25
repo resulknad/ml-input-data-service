@@ -30,19 +30,19 @@ class ModelMetrics {
     class Metrics {
       public:
         Metrics(Metrics& other);
-        Metrics(double get_next_time, double inter_arrival_time);
+        Metrics(double get_next_time_ms, double inter_arrival_time_ms);
 
         void Update(Metrics& other);
 
-        void set_get_next_time(double x) { get_next_time_ = x; }
-        void set_inter_arrival_time(double x) { inter_arrival_time_ = x; }
+        void set_get_next_time_ms(double x) { get_next_time_ms_ = x; }
+        void set_inter_arrival_time_ms(double x) { inter_arrival_time_ms_ = x; }
 
-        double get_next_time() { return get_next_time_; }
-        double inter_arrival_time() { return inter_arrival_time_; }
+        double get_next_time_ms() { return get_next_time_ms_; }
+        double inter_arrival_time_ms() { return inter_arrival_time_ms_; }
 
       private:
-        double get_next_time_; 
-        double inter_arrival_time_;
+        double get_next_time_ms_; 
+        double inter_arrival_time_ms_;
     };
 
     using MetricsCollection = 
@@ -65,7 +65,7 @@ class NodeMetrics {
         explicit Metrics(Metrics& other);
         explicit Metrics(int64 bytes_consumed, int64 bytes_produced, 
                           int64 num_elements, int64 computation_time, 
-                          double in_node_time, double in_prefix_time);
+                          double in_node_time_ms, double in_prefix_time_ms);
         
         void Update(Metrics& other);
         
@@ -73,23 +73,23 @@ class NodeMetrics {
         void set_bytes_produced(int64 x)   { bytes_produced_ = x; }
         void set_num_elements(int64 x)     { num_elements_ = x; }
         void set_computation_time(int64 x) { computation_time_ = x; }
-        void set_in_node_time(double x)    { in_node_time_ = x; }
-        void set_in_prefix_time(double x)  { in_prefix_time_ = x; }
+        void set_in_node_time_ms(double x)    { in_node_time_ms_ = x; }
+        void set_in_prefix_time_ms(double x)  { in_prefix_time_ms_ = x; }
 
         int64 bytes_consumed()   { return bytes_consumed_; }
         int64 bytes_produced()   { return bytes_produced_; }
         int64 num_elements()     { return num_elements_; }
         int64 computation_time() { return computation_time_; }
-        double in_node_time()     { return in_node_time_; }
-        double in_prefix_time()   { return in_prefix_time_; }
+        double in_node_time_ms()     { return in_node_time_ms_; }
+        double in_prefix_time_ms()   { return in_prefix_time_ms_; }
 
       private:
         int64 bytes_consumed_;
         int64 bytes_produced_;
         int64 num_elements_;
         int64 computation_time_;
-        double in_node_time_;
-        double in_prefix_time_; 
+        double in_node_time_ms_;
+        double in_prefix_time_ms_; 
     };
 
     using MetricsCollection =

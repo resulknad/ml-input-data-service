@@ -563,8 +563,10 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         }
       }
       // Fill up the metadata fields in the heartbeat request
-      req.set_avg_get_next_processing_time(get_next_processing_time);
-      req.set_avg_inter_arrival_time(avg_get_next_inter_arrival_time);
+      req.set_avg_get_next_processing_time(get_next_processing_time / 
+        EnvTime::kMillisToMicros);
+      req.set_avg_inter_arrival_time(avg_get_next_inter_arrival_time / 
+        EnvTime::kMillisToMicros);
 
       req.set_job_client_id(job_client_id_);
       if (StrictRoundRobin()) {
