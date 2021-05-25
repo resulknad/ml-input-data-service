@@ -29,11 +29,10 @@ ArrowRoundRobinWriter::ArrowRoundRobinWriter(const int writer_count)
         : MultiThreadedAsyncWriter(writer_count) {
   metadata_ = std::make_shared<ArrowUtil::ArrowMetadata>();
   metadata_->SetExperimental(true);
-  std::vector<std::vector<Tensor>> tensor_batch_vec;
-  current_batch_.tensor_batch = tensor_batch_vec;
-  current_batch_.byte_count = 0;
-  current_batch_.end_of_sequence = false;
   max_batch_size_ = thresh_ / writer_count;
+  std::vector<std::vector<Tensor>> tensor_batch_vec;
+  tensor_batch_vec.reserve(max_batch_size_ / sizeof(std::vector<Tensor>) + 1);
+  current_batch_ = {std::move(tensor_batch_vec), 0, false};
 }
 
 
@@ -79,7 +78,8 @@ void ArrowRoundRobinWriter::Write(std::vector<Tensor> *tensors) {
     VLOG(0) << "ARR - Write - Notifying Writer to consume tensors";
     tensors_available_.notify_one();
     std::vector<std::vector<Tensor>> tensor_batch_vec;
-    current_batch_ = {tensor_batch_vec, 0, false};
+    tensor_batch_vec.reserve(max_batch_size_ / sizeof(std::vector<Tensor>) + 1);
+    current_batch_ = {std::move(tensor_batch_vec), 0, false};
   }
 
 
@@ -183,7 +183,7 @@ Status ArrowRoundRobinWriter::ArrowWrite(const std::string &filename, TensorData
       VLOG(0) << "ARR - ArrowWriter - processing last row";
       std::vector<size_t> last_row_data_len;
       for(int j = 0; j < ncols; j++) {
-        last_row_data_len[j] = row[j].TotalBytes();
+        last_row_data_len.push_back(row[j].TotalBytes());
         if(last_row_data_len[j] != data_len[j]) {
           VLOG(0) << "ARR - ArrowWriter - found partial batch";
           partial_batching = true;
@@ -284,7 +284,7 @@ void ArrowRoundRobinWriter::SignalEOF() {
   }
   for(int i = 0; i < writer_count_; i++) {
     std::vector<std::vector<Tensor>> empty;
-    deque_.push_back({empty, 0, true});
+    deque_.push_back({std::move(empty), 0, true});
   }
   tensors_available_.notify_all();
 }
