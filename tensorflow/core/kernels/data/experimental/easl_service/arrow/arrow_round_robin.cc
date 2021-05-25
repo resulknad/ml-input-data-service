@@ -70,7 +70,7 @@ void ArrowRoundRobinWriter::Write(std::vector<Tensor> *tensors) {
 
   // check if current batch full (--> next row wouldn't fit into current batch),
   // may be negative if many workers and high bytes per row rate.
-  if(current_batch_.byte_count > (int64) max_batch_size_ - bytes_per_row_) {
+  if(current_batch_.byte_count + bytes_per_row_ > max_batch_size_) {
     // feed new tensors in pipeline
     VLOG(0) << "ARR - Write - current_batch_ full, adding to producer queue";
 
@@ -155,10 +155,11 @@ Status ArrowRoundRobinWriter::ArrowWrite(const std::string &filename, TensorData
   std::vector<std::shared_ptr<arrow::Array>> arrays;
   std::vector<std::shared_ptr<arrow::Field>> schema_vector;
 
-  std::vector<arrow::StringBuilder*> data_builders;
+  std::vector<std::shared_ptr<arrow::StringBuilder>> data_builders;
   for(int i = 0; i < ncols; i++) {
-    arrow::StringBuilder data_builder(arrow::default_memory_pool());
-    data_builders.push_back(&data_builder);
+    std::shared_ptr<arrow::StringBuilder> data_builder =
+            std::make_shared<arrow::StringBuilder>(arrow::default_memory_pool());
+    data_builders.push_back(data_builder);
     std::shared_ptr<arrow::Array> arr_ptr;
     arrays.push_back(arr_ptr);
   }
@@ -181,28 +182,28 @@ Status ArrowRoundRobinWriter::ArrowWrite(const std::string &filename, TensorData
     VLOG(0) << "ARR - ArrowWriter - builder loop created row view";
 
     // check for partial batches at the end:
-//    if(i == data.size() - 1) {
-//      VLOG(0) << "ARR - ArrowWriter - processing last row";
-//      std::vector<size_t> last_row_data_len;
-//      for(int j = 0; j < ncols; j++) {
-//        last_row_data_len.push_back(row[j].TotalBytes());
-//        if(last_row_data_len[j] != data_len[j]) {
-//          VLOG(0) << "ARR - ArrowWriter - found partial batch";
-//          partial_batching = true;
-//        }
-//      }
-//      if(partial_batching) {
-//        // adjust lengths for conversion of last batch
-//        data_len = last_row_data_len;
-//
-//        // store shapes in metadata
-//        std::vector<TensorShape> shapes;
-//        for(int j = 0; j < ncols; j++) {
-//          shapes.push_back(row[j].shape());
-//        }
-//        metadata_->AddPartialBatch(filename, shapes);
-//      }
-//    }
+    if(i == data.size() - 1) {
+      VLOG(0) << "ARR - ArrowWriter - processing last row";
+      std::vector<size_t> last_row_data_len;
+      for(int j = 0; j < ncols; j++) {
+        last_row_data_len.push_back(row[j].TotalBytes());
+        if(last_row_data_len[j] != data_len[j]) {
+          VLOG(0) << "ARR - ArrowWriter - found partial batch";
+          partial_batching = true;
+        }
+      }
+      if(partial_batching) {
+        // adjust lengths for conversion of last batch
+        data_len = last_row_data_len;
+
+        // store shapes in metadata
+        std::vector<TensorShape> shapes;
+        for(int j = 0; j < ncols; j++) {
+          shapes.push_back(row[j].shape());
+        }
+        metadata_->AddPartialBatch(filename, shapes);
+      }
+    }
 
     VLOG(0) << "ARR - ArrowWriter - builder loop adding data ...";
 
@@ -219,9 +220,13 @@ Status ArrowRoundRobinWriter::ArrowWrite(const std::string &filename, TensorData
 
   // finish arrays and construct schema_vector
   for(int i = 0; i < ncols; i++) {
+    VLOG(0) << "ARR - ArrowWriter - Finishing array " << i << "...";
     data_builders[i]->Finish(&arrays[i]);
+    VLOG(0) << "ARR - ArrowWriter - Finish Completed successfully";
     schema_vector.push_back(arrow::field(std::to_string(i), arrays[i]->type()));
   }
+
+  VLOG(0) << "ARR - ArrowWriter - creating schema and table ...";
 
       // create schema from fields
   auto schema = std::make_shared<arrow::Schema>(schema_vector);
