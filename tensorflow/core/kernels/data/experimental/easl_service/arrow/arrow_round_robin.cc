@@ -64,7 +64,7 @@ void ArrowRoundRobinWriter::Write(std::vector<Tensor> *tensors) {
   }
 
   bytes_received_ += bytes_per_row_;
-  current_batch_.tensor_batch->push_back(*tensors);  // copy of tensors now stored in class -> survive until written
+  current_batch_.tensor_batch->push_back(std::move(*tensors));  // copy of tensors now stored in class -> survive until written
   current_batch_.byte_count += bytes_per_row_;
 
   // check if current batch full (--> next row wouldn't fit into current batch)
@@ -162,10 +162,18 @@ Status ArrowRoundRobinWriter::ArrowWrite(const std::string &filename, TensorData
 
   // iterate over all columns and build array
   std::vector<std::vector<Tensor>> &data = *dat.tensor_batch;
+
+  VLOG(0) << "ARR - ArrowWriter - created data view";
+
   std::vector<size_t> data_len = tensor_data_len_;
+
+  VLOG(0) << "ARR - ArrowWriter - copied tensor_data_len";
+
   bool partial_batching = false;
   for (int i = 0; i < data.size(); i++) {
     std::vector<Tensor> &row = data[i];
+
+    VLOG(0) << "ARR - ArrowWriter - builder loop created row view";
 
     // check for partial batches at the end:
     if(i == data.size() - 1) {
@@ -191,10 +199,15 @@ Status ArrowRoundRobinWriter::ArrowWrite(const std::string &filename, TensorData
       }
     }
 
+    VLOG(0) << "ARR - ArrowWriter - builder loop adding data ...";
+
     for(int j = 0; j < row.size(); j++) {
       const char* buff = row[j].tensor_data().data();
       data_builders[j]->Append(buff, data_len[j]);
     }
+
+    VLOG(0) << "ARR - ArrowWriter - builder loop end";
+
   }
 
   VLOG(0) << "ARR - ArrowWriter - Written data to data builder";
