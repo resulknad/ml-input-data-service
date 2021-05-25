@@ -66,9 +66,11 @@ void ArrowRoundRobinWriter::Write(std::vector<Tensor> *tensors) {
   std::vector<Tensor> local_tensors = *tensors;
   current_batch_.tensor_batch.push_back(std::move(local_tensors));  // copy of tensors now stored in class -> survive until written
   current_batch_.byte_count += bytes_per_row_;
+  VLOG(0) << "ARR - Write - current_batch size: " << current_batch_.byte_count << "  /  " << max_batch_size_;
 
-  // check if current batch full (--> next row wouldn't fit into current batch)
-  if(current_batch_.byte_count > max_batch_size_ - bytes_per_row_) {
+  // check if current batch full (--> next row wouldn't fit into current batch),
+  // may be negative if many workers and high bytes per row rate.
+  if(current_batch_.byte_count > (int64) max_batch_size_ - bytes_per_row_) {
     // feed new tensors in pipeline
     VLOG(0) << "ARR - Write - current_batch_ full, adding to producer queue";
 
@@ -179,39 +181,38 @@ Status ArrowRoundRobinWriter::ArrowWrite(const std::string &filename, TensorData
     VLOG(0) << "ARR - ArrowWriter - builder loop created row view";
 
     // check for partial batches at the end:
-    if(i == data.size() - 1) {
-      VLOG(0) << "ARR - ArrowWriter - processing last row";
-      std::vector<size_t> last_row_data_len;
-      for(int j = 0; j < ncols; j++) {
-        last_row_data_len.push_back(row[j].TotalBytes());
-        if(last_row_data_len[j] != data_len[j]) {
-          VLOG(0) << "ARR - ArrowWriter - found partial batch";
-          partial_batching = true;
-        }
-      }
-      if(partial_batching) {
-        // adjust lengths for conversion of last batch
-        data_len = last_row_data_len;
-
-        // store shapes in metadata
-        std::vector<TensorShape> shapes;
-        for(int j = 0; j < ncols; j++) {
-          shapes.push_back(row[j].shape());
-        }
-        metadata_->AddPartialBatch(filename, shapes);
-      }
-    }
+//    if(i == data.size() - 1) {
+//      VLOG(0) << "ARR - ArrowWriter - processing last row";
+//      std::vector<size_t> last_row_data_len;
+//      for(int j = 0; j < ncols; j++) {
+//        last_row_data_len.push_back(row[j].TotalBytes());
+//        if(last_row_data_len[j] != data_len[j]) {
+//          VLOG(0) << "ARR - ArrowWriter - found partial batch";
+//          partial_batching = true;
+//        }
+//      }
+//      if(partial_batching) {
+//        // adjust lengths for conversion of last batch
+//        data_len = last_row_data_len;
+//
+//        // store shapes in metadata
+//        std::vector<TensorShape> shapes;
+//        for(int j = 0; j < ncols; j++) {
+//          shapes.push_back(row[j].shape());
+//        }
+//        metadata_->AddPartialBatch(filename, shapes);
+//      }
+//    }
 
     VLOG(0) << "ARR - ArrowWriter - builder loop adding data ...";
 
-    for(int j = 0; j < row.size(); j++) {
+    for(int j = 0; j < ncols; j++) {
       const char* buff = row[j].tensor_data().data();
       VLOG(0) << "ARR - ArrowWriter - builder loop data addr: " << (void *) buff;
       data_builders[j]->Append(buff, data_len[j]);
     }
 
     VLOG(0) << "ARR - ArrowWriter - builder loop end";
-
   }
 
   VLOG(0) << "ARR - ArrowWriter - Written data to data builder";
@@ -271,6 +272,7 @@ Status ArrowRoundRobinWriter::WriterThread(tensorflow::Env *env,
     ConsumeTensors(&dat);
   }
 
+  VLOG(0) << "ARR - Writer " << writer_id << " de-registering and exiting...";
   metadata_->WriteMetadataToFile(shard_directory);  // de-registers worker, if last write out to disk
 }
 
