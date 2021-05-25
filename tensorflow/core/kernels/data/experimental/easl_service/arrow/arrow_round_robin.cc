@@ -5,12 +5,26 @@
 #include "arrow_round_robin.h"
 #include <unistd.h>
 #include <pthread.h>
+#include "tensorflow/core/platform/stringprintf.h"
+#include "arrow/io/file.h"
+
+
 
 namespace tensorflow {
 namespace data {
 namespace easl{
 namespace service_cache_util {
 namespace arrow_round_robin{
+
+namespace {
+  std::string GetFileName(const std::string& shard_directory,
+  uint64 file_id, uint64 split_id = 0) {
+    return io::JoinPath(shard_directory, strings::Printf("%07llu_%llu.easl",
+    static_cast<unsigned long long>(file_id),
+    static_cast<unsigned long long>(split_id)));
+  }
+}
+
 
 
 ArrowRoundRobinWriter::ArrowRoundRobinWriter(const int writer_count)
@@ -118,7 +132,7 @@ void ArrowRoundRobinWriter::ConsumeTensors(TensorData* dat_out) {
 /***********************
  * Arrow Writer *
  ***********************/
-Status ArrowRoundRobinWriter::ArrowWrite(const std::string &shard_directory, TensorData dat) {
+Status ArrowRoundRobinWriter::ArrowWrite(const std::string &filename, TensorData dat) {
 
   // initializing writer process
   int ncols = tensor_data_len_.size();
@@ -131,8 +145,10 @@ Status ArrowRoundRobinWriter::ArrowWrite(const std::string &shard_directory, Ten
     arrow_dtypes.push_back(arrow_dt);
   }
 
+  VLOG(0) << "ARR - ArrowWriter - Converted dtypes to arrow";
+
   // TODO: this writer currently not supporting strings, goal was to keep as simple as possible
-  std::vector<std::shared_ptr<arrow::Array>*> arrays;
+  std::vector<std::shared_ptr<arrow::Array>> arrays;
   std::vector<std::shared_ptr<arrow::Field>> schema_vector;
 
   std::vector<arrow::StringBuilder> data_builders;
@@ -140,8 +156,10 @@ Status ArrowRoundRobinWriter::ArrowWrite(const std::string &shard_directory, Ten
     arrow::StringBuilder data_builder(arrow::default_memory_pool());
     data_builders.push_back(std::move(data_builder));
     std::shared_ptr<arrow::Array> arr_ptr;
-    arrays.push_back(&arr_ptr);
+    arrays.push_back(arr_ptr);
   }
+
+  VLOG(0) << "ARR - ArrowWriter - Created data builders";
 
   // iterate over all columns and build array
   std::vector<std::vector<Tensor>> &data = *dat.tensor_batch;
@@ -152,18 +170,25 @@ Status ArrowRoundRobinWriter::ArrowWrite(const std::string &shard_directory, Ten
 
     // check for partial batches at the end:
     if(i == data.size() - 1) {
+      VLOG(0) << "ARR - ArrowWriter - processing last row";
       std::vector<size_t> last_row_data_len;
       for(int j = 0; j < ncols; j++) {
         last_row_data_len[j] = row[j].TotalBytes();
         if(last_row_data_len[j] != data_len[j]) {
+          VLOG(0) << "ARR - ArrowWriter - found partial batch";
           partial_batching = true;
         }
       }
       if(partial_batching) {
+        // adjust lengths for conversion of last batch
         data_len = std::move(last_row_data_len);
+
+        // store shapes in metadata
+        std::vector<TensorShape> shapes;
         for(int j = 0; j < ncols; j++) {
-          metadata_->AddLastRowBatch(row[j]);
+          shapes.push_back(row[j].shape());
         }
+        metadata_->AddPartialBatch(filename, shapes);
       }
     }
 
@@ -176,11 +201,23 @@ Status ArrowRoundRobinWriter::ArrowWrite(const std::string &shard_directory, Ten
 
   // finish arrays and construct schema_vector
   for(int i = 0; i < ncols; i++) {
-    data_builders[i].Finish(arrays[i]);
-    schema_vector.push_back(arrow::field(std::to_string(i), (*arrays[i])->type()));
+    data_builders[i].Finish(&arrays[i]);
+    schema_vector.push_back(arrow::field(std::to_string(i), arrays[i]->type()));
   }
 
-  // TODO: Write table to file!
+      // create schema from fields
+  auto schema = std::make_shared<arrow::Schema>(schema_vector);
+  std::shared_ptr<arrow::Table> table;
+  table = arrow::Table::Make(schema, arrays);
+
+  std::shared_ptr<arrow::io::FileOutputStream> file;
+  ARROW_ASSIGN_CHECKED(file, arrow::io::FileOutputStream::Open(filename, /*append=*/false));
+
+  CHECK_ARROW(arrow::ipc::feather::WriteTable(*table, file.get(),
+          arrow::ipc::feather::WriteProperties::Defaults()));
+  CHECK_ARROW(file->Close());
+
+  return Status::OK();
 }
 
 
@@ -195,12 +232,13 @@ Status ArrowRoundRobinWriter::WriterThread(tensorflow::Env *env,
   // register writer in metadata, as last writer left has to write out arrowMetadata.
   metadata_->RegisterWorker();
 
+  int split_id = 0;
   TensorData dat;
   ConsumeTensors(&dat);
   while(!dat.end_of_sequence) {
     VLOG(0) << "ARR - WriterThread " << writer_id << " - Consumed fresh data, writing...";
     size_t dat_size = dat.byte_count;
-    Status s = ArrowWrite(shard_directory, dat);
+    Status s = ArrowWrite(GetFileName(shard_directory, writer_id, split_id++), dat);
     if(!s.ok()) {
       VLOG(0) << "Writer " << writer_id << "  not ok ... " << s.ToString();
     }
