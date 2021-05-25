@@ -35,6 +35,7 @@ ArrowRoundRobinWriter::ArrowRoundRobinWriter(const int writer_count)
   current_batch_.tensor_batch = &tensor_batch_vec;
   current_batch_.byte_count = 0;
   current_batch_.end_of_sequence = false;
+  max_batch_size_ = thresh_ / writer_count;
 }
 
 
@@ -65,7 +66,7 @@ void ArrowRoundRobinWriter::Write(std::vector<Tensor> *tensors) {
   }
 
   bytes_received_ += bytes_per_row_;
-  current_batch_.tensor_batch->push_back(std::move(*tensors));  // copy of tensors now stored in class -> survive until written
+  current_batch_.tensor_batch->push_back(*tensors);  // copy of tensors now stored in class -> survive until written
   current_batch_.byte_count += bytes_per_row_;
 
   // check if current batch full (--> next row wouldn't fit into current batch)
@@ -163,7 +164,7 @@ Status ArrowRoundRobinWriter::ArrowWrite(const std::string &filename, TensorData
 
   // iterate over all columns and build array
   std::vector<std::vector<Tensor>> &data = *dat.tensor_batch;
-  std::vector<size_t> data_len = std::move(tensor_data_len_);
+  std::vector<size_t> data_len = tensor_data_len_;
   bool partial_batching = false;
   for (int i = 0; i < data.size(); i++) {
     std::vector<Tensor> &row = data[i];
@@ -181,7 +182,7 @@ Status ArrowRoundRobinWriter::ArrowWrite(const std::string &filename, TensorData
       }
       if(partial_batching) {
         // adjust lengths for conversion of last batch
-        data_len = std::move(last_row_data_len);
+        data_len = last_row_data_len;
 
         // store shapes in metadata
         std::vector<TensorShape> shapes;
@@ -198,6 +199,7 @@ Status ArrowRoundRobinWriter::ArrowWrite(const std::string &filename, TensorData
     }
   }
 
+  VLOG(0) << "ARR - ArrowWriter - Written data to data builder";
 
   // finish arrays and construct schema_vector
   for(int i = 0; i < ncols; i++) {
@@ -216,6 +218,8 @@ Status ArrowRoundRobinWriter::ArrowWrite(const std::string &filename, TensorData
   CHECK_ARROW(arrow::ipc::feather::WriteTable(*table, file.get(),
           arrow::ipc::feather::WriteProperties::Defaults()));
   CHECK_ARROW(file->Close());
+
+  VLOG(0) << "ARR - ArrowWriter - Written data to file";
 
   return Status::OK();
 }
@@ -256,9 +260,11 @@ Status ArrowRoundRobinWriter::WriterThread(tensorflow::Env *env,
 }
 
 void ArrowRoundRobinWriter::SignalEOF() {
+  VLOG(0) << "ARR - Signalling EOF";
   // wait for all bytes to be written out
   mutex_lock l(mu_);
   if(current_batch_.byte_count > 0) {
+    VLOG(0) << "ARR - SignalEOF - Adding currentBatch to queue";
     deque_.push_back(current_batch_);
   }
   for(int i = 0; i < writer_count_; i++) {
