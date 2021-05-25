@@ -43,6 +43,7 @@ Status Writer::Initialize(){
     async_writer_ = std::make_unique<arrow_async_writer::ArrowAsyncWriter>(writer_count_);
   } else if(writer_version_ == 7) {
     async_writer_ = std::make_unique<arrow_round_robin::ArrowRoundRobinWriter>(writer_count_);
+    VLOG(0) << "SCU -- created ARR Writer";
   } else {
     async_writer_ = std::make_unique<MultiThreadedAsyncWriter>(writer_count_);
   }
@@ -59,7 +60,7 @@ Status Writer::Initialize(){
               //writer_status_ = s;
               return;
           });
-
+  VLOG(0) << "SCU -- Initialized Writer";
   return WriteMetadataFile(env_, target_dir_, output_dtypes_, output_shapes_);
 }
 

@@ -29,7 +29,8 @@ namespace {
 
 ArrowRoundRobinWriter::ArrowRoundRobinWriter(const int writer_count)
         : MultiThreadedAsyncWriter(writer_count) {
-
+  metadata_ = std::make_shared<ArrowUtil::ArrowMetadata>();
+  metadata_->SetExperimental(true);
   std::vector<std::vector<Tensor>> tensor_batch_vec;
   current_batch_.tensor_batch = &tensor_batch_vec;
   current_batch_.byte_count = 0;
@@ -227,6 +228,8 @@ Status ArrowRoundRobinWriter::WriterThread(tensorflow::Env *env,
                                            const std::string &compression,
                                            tensorflow::int64 version,
                                            tensorflow::DataTypeVector output_types) {
+
+  VLOG(0) << "ARR - Invoked WriterThread " << writer_id;
 
   // register writer in metadata, as last writer left has to write out arrowMetadata.
   metadata_->RegisterWorker();
