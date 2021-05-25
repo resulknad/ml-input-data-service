@@ -30,7 +30,7 @@ ArrowRoundRobinWriter::ArrowRoundRobinWriter(const int writer_count)
   metadata_ = std::make_shared<ArrowUtil::ArrowMetadata>();
   metadata_->SetExperimental(true);
   std::vector<std::vector<Tensor>> tensor_batch_vec;
-  current_batch_.tensor_batch = &tensor_batch_vec;
+  current_batch_.tensor_batch = tensor_batch_vec;
   current_batch_.byte_count = 0;
   current_batch_.end_of_sequence = false;
   max_batch_size_ = thresh_ / writer_count;
@@ -65,7 +65,7 @@ void ArrowRoundRobinWriter::Write(std::vector<Tensor> *tensors) {
 
   bytes_received_ += bytes_per_row_;
   std::vector<Tensor> local_tensors = *tensors;
-  current_batch_.tensor_batch->push_back(std::move(local_tensors));  // copy of tensors now stored in class -> survive until written
+  current_batch_.tensor_batch.push_back(std::move(local_tensors));  // copy of tensors now stored in class -> survive until written
   current_batch_.byte_count += bytes_per_row_;
 
   // check if current batch full (--> next row wouldn't fit into current batch)
@@ -78,6 +78,8 @@ void ArrowRoundRobinWriter::Write(std::vector<Tensor> *tensors) {
     mu_.unlock();
     VLOG(0) << "ARR - Write - Notifying Writer to consume tensors";
     tensors_available_.notify_one();
+    std::vector<std::vector<Tensor>> tensor_batch_vec;
+    current_batch_ = {tensor_batch_vec, 0, false};
   }
 
 
@@ -162,7 +164,7 @@ Status ArrowRoundRobinWriter::ArrowWrite(const std::string &filename, TensorData
   VLOG(0) << "ARR - ArrowWriter - Created data builders";
 
   // iterate over all columns and build array
-  std::vector<std::vector<Tensor>> &data = *dat.tensor_batch;
+  std::vector<std::vector<Tensor>> &data = dat.tensor_batch;
 
   VLOG(0) << "ARR - ArrowWriter - created data view";
 
@@ -281,7 +283,8 @@ void ArrowRoundRobinWriter::SignalEOF() {
     deque_.push_back(current_batch_);
   }
   for(int i = 0; i < writer_count_; i++) {
-    deque_.push_back({nullptr, 0, true});
+    std::vector<std::vector<Tensor>> empty;
+    deque_.push_back({empty, 0, true});
   }
   tensors_available_.notify_all();
 }

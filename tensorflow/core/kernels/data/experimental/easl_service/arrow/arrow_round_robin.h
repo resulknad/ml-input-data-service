@@ -18,7 +18,7 @@ namespace arrow_round_robin {
 
 
 struct TensorData {
-    std::vector<std::vector<Tensor>>* tensor_batch;
+    std::vector<std::vector<Tensor>> tensor_batch;
     size_t byte_count = 0;
     bool end_of_sequence = false;
 };
