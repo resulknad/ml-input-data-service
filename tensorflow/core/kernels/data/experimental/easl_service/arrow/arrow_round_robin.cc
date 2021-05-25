@@ -64,7 +64,8 @@ void ArrowRoundRobinWriter::Write(std::vector<Tensor> *tensors) {
   }
 
   bytes_received_ += bytes_per_row_;
-  current_batch_.tensor_batch->push_back(std::move(*tensors));  // copy of tensors now stored in class -> survive until written
+  std::vector<Tensor> local_tensors = *tensors;
+  current_batch_.tensor_batch->push_back(std::move(local_tensors));  // copy of tensors now stored in class -> survive until written
   current_batch_.byte_count += bytes_per_row_;
 
   // check if current batch full (--> next row wouldn't fit into current batch)
@@ -203,6 +204,7 @@ Status ArrowRoundRobinWriter::ArrowWrite(const std::string &filename, TensorData
 
     for(int j = 0; j < row.size(); j++) {
       const char* buff = row[j].tensor_data().data();
+      VLOG(0) << "ARR - ArrowWriter - builder loop data addr: " << (void *) buff;
       data_builders[j]->Append(buff, data_len[j]);
     }
 
