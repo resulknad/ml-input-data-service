@@ -136,7 +136,6 @@ Status ArrowRoundRobinWriter::ArrowWrite(const std::string &filename, TensorData
 
   // initializing writer process
   int ncols = tensor_data_len_.size();
-  int col_idx = 0;
   Allocator *string_allocator_ = cpu_allocator(port::kNUMANoAffinity);
   arrow::DataTypeVector arrow_dtypes;
   for (int i = 0; i < first_row_dtype_.size(); i++) {
