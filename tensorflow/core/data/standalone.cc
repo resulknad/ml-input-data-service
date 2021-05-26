@@ -31,12 +31,37 @@ limitations under the License.
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/ptr_util.h"
 
+// (damien-aymon)
+// Testing metrics collection
+#include "tensorflow/core/framework/metrics.h"
+
 namespace tensorflow {
 namespace data {
 namespace standalone {
 
 Status Iterator::GetNext(std::vector<Tensor>* outputs, bool* end_of_input) {
+  monitoring::CounterCell* tf_data_elements_counter =
+      tensorflow::metrics::GetTFDataElementsCounter("ServiceCacheGet");
+  VLOG(0) << " EASL - serviceCacheGet elements counter: " <<
+  tf_data_elements_counter->value();
+  auto model = ctx_.get()->model();
+
+  if(model){
+    VLOG(0) << "EASL - serviceCacheGet: there is indeed a model here...";
+  }
   return iterator_->GetNext(ctx_.get(), outputs, end_of_input);
+}
+
+model::Model::ModelMetrics Iterator::GetMetrics() {
+  auto model = ctx_.get()->model();
+
+  if(model){
+    VLOG(0) << "EASL - Standalone iterator GetMetrics, model found";
+    return model->CollectMetrics();
+  } else {
+    VLOG(0) << "EASL - Standalone iterator GetMetrics, model not yet created.";
+    return nullptr;
+  }
 }
 
 Iterator::Iterator(IteratorBase* iterator, IteratorContext* ctx)
@@ -140,17 +165,6 @@ Status Dataset::MakeSplitProvider(std::unique_ptr<SplitProvider>* result) {
 }
 
 const DatasetBase* Dataset::Get() const { return dataset_; }
-
-Status Dataset::GetMetrics(const std::string& container, 
-                           const std::string& name, 
-                           MetricsResource* var) {
-  Status s = resource_mgr_.Lookup(container, name, &var);
-  if (s.ok()) {
-    VLOG(1) << "(Dataset::GetMetrics) Value: " << var->counter;
-    var->Unref();
-  }
-  return s;
-}
 
 Dataset::Dataset(DatasetBase* dataset, DeviceMgr* device_mgr,
                  ProcessFunctionLibraryRuntime* pflr,

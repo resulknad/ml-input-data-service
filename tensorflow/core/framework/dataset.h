@@ -481,6 +481,11 @@ class IteratorContext {
 
   const std::shared_ptr<model::Model>& model() { return params_.model; }
 
+  // EASL - used in model op to also set the model to the source context.
+  void set_model(std::shared_ptr<model::Model>& model){
+    params_.model = model;
+  }
+
   std::function<void(std::function<void()>)>* runner() {
     return &params_.runner;
   }
@@ -769,13 +774,17 @@ class IteratorBase {
     return 0;
   }
 
+  // We make this protected to access it from the DatasetIterator<T> classes
+  // (The actual iterator implementation). This is used in the
+  // data_service_dataset_op to send statistics to the service dispatcher.
+  std::shared_ptr<model::Node> node_ = nullptr;
+
  private:
   // For access to `AddCleanupFunction` and `Restore`.
   friend class DatasetBase;
   friend class DatasetBaseIterator;  // for access to `node_`
 
   std::vector<std::function<void()>> cleanup_fns_;
-  std::shared_ptr<model::Node> node_ = nullptr;
   const IteratorBase* parent_ = nullptr;  // Not owned.
   int64 id_ = 0;
   int64 parent_id_ = 0;

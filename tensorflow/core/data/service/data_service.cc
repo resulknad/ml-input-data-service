@@ -34,6 +34,14 @@ namespace {
 constexpr const char kParallelEpochs[] = "parallel_epochs";
 constexpr const char kDistributedEpoch[] = "distributed_epoch";
 
+// EASL: Worker metrics names
+constexpr const char kBytesConsumed[] = "bytes_consumed";
+constexpr const char kBytesProduced[] = "bytes_produced";
+constexpr const char kNumElements[] = "num_elements";
+constexpr const char kComputationTime[] = "computation_time";
+constexpr const char kInNodeTime[] = "in_node_time";
+constexpr const char kInPrefixTime[] = "in_prefix_time";
+
 }  // namespace
 
 Status ParseProcessingMode(const std::string& s, ProcessingMode& mode) {
@@ -62,7 +70,8 @@ std::string ProcessingModeToString(ProcessingMode mode) {
 Status DataServiceDispatcherClient::WorkerHeartbeat(
     const std::string& worker_address, const std::string& transfer_address,
     const std::vector<int64>& current_tasks, std::vector<TaskDef>& new_tasks,
-    std::vector<int64>& tasks_to_delete, const MetricsResource* metrics) {
+    std::vector<int64>& tasks_to_delete, 
+    const absl::flat_hash_map<int64, model::Model::ModelMetrics>& tasks_metrics) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   WorkerHeartbeatRequest req;
   req.set_worker_address(worker_address);
@@ -70,10 +79,27 @@ Status DataServiceDispatcherClient::WorkerHeartbeat(
   for (int64 task : current_tasks) {
     req.add_current_tasks(task);
   }
-  // Add a dummy Metric object
-  WorkerHeartbeatRequest::Metric* metric = req.add_metrics();
-  metric->set_name("dummy_metric");
-  metric->set_value(metrics->counter);
+  // Add the metrics
+  for (auto& task_metrics : tasks_metrics) {
+    WorkerHeartbeatRequest::Task* task = req.add_tasks();
+    task->set_id(task_metrics.first);
+    task->set_last_node_name(
+      task_metrics.second->begin()->second.last_node_name());
+
+    for (auto& node_metrics : *task_metrics.second) {
+      WorkerHeartbeatRequest::Task::Node* node = task->add_nodes();
+      node->set_name(node_metrics.first);
+      
+      // Set the metrics of this node
+      auto metrics = node->mutable_metrics();
+      (*metrics)[kBytesConsumed] = node_metrics.second.bytes_consumed();
+      (*metrics)[kBytesProduced] = node_metrics.second.bytes_produced();
+      (*metrics)[kNumElements] = node_metrics.second.num_elements();
+      (*metrics)[kComputationTime] = node_metrics.second.computation_time();
+      (*metrics)[kInNodeTime] = node_metrics.second.in_node_time();
+      (*metrics)[kInPrefixTime] = node_metrics.second.in_prefix_time();
+    }
+  }
 
   WorkerHeartbeatResponse resp;
   grpc::ClientContext client_ctx;

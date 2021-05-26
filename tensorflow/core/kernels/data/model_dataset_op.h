@@ -27,12 +27,6 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
-class MetricsResource : public ResourceBase {
-  public: 
-   int counter;
-   std::string DebugString() const { return "This is an EASL metrics resource"; }
-};
-
 class ModelDatasetOp : public UnaryDatasetOpKernel {
  public:
   static constexpr const char* const kDatasetType = "ModelDataset";

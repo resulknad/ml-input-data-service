@@ -21,9 +21,11 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
+#include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/kernels/data/model_dataset_op.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tensorflow/core/framework/model.h"
 
 namespace tensorflow {
 namespace data {
@@ -73,6 +75,9 @@ class Iterator {
   // indication of whether the end of the input pipeline has been reached.
   Status GetNext(std::vector<Tensor>* outputs, bool* end_of_input);
 
+  // EASL
+  model::Model::ModelMetrics GetMetrics();
+
  private:
   friend class Dataset;
 
@@ -107,10 +112,6 @@ class Dataset {
   Status MakeSplitProvider(std::unique_ptr<SplitProvider>* result);
   // Returns a pointer to the underlying dataset.
   const DatasetBase* Get() const;
-
-  // Returns the metrics for this dataset
-  Status GetMetrics(const std::string& container, const std::string& name, 
-                    MetricsResource* var);
 
  private:
   Dataset(DatasetBase* dataset, DeviceMgr* device_mgr,

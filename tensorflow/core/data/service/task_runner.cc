@@ -47,6 +47,11 @@ int64 StandaloneTaskIterator::Cardinality() const {
   return dataset_->Get()->Cardinality();
 }
 
+model::Model::ModelMetrics StandaloneTaskIterator::GetMetrics() {
+  return iterator_->GetMetrics();
+}
+
+
 Status TaskRunner::Create(const experimental::WorkerConfig& worker_config,
                           const TaskDef& task_def,
                           CancellationManager& cancellation_manager,
@@ -91,6 +96,10 @@ Status FirstComeFirstServedTaskRunner::GetNext(const GetElementRequest& req,
     result.components = std::move(element);
   }
   return Status::OK();
+}
+
+model::Model::ModelMetrics FirstComeFirstServedTaskRunner::GetMetrics(){
+  return iterator_->GetMetrics();
 }
 
 RoundRobinTaskRunner::RoundRobinTaskRunner(
@@ -235,6 +244,10 @@ Status RoundRobinTaskRunner::GetNext(const GetElementRequest& req,
   }
   result.components = std::move(element);
   return Status::OK();
+}
+
+model::Model::ModelMetrics RoundRobinTaskRunner::GetMetrics(){
+  return prefetch_thread_.iterator_->GetMetrics();
 }
 
 PrefetchThread::PrefetchThread(std::unique_ptr<TaskIterator> iterator,

@@ -13,15 +13,21 @@ message TaskProgress {
 }
 
 message WorkerHeartbeatRequest {
-  message Metric {
-    string name = 1;
-    float value = 2;
+  message Task {
+    message Node {
+      string name = 1;
+      map <string, double> metrics = 2;
+    }
+    
+    int64 id = 1;
+    string last_node_name = 2;
+    repeated Node nodes = 3;
   }
 
   string worker_address = 1;
   string transfer_address = 3;
   repeated int64 current_tasks = 2;
-  repeated Metric metrics = 4;
+  repeated Task tasks = 4;
 }
 
 message WorkerHeartbeatResponse {
@@ -130,6 +136,9 @@ message ClientHeartbeatRequest {
   oneof optional_blocked_round {
     int64 blocked_round = 4;
   }
+
+  double avg_get_next_processing_time = 5;
+  double avg_inter_arrival_time = 6;
 }
 
 message ClientHeartbeatResponse {

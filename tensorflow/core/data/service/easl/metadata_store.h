@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/data/service/common.pb.h"
+#include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/data_service.h"
 #include "tensorflow/core/lib/core/status.h"
 
@@ -24,27 +25,167 @@ namespace tensorflow {
 namespace data {
 namespace easl {
 
-// A class encapsulating the metadata store of the tf.data service.
-// TODO(damien-aymon)
-// - persist this store to disk for fault recovery.
+class ModelMetrics {
+  public:
+    class Metrics {
+      public:
+        Metrics(Metrics& other);
+        Metrics(double get_next_time_ms, double inter_arrival_time_ms);
 
+        void Update(Metrics& other);
+
+        void set_get_next_time_ms(double x) { get_next_time_ms_ = x; }
+        void set_inter_arrival_time_ms(double x) { inter_arrival_time_ms_ = x; }
+
+        double get_next_time_ms() { return get_next_time_ms_; }
+        double inter_arrival_time_ms() { return inter_arrival_time_ms_; }
+
+      private:
+        double get_next_time_ms_; 
+        double inter_arrival_time_ms_;
+    };
+
+    using MetricsCollection = 
+      absl::flat_hash_map<int64, std::shared_ptr<ModelMetrics::Metrics>>;
+
+    ModelMetrics() {}
+
+    // Update the values for a client
+    Status UpdateClientMetrics(int64 client_id, Metrics& metrics);
+    Status GetClientMetrics(int64 client_id, Metrics** metrics);
+
+    // The keys are the client id
+    MetricsCollection metrics_;
+};
+
+class NodeMetrics {
+  public: 
+    class Metrics {
+      public:
+        explicit Metrics(Metrics& other);
+        explicit Metrics(int64 bytes_consumed, int64 bytes_produced, 
+                          int64 num_elements, int64 computation_time, 
+                          double in_node_time_ms, double in_prefix_time_ms);
+        
+        void Update(Metrics& other);
+        
+        void set_bytes_consumed(int64 x)   { bytes_consumed_ = x; }
+        void set_bytes_produced(int64 x)   { bytes_produced_ = x; }
+        void set_num_elements(int64 x)     { num_elements_ = x; }
+        void set_computation_time(int64 x) { computation_time_ = x; }
+        void set_in_node_time_ms(double x)    { in_node_time_ms_ = x; }
+        void set_in_prefix_time_ms(double x)  { in_prefix_time_ms_ = x; }
+
+        int64 bytes_consumed()   { return bytes_consumed_; }
+        int64 bytes_produced()   { return bytes_produced_; }
+        int64 num_elements()     { return num_elements_; }
+        int64 computation_time() { return computation_time_; }
+        double in_node_time_ms()     { return in_node_time_ms_; }
+        double in_prefix_time_ms()   { return in_prefix_time_ms_; }
+
+      private:
+        int64 bytes_consumed_;
+        int64 bytes_produced_;
+        int64 num_elements_;
+        int64 computation_time_;
+        double in_node_time_ms_;
+        double in_prefix_time_ms_; 
+    };
+
+    using MetricsCollection =
+      absl::flat_hash_map<string, std::shared_ptr<NodeMetrics::Metrics>>;
+
+    NodeMetrics() {}
+
+    // Get or update the metrics of a worker
+    Status UpdateWorkerMetrics(string worker_address, Metrics& metrics);
+    Status GetWorkerMetrics(string worker_address, Metrics** metrics);
+  
+    // The key here is the worker address
+    MetricsCollection metrics_;
+};
+
+
+class InputPipelineMetrics {
+  public:
+    using MetricsCollection = 
+      absl::flat_hash_map<string, std::shared_ptr<NodeMetrics>>;
+
+    InputPipelineMetrics() 
+      : last_node_name_("") {}
+    InputPipelineMetrics(std::string last_node_name) 
+      : last_node_name_(last_node_name) {}
+
+    // Get the metrics for a single node
+    Status GetNodeMetrics(string long_name, NodeMetrics** metrics);
+    Status GetLastNodeMetrics(NodeMetrics** metrics);
+
+    // Get the metrics from the same worker for each node in the graph 
+    Status GetWorkerMetrics(string worker_address, 
+      absl::flat_hash_map<string, NodeMetrics::Metrics*>& metrics);
+
+    // Methods for setting data
+    Status UpdateNodeMetrics(string long_name, string worker_address, 
+      NodeMetrics::Metrics& metrics);
+
+    // Methods for managing the last node name
+    std::string GetLastNodeName();
+    void SetLastNodeName(std::string last_node_name); 
+
+    // Last user node name
+    std::string last_node_name_;
+    // The keys are the long name of the node
+    MetricsCollection metrics_;
+};
+
+class JobMetrics {
+  public:
+    JobMetrics(int64 job_id, int64 dataset_id);
+
+    int64 job_id_;
+    int64 dataset_id_;
+    std::shared_ptr<ModelMetrics> model_metrics_;
+    std::shared_ptr<InputPipelineMetrics> input_pipeline_metrics_;
+};
 
 class MetadataStore {
  public:
-  MetadataStore();
+  MetadataStore() {}
   MetadataStore(const MetadataStore &) = delete;
   MetadataStore &operator=(const MetadataStore &) = delete;
 
-  // Sets the metadata for this fingerprint.
-  Status UpdateMetadata(const uint64 &fingerprint, const int64 &update);
-  // Returns the (dummy for now) metadata by fingerprint.
-  Status MetadataFromFingerprint(uint64 fingerprint,
-                                 std::shared_ptr<int64> &metadata) const;
+  // Create a job entry
+  Status CreateJob(int64 job_id, int64 dataset_id);
+
+  // Remove job
+  Status RemoveJob(int64 job_id);
+
+  // Get metrics
+  Status GetJobMetrics(int64 job_id, JobMetrics** metrics) const;
+
+  Status GetModelMetrics(int64 job_id, ModelMetrics** metrics) const;
+
+  Status GetInputPipelineMetrics(int64 job_id, 
+    InputPipelineMetrics** metrics) const;
+  Status GetLastNodeMetrics(int64 job_id, NodeMetrics** metrics) const;
+
+  // Update or create the metrics for a client
+  Status UpdateModelMetrics(int64 job_id, int64 client_id, 
+    ModelMetrics::Metrics& metrics);
+
+  // Update or create the metrics for a client
+  Status UpdateInputPipelineMetrics(int64 job_id, string node_long_name, 
+    string worker_address, NodeMetrics::Metrics& metrics);
+  Status UpdateLastNode(int64 job_id, string node_long_name);
+
+  // Manage jobs to be evaluated
+  Status GetJobsForEval(absl::flat_hash_set<int64>& jobs);
+  Status MarkJobAsEvaluated(int64 job_id);
 
  private:
-  // Some dummy metadata.
-  absl::flat_hash_map<uint64, int64> metadata_by_fingerprint_;
-
+  // Key is job id
+  absl::flat_hash_map<int64, std::shared_ptr<JobMetrics>> metadata_;
+  absl::flat_hash_set<int64> jobs_to_evaluate_;
 };
 
 } // namespace easl

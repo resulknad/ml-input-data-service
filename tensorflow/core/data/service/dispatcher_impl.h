@@ -137,9 +137,6 @@ class DataServiceDispatcherImpl {
                        GetDatasetDefResponse* response);
   Status GetSplit(const GetSplitRequest* request, GetSplitResponse* response);
 
-  Status UpdateMetadata(const UpdateMetadataRequest* request,
-                        UpdateMetadataResponse* response);
-
   /// Client-facing API.
   Status GetVersion(const GetVersionRequest* request,
                     GetVersionResponse* response);
@@ -257,6 +254,13 @@ class DataServiceDispatcherImpl {
   void JobGcThread();
   // Scans for old jobs and marks them as finished.
   Status GcOldJobs() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  // A thread which periodically decides which jobs to cache or use cache on 
+  void CachewThread();
+  // Issues a use cache or recompute decision for running jobs
+  Status CachewLogic() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  // Used within the CachewLogic to determine scale and whether to use cache
+  bool ShouldUseCache(int64 job_id) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  int InferWorkerDelta(int64 job_id) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_); 
   // Gets a `DatasetDef` from `dataset_store_` for the given dataset id, and
   // stores it in `dataset_def`.
   Status GetDatasetDef(int64 dataset_id,
@@ -300,6 +304,21 @@ class DataServiceDispatcherImpl {
   // Condition variable for waking up the job gc thread.
   condition_variable job_gc_thread_cv_;
   std::unique_ptr<Thread> job_gc_thread_;
+  std::unique_ptr<Thread> cachew_thread_;
+
+  // Cachew decision data: bytes to 
+  std::vector<std::tuple<double, double>> read_times_ = {
+    {4, 0.001468},
+    {64, 0.021496},
+    {512, 0.175405},
+    {1024, 0.355569},
+    {10000, 3.396340},
+    {100000, 31.818158},
+    {1000000, 349.849086},
+    {10000000, 1221.657678},
+    {100000000, 1117.086616},
+    {500000000, 1072.647283}
+  };
 
   TF_DISALLOW_COPY_AND_ASSIGN(DataServiceDispatcherImpl);
 };

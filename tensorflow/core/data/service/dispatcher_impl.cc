@@ -67,6 +67,14 @@ constexpr std::array<const char*, 8> kNodeNameSharingOps = {
     "MutableHashTableOfTensorsV2",
 };
 
+// EASL: Worker metrics names
+constexpr const char kBytesConsumed[] = "bytes_consumed";
+constexpr const char kBytesProduced[] = "bytes_produced";
+constexpr const char kNumElements[] = "num_elements";
+constexpr const char kComputationTime[] = "computation_time";
+constexpr const char kInNodeTime[] = "in_node_time";
+constexpr const char kInPrefixTime[] = "in_prefix_time";
+
 using Dataset = DispatcherState::Dataset;
 using Worker = DispatcherState::Worker;
 using NamedJobKey = DispatcherState::NamedJobKey;
@@ -139,6 +147,8 @@ Status DataServiceDispatcherImpl::Start() {
   mutex_lock l(mu_);
   job_gc_thread_ = absl::WrapUnique(
       env_->StartThread({}, "job-gc-thread", [&] { JobGcThread(); }));
+  cachew_thread_ = absl::WrapUnique(
+      env_->StartThread({}, "cachew-thread", [&] { CachewThread(); }));
   if (config_.work_dir().empty()) {
     if (config_.fault_tolerant_mode()) {
       return errors::InvalidArgument(
@@ -305,11 +315,31 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
   TF_RETURN_IF_ERROR(
       FindNewTasks(worker_address, current_tasks, assigned_tasks, response));
 
-  // Process the incoming metrics
-  for (int i = 0; i < request->metrics_size(); ++i) {
-    const WorkerHeartbeatRequest::Metric& metric = request->metrics(i);
-    VLOG(1) << "(DataServiceDispatcherImpl::WorkerHeartbeat) Got metric: " 
-            << metric.name() << " " << metric.value();
+  // Update the metadata with the incoming metrics
+  for (int i = 0; i < request->tasks_size(); ++i) {
+    auto task = request->tasks(i);
+    
+    // Get the job for this task
+    std::shared_ptr<const Task> task_object;
+    Status s = state_.TaskFromId(task.id(), task_object);
+
+    if (s.ok()) {
+      auto job_id = task_object->job->job_id;
+      std::string last_node_name = task.last_node_name();
+      metadata_store_.UpdateLastNode(job_id, last_node_name);
+
+      for (int j = 0; j < task.nodes_size(); ++j) {
+        auto metrics = task.mutable_nodes(j)->mutable_metrics();
+        easl::NodeMetrics::Metrics node_metrics((*metrics)[kBytesConsumed], 
+          (*metrics)[kBytesProduced], (*metrics)[kNumElements], 
+          (*metrics)[kComputationTime], (*metrics)[kInNodeTime], 
+          (*metrics)[kInPrefixTime]);
+
+        metadata_store_.UpdateInputPipelineMetrics(job_id, 
+          task.mutable_nodes(j)->name(), request->worker_address(), 
+          node_metrics);
+      }
+    }
   }
 
   VLOG(4) << "Finished worker heartbeat for worker at address "
@@ -423,18 +453,6 @@ Status DataServiceDispatcherImpl::MakeSplitProvider(
   return Status::OK();
 }
 
-Status DataServiceDispatcherImpl::UpdateMetadata(
-    const UpdateMetadataRequest* request,
-    UpdateMetadataResponse* response) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  uint64 fingerprint = request->id();
-  int64 update = request->update();
-  // TODO(damien-aymon) check if started?
-  mutex_lock l(mu_);
-  TF_RETURN_IF_ERROR(metadata_store_.UpdateMetadata(fingerprint, update));
-  VLOG(3) << "Updated metadata for fingerprint " << fingerprint;
-  return Status::OK();
-}
-
 Status DataServiceDispatcherImpl::GetVersion(const GetVersionRequest* request,
                                              GetVersionResponse* response) {
   response->set_version(kDataServiceVersion);
@@ -501,7 +519,7 @@ Status DataServiceDispatcherImpl::RegisterDataset(uint64 fingerprint,
   TF_RETURN_IF_ERROR(dataset_store_->Put(
       service::easl::cache_utils::DatasetGetKey(dataset_id, fingerprint),
       get_dataset));
-  VLOG(0) << "Added put/get versions for dataset fingerprint" << fingerprint;
+  VLOG(0) << "Added put/get versions for dataset fingerprint " << fingerprint;
 
   TF_RETURN_IF_ERROR(
       dataset_store_->Put(DatasetKey(dataset_id, fingerprint), dataset));
@@ -551,6 +569,11 @@ Status DataServiceDispatcherImpl::GetOrCreateJob(
     TF_RETURN_IF_ERROR(AcquireJobClientId(job, job_client_id));
     response->set_job_client_id(job_client_id);
     TF_RETURN_IF_ERROR(CreateTasksForJob(job, tasks));
+  
+    // EASL: Create an entry in the metadata for this
+    VLOG(1) << "(DataServiceDispatcherImpl::GetOrCreateJob) Adding a job to "
+            << "the metadata.";
+    metadata_store_.CreateJob(job->job_id, request->dataset_id());
   }
   TF_RETURN_IF_ERROR(AssignTasks(tasks));
   VLOG(3) << "Created job " << job->job_id << " for CreateJob("
@@ -854,7 +877,10 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
     const ClientHeartbeatRequest* request, ClientHeartbeatResponse* response) {
   TF_RETURN_IF_ERROR(CheckStarted());
   mutex_lock l(mu_);
-  VLOG(4) << "Received heartbeat from client id " << request->job_client_id();
+  // TODO (damien-aymon) revert back to level 4
+  VLOG(0) << "Received heartbeat from client id " << request->job_client_id();
+  VLOG(0) << "Avg inter-arrival time " << request->avg_inter_arrival_time();
+
   std::shared_ptr<const Job> job;
   Status s = state_.JobForJobClientId(request->job_client_id(), job);
   if (errors::IsNotFound(s) && !config_.fault_tolerant_mode()) {
@@ -864,6 +890,13 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
         "could be caused by a dispatcher restart.");
   }
   TF_RETURN_IF_ERROR(s);
+
+  // EASL: Update the client metrics
+  easl::ModelMetrics::Metrics metrics(request->avg_get_next_processing_time(), 
+    request->avg_inter_arrival_time());
+  metadata_store_.UpdateModelMetrics(job->job_id, request->job_client_id(), 
+    metrics);
+
   if (request->optional_current_round_case() ==
       ClientHeartbeatRequest::kCurrentRound) {
     round_robin_rounds_[request->job_client_id()] =
@@ -1016,8 +1049,62 @@ Status DataServiceDispatcherImpl::GcOldJobs() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       update.mutable_finish_task()->set_task_id(task->task_id);
       TF_RETURN_IF_ERROR(state_.Apply(update));
     }
+
     DCHECK(job->finished);
+    // EASL: Removing the job from the metadata
+    VLOG(1) << "(DataServiceDispatcherImpl::GcOldJobs) Removing a job from "
+        << "the metadata.";
+    if (job->finished) {
+      metadata_store_.RemoveJob(job->job_id);
+    }
   }
+  return Status::OK();
+}
+
+void DataServiceDispatcherImpl::CachewThread() {
+  int64 next_check_micros = 0;
+  while (true) {
+    mutex_lock l(mu_);
+    while (!cancelled_ && env_->NowMicros() < next_check_micros) {
+      int64 remaining_micros = next_check_micros - env_->NowMicros();
+      job_gc_thread_cv_.wait_for(l,
+                                 std::chrono::microseconds(remaining_micros));
+    }
+    if (cancelled_) {
+      return;
+    }
+    Status s = CachewLogic();
+    if (!s.ok()) {
+      LOG(WARNING) << "Error garbage collecting old jobs: " << s;
+    }
+
+    // TODO(DanGraur): Add value in config for this interval (msec)
+    next_check_micros =
+        env_->NowMicros() + (2000 * 1000);
+  }
+}
+
+bool DataServiceDispatcherImpl::ShouldUseCache(int64 job_id) 
+  TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  return true;
+}
+
+int DataServiceDispatcherImpl::InferWorkerDelta(int64 job_id) 
+  TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  return 0;
+}
+
+Status DataServiceDispatcherImpl::CachewLogic() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  absl::flat_hash_set<int64> jobs_for_analysis;
+  metadata_store_.GetJobsForEval(jobs_for_analysis);
+
+  for (auto job_id : jobs_for_analysis) {
+    bool should_use_cache = ShouldUseCache(job_id);
+    int worker_delta = InferWorkerDelta(job_id);
+    // TODO: Use these numbers somehow
+    metadata_store_.MarkJobAsEvaluated(job_id);
+  }
+
   return Status::OK();
 }
 
