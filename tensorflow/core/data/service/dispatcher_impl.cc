@@ -253,13 +253,10 @@ Status DataServiceDispatcherImpl::FindNewTasks(
       continue;
     }
     TaskDef* task_def = response->add_new_tasks();
-    std::shared_ptr<const Dataset> dataset;
-    TF_RETURN_IF_ERROR(state_.DatasetFromId(task->job->dataset_id, dataset));
+
     // EASL - Get correct dataset key.
-    std::string dataset_key;
-    TF_RETURN_IF_ERROR(service::easl::cache_utils::DatasetKey(
-        cache_state_, dataset->dataset_id, dataset->fingerprint,
-        worker_address, task->task_id, dataset_key));
+    std::string dataset_key = task->dataset_key;
+
     if (config_.work_dir().empty()) {
       std::shared_ptr<const DatasetDef> dataset_def;
       TF_RETURN_IF_ERROR(dataset_store_->Get(dataset_key, dataset_def));
@@ -359,18 +356,22 @@ Status DataServiceDispatcherImpl::WorkerUpdate(
       Update update;
       update.mutable_finish_task()->set_task_id(task_id);
       TF_RETURN_IF_ERROR(Apply(update));
-      // EASL - Set dataset as cached if this was a caching task.
-      std::shared_ptr<const Dataset> dataset;
-      TF_RETURN_IF_ERROR(state_.DatasetFromId(task->job->dataset_id, dataset));
-      int64 caching_task;
-      TF_RETURN_IF_ERROR(cache_state_.GetCachingTaskId(dataset->fingerprint,
-          request->worker_address(), caching_task));
-      if(caching_task == task_id){
-        cache_state_.SetDatasetCached(
-            dataset->fingerprint, request->worker_address());
+
+      // EASL - Set dataset as cached if this was a caching job and the job is finished.
+      std::shared_ptr<Job> job = task->job;
+      if(job->job_type == "PUT" && job->finished){
+        std::shared_ptr<const Dataset> dataset;
+        TF_RETURN_IF_ERROR(state_.DatasetFromId(task->job->dataset_id, dataset));
+        cache_state_.SetDatasetCached(dataset->fingerprint);
+
         VLOG(0) << "Dataset with fingerprint " << dataset->fingerprint
-                     << "has been added to cache.";
+                << "has been added to cache.";
       }
+      // Update metadata store directly, quicker than waiting for the GCOldJobs to run.
+      if(job->finished){
+        metadata_store_.UpdateDatasetKeyJobMetrics(job->job_id, task->dataset_key);
+      }
+
       VLOG(3) << "Task " << task_id << " from job " << task->job->job_id
               << " completed";
     }
@@ -385,7 +386,7 @@ Status DataServiceDispatcherImpl::GetDatasetDef(
   std::shared_ptr<const Dataset> dataset;
   TF_RETURN_IF_ERROR(state_.DatasetFromId(request->dataset_id(), dataset));
 
-  // TODO (damien-aymon) Check if cached version available!
+  // TODO (damien-aymon) The request should have the dataset key instead of the dataset_id.
   std::shared_ptr<const DatasetDef> dataset_def;
   TF_RETURN_IF_ERROR(GetDatasetDef(*dataset, dataset_def));
   *response->mutable_dataset_def() = *dataset_def;
@@ -686,11 +687,27 @@ Status DataServiceDispatcherImpl::CreateJob(
   if (processing_mode == ProcessingMode::DISTRIBUTED_EPOCH) {
     TF_RETURN_IF_ERROR(MakeSplitProvider(dataset_id, split_providers_[job_id]));
   }
+
+  // EASL - Caching decision: should the job compute, write or read from cache?
+  std::string job_type;
+  std::shared_ptr<const Dataset> dataset;
+  TF_RETURN_IF_ERROR(state_.DatasetFromId(dataset_id, dataset));
+  int64 dataset_fingerprint = dataset->fingerprint;
+  std::string compute_dataset_key = DatasetKey(dataset_id, dataset_fingerprint);
+
+  service::easl::cache_utils::DetermineJobType(
+      cache_state_, metadata_store_, dataset_fingerprint,
+      compute_dataset_key, job_id, job_type);
+
+  VLOG(0) << "EASL - Caching decision for dataset_key " <<
+  compute_dataset_key << ": " << job_type;
+
   Update update;
   CreateJobUpdate* create_job = update.mutable_create_job();
   create_job->set_job_id(job_id);
   create_job->set_dataset_id(dataset_id);
   create_job->set_processing_mode(ProcessingModeDef(processing_mode));
+  create_job->set_job_type(job_type);
   if (named_job_key.has_value()) {
     NamedJobKeyDef* key = create_job->mutable_named_job_key();
     key->set_name(named_job_key->name);
@@ -782,20 +799,11 @@ Status DataServiceDispatcherImpl::CreateTask(std::shared_ptr<const Job> job,
   TF_RETURN_IF_ERROR(Apply(update));
   TF_RETURN_IF_ERROR(state_.TaskFromId(task_id, task));
 
-  // EASL - Check if this task should cache the dataset.
+  // EASL - Get the dataset_key depending on the job type:
   std::shared_ptr<const Dataset> dataset;
-  TF_RETURN_IF_ERROR(state_.DatasetFromId(task->job->dataset_id, dataset));
-  if(!cache_state_.IsDatasetCached(dataset->fingerprint, worker_address)){
-    int64 caching_task_id;
-    Status s = cache_state_.GetCachingTaskId(dataset->fingerprint,
-                                             worker_address, caching_task_id);
-    if(errors::IsNotFound(s)){
-      cache_state_.RegisterCachingTask(
-          dataset->fingerprint, worker_address, task_id);
-      return Status::OK();
-    }
-    return s;
-  }
+  TF_RETURN_IF_ERROR(state_.DatasetFromId(job->dataset_id, dataset));
+  std::string dataset_key =
+      service::easl::cache_utils::DatasetKey(dataset->dataset_id, dataset->fingerprint, job->job_type);
 
   return Status::OK();
 }
@@ -846,13 +854,9 @@ Status DataServiceDispatcherImpl::AssignTask(std::shared_ptr<const Task> task)
   task_def->set_worker_address(task->worker_address);
   {
     mutex_lock l(mu_);
-    std::shared_ptr<const Dataset> dataset;
-    TF_RETURN_IF_ERROR(state_.DatasetFromId(task->job->dataset_id, dataset));
-    // EASL - Get correct dataset key.
-    std::string dataset_key;
-    TF_RETURN_IF_ERROR(service::easl::cache_utils::DatasetKey(
-        cache_state_, dataset->dataset_id, dataset->fingerprint,
-        task->worker_address, task->task_id, dataset_key));
+    // EASL - Get correct dataset key from task
+    std::string dataset_key = task->dataset_key;
+
     if (config_.work_dir().empty()) {
       std::shared_ptr<const DatasetDef> dataset_def;
       TF_RETURN_IF_ERROR(dataset_store_->Get(dataset_key, dataset_def));

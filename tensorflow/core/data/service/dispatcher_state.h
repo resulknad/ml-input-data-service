@@ -125,12 +125,13 @@ class DispatcherState {
   struct Job {
     explicit Job(int64 job_id, int64 dataset_id, ProcessingMode processing_mode,
                  absl::optional<NamedJobKey> named_job_key,
-                 absl::optional<int64> num_consumers)
+                 absl::optional<int64> num_consumers, const std::string& job_type)
         : job_id(job_id),
           dataset_id(dataset_id),
           processing_mode(processing_mode),
           named_job_key(named_job_key),
-          num_consumers(num_consumers) {
+          num_consumers(num_consumers),
+          job_type(job_type){
       if (processing_mode == ProcessingMode::DISTRIBUTED_EPOCH) {
         distributed_epoch_state = DistributedEpochState();
       }
@@ -148,16 +149,20 @@ class DispatcherState {
     int64 num_clients = 0;
     int64 last_client_released_micros = -1;
     bool finished = false;
+    // EASL
+    const std::string job_type;
   };
 
   struct Task {
     explicit Task(int64 task_id, const std::shared_ptr<Job>& job,
                   const std::string& worker_address,
-                  const std::string& transfer_address)
+                  const std::string& transfer_address,
+                  const std::string& dataset_key)
         : task_id(task_id),
           job(job),
           worker_address(worker_address),
-          transfer_address(transfer_address) {}
+          transfer_address(transfer_address),
+          dataset_key(dataset_key){}
 
     const int64 task_id;
     const std::shared_ptr<Job> job;
@@ -166,6 +171,8 @@ class DispatcherState {
     int64 starting_round = 0;
     bool finished = false;
     bool removed = false;
+    // EASL
+    const std::string dataset_key;
   };
 
   using TasksById = absl::flat_hash_map<int64, std::shared_ptr<Task>>;

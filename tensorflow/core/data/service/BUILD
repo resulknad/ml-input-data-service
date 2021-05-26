@@ -624,11 +624,21 @@ cc_library(
     ],
     deps = [
         ":common_proto_cc",
+        ":cache_model",
         ":data_service",
         ":dispatcher_cache_state",
+        ":metadata_store",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
         "//tensorflow/core/grappler/optimizers/data:add_put_op",
         "//tensorflow/core/grappler/optimizers/data:add_get_op"
     ],
+)
+
+cc_library(
+    name = "cache_model",
+    srcs = ["easl/cache_model.cc"],
+    hdrs = ["easl/cache_model.h"],
+    deps = ["//tensorflow/core:lib"]
+    ,
 )

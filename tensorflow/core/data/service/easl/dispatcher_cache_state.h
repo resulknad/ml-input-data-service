@@ -13,11 +13,13 @@ namespace data {
 namespace easl {
 
 // This class holds the state of the tf.data service cache.
-class CacheState {
+// This implementation assumes that every worker holds its own cache.
+// We leave it here as a reference.
+class OldCacheState {
  public:
-  CacheState();
-  CacheState(const CacheState &) = delete;
-  CacheState &operator=(const CacheState &) = delete;
+  OldCacheState();
+  OldCacheState(const OldCacheState &) = delete;
+  OldCacheState &operator=(const OldCacheState &) = delete;
 
   bool IsDatasetCached( const uint64 fingerprint,
                         const std::string& worker_address) const;
@@ -43,11 +45,38 @@ class CacheState {
   absl::flat_hash_map<uint64, absl::flat_hash_map<std::string, int64>>
       caching_task_id_for_worker_;
 
-
-
 };
 
 } // namespace easl
+
+class CacheState {
+ public:
+  CacheState();
+  CacheState(const CacheState &) = delete;
+  CacheState &operator=(const CacheState &) = delete;
+
+  bool IsDatasetCached( const uint64 fingerprint) const;
+
+  void SetDatasetCached(const uint64 fingerprint);
+
+
+  // Returns an error if the jo is not found.
+  Status GetCachingJobId(const uint64 fingerprint,
+                          int64& job_id) const;
+
+  //Sets the job_id responsible for caching the dataset with this
+  // fingerprint
+  void RegisterCachingJob(const uint64 fingerprint,
+                           const int64 job_id);
+
+ private:
+  // keyed by fingerprint
+  absl::flat_hash_map<uint64, bool> is_cached_;
+  // keyed by fingerprint -> job_id
+  absl::flat_hash_map<uint64, int64> fingerprint_to_caching_job_;
+
+};
+
 } // namespace data
 } // namespace tensorflow
 

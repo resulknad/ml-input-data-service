@@ -132,10 +132,15 @@ class InputPipelineMetrics {
 
 class JobMetrics {
   public:
-    JobMetrics(int64 job_id, int64 dataset_id);
+    JobMetrics(int64 job_id,
+               int64 dataset_id,
+               int64 dataset_fingerprint,
+               std::string& dataset_key);
 
     int64 job_id_;
     int64 dataset_id_;
+    int64 dataset_fingerprint_;
+    std::string dataset_key_;
     std::shared_ptr<ModelMetrics> model_metrics_;
     std::shared_ptr<InputPipelineMetrics> input_pipeline_metrics_;
 };
@@ -147,7 +152,10 @@ class MetadataStore {
   MetadataStore &operator=(const MetadataStore &) = delete;
 
   // Create a job entry
-  Status CreateJob(int64 job_id, int64 dataset_id);
+  Status CreateJob(int64 job_id,
+                   int64 dataset_id,
+                   int64 dataset_fingerprint,
+                   std::string& dataset_key);
 
   // Remove job
   Status RemoveJob(int64 job_id);
@@ -161,6 +169,15 @@ class MetadataStore {
   Status GetInputPipelineMetrics(int64 job_id, 
     std::shared_ptr<InputPipelineMetrics> metrics) const;
 
+  Status GetJobMetricsByDatasetKey(
+      const std::string& dataset_key, std::shared_ptr<JobMetrics> metrics) const;
+
+  Status GetModelMetricsByDatasetKey(
+      const std::string& dataset_key, std::shared_ptr<ModelMetrics> metrics) const;
+
+  Status GetInputPipelineMetricsByDatasetKey(
+      const std::string& dataset_key, std::shared_ptr<InputPipelineMetrics> metrics) const;
+
   // Update or create the metrics for a client
   Status UpdateModelMetrics(int64 job_id, int64 client_id, 
     ModelMetrics::Metrics& metrics);
@@ -169,9 +186,14 @@ class MetadataStore {
   Status UpdateInputPipelineMetrics(int64 job_id, string node_long_name, 
     string worker_address, NodeMetrics::Metrics& metrics);
 
+  // Update or create the metrics for the dataset key from the given job.
+  Status UpdateDatasetKeyJobMetrics(int64 job_id, const std::string& dataset_key);
+
  private:
   // Key is job id
-  absl::flat_hash_map<int64, std::shared_ptr<JobMetrics>> metadata_;
+  absl::flat_hash_map<int64, std::shared_ptr<JobMetrics>> job_metadata_;
+  // Key is dataset_key
+  absl::flat_hash_map<std::string, std::shared_ptr<JobMetrics>> dataset_key_metadata_;
 };
 
 } // namespace easl

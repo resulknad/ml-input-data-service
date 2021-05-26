@@ -103,7 +103,7 @@ void DispatcherState::CreateJob(const CreateJobUpdate& create_job) {
   }
   auto job = std::make_shared<Job>(job_id, create_job.dataset_id(),
                                    ProcessingMode(create_job.processing_mode()),
-                                   named_job_key, num_consumers);
+                                   named_job_key, num_consumers, create_job.job_type());
   DCHECK(!jobs_.contains(job_id));
   jobs_[job_id] = job;
   tasks_by_job_[job_id] = std::vector<std::shared_ptr<Task>>();
@@ -212,7 +212,7 @@ void DispatcherState::CreateTask(const CreateTaskUpdate& create_task) {
   auto& job = jobs_[create_task.job_id()];
   DCHECK_NE(job, nullptr);
   task = std::make_shared<Task>(task_id, job, create_task.worker_address(),
-                                create_task.transfer_address());
+                                create_task.transfer_address(), create_task.dataset_key());
   tasks_by_job_[create_task.job_id()].push_back(task);
   tasks_by_worker_[create_task.worker_address()][task->task_id] = task;
   next_available_task_id_ = std::max(next_available_task_id_, task_id + 1);

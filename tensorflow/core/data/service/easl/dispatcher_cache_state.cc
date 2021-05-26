@@ -6,9 +6,9 @@ namespace tensorflow {
 namespace data {
 namespace easl {
 
-CacheState::CacheState() {}
+OldCacheState::OldCacheState() {}
 
-bool CacheState::IsDatasetCached(
+bool OldCacheState::IsDatasetCached(
     const uint64 fingerprint, const std::string& worker_address) const {
   auto worker_it = is_cached_at_worker_.find(fingerprint);
   if(worker_it == is_cached_at_worker_.end()){
@@ -23,12 +23,12 @@ bool CacheState::IsDatasetCached(
   return is_cached_it->second;
 }
 
-void CacheState::SetDatasetCached(const uint64 fingerprint,
+void OldCacheState::SetDatasetCached(const uint64 fingerprint,
                                   const std::string& worker_address){
   is_cached_at_worker_[fingerprint][worker_address] = true;
 }
 
-Status CacheState::GetCachingTaskId(const uint64 fingerprint,
+Status OldCacheState::GetCachingTaskId(const uint64 fingerprint,
                                     const std::string &worker_address,
                                     int64 &task_id) const {
   auto worker_it = caching_task_id_for_worker_.find(fingerprint);
@@ -45,16 +45,44 @@ Status CacheState::GetCachingTaskId(const uint64 fingerprint,
   return Status::OK();
 }
 
-void CacheState::RegisterCachingTask(const uint64 fingerprint,
+void OldCacheState::RegisterCachingTask(const uint64 fingerprint,
                                      const std::string &worker_address,
                                      const int64 task_id) {
   // TODO (damien-aymon) Check if already present??
   caching_task_id_for_worker_[fingerprint][worker_address] = task_id;
 }
 
-
-
 } // namespace easl
+
+CacheState::CacheState(){}
+
+bool CacheState::IsDatasetCached(const uint64 fingerprint) const {
+  auto is_cached_it = is_cached_.find(fingerprint);
+  if(is_cached_it == is_cached_.end()){
+    return false;
+  }
+
+  return is_cached_it->second;
+}
+
+void CacheState::SetDatasetCached(const uint64 fingerprint) {
+  is_cached_[fingerprint] = true;
+}
+
+Status CacheState::GetCachingJobId(const uint64 fingerprint, int64 &job_id) const {
+  auto it = fingerprint_to_caching_job_.find(fingerprint);
+  if(it == fingerprint_to_caching_job_.end()){
+    return errors::NotFound(
+        "There is no job responsible for caching the dataset with fingerprint "
+        + fingerprint);
+  }
+  job_id = it->second;
+  return Status::OK();
+}
+
+void CacheState::RegisterCachingJob(const uint64 fingerprint, const int64 job_id) {
+  fingerprint_to_caching_job_[fingerprint] = job_id;
+}
 } // namespace data
 } // namespace tensorflow
 

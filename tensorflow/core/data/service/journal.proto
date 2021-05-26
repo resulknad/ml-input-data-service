@@ -49,6 +49,8 @@ message CreateJobUpdate {
   oneof optional_num_consumers {
     int64 num_consumers = 7;
   }
+  // EASL
+  string job_type = 8; // i.e read, write, cache
 }
 
 message ProduceSplitUpdate {
@@ -101,6 +103,8 @@ message CreateTaskUpdate {
   int64 job_id = 2;
   string worker_address = 4;
   string transfer_address = 6;
+  // EASL
+  string dataset_key = 7;
 }
 
 message FinishTaskUpdate {

@@ -12,11 +12,12 @@
 #include "tensorflow/core/grappler/utils/graph_view.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
+#include "tensorflow/core/data/service/easl/cache_model.h"
 
 namespace tensorflow {
 namespace data {
 namespace service {
-namespace easl{
+namespace easl {
 namespace cache_utils {
 
 Status DoBFS(NodeDef* sink_node, GraphDef& graph_def, string prefix) {
@@ -58,6 +59,20 @@ std::string DatasetGetKey(const int64 id, const uint64 fingerprint) {
   return absl::StrCat("id_", id, "_fp_", fingerprint, "_get");
 }
 
+std::string DatasetKey(
+    const int64 id, const uint64 fingerprint, const std::string& job_type){
+  if(job_type=="COMPUTE"){
+    return absl::StrCat("id_", id, "_fp_", fingerprint);
+  } else if (job_type=="GET"){
+    return DatasetGetKey(id, fingerprint);
+  } else if (job_type=="PUT"){
+    return DatasetPutKey(id, fingerprint);
+  }
+  return ""
+}
+
+// TODO (damien-aymon) deprecated, left here for reference.
+/*
 Status DatasetKey(const ::tensorflow::data::easl::CacheState& cache_state,
                   const int64 dataset_id,
                   const uint64 fingerprint,
@@ -88,6 +103,40 @@ Status DatasetKey(const ::tensorflow::data::easl::CacheState& cache_state,
   VLOG(0) << "Use standard dataset for fingerprint " << fingerprint
           << " at worker " << worker_address;
   return Status::OK();
+}*/
+
+Status DetermineJobType(::tensorflow::data::CacheState& cache_state,
+                     const ::tensorflow::data::easl::MetadataStore& metadata_store,
+                     const uint64 fingerprint,
+                     const std::string& dataset_key,
+                     const int64 job_id,
+                     std::string& job_type){
+  // If dataset was previously cached, assume it was faster than compute
+  // and decide to read.
+  if(cache_state.IsDatasetCached(fingerprint)){
+    job_type = "GET";
+    return Status::OK();
+  }
+  std::shared_ptr<::tensorflow::data::easl::InputPipelineMetrics> metrics;
+  Status s = metadata_store.GetInputPipelineMetricsByDatasetKey(dataset_key, metrics);
+
+  // We do not yet have the metrics for this dataset
+  if(errors::IsNotFound(s)){
+    job_type = "COMPUTE";
+    return Status::OK();
+  }
+
+  // Pipeline stats
+  uint64 row_size = 4; // TODO get this from model metrics
+  double compute_time_per_row_ms = 0.1; // TODO get this from model metrics
+  // Caching model
+  double cache_read_time_per_row_ms = ::tensorflow::data::cache_model::GetTimePerRow(row_size);
+
+  // Simplest possible caching decision:
+  if(cache_read_time_per_row_ms < compute_time_per_row_ms){
+    job_type = "PUT"; // Job should be put, otherwise cache will never fill up.
+    cache_state.RegisterCachingJob(fingerprint, job_id);
+  }
 }
 
 Status AddPutOperator(const DatasetDef& dataset, DatasetDef& updated_dataset,

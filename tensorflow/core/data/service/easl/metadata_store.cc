@@ -119,7 +119,7 @@ Status InputPipelineMetrics::GetWorkerMetrics(string worker_address,
   return Status::OK();
 }
 
-Status InputPipelineMetrics::UpdateNodeMetrics(string long_name, 
+Status InputPipelineMetrics::UpdateNodeMetrics(string long_name,
   string worker_address, NodeMetrics::Metrics& metrics) {
   auto it = metrics_.find(long_name);
   if (it == metrics_.end()) {
@@ -133,33 +133,55 @@ Status InputPipelineMetrics::UpdateNodeMetrics(string long_name,
 }
 
 // Job metrics
-JobMetrics::JobMetrics(int64 job_id, int64 dataset_id) 
+JobMetrics::JobMetrics(int64 job_id,
+                       int64 dataset_id,
+                       int64 dataset_fingerprint,
+                       std::string& dataset_key)
       : job_id_(job_id),
         dataset_id_(dataset_id),
+        dataset_fingerprint_(dataset_fingerprint),
+        dataset_key_(dataset_key),
         model_metrics_(), 
         input_pipeline_metrics_() {}
 
 // Metadata store 
-MetadataStore::MetadataStore() : metadata_() {}
+MetadataStore::MetadataStore() : job_metadata_() {}
 
-Status MetadataStore::CreateJob(int64 job_id, int64 dataset_id) {
-  auto it = metadata_.find(job_id);
-  if (it == metadata_.end()) {
-    auto job_metrics = std::make_shared<JobMetrics>(job_id, dataset_id);
-    metadata_.insert({job_id, job_metrics});
+Status MetadataStore::CreateJob(int64 job_id,
+                                int64 dataset_id,
+                                int64 dataset_fingerprint,
+                                std::string& dataset_key) {
+  auto it = job_metadata_.find(job_id);
+  if (it == job_metadata_.end()) {
+    auto job_metrics = std::make_shared<JobMetrics>(
+        job_id, dataset_id, dataset_fingerprint, dataset_key);
+    job_metadata_.insert({job_id, job_metrics});
   }
+
+  std::shared_ptr<JobMetrics> job_metrics = it->second;
+
   return Status::OK();
 }
 
+//Find a the job metric, delete it and add it to the dataset_key keyed metrics for persistence
 Status MetadataStore::RemoveJob(int64 job_id) {
-  metadata_.erase(job_id);
+  // Update datasetKey indexed store with new JobMetrics.
+  auto it = job_metadata_.find(job_id);
+  if (it == job_metadata_.end()) {
+    return errors::NotFound("Job with id ", job_id, " does not have metrics");
+  }
+  auto job_metrics = it->second;
+  dataset_key_metadata_.insert_or_assign(job_metrics->dataset_key_, job_metrics);
+
+  // Properly erase job.
+  job_metadata_.erase(job_id);
   return Status::OK();
 }
 
 Status MetadataStore::GetJobMetrics(int64 job_id, 
   std::shared_ptr<JobMetrics> metrics) const {
-  auto it = metadata_.find(job_id);
-  if (it == metadata_.end()) {
+  auto it = job_metadata_.find(job_id);
+  if (it == job_metadata_.end()) {
     return errors::NotFound("Job with id ", job_id, " does not have metrics");
   }
   metrics = it->second;
@@ -180,6 +202,36 @@ Status MetadataStore::GetInputPipelineMetrics(int64 job_id,
   std::shared_ptr<InputPipelineMetrics> metrics) const {
   std::shared_ptr<JobMetrics> job_metrics;
   Status s = GetJobMetrics(job_id, job_metrics);
+  if (s.ok()) {
+    metrics = job_metrics->input_pipeline_metrics_;
+  }
+  return s;
+}
+
+Status MetadataStore::GetJobMetricsByDatasetKey(
+    const std::string& dataset_key, std::shared_ptr<JobMetrics> metrics) const {
+  auto it = dataset_key_metadata_.find(dataset_key);
+  if (it == dataset_key_metadata_.end()) {
+    return errors::NotFound("Dataset ", dataset_key, " does not (yet) have metrics");
+  }
+  metrics = it->second;
+  return Status::OK();
+}
+
+Status MetadataStore::GetModelMetricsByDatasetKey(
+    const std::string& dataset_key, std::shared_ptr<ModelMetrics> metrics) const {
+  std::shared_ptr<JobMetrics> job_metrics;
+  Status s = GetJobMetricsByDatasetKey(dataset_key, job_metrics);
+  if (s.ok()) {
+    metrics = job_metrics->model_metrics_;
+  }
+  return s;
+}
+
+Status MetadataStore::GetInputPipelineMetricsByDatasetKey(
+    const std::string& dataset_key, std::shared_ptr<InputPipelineMetrics> metrics) const {
+  std::shared_ptr<JobMetrics> job_metrics;
+  Status s = GetJobMetricsByDatasetKey(dataset_key, job_metrics);
   if (s.ok()) {
     metrics = job_metrics->input_pipeline_metrics_;
   }
@@ -208,6 +260,18 @@ Status MetadataStore::UpdateInputPipelineMetrics(int64 job_id,
   // if s != ok --> no such job exists
   return s;
 }
+
+Status MetadataStore::UpdateDatasetKeyJobMetrics(int64 job_id, const std::string& dataset_key){
+  auto it = job_metadata_.find(job_id);
+  if (it == job_metadata_.end()) {
+    return errors::NotFound("Job with id ", job_id, " does not have metrics");
+  }
+  auto job_metrics = it->second;
+  dataset_key_metadata_.insert_or_assign(job_metrics->dataset_key_, job_metrics);
+
+  return Status::OK();
+}
+
 
 } // namespace easl
 } // namespace data

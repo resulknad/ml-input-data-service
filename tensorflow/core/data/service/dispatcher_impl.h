@@ -297,7 +297,7 @@ class DataServiceDispatcherImpl {
       TF_GUARDED_BY(mu_);
   DispatcherState state_ TF_GUARDED_BY(mu_);
 
-  easl::CacheState cache_state_ TF_GUARDED_BY(mu_);
+  CacheState cache_state_ TF_GUARDED_BY(mu_);
   easl::MetadataStore metadata_store_ TF_GUARDED_BY(mu_);
   // Condition variable for waking up the job gc thread.
   condition_variable job_gc_thread_cv_;
