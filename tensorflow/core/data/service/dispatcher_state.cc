@@ -176,7 +176,7 @@ void DispatcherState::CreatePendingTask(
   DCHECK_NE(job, nullptr);
   task =
       std::make_shared<Task>(task_id, job, create_pending_task.worker_address(),
-                             create_pending_task.transfer_address());
+                             create_pending_task.transfer_address(), create_pending_task.dataset_key());
   job->pending_tasks.emplace(task, create_pending_task.starting_round());
   tasks_by_worker_[create_pending_task.worker_address()][task->task_id] = task;
   next_available_task_id_ = std::max(next_available_task_id_, task_id + 1);

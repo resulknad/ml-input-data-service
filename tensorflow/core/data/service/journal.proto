@@ -95,6 +95,7 @@ message CreatePendingTaskUpdate {
   string worker_address = 3;
   string transfer_address = 4;
   int64 starting_round = 5;
+  string dataset_key = 6;
 }
 
 message CreateTaskUpdate {

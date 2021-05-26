@@ -282,7 +282,8 @@ Status DataServiceDispatcherImpl::FindNewTasks(
 Status DataServiceDispatcherImpl::WorkerHeartbeat(
     const WorkerHeartbeatRequest* request, WorkerHeartbeatResponse* response) {
   TF_RETURN_IF_ERROR(CheckStarted());
-  VLOG(4) << "Received worker heartbeat request from worker "
+  // TODO revert to 4
+  VLOG(0) << "Received worker heartbeat request from worker "
           << request->worker_address();
   mutex_lock l(mu_);
   const std::string& worker_address = request->worker_address();
@@ -579,11 +580,6 @@ Status DataServiceDispatcherImpl::GetOrCreateJob(
     TF_RETURN_IF_ERROR(AcquireJobClientId(job, job_client_id));
     response->set_job_client_id(job_client_id);
     TF_RETURN_IF_ERROR(CreateTasksForJob(job, tasks));
-  
-    // EASL: Create an entry in the metadata for this
-    VLOG(1) << "(DataServiceDispatcherImpl::GetOrCreateJob) Adding a job to "
-            << "the metadata.";
-    metadata_store_.CreateJob(job->job_id, request->dataset_id());
   }
   TF_RETURN_IF_ERROR(AssignTasks(tasks));
   VLOG(3) << "Created job " << job->job_id << " for CreateJob("
@@ -702,6 +698,15 @@ Status DataServiceDispatcherImpl::CreateJob(
   VLOG(0) << "EASL - Caching decision for dataset_key " <<
   compute_dataset_key << ": " << job_type;
 
+  // EASL add job entry to metadata store
+  VLOG(0) << "(DataServiceDispatcherImpl::GetOrCreateJob) Adding a job to "
+          << "the metadata.";
+  std::string dataset_key = service::easl::cache_utils::DatasetKey(
+    dataset->dataset_id, dataset->fingerprint, job_type);
+  metadata_store_.CreateJob(job_id, dataset->dataset_id,
+                              dataset->fingerprint, dataset_key);
+  VLOG(0) << "after job creation in metadata store";
+
   Update update;
   CreateJobUpdate* create_job = update.mutable_create_job();
   create_job->set_job_id(job_id);
@@ -779,6 +784,14 @@ Status DataServiceDispatcherImpl::CreatePendingTask(
   std::shared_ptr<const Worker> worker;
   TF_RETURN_IF_ERROR(state_.WorkerFromAddress(worker_address, worker));
   create_task->set_transfer_address(worker->transfer_address);
+
+  // TODO (damien-aymon) This is not entirely valid, we do not support cache with round-robin jobs yet.
+  std::shared_ptr<const Dataset> dataset;
+  TF_RETURN_IF_ERROR(state_.DatasetFromId(job->dataset_id, dataset));
+  std::string dataset_key =
+      service::easl::cache_utils::DatasetKey(dataset->dataset_id, dataset->fingerprint, job->job_type);
+  create_task->set_dataset_key(dataset_key);
+
   TF_RETURN_IF_ERROR(Apply(update));
   return Status::OK();
 }
@@ -796,14 +809,16 @@ Status DataServiceDispatcherImpl::CreateTask(std::shared_ptr<const Job> job,
   std::shared_ptr<const Worker> worker;
   TF_RETURN_IF_ERROR(state_.WorkerFromAddress(worker_address, worker));
   create_task->set_transfer_address(worker->transfer_address);
-  TF_RETURN_IF_ERROR(Apply(update));
-  TF_RETURN_IF_ERROR(state_.TaskFromId(task_id, task));
 
   // EASL - Get the dataset_key depending on the job type:
   std::shared_ptr<const Dataset> dataset;
   TF_RETURN_IF_ERROR(state_.DatasetFromId(job->dataset_id, dataset));
   std::string dataset_key =
       service::easl::cache_utils::DatasetKey(dataset->dataset_id, dataset->fingerprint, job->job_type);
+  create_task->set_dataset_key(dataset_key);
+
+  TF_RETURN_IF_ERROR(Apply(update));
+  TF_RETURN_IF_ERROR(state_.TaskFromId(task_id, task));
 
   return Status::OK();
 }
@@ -907,8 +922,11 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
   // EASL: Update the client metrics
   easl::ModelMetrics::Metrics metrics(request->avg_get_next_processing_time(), 
     request->avg_inter_arrival_time());
+  VLOG(0) << "metrics processing_time: " << metrics.get_next_time();
+  VLOG(0) << "update model metrics";
   metadata_store_.UpdateModelMetrics(job->job_id, request->job_client_id(), 
     metrics);
+  VLOG(0) << "Done updating model metrics";
 
   if (request->optional_current_round_case() ==
       ClientHeartbeatRequest::kCurrentRound) {

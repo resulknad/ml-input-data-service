@@ -68,7 +68,7 @@ std::string DatasetKey(
   } else if (job_type=="PUT"){
     return DatasetPutKey(id, fingerprint);
   }
-  return ""
+  return "";
 }
 
 // TODO (damien-aymon) deprecated, left here for reference.

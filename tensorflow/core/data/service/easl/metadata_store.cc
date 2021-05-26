@@ -27,16 +27,21 @@ Status ModelMetrics::UpdateClientMetrics(int64 client_id,
   ModelMetrics::Metrics& metrics) {
   auto it = metrics_.find(client_id);
   if (it != metrics_.end()) {
+    VLOG(0) << "found client metric..";
     it->second->Update(metrics);
+    VLOG(0) << "updated client metric";
   } else {
+    VLOG(0) << "before copying over client metrics";
     auto entry = std::make_shared<Metrics>(metrics);
+    VLOG(0) << "created entry";
     metrics_.insert({client_id, entry});
+    VLOG(0) << "inserted entry";
   }
   return Status::OK();
 }
 
 Status ModelMetrics::GetClientMetrics(int64 client_id, 
-  std::shared_ptr<Metrics> metrics) {
+  std::shared_ptr<Metrics>& metrics) {
   auto it = metrics_.find(client_id);
   if (it != metrics_.end()) {
     metrics = it->second;
@@ -86,7 +91,7 @@ Status NodeMetrics::UpdateWorkerMetrics(string worker_address,
 }
 
 Status NodeMetrics::GetWorkerMetrics(string worker_address, 
-  std::shared_ptr<Metrics> metrics) {
+  std::shared_ptr<Metrics>& metrics) {
   auto it = metrics_.find(worker_address);
   if (it != metrics_.end()) {
     metrics = it->second;
@@ -98,7 +103,7 @@ Status NodeMetrics::GetWorkerMetrics(string worker_address,
 
 // Input pipeline metrics
 Status InputPipelineMetrics::GetNodeMetrics(string long_name, 
-  std::shared_ptr<NodeMetrics> metrics) {
+  std::shared_ptr<NodeMetrics>& metrics) {
   auto it = metrics_.find(long_name);
   if (it != metrics_.end()) {
     metrics = it->second;
@@ -142,7 +147,10 @@ JobMetrics::JobMetrics(int64 job_id,
         dataset_fingerprint_(dataset_fingerprint),
         dataset_key_(dataset_key),
         model_metrics_(), 
-        input_pipeline_metrics_() {}
+        input_pipeline_metrics_() {
+          model_metrics_ = std::make_shared<ModelMetrics>();
+          input_pipeline_metrics_ = std::make_shared<InputPipelineMetrics>();
+        }
 
 // Metadata store 
 MetadataStore::MetadataStore() : job_metadata_() {}
@@ -151,14 +159,10 @@ Status MetadataStore::CreateJob(int64 job_id,
                                 int64 dataset_id,
                                 int64 dataset_fingerprint,
                                 std::string& dataset_key) {
-  auto it = job_metadata_.find(job_id);
-  if (it == job_metadata_.end()) {
-    auto job_metrics = std::make_shared<JobMetrics>(
-        job_id, dataset_id, dataset_fingerprint, dataset_key);
-    job_metadata_.insert({job_id, job_metrics});
-  }
-
-  std::shared_ptr<JobMetrics> job_metrics = it->second;
+  std::string ds_key = dataset_key;
+  auto job_metrics = std::make_shared<JobMetrics>(
+      job_id, dataset_id, dataset_fingerprint, ds_key);
+  job_metadata_.insert_or_assign(job_id, job_metrics);
 
   return Status::OK();
 }
@@ -179,7 +183,7 @@ Status MetadataStore::RemoveJob(int64 job_id) {
 }
 
 Status MetadataStore::GetJobMetrics(int64 job_id, 
-  std::shared_ptr<JobMetrics> metrics) const {
+  std::shared_ptr<JobMetrics>& metrics) const {
   auto it = job_metadata_.find(job_id);
   if (it == job_metadata_.end()) {
     return errors::NotFound("Job with id ", job_id, " does not have metrics");
@@ -189,9 +193,11 @@ Status MetadataStore::GetJobMetrics(int64 job_id,
 }
 
 Status MetadataStore::GetModelMetrics(int64 job_id, 
-  std::shared_ptr<ModelMetrics> metrics) const {
+  std::shared_ptr<ModelMetrics>& metrics) const {
   std::shared_ptr<JobMetrics> job_metrics;
+  VLOG(0) << "getting job metrics";
   Status s = GetJobMetrics(job_id, job_metrics);
+  VLOG(0) << "got job metrics";
   if (s.ok()) {
     metrics = job_metrics->model_metrics_;
   }
@@ -199,7 +205,7 @@ Status MetadataStore::GetModelMetrics(int64 job_id,
 }
 
 Status MetadataStore::GetInputPipelineMetrics(int64 job_id, 
-  std::shared_ptr<InputPipelineMetrics> metrics) const {
+  std::shared_ptr<InputPipelineMetrics>& metrics) const {
   std::shared_ptr<JobMetrics> job_metrics;
   Status s = GetJobMetrics(job_id, job_metrics);
   if (s.ok()) {
@@ -209,7 +215,7 @@ Status MetadataStore::GetInputPipelineMetrics(int64 job_id,
 }
 
 Status MetadataStore::GetJobMetricsByDatasetKey(
-    const std::string& dataset_key, std::shared_ptr<JobMetrics> metrics) const {
+    const std::string& dataset_key, std::shared_ptr<JobMetrics>& metrics) const {
   auto it = dataset_key_metadata_.find(dataset_key);
   if (it == dataset_key_metadata_.end()) {
     return errors::NotFound("Dataset ", dataset_key, " does not (yet) have metrics");
@@ -219,7 +225,7 @@ Status MetadataStore::GetJobMetricsByDatasetKey(
 }
 
 Status MetadataStore::GetModelMetricsByDatasetKey(
-    const std::string& dataset_key, std::shared_ptr<ModelMetrics> metrics) const {
+    const std::string& dataset_key, std::shared_ptr<ModelMetrics>& metrics) const {
   std::shared_ptr<JobMetrics> job_metrics;
   Status s = GetJobMetricsByDatasetKey(dataset_key, job_metrics);
   if (s.ok()) {
@@ -229,7 +235,7 @@ Status MetadataStore::GetModelMetricsByDatasetKey(
 }
 
 Status MetadataStore::GetInputPipelineMetricsByDatasetKey(
-    const std::string& dataset_key, std::shared_ptr<InputPipelineMetrics> metrics) const {
+    const std::string& dataset_key, std::shared_ptr<InputPipelineMetrics>& metrics) const {
   std::shared_ptr<JobMetrics> job_metrics;
   Status s = GetJobMetricsByDatasetKey(dataset_key, job_metrics);
   if (s.ok()) {
