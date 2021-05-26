@@ -137,7 +137,7 @@ void ArrowRoundRobinWriter::ConsumeTensors(TensorData* dat_out) {
 /***********************
  * Arrow Writer *
  ***********************/
-Status ArrowRoundRobinWriter::ArrowWrite(const std::string &filename, TensorData dat) {
+Status ArrowRoundRobinWriter::ArrowWrite(const std::string &filename, TensorData &dat) {
 
   // initializing writer process
   int ncols = tensor_data_len_.size();
@@ -270,6 +270,9 @@ Status ArrowRoundRobinWriter::WriterThread(tensorflow::Env *env,
       VLOG(0) << "Writer " << writer_id << "  not ok ... " << s.ToString();
     }
     VLOG(0) << "ARR - WriterThread " << writer_id << " - Successfully written tensors, notifying capacity available";
+
+    // "Release" old tensors
+    dat.tensor_batch.clear();
     mu_by_.lock();
     bytes_written_ += dat_size;
     mu_by_.unlock();

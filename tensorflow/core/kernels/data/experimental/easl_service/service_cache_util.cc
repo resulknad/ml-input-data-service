@@ -128,13 +128,13 @@ void MultiThreadedAsyncWriter::Initialize(Env *env, int64 file_index, const std:
 
 void MultiThreadedAsyncWriter::Write(std::vector<Tensor>* tensors) {
   if(!first_row_info_set_) {
-    for(Tensor t : *tensors) {
+    for(Tensor& t : *tensors) {
       bytes_per_row_ += t.TotalBytes();
     }
     first_row_info_set_ = true;
   }
   mutex_lock l(mu_);
-  VLOG(0) << "****************** Reader Queue Size: " << deque_.size() << "  of max:  " << producer_threshold_ / bytes_per_row_;
+  VLOG(0) << "****************** Writer Queue Size: " << deque_.size() << "  of max:  " << producer_threshold_ / bytes_per_row_;
   mu_.Await(Condition(this,
             &MultiThreadedAsyncWriter::ProducerSpaceAvailable));
 
