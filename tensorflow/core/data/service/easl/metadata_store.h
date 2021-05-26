@@ -111,10 +111,14 @@ class InputPipelineMetrics {
     using MetricsCollection = 
       absl::flat_hash_map<string, std::shared_ptr<NodeMetrics>>;
 
-    InputPipelineMetrics() {}
+    InputPipelineMetrics() 
+      : last_node_name_("") {}
+    InputPipelineMetrics(std::string last_node_name) 
+      : last_node_name_(last_node_name) {}
 
     // Get the metrics for a single node
     Status GetNodeMetrics(string long_name, NodeMetrics** metrics);
+    Status GetLastNodeMetrics(NodeMetrics** metrics);
 
     // Get the metrics from the same worker for each node in the graph 
     Status GetWorkerMetrics(string worker_address, 
@@ -124,6 +128,12 @@ class InputPipelineMetrics {
     Status UpdateNodeMetrics(string long_name, string worker_address, 
       NodeMetrics::Metrics& metrics);
 
+    // Methods for managing the last node name
+    std::string GetLastNodeName();
+    void SetLastNodeName(std::string last_node_name); 
+
+    // Last user node name
+    std::string last_node_name_;
     // The keys are the long name of the node
     MetricsCollection metrics_;
 };
@@ -157,6 +167,7 @@ class MetadataStore {
 
   Status GetInputPipelineMetrics(int64 job_id, 
     InputPipelineMetrics** metrics) const;
+  Status GetLastNodeMetrics(int64 job_id, NodeMetrics** metrics) const;
 
   // Update or create the metrics for a client
   Status UpdateModelMetrics(int64 job_id, int64 client_id, 
@@ -165,6 +176,7 @@ class MetadataStore {
   // Update or create the metrics for a client
   Status UpdateInputPipelineMetrics(int64 job_id, string node_long_name, 
     string worker_address, NodeMetrics::Metrics& metrics);
+  Status UpdateLastNode(int64 job_id, string node_long_name);
 
   // Manage jobs to be evaluated
   Status GetJobsForEval(absl::flat_hash_set<int64>& jobs);

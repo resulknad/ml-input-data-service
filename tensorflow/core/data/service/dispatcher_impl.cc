@@ -325,6 +325,9 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
 
     if (s.ok()) {
       auto job_id = task_object->job->job_id;
+      std::string last_node_name = task.last_node_name();
+      metadata_store_.UpdateLastNode(job_id, last_node_name);
+
       for (int j = 0; j < task.nodes_size(); ++j) {
         auto metrics = task.mutable_nodes(j)->mutable_metrics();
         easl::NodeMetrics::Metrics node_metrics((*metrics)[kBytesConsumed], 

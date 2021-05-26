@@ -20,7 +20,8 @@ message WorkerHeartbeatRequest {
     }
     
     int64 id = 1;
-    repeated Node nodes = 2;
+    string last_node_name = 2;
+    repeated Node nodes = 3;
   }
 
   string worker_address = 1;

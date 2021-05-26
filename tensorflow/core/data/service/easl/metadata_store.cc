@@ -108,6 +108,14 @@ Status InputPipelineMetrics::GetNodeMetrics(string long_name,
   return errors::NotFound("No metrics for node ", long_name); 
 }
 
+Status InputPipelineMetrics::GetLastNodeMetrics(NodeMetrics** metrics) {
+  if (last_node_name_ == "") {
+    return errors::NotFound("Last node was not given a name");
+  }
+  GetNodeMetrics(last_node_name_, metrics);
+  return Status::OK();
+}
+
 Status InputPipelineMetrics::GetWorkerMetrics(string worker_address, 
   absl::flat_hash_map<string, NodeMetrics::Metrics*>& metrics) {
   for (auto& entry : metrics_) {
@@ -135,6 +143,11 @@ Status InputPipelineMetrics::UpdateNodeMetrics(string long_name,
             << worker_address;
   }
   return Status::OK();
+}
+
+std::string InputPipelineMetrics::GetLastNodeName() { return last_node_name_; }
+void InputPipelineMetrics::SetLastNodeName(std::string last_node_name) {
+  last_node_name_ = last_node_name;
 }
 
 // Job metrics
@@ -192,6 +205,16 @@ Status MetadataStore::GetInputPipelineMetrics(int64 job_id,
   return s;
 }
 
+Status MetadataStore::GetLastNodeMetrics(int64 job_id, 
+  NodeMetrics** metrics) const {
+  JobMetrics* job_metrics;
+  Status s = GetJobMetrics(job_id, &job_metrics);
+  if (s.ok()) {
+    return job_metrics->input_pipeline_metrics_->GetLastNodeMetrics(metrics);
+  }
+  return s;
+}
+
 Status MetadataStore::UpdateModelMetrics(int64 job_id, int64 client_id, 
   ModelMetrics::Metrics& metrics) {
   ModelMetrics* model_metrics;
@@ -210,6 +233,16 @@ Status MetadataStore::UpdateInputPipelineMetrics(int64 job_id,
   if (s.ok()) {
     pipeline_metrics->UpdateNodeMetrics(node_long_name, worker_address, 
       metrics);
+  } 
+  // if s != ok --> no such job exists
+  return s;
+}
+
+Status MetadataStore::UpdateLastNode(int64 job_id, string node_name) {
+  InputPipelineMetrics* pipeline_metrics;
+  Status s = GetInputPipelineMetrics(job_id, &pipeline_metrics);
+  if (s.ok()) {
+    pipeline_metrics->SetLastNodeName(node_name);
   } 
   // if s != ok --> no such job exists
   return s;
