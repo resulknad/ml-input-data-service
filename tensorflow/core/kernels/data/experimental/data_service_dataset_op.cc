@@ -299,11 +299,10 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       // EASL - metrics collection
       bool hadToWait = false;
       int64 start_us = Env::Default()->NowMicros();
-      if(num_elements_ != 0){
-        int64 inter_arrival_time = start_us - last_get_next_end_us_;
-        get_next_inter_arrival_sum_us_ += inter_arrival_time;
+      if(num_elements_++ > 0){
+        inter_arrival_times_.pop_front();
+        inter_arrival_times_.push_back(start_us - last_get_next_end_us_);
       }
-      num_elements_++;
 
       bool skip = true;
       while (skip) {
@@ -361,8 +360,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       // std::this_thread::sleep_for(std::chrono::seconds(1));
       worker_thread_cv_.notify_one();
 
-      end_us = Env::Default()->NowMicros();
-      last_get_next_end_us_ = end_us;
+      last_get_next_end_us_ = Env::Default()->NowMicros();
       return Status::OK();
     }
 
@@ -532,8 +530,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       ClientHeartbeatRequest req;
 
       // EASL - gather stats for dispatcher
-      double get_next_processing_time = -1;
-      double avg_get_next_inter_arrival_time = -1;
+      double get_next_processing_time = 0.0;
+      double avg_get_next_inter_arrival_time = 0.0;
 
       // We get processing time computed by the model, from the metrics counters
       auto model = ctx->model();
@@ -557,16 +555,18 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       // We use our own implementation for inter-arrival times.
       {
         mutex_lock l(mu_);
-        if(num_elements_ > 1){
-          avg_get_next_inter_arrival_time = get_next_inter_arrival_sum_us_ /
-              (num_elements_ - 1);
-          // TODO reset inter_arrival counting to account for adjustments?
-
+        if(num_elements_ >= min_measurement_count_){
+          for (auto t : inter_arrival_times_) {
+            avg_get_next_inter_arrival_time += t;
+          }
+          avg_get_next_inter_arrival_time /= inter_arrival_times_.size();
         }
       }
       // Fill up the metadata fields in the heartbeat request
-      req.set_avg_get_next_processing_time(get_next_processing_time);
-      req.set_avg_inter_arrival_time(avg_get_next_inter_arrival_time);
+      req.set_avg_get_next_processing_time(get_next_processing_time / 
+        EnvTime::kMillisToMicros);
+      req.set_avg_inter_arrival_time(avg_get_next_inter_arrival_time / 
+        EnvTime::kMillisToMicros);
 
       req.set_job_client_id(job_client_id_);
       if (StrictRoundRobin()) {
@@ -986,7 +986,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     // EASL metrics collection
     int64 num_elements_ = 0;
     int64 last_get_next_end_us_ = 0;
-    int64 get_next_inter_arrival_sum_us_ = 0;
+    int64 min_measurement_count_ = 3;
+    std::deque<int64> inter_arrival_times_ = {0, 0, 0};
   };
 
   const int op_version_;

@@ -615,7 +615,8 @@ class Node {
     
     // Indicates time in node and in prefix rooted at node 
     double in_node_time_;
-    double in_prefix_time_; 
+    double in_prefix_time_;
+    std::string last_node_name_; 
     
     public:
       explicit MetricDump(const Node::Metrics& metrics)
@@ -624,7 +625,8 @@ class Node {
             num_elements_(metrics.recorded_num_elements_), 
             computation_time_(metrics.recorded_computation_time_),
             in_node_time_(0.0),
-            in_prefix_time_(0.0) {}
+            in_prefix_time_(0.0),
+            last_node_name_("") {}
 
       const int64 bytes_consumed() const { return bytes_consumed_; }
       const int64 bytes_produced() const { return bytes_produced_; }
@@ -636,6 +638,10 @@ class Node {
       void set_in_prefix_time(double x) { in_prefix_time_ = x; }
       double in_node_time() { return in_node_time_; }
       double in_prefix_time() { return in_prefix_time_; }
+
+      // Methods for getting and setting the last node name
+      void set_last_node_name(std::string x) { last_node_name_ = x; }
+      std::string last_node_name() { return last_node_name_; }
 
       // Method which logs the metrics of this object
       void log_metrics() const {

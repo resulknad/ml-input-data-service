@@ -147,6 +147,8 @@ Status DataServiceDispatcherImpl::Start() {
   mutex_lock l(mu_);
   job_gc_thread_ = absl::WrapUnique(
       env_->StartThread({}, "job-gc-thread", [&] { JobGcThread(); }));
+  cachew_thread_ = absl::WrapUnique(
+      env_->StartThread({}, "cachew-thread", [&] { CachewThread(); }));
   if (config_.work_dir().empty()) {
     if (config_.fault_tolerant_mode()) {
       return errors::InvalidArgument(
@@ -321,6 +323,9 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
 
     if (s.ok()) {
       auto job_id = task_object->job->job_id;
+      std::string last_node_name = task.last_node_name();
+      metadata_store_.UpdateLastNode(job_id, last_node_name);
+
       for (int j = 0; j < task.nodes_size(); ++j) {
         auto metrics = task.mutable_nodes(j)->mutable_metrics();
         easl::NodeMetrics::Metrics node_metrics((*metrics)[kBytesConsumed], 
@@ -447,18 +452,6 @@ Status DataServiceDispatcherImpl::MakeSplitProvider(
   TF_RETURN_IF_ERROR(standalone::Dataset::FromGraph(
       params, dataset_def->graph(), &standalone_dataset));
   TF_RETURN_IF_ERROR(standalone_dataset->MakeSplitProvider(&split_provider));
-  return Status::OK();
-}
-
-Status DataServiceDispatcherImpl::UpdateMetadata(
-    const UpdateMetadataRequest* request,
-    UpdateMetadataResponse* response) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  // uint64 fingerprint = request->id();
-  // int64 update = request->update();
-  // // TODO(damien-aymon) check if started?
-  // mutex_lock l(mu_);
-  // TF_RETURN_IF_ERROR(metadata_store_.UpdateMetadata(fingerprint, update));
-  // VLOG(3) << "Updated metadata for fingerprint " << fingerprint;
   return Status::OK();
 }
 
@@ -907,7 +900,7 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
   mutex_lock l(mu_);
   // TODO (damien-aymon) revert back to level 4
   VLOG(0) << "Received heartbeat from client id " << request->job_client_id();
-  VLOG(0) << "Avg inter-arrival time" << request->avg_inter_arrival_time();
+  VLOG(0) << "Avg inter-arrival time " << request->avg_inter_arrival_time();
 
   std::shared_ptr<const Job> job;
   Status s = state_.JobForJobClientId(request->job_client_id(), job);
@@ -1089,6 +1082,53 @@ Status DataServiceDispatcherImpl::GcOldJobs() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       metadata_store_.RemoveJob(job->job_id);
     }
   }
+  return Status::OK();
+}
+
+void DataServiceDispatcherImpl::CachewThread() {
+  int64 next_check_micros = 0;
+  while (true) {
+    mutex_lock l(mu_);
+    while (!cancelled_ && env_->NowMicros() < next_check_micros) {
+      int64 remaining_micros = next_check_micros - env_->NowMicros();
+      job_gc_thread_cv_.wait_for(l,
+                                 std::chrono::microseconds(remaining_micros));
+    }
+    if (cancelled_) {
+      return;
+    }
+    Status s = CachewLogic();
+    if (!s.ok()) {
+      LOG(WARNING) << "Error garbage collecting old jobs: " << s;
+    }
+
+    // TODO(DanGraur): Add value in config for this interval (msec)
+    next_check_micros =
+        env_->NowMicros() + (2000 * 1000);
+  }
+}
+
+bool DataServiceDispatcherImpl::ShouldUseCache(int64 job_id) 
+  TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  return true;
+}
+
+int DataServiceDispatcherImpl::InferWorkerDelta(int64 job_id) 
+  TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  return 0;
+}
+
+Status DataServiceDispatcherImpl::CachewLogic() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  absl::flat_hash_set<int64> jobs_for_analysis;
+  metadata_store_.GetJobsForEval(jobs_for_analysis);
+
+  for (auto job_id : jobs_for_analysis) {
+    bool should_use_cache = ShouldUseCache(job_id);
+    int worker_delta = InferWorkerDelta(job_id);
+    // TODO: Use these numbers somehow
+    metadata_store_.MarkJobAsEvaluated(job_id);
+  }
+
   return Status::OK();
 }
 

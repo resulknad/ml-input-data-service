@@ -383,18 +383,11 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
     for (const auto& task : tasks_) {
       current_tasks.push_back(task.first);
-      
-      if (task.second->task_def.dataset_case() == TaskDef::kDatasetDef) {
-        standalone::Dataset::Params params;
-        std::unique_ptr<standalone::Dataset> dataset;
-        TF_RETURN_IF_ERROR(standalone::Dataset::FromGraph(
-                params, task.second->task_def.dataset_def().graph(), &dataset));
-        Status s = dataset->GetMetrics("my_container", "my_resource", 
-            metrics_resource);
-        if (s.ok()) {
-          VLOG(1) << "(DataServiceWorkerImpl::Heartbeat) Got metrics_resource" 
-                  << metrics_resource->counter << std::flush; 
-        }
+
+      // Get the metrics 
+      auto metrics = task.second->task_runner->GetMetrics();
+      if (metrics) {
+        tasks_metrics[task.first] = metrics;
       }
     }
   }

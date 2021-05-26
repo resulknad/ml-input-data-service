@@ -83,6 +83,8 @@ Status DataServiceDispatcherClient::WorkerHeartbeat(
   for (auto& task_metrics : tasks_metrics) {
     WorkerHeartbeatRequest::Task* task = req.add_tasks();
     task->set_id(task_metrics.first);
+    task->set_last_node_name(
+      task_metrics.second->begin()->second.last_node_name());
 
     for (auto& node_metrics : *task_metrics.second) {
       WorkerHeartbeatRequest::Task::Node* node = task->add_nodes();

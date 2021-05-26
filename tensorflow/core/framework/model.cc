@@ -1651,6 +1651,7 @@ Model::ModelMetrics Model::CollectMetrics() {
     std::make_shared<absl::flat_hash_map<string, Node::MetricDump>>(); 
   std::deque<std::shared_ptr<Node>> queue;
   std::deque<std::shared_ptr<Node>> stack;
+  std::string last_node_name = "";
   Node::NodeValues node_times;
   Node::NodeValues final_times;  
 
@@ -1661,6 +1662,8 @@ Model::ModelMetrics Model::CollectMetrics() {
       queue.push_back(output_);
       output_->TotalProcessingTime(&node_times);
       final_times = Node::NodeValues(node_times);
+      last_node_name = output_->inputs().front()->inputs().front()->
+        inputs().front()->long_name();
     }
   }
 
@@ -1675,7 +1678,9 @@ Model::ModelMetrics Model::CollectMetrics() {
 
     // prefix_times[node->long_name()] = node->TotalProcessingTime(nullptr);
     auto node_metrics = node->SnapshotCurrentMetrics();
-    node_metrics.set_in_node_time(node_times[node->long_name()]);
+    node_metrics.set_in_node_time(node_times[node->long_name()] / 
+      EnvTime::kMillisToMicros);
+    node_metrics.set_last_node_name(last_node_name);
     metrics->insert({node->long_name(), node_metrics});
   }
 
@@ -1692,7 +1697,8 @@ Model::ModelMetrics Model::CollectMetrics() {
 
   // Update the prefix times in the metrics data structure
   for (auto& entry : *metrics) {
-    entry.second.set_in_prefix_time(final_times[entry.first]);
+    entry.second.set_in_prefix_time(final_times[entry.first] / 
+      EnvTime::kMillisToMicros);
   }
 
   // Debug code below
