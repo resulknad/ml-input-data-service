@@ -254,7 +254,7 @@ class DataServiceDispatcherImpl {
   Status ApplyWithoutJournaling(const Update& update)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // A thread which periodically checks for jobs to clean up.
-//   void JobGcThread();
+  void JobGcThread();
   // A thread which periodically decides which jobs to cache or use cache on 
   void JobCachingThread();
   // Scans for old jobs and marks them as finished.
