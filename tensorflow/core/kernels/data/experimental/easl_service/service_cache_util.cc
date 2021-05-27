@@ -366,7 +366,7 @@ Status MultiThreadedAsyncReader::Read(std::vector<Tensor>* &read_tensors, bool* 
     } else {
       if(num_readers_done_ == reader_count_){
         *end_of_sequence = true;
-        
+        tensors_.clear();
         return Status::OK();
       }
       // Readers are not done, waiting on data...
