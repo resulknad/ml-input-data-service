@@ -511,6 +511,20 @@ py_library(
 )
 
 py_library(
+    name = "sleep_op",
+    srcs = [
+        "sleep.py",
+    ],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/python:experimental_dataset_ops_gen",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/util:structure",
+    ],
+)
+
+py_library(
     name = "dataset_ops",
     srcs_version = "PY3",
     deps = [
@@ -535,6 +549,7 @@ py_library(
         ":scan_ops",
         ":service_cache_ops",
         ":shuffle_ops",
+        ":sleep_op",
         ":snapshot",
         ":stats_ops",
         ":take_while_ops",

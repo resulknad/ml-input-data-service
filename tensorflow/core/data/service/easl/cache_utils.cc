@@ -117,26 +117,56 @@ Status DetermineJobType(::tensorflow::data::CacheState& cache_state,
     job_type = "GET";
     return Status::OK();
   }
-  std::shared_ptr<::tensorflow::data::easl::InputPipelineMetrics> metrics;
-  Status s = metadata_store.GetInputPipelineMetricsByDatasetKey(dataset_key, metrics);
+  std::shared_ptr<::tensorflow::data::easl::InputPipelineMetrics> job_metrics;
+  Status s = metadata_store.GetInputPipelineMetricsByDatasetKey(dataset_key, job_metrics);
 
   // We do not yet have the metrics for this dataset
   if(errors::IsNotFound(s)){
     job_type = "COMPUTE";
     return Status::OK();
+  } else if (!s.ok()){
+    return s;
   }
 
   // Pipeline stats
-  uint64 row_size = 4; // TODO get this from model metrics
-  double compute_time_per_row_ms = 0.1; // TODO get this from model metrics
+  using NodeMetrics = ::tensorflow::data::easl::NodeMetrics;
+  std::shared_ptr<NodeMetrics> node_metrics;
+  TF_RETURN_IF_ERROR(metadata_store.GetLastNodeMetricsByDatasetKey(dataset_key, node_metrics));
+
+  uint64 row_size = 0;
+  double compute_time_per_row_ms = 0;
+
+  size_t num_workers = (node_metrics->metrics_).size();
+  DCHECK(num_workers > 0);
+
+  for(std::pair<std::string, std::shared_ptr<NodeMetrics::Metrics>> e : node_metrics->metrics_){
+    std::shared_ptr<NodeMetrics::Metrics> worker_metrics = e.second;
+    // TODO average out row size here for datasets with varying row size?
+    row_size = worker_metrics->bytes_produced() / worker_metrics->num_elements();
+    compute_time_per_row_ms += worker_metrics->in_prefix_time_ms();
+  }
+
+  compute_time_per_row_ms = compute_time_per_row_ms / num_workers;
+
+  VLOG(0) << "row size " << row_size;
+  VLOG(0) << "compute time " << compute_time_per_row_ms;
+
   // Caching model
   double cache_read_time_per_row_ms = ::tensorflow::data::cache_model::GetTimePerRow(row_size);
+
+  VLOG(0) << "cache time " << cache_read_time_per_row_ms;
 
   // Simplest possible caching decision:
   if(cache_read_time_per_row_ms < compute_time_per_row_ms){
     job_type = "PUT"; // Job should be put, otherwise cache will never fill up.
+    VLOG(0) << "dedide put";
     cache_state.RegisterCachingJob(fingerprint, job_id);
+  } else {
+    VLOG(0) << "decide compute";
+    job_type = "COMPUTE";
   }
+
+  return Status::OK();
 }
 
 Status AddPutOperator(const DatasetDef& dataset, DatasetDef& updated_dataset,

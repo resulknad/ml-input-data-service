@@ -120,7 +120,11 @@ double GetTimePerRow(uint64 row_size) {
 
       return lin_interpolate(min_x, max_x, min_y, max_y, row_size) * 0.001;
     }
+    index++;
   }
+
+  VLOG(0) << "Should not end up here...";
+  DCHECK(false);
 };
 
 } // cache_model

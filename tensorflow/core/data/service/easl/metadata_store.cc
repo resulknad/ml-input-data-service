@@ -191,7 +191,7 @@ Status MetadataStore::RemoveJob(int64 job_id) {
     return errors::NotFound("Job with id ", job_id, " does not have metrics");
   }
   auto job_metrics = it->second;
-  dataset_key_metadata_.insert_or_assign(job_metrics->dataset_key_, job_metrics);
+  //dataset_key_metadata_.insert_or_assign(job_metrics->dataset_key_, job_metrics);
 
   // Properly erase job.
   job_metadata_.erase(job_id);
@@ -232,6 +232,16 @@ Status MetadataStore::GetLastNodeMetrics(int64 job_id,
   std::shared_ptr<NodeMetrics>& metrics) const {
   std::shared_ptr<JobMetrics> job_metrics;
   Status s = GetJobMetrics(job_id, job_metrics);
+  if (s.ok()) {
+    return job_metrics->input_pipeline_metrics_->GetLastNodeMetrics(metrics);
+  }
+  return s;
+}
+
+Status MetadataStore::GetLastNodeMetricsByDatasetKey(
+  const std::string& dataset_key, std::shared_ptr<NodeMetrics>& metrics) const {
+  std::shared_ptr<JobMetrics> job_metrics;
+  Status s = GetJobMetricsByDatasetKey(dataset_key, job_metrics);
   if (s.ok()) {
     return job_metrics->input_pipeline_metrics_->GetLastNodeMetrics(metrics);
   }

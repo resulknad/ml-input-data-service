@@ -191,6 +191,9 @@ class MetadataStore {
   Status GetLastNodeMetrics(int64 job_id, 
     std::shared_ptr<NodeMetrics>& metrics) const;
 
+  Status GetLastNodeMetricsByDatasetKey(const std::string& dataset_key,
+    std::shared_ptr<NodeMetrics>& metrics) const;
+
   // Update or create the metrics for a client
   Status UpdateModelMetrics(int64 job_id, int64 client_id, 
     ModelMetrics::Metrics& metrics);

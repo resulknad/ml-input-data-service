@@ -307,7 +307,15 @@ void DataServiceWorkerImpl::TaskCompletionThread() TF_LOCKS_EXCLUDED(mu_) {
         return;
       }
     }
-    Status s = SendTaskUpdates();
+
+    // EASL - Send heartbeat for metadata: makes sure the metrics have been sent
+    // to the dispatcher at least once before the job gets deleted.
+    Status s = Heartbeat();
+    if (!s.ok()) {
+      LOG(WARNING) << "Failed to send heartbeat to dispatcher: " << s;
+    }
+
+    s = SendTaskUpdates();
     if (!s.ok()) {
       LOG(WARNING) << "Failed to send task updates to dispatcher: " << s;
       mutex_lock l(mu_);

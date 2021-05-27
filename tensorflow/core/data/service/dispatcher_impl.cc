@@ -325,8 +325,13 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
     if (s.ok()) {
       auto job_id = task_object->job->job_id;
       std::string last_node_name = task.last_node_name();
-      TF_RETURN_IF_ERROR(metadata_store_.UpdateLastNode(job_id, last_node_name));
-      for (int j = 0; j < task.nodes_size(); ++j) {
+      s = metadata_store_.UpdateLastNode(job_id, last_node_name);
+      if(!s.ok()){
+        // Ignore metrics if job has already been removed from metadata store.
+        // Otherwise return status error.
+        if(!errors::IsNotFound(s)){ return s; }
+      } else {
+        for (int j = 0; j < task.nodes_size(); ++j) {
         auto metrics = task.mutable_nodes(j)->mutable_metrics();
         easl::NodeMetrics::Metrics node_metrics((*metrics)[kBytesConsumed], 
           (*metrics)[kBytesProduced], (*metrics)[kNumElements], 
@@ -336,7 +341,8 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
         TF_RETURN_IF_ERROR(metadata_store_.UpdateInputPipelineMetrics(job_id, 
           task.mutable_nodes(j)->name(), request->worker_address(), 
           node_metrics));
-      }
+        }
+      } 
     }
   }
 
@@ -375,7 +381,9 @@ Status DataServiceDispatcherImpl::WorkerUpdate(
       }
       // Update metadata store directly, quicker than waiting for the GCOldJobs to run.
       if(job->finished){
-        metadata_store_.UpdateDatasetKeyJobMetrics(job->job_id, task->dataset_key);
+        TF_RETURN_IF_ERROR(metadata_store_.UpdateDatasetKeyJobMetrics(job->job_id, task->dataset_key));
+        TF_RETURN_IF_ERROR(metadata_store_.RemoveJob(job->job_id));
+
       }
 
       // TODO revert to 3
@@ -697,8 +705,8 @@ Status DataServiceDispatcherImpl::CreateJob(
           << "the metadata.";
   std::string dataset_key = service::easl::cache_utils::DatasetKey(
     dataset->dataset_id, dataset->fingerprint, job_type);
-  metadata_store_.CreateJob(job_id, dataset->dataset_id,
-                              dataset->fingerprint, dataset_key);
+  TF_RETURN_IF_ERROR(metadata_store_.CreateJob(job_id, dataset->dataset_id,
+                              dataset->fingerprint, dataset_key));
   VLOG(0) << "after job creation in metadata store";
 
   Update update;
@@ -918,8 +926,11 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
     request->avg_inter_arrival_time());
   VLOG(0) << "metrics processing_time: " << metrics.get_next_time_ms();
   VLOG(0) << "update model metrics";
-  metadata_store_.UpdateModelMetrics(job->job_id, request->job_client_id(), 
+  s = metadata_store_.UpdateModelMetrics(job->job_id, request->job_client_id(), 
     metrics);
+  // Ignore metrics for jobs which do not have metrics anymore
+  // report error otherwise.
+  if(!s.ok() && !errors::IsNotFound(s)){ return s; }
   VLOG(0) << "Done updating model metrics";
 
   if (request->optional_current_round_case() ==
@@ -1076,12 +1087,6 @@ Status DataServiceDispatcherImpl::GcOldJobs() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     }
 
     DCHECK(job->finished);
-    // EASL: Removing the job from the metadata
-    VLOG(1) << "(DataServiceDispatcherImpl::GcOldJobs) Removing a job from "
-        << "the metadata.";
-    if (job->finished) {
-      metadata_store_.RemoveJob(job->job_id);
-    }
   }
   return Status::OK();
 }
