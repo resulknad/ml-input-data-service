@@ -150,7 +150,7 @@ Status ArrowRoundRobinWriter::ArrowWrite(const std::string &filename, TensorData
     arrow_dtypes.push_back(arrow_dt);
   }
 
-  VLOG(0) << "ARR - ArrowWriter - Converted dtypes to arrow";
+//  VLOG(0) << "ARR - ArrowWriter - Converted dtypes to arrow";
 
   // TODO: this writer currently not supporting strings, goal was to keep as simple as possible
   std::vector<std::shared_ptr<arrow::Array>> arrays;
@@ -165,31 +165,31 @@ Status ArrowRoundRobinWriter::ArrowWrite(const std::string &filename, TensorData
     arrays.push_back(arr_ptr);
   }
 
-  VLOG(0) << "ARR - ArrowWriter - Created data builders";
+//  VLOG(0) << "ARR - ArrowWriter - Created data builders";
 
   // iterate over all columns and build array
   std::vector<std::vector<Tensor>> &data = dat.tensor_batch;
 
-  VLOG(0) << "ARR - ArrowWriter - created data view";
+//  VLOG(0) << "ARR - ArrowWriter - created data view";
 
   std::vector<size_t> data_len = tensor_data_len_;
 
-  VLOG(0) << "ARR - ArrowWriter - copied tensor_data_len";
+//  VLOG(0) << "ARR - ArrowWriter - copied tensor_data_len";
 
   bool partial_batching = false;
   for (int i = 0; i < data.size(); i++) {
     std::vector<Tensor> &row = data[i];
 
-    VLOG(0) << "ARR - ArrowWriter - builder loop created row view";
+//    VLOG(0) << "ARR - ArrowWriter - builder loop created row view";
 
     // check for partial batches at the end:
     if(i == data.size() - 1) {
-      VLOG(0) << "ARR - ArrowWriter - processing last row";
+//      VLOG(0) << "ARR - ArrowWriter - processing last row";
       std::vector<size_t> last_row_data_len;
       for(int j = 0; j < ncols; j++) {
         last_row_data_len.push_back(row[j].TotalBytes());
         if(last_row_data_len[j] != data_len[j]) {
-          VLOG(0) << "ARR - ArrowWriter - found partial batch";
+//          VLOG(0) << "ARR - ArrowWriter - found partial batch";
           partial_batching = true;
         }
       }
@@ -206,28 +206,28 @@ Status ArrowRoundRobinWriter::ArrowWrite(const std::string &filename, TensorData
       }
     }
 
-    VLOG(0) << "ARR - ArrowWriter - builder loop adding data ...";
+//    VLOG(0) << "ARR - ArrowWriter - builder loop adding data ...";
 
     for(int j = 0; j < ncols; j++) {
       const char* buff = row[j].tensor_data().data();
-      VLOG(0) << "ARR - ArrowWriter - builder loop data addr: " << (void *) buff;
+//      VLOG(0) << "ARR - ArrowWriter - builder loop data addr: " << (void *) buff;
       data_builders[j]->Append(buff, data_len[j]);
     }
 
-    VLOG(0) << "ARR - ArrowWriter - builder loop end";
+//    VLOG(0) << "ARR - ArrowWriter - builder loop end";
   }
 
-  VLOG(0) << "ARR - ArrowWriter - Written data to data builder";
+//  VLOG(0) << "ARR - ArrowWriter - Written data to data builder";
 
   // finish arrays and construct schema_vector
   for(int i = 0; i < ncols; i++) {
-    VLOG(0) << "ARR - ArrowWriter - Finishing array " << i << "...";
+//    VLOG(0) << "ARR - ArrowWriter - Finishing array " << i << "...";
     data_builders[i]->Finish(&arrays[i]);
-    VLOG(0) << "ARR - ArrowWriter - Finish Completed successfully";
+//    VLOG(0) << "ARR - ArrowWriter - Finish Completed successfully";
     schema_vector.push_back(arrow::field(std::to_string(i), arrays[i]->type()));
   }
 
-  VLOG(0) << "ARR - ArrowWriter - creating schema and table ...";
+//  VLOG(0) << "ARR - ArrowWriter - creating schema and table ...";
 
       // create schema from fields
   auto schema = std::make_shared<arrow::Schema>(schema_vector);
@@ -241,7 +241,7 @@ Status ArrowRoundRobinWriter::ArrowWrite(const std::string &filename, TensorData
           arrow::ipc::feather::WriteProperties::Defaults()));
   CHECK_ARROW(file->Close());
 
-  VLOG(0) << "ARR - ArrowWriter - Written data to file";
+//  VLOG(0) << "ARR - ArrowWriter - Written data to file";
 
   return Status::OK();
 }
