@@ -214,5 +214,5 @@ service DispatcherService {
   rpc GetWorkers(GetWorkersRequest) returns (GetWorkersResponse);
 
   // Applies the metadata update to the metadata store.
-  rpc UpdateMetadata(UpdateMetadataRequest) returns (UpdateMetadataResponse);
+  // rpc UpdateMetadata(UpdateMetadataRequest) returns (UpdateMetadataResponse);
 }

@@ -275,20 +275,6 @@ Status DataServiceDispatcherClient::GetWorkers(
   return Status::OK();
 }
 
-Status DataServiceDispatcherClient::UpdateMetadata(int64 id, int64 update){
-  TF_RETURN_IF_ERROR(EnsureInitialized());
-  UpdateMetadataRequest req;
-  req.set_id(id);
-  req.set_update(update);
-  UpdateMetadataResponse resp;
-  grpc::ClientContext ctx;
-  grpc::Status s = stub_->UpdateMetadata(&ctx, req, &resp);
-  if (!s.ok()) {
-    return grpc_util::WrapError("Failed to update metadata", s);
-  }
-  return Status::OK();
-}
-
 
 Status DataServiceDispatcherClient::EnsureInitialized() {
   mutex_lock l(mu_);

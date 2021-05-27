@@ -324,10 +324,8 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
 
     if (s.ok()) {
       auto job_id = task_object->job->job_id;
-      VLOG(0) << "updating metrics for job " << job_id;
       std::string last_node_name = task.last_node_name();
       TF_RETURN_IF_ERROR(metadata_store_.UpdateLastNode(job_id, last_node_name));
-      VLOG(0) << "updated last node";
       for (int j = 0; j < task.nodes_size(); ++j) {
         auto metrics = task.mutable_nodes(j)->mutable_metrics();
         easl::NodeMetrics::Metrics node_metrics((*metrics)[kBytesConsumed], 
@@ -338,13 +336,11 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
         TF_RETURN_IF_ERROR(metadata_store_.UpdateInputPipelineMetrics(job_id, 
           task.mutable_nodes(j)->name(), request->worker_address(), 
           node_metrics));
-        VLOG(0) << "done updating node " << j;
       }
     }
   }
 
-  // TODO revert 4
-  VLOG(0) << "Finished worker heartbeat for worker at address "
+  VLOG(4) << "Finished worker heartbeat for worker at address "
           << request->worker_address();
   return Status::OK();
 }
@@ -382,7 +378,8 @@ Status DataServiceDispatcherImpl::WorkerUpdate(
         metadata_store_.UpdateDatasetKeyJobMetrics(job->job_id, task->dataset_key);
       }
 
-      VLOG(3) << "Task " << task_id << " from job " << task->job->job_id
+      // TODO revert to 3
+      VLOG(0) << "Task " << task_id << " from job " << task->job->job_id
               << " completed";
     }
   }

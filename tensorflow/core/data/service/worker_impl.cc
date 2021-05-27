@@ -333,10 +333,6 @@ Status DataServiceWorkerImpl::SendTaskUpdates() TF_LOCKS_EXCLUDED(mu_) {
     }
   }
 
-  // TODO (@damien-aymon) <metadata> we would need to recover metadata from
-  // the iterator here.
-  TF_RETURN_IF_ERROR(dispatcher_->UpdateMetadata(42, 42));
-
   TF_RETURN_IF_ERROR(dispatcher_->WorkerUpdate(worker_address_, task_progress));
   mutex_lock l(mu_);
   for (const auto& update : task_progress) {
