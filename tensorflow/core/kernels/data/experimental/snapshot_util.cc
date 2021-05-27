@@ -623,12 +623,12 @@ TFRecordReader::TFRecordReader(const std::string& filename,
 
 Status TFRecordReader::Initialize(Env* env) {
   TF_RETURN_IF_ERROR(env->NewRandomAccessFile(filename_, &file_));
-  VLOG(0) << "EASL - Record reader creation";
+//  VLOG(0) << "EASL - Record reader creation";
   io::RecordReaderOptions record_reader_opt =
     io::RecordReaderOptions::CreateRecordReaderOptions(
       /*compression_type=*/compression_type_);
   if(compression_type_ == io::compression::kSnappy){
-    VLOG(0) << "EASL - Reader using snappy compression";
+//    VLOG(0) << "EASL - Reader using snappy compression";
     record_reader_opt.snappy_options.output_buffer_size = 1 << 30; // 1Gib
   }
 

@@ -360,8 +360,8 @@ Status IteratorBase::InitializeBase(IteratorContext* ctx,
     cleanup_fns_.push_back([this, model]() { model->RemoveNode(node_); });
 
     // TODO (damien-aymon) Remove this
-    VLOG(0) << "EASL - created a node with name: " << node_->name();
-    VLOG(0) << "EASL - created a node with long name: " << node_->long_name();
+//    VLOG(0) << "EASL - created a node with name: " << node_->name();
+//    VLOG(0) << "EASL - created a node with long name: " << node_->long_name();
   }
   return Status::OK();
 }
