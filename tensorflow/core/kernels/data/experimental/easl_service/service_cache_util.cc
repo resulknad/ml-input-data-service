@@ -434,7 +434,7 @@ void StatsLogger::PrintLogging() {
   if(num_writes_ == 0 || duration_cast<seconds>(high_resolution_clock::now() - last_log_).count() < log_wait_) {
     return;
   }
-  std::cout << "\navg_write: " << write_time_sum_ / num_writes_ << " "
+  VLOG(0) << "avg_write: " << write_time_sum_ / num_writes_ << " "
               "average wait time: " << wait_time_sum_ / (num_writes_ - 1) << " "
               "num write invokes: " << num_writes_;
 
