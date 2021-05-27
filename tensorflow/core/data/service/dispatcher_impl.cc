@@ -915,7 +915,7 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
   // EASL: Update the client metrics
   easl::ModelMetrics::Metrics metrics(request->avg_get_next_processing_time(), 
     request->avg_inter_arrival_time());
-  VLOG(0) << "metrics processing_time: " << metrics.get_next_time();
+  VLOG(0) << "metrics processing_time: " << metrics.get_next_time_ms();
   VLOG(0) << "update model metrics";
   metadata_store_.UpdateModelMetrics(job->job_id, request->job_client_id(), 
     metrics);
