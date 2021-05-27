@@ -21,7 +21,7 @@ private:
     void PrintLogging();
     std::chrono::time_point<std::chrono::high_resolution_clock> start_;
     std::chrono::time_point<std::chrono::high_resolution_clock> end_;
-    std::chrono::time_point<std::chrono::high_resolution_clock> last_log_ = high_resolution_clock::now();
+    std::chrono::time_point<std::chrono::high_resolution_clock> last_log_ = std::chrono::high_resolution_clock::now();
 
     uint64_t num_writes_ = 0;
     uint64_t write_time_sum_ = 0;  // duration of num_writes_ writes
