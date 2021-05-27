@@ -29,13 +29,16 @@ ArrowRoundRobinWriter::ArrowRoundRobinWriter(const int writer_count)
         : MultiThreadedAsyncWriter(writer_count) {
   metadata_ = std::make_shared<ArrowUtil::ArrowMetadata>();
   metadata_->SetExperimental(true);
-  max_batch_size_ = thresh_ / writer_count;
+  max_batch_size_ = thresh_ / (writer_count + 1);
   std::vector<std::vector<Tensor>> tensor_batch_vec;
   tensor_batch_vec.reserve(max_batch_size_ / sizeof(std::vector<Tensor>) + 1);
   current_batch_ = {std::move(tensor_batch_vec), 0, false};
 }
 
 void ArrowRoundRobinWriter::PushCurrentBatch() {
+  if(current_batch_.byte_count == 0) {
+    return;
+  }
   mu_.lock();
   deque_.push_back(current_batch_);
   mu_.unlock();
@@ -43,7 +46,6 @@ void ArrowRoundRobinWriter::PushCurrentBatch() {
   std::vector<std::vector<Tensor>> tensor_batch_vec;
   tensor_batch_vec.reserve(max_batch_size_ / sizeof(std::vector<Tensor>) + 1);
   current_batch_ = {std::move(tensor_batch_vec), 0, false};
-
 }
 
 // invariants: incoming tensors have enough "space" in pipeline. write sleeps if we need to stall.

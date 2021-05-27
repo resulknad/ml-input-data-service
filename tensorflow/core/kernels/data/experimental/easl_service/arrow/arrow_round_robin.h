@@ -52,7 +52,7 @@ private:
     std::vector<size_t> tensor_data_len_;
 
     // threshold used to control bytes in entire writer pipeline. Default or set via version (TODO)
-    size_t thresh_ = 1e9;
+    size_t thresh_ = 2e9;
     size_t max_batch_size_ = 1e8;  // wait for this amount of data until waking up writer -> set by constructor
     size_t available_row_capacity_ = 0;  // how many rows can be inserted without checking bytes_written?
     mutex mu_by_;
