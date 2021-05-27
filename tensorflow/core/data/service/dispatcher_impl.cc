@@ -147,8 +147,8 @@ Status DataServiceDispatcherImpl::Start() {
   mutex_lock l(mu_);
   job_gc_thread_ = absl::WrapUnique(
       env_->StartThread({}, "job-gc-thread", [&] { JobGcThread(); }));
-  cachew_thread_ = absl::WrapUnique(
-      env_->StartThread({}, "cachew-thread", [&] { CachewThread(); }));
+  //cachew_thread_ = absl::WrapUnique(
+      //env_->StartThread({}, "cachew-thread", [&] { CachewThread(); }));
   if (config_.work_dir().empty()) {
     if (config_.fault_tolerant_mode()) {
       return errors::InvalidArgument(
@@ -296,7 +296,8 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
     if (!errors::IsNotFound(s)) {
       return s;
     }
-    VLOG(1) << "Registering new worker at address " << worker_address;
+    // TODO revert 1
+    VLOG(0) << "Registering new worker at address " << worker_address;
     Update update;
     update.mutable_register_worker()->set_worker_address(worker_address);
     update.mutable_register_worker()->set_transfer_address(
@@ -313,7 +314,7 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
   TF_RETURN_IF_ERROR(
       FindNewTasks(worker_address, current_tasks, assigned_tasks, response));
 
-  // Update the metadata with the incoming metrics
+  // EASL - Update the metadata with the incoming metrics
   for (int i = 0; i < request->tasks_size(); ++i) {
     auto task = request->tasks(i);
     
@@ -323,9 +324,10 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
 
     if (s.ok()) {
       auto job_id = task_object->job->job_id;
+      VLOG(0) << "updating metrics for job " << job_id;
       std::string last_node_name = task.last_node_name();
-      metadata_store_.UpdateLastNode(job_id, last_node_name);
-
+      TF_RETURN_IF_ERROR(metadata_store_.UpdateLastNode(job_id, last_node_name));
+      VLOG(0) << "updated last node";
       for (int j = 0; j < task.nodes_size(); ++j) {
         auto metrics = task.mutable_nodes(j)->mutable_metrics();
         easl::NodeMetrics::Metrics node_metrics((*metrics)[kBytesConsumed], 
@@ -333,14 +335,16 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
           (*metrics)[kComputationTime], (*metrics)[kInNodeTime], 
           (*metrics)[kInPrefixTime]);
 
-        metadata_store_.UpdateInputPipelineMetrics(job_id, 
+        TF_RETURN_IF_ERROR(metadata_store_.UpdateInputPipelineMetrics(job_id, 
           task.mutable_nodes(j)->name(), request->worker_address(), 
-          node_metrics);
+          node_metrics));
+        VLOG(0) << "done updating node " << j;
       }
     }
   }
 
-  VLOG(4) << "Finished worker heartbeat for worker at address "
+  // TODO revert 4
+  VLOG(0) << "Finished worker heartbeat for worker at address "
           << request->worker_address();
   return Status::OK();
 }
@@ -1085,6 +1089,9 @@ Status DataServiceDispatcherImpl::GcOldJobs() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   return Status::OK();
 }
 
+// TODO (damien-aymon) This should be used if we execute caching decision in a 
+// background thread.
+/*
 void DataServiceDispatcherImpl::CachewThread() {
   int64 next_check_micros = 0;
   while (true) {
@@ -1106,31 +1113,8 @@ void DataServiceDispatcherImpl::CachewThread() {
     next_check_micros =
         env_->NowMicros() + (2000 * 1000);
   }
-}
+}*/
 
-bool DataServiceDispatcherImpl::ShouldUseCache(int64 job_id) 
-  TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  return true;
-}
-
-int DataServiceDispatcherImpl::InferWorkerDelta(int64 job_id) 
-  TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  return 0;
-}
-
-Status DataServiceDispatcherImpl::CachewLogic() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  absl::flat_hash_set<int64> jobs_for_analysis;
-  metadata_store_.GetJobsForEval(jobs_for_analysis);
-
-  for (auto job_id : jobs_for_analysis) {
-    bool should_use_cache = ShouldUseCache(job_id);
-    int worker_delta = InferWorkerDelta(job_id);
-    // TODO: Use these numbers somehow
-    metadata_store_.MarkJobAsEvaluated(job_id);
-  }
-
-  return Status::OK();
-}
 
 Status DataServiceDispatcherImpl::GetDatasetDef(
     int64 dataset_id, std::shared_ptr<const DatasetDef>& dataset_def)

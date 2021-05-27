@@ -142,8 +142,8 @@ Status DetermineJobType(::tensorflow::data::CacheState& cache_state,
 Status AddPutOperator(const DatasetDef& dataset, DatasetDef& updated_dataset,
                       const experimental::DispatcherConfig& dispatcher_config) {
   // TODO remove this.
-  updated_dataset = dataset;
-  return Status::OK();
+  //updated_dataset = dataset;
+  //return Status::OK();
   VLOG(1) << "(AddPutOperator) At the start of the method";
   // Copy over the original dataset
   updated_dataset = dataset;
@@ -204,8 +204,8 @@ Status AddPutOperator(const DatasetDef& dataset, DatasetDef& updated_dataset,
 Status AddGetOperator(const DatasetDef& dataset, DatasetDef& updated_dataset,
                       const experimental::DispatcherConfig& dispatcher_config){
   // TODO remove this.
-  updated_dataset = dataset;
-  return Status::OK();
+  //updated_dataset = dataset;
+  //return Status::OK();
 
   VLOG(1) << "(AddGetOperator) At the start of the method";
   // Copy over the original dataset

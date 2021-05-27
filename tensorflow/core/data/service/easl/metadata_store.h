@@ -198,11 +198,8 @@ class MetadataStore {
   // Update or create the metrics for a client
   Status UpdateInputPipelineMetrics(int64 job_id, string node_long_name, 
     string worker_address, NodeMetrics::Metrics& metrics);
+  
   Status UpdateLastNode(int64 job_id, string node_long_name);
-
-  // Manage jobs to be evaluated
-  Status GetJobsForEval(absl::flat_hash_set<int64>& jobs);
-  Status MarkJobAsEvaluated(int64 job_id);
 
   // Update or create the metrics for the dataset key from the given job.
   Status UpdateDatasetKeyJobMetrics(int64 job_id, const std::string& dataset_key);

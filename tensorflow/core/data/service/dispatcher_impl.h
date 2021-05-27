@@ -256,13 +256,11 @@ class DataServiceDispatcherImpl {
   void JobCachingThread();
   // Scans for old jobs and marks them as finished.
   Status GcOldJobs() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  
+  // EASL
   // A thread which periodically decides which jobs to cache or use cache on 
-  void CachewThread();
-  // Issues a use cache or recompute decision for running jobs
-  Status CachewLogic() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  // Used within the CachewLogic to determine scale and whether to use cache
-  bool ShouldUseCache(int64 job_id) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  int InferWorkerDelta(int64 job_id) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_); 
+  //void CachewThread();
+
   // Gets a `DatasetDef` from `dataset_store_` for the given dataset id, and
   // stores it in `dataset_def`.
   Status GetDatasetDef(int64 dataset_id,
