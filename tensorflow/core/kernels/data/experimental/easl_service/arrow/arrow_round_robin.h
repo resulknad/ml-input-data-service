@@ -40,7 +40,7 @@ public:
 private:
 
     void ConsumeTensors(TensorData* dat_out, int writer_id);
-
+    void PushCurrentBatch();
 
     // store tensors until a writer thread "consumes" them
     std::deque<TensorData> deque_ TF_GUARDED_BY(mu_);

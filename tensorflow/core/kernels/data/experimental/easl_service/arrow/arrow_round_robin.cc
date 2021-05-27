@@ -35,6 +35,16 @@ ArrowRoundRobinWriter::ArrowRoundRobinWriter(const int writer_count)
   current_batch_ = {std::move(tensor_batch_vec), 0, false};
 }
 
+void ArrowRoundRobinWriter::PushCurrentBatch() {
+  mu_.lock();
+  deque_.push_back(current_batch_);
+  mu_.unlock();
+  tensors_available_.notify_one();
+  std::vector<std::vector<Tensor>> tensor_batch_vec;
+  tensor_batch_vec.reserve(max_batch_size_ / sizeof(std::vector<Tensor>) + 1);
+  current_batch_ = {std::move(tensor_batch_vec), 0, false};
+
+}
 
 // invariants: incoming tensors have enough "space" in pipeline. write sleeps if we need to stall.
 void ArrowRoundRobinWriter::Write(std::vector<Tensor> *tensors) {
@@ -73,15 +83,10 @@ void ArrowRoundRobinWriter::Write(std::vector<Tensor> *tensors) {
   if(current_batch_.byte_count + bytes_per_row_ > max_batch_size_) {
     // feed new tensors in pipeline
     VLOG(0) << "ARR - Write - current_batch_ full, adding to producer queue";
-
-    mu_.lock();
-    deque_.push_back(current_batch_);
-    mu_.unlock();
     VLOG(0) << "ARR - Write - Notifying Writer to consume tensors";
-    tensors_available_.notify_one();
-    std::vector<std::vector<Tensor>> tensor_batch_vec;
-    tensor_batch_vec.reserve(max_batch_size_ / sizeof(std::vector<Tensor>) + 1);
-    current_batch_ = {std::move(tensor_batch_vec), 0, false};
+
+    PushCurrentBatch();
+
   }
 
 
@@ -89,6 +94,7 @@ void ArrowRoundRobinWriter::Write(std::vector<Tensor> *tensors) {
   if(available_row_capacity_ > 1) {  // capacity should be at least 1 when returning (for next invoke)
     available_row_capacity_--;
 //    VLOG(0) << "ARR - Write - row capacity reduced, next = " << available_row_capacity_;
+    logger.WriteReturn();
     return;
   }
 
@@ -105,6 +111,7 @@ void ArrowRoundRobinWriter::Write(std::vector<Tensor> *tensors) {
     // can't take any more rows --> max capacity reached
 
     VLOG(0) << "Arr - Write - Capacity reached, waiting for writers to finish writing";
+    PushCurrentBatch();
 
     //reacquire lock and release it
     mutex_lock l(mu_by_);

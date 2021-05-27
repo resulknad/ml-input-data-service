@@ -16,7 +16,7 @@ namespace service_cache_util {
 class StatsLogger {
 public:
     void WriteInvoked();
-    void WriteReturn();   // printing logging message roughly every second
+    void WriteReturn();   // printing logging message roughly every 2 second
 private:
     void PrintLogging();
     std::chrono::time_point<std::chrono::high_resolution_clock> start_;
@@ -26,7 +26,7 @@ private:
     uint64_t num_writes_ = 0;
     uint64_t write_time_sum_ = 0;  // duration of num_writes_ writes
     uint64_t wait_time_sum_ = 0;  // duration of (num_writes_ - 1) waits
-    const int log_wait_ = 2; // wait ~1s betw. logs
+    const int log_wait_ = 2; // wait ~2s betw. logs
 };
 
 // MultiThreadedAsyncWriter provides API for asynchronously writing dataset 
