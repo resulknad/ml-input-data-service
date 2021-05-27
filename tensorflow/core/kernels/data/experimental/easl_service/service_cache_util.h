@@ -5,11 +5,29 @@
 #include "tensorflow/core/kernels/data/experimental/snapshot_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/threadpool.h"
+#include <chrono>
 
 namespace tensorflow {
 namespace data {
 namespace easl{
 namespace service_cache_util {
+
+// Logging class to accumulate and write stats:
+class StatsLogger {
+public:
+    void WriteInvoked();
+    void WriteReturn();   // printing logging message roughly every second
+private:
+    void PrintLogging();
+    std::chrono::time_point<std::chrono::high_resolution_clock> start_;
+    std::chrono::time_point<std::chrono::high_resolution_clock> end_;
+    std::chrono::time_point<std::chrono::high_resolution_clock> last_log_ = high_resolution_clock::now();
+
+    uint64_t num_writes_ = 0;
+    uint64_t write_time_sum_ = 0;  // duration of num_writes_ writes
+    uint64_t wait_time_sum_ = 0;  // duration of (num_writes_ - 1) waits
+    const int log_wait_ = 2; // wait ~1s betw. logs
+};
 
 // MultiThreadedAsyncWriter provides API for asynchronously writing dataset 
 // elements (each represented as a vector of tensors) to a file.
@@ -59,6 +77,7 @@ class MultiThreadedAsyncWriter {
   bool first_row_info_set_ = false;
   std::vector<TensorShape> first_row_shape_;
   uint64 bytes_per_row_ = 0;
+  StatsLogger logger;
 
   // This has to be last. During destruction, we need to make sure that the
   // Thread object is destroyed first as its destructor blocks on thread
@@ -174,6 +193,7 @@ private:
     const std::vector<PartialTensorShape> output_shapes_;
     std::unique_ptr<MultiThreadedAsyncReader> async_reader_;
 };
+
 
 } // namespace service_cache_util
 } // namespace easl

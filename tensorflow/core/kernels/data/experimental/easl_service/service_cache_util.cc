@@ -127,6 +127,7 @@ void MultiThreadedAsyncWriter::Initialize(Env *env, int64 file_index, const std:
 }
 
 void MultiThreadedAsyncWriter::Write(std::vector<Tensor>* tensors) {
+  logger.WriteInvoked();
   if(!first_row_info_set_) {
     for(Tensor& t : *tensors) {
       bytes_per_row_ += t.TotalBytes();
@@ -134,13 +135,14 @@ void MultiThreadedAsyncWriter::Write(std::vector<Tensor>* tensors) {
     first_row_info_set_ = true;
   }
   mutex_lock l(mu_);
-  VLOG(0) << "****************** Writer Queue Size: " << deque_.size() << "  of max:  " << producer_threshold_ / bytes_per_row_;
+//  VLOG(0) << "****************** Writer Queue Size: " << deque_.size() << "  of max:  " << producer_threshold_ / bytes_per_row_;
   mu_.Await(Condition(this,
             &MultiThreadedAsyncWriter::ProducerSpaceAvailable));
 
   snapshot_util::ElementOrEOF element;
   element.value = *tensors;
   deque_.push_back(std::move(element));
+  logger.WriteReturn();
 }
 
 void MultiThreadedAsyncWriter::SignalEOF() {
@@ -222,7 +224,11 @@ Status Reader::Initialize() {
 }
 
 Status Reader::Read(std::vector<Tensor>* &read_tensors, bool* end_of_sequence) {
-  return async_reader_->Read(read_tensors, end_of_sequence);
+  Status s = async_reader_->Read(read_tensors, end_of_sequence);
+  if(*end_of_sequence) {
+    async_reader_.reset();
+  }
+  return s;
 }
 
 
@@ -296,7 +302,7 @@ void MultiThreadedAsyncReader::Add(std::vector<Tensor>& tensors) {
     VLOG(0) << "EASL - set bytes per tensor: " << bytes_per_tensor_;
     first_row_info_set_ = true;
   }
-  VLOG(0) << "****************** Reader Queue Size: " << tensors_.size() << "  of max:  " << producer_threshold_ / bytes_per_tensor_;
+//  VLOG(0) << "****************** Reader Queue Size: " << tensors_.size() << "  of max:  " << producer_threshold_ / bytes_per_tensor_;
   mu_add_.Await(Condition(this, &MultiThreadedAsyncReader::ProducerSpaceAvailable));
   for (const auto& t : tensors)
     tensors_.push_back(t);
@@ -407,6 +413,37 @@ Status MultiThreadedAsyncReader::ReadAndParseMetadataFile() {
   return Status::OK();
 }
 
+using namespace std::chrono;
+void StatsLogger::WriteInvoked() {
+  start_ = high_resolution_clock::now();
+  PrintLogging();
+  if(num_writes_++) {
+    wait_time_sum_ += duration_cast<nanoseconds>(start_ - end_).count();
+  }
+  start_ = high_resolution_clock::now();
+}
+
+void StatsLogger::WriteReturn() {
+  end_ = high_resolution_clock::now();
+  write_time_sum_ += duration_cast<nanoseconds>(end_ - start_).count();
+  end_ = high_resolution_clock::now();
+}
+
+// printing logging message roughly every second
+void StatsLogger::PrintLogging() {
+  if(num_writes_ == 0 || duration_cast<seconds>(high_resolution_clock::now() - last_log_).count() < log_wait_) {
+    return;
+  }
+  std::cout << "\navg_write: " << write_time_sum_ / num_writes_ << " "
+              "average wait time: " << wait_time_sum_ / (num_writes_ - 1) << " "
+              "num write invokes: " << num_writes_;
+
+  // reset
+  num_writes_ = 0;
+  write_time_sum_ = 0;
+  wait_time_sum_ = 0;
+  last_log_ = high_resolution_clock::now();
+}
 
 } // namespace service_cache_util
 } // namespace easl

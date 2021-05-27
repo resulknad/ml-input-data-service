@@ -36,10 +36,10 @@ public:
 
     Status ArrowWrite(const std::string& shard_directory, TensorData &dat);
 
-    void SignalEOF();
+    void SignalEOF() override;
 private:
 
-    void ConsumeTensors(TensorData* dat_out);
+    void ConsumeTensors(TensorData* dat_out, int writer_id);
 
 
     // store tensors until a writer thread "consumes" them
