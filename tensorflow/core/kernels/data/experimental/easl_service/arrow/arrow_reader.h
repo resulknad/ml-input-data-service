@@ -25,6 +25,8 @@ public:
     /// \brief Read an entire record batch into a vector<Tensor>.
     Status ReadTensors(std::vector<Tensor> *read_tensors);
 
+    ~ArrowReader()= default;
+
 private:
     /// \brief increments current_batch_idx_ by 1 (initialized to -1). If no more batches,
     /// return status with OUT_OF_RANGE error.

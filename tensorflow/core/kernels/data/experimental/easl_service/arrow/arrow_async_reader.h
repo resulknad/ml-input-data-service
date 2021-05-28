@@ -29,7 +29,7 @@ public:
 
     Status ReaderThread(Env *env, uint64 writer_id, int64 version,
                         DataTypeVector output_types,
-                        std::vector<PartialTensorShape> output_shapes);
+                        std::vector<PartialTensorShape> output_shapes) override;
 
 private:
     std::shared_ptr<ArrowMetadata> metadata_;

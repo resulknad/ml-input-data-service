@@ -37,6 +37,9 @@ public:
     Status ArrowWrite(const std::string& shard_directory, TensorData &dat);
 
     void SignalEOF() override;
+
+    ~ArrowRoundRobinWriter() override = default;
+
 private:
 
     void ConsumeTensors(TensorData* dat_out, int writer_id);

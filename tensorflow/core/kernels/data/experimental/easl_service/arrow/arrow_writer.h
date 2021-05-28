@@ -26,6 +26,8 @@ public:
 
     Status WriteTensors(std::vector<Tensor> &tensors);
 
+    ~ArrowWriter()= default;
+
 private:
     arrow::Compression::type getArrowCompressionType();
 
