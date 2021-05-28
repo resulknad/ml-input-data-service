@@ -76,8 +76,8 @@ void ArrowRoundRobinWriter::Write(std::vector<Tensor> *tensors) {
   }
 
   bytes_received_ += bytes_per_row_;
-  std::vector<Tensor> local_tensors = *tensors;
-  current_batch_.tensor_batch.push_back(std::move(local_tensors));  // copy of tensors now stored in class -> survive until written
+//  std::vector<Tensor> local_tensors = *tensors;
+  current_batch_.tensor_batch.push_back(std::move(*tensors));  // copy of tensors now stored in class -> survive until written
   current_batch_.byte_count += bytes_per_row_;
 //  VLOG(0) << "ARR - Write - current_batch size: " << current_batch_.byte_count << "  /  " << max_batch_size_;
 
@@ -150,7 +150,6 @@ Status ArrowRoundRobinWriter::ArrowWrite(const std::string &filename, TensorData
 
   // initializing writer process
   int ncols = tensor_data_len_.size();
-  Allocator *string_allocator_ = cpu_allocator(port::kNUMANoAffinity);
   arrow::DataTypeVector arrow_dtypes;
   for (int i = 0; i < first_row_dtype_.size(); i++) {
     std::shared_ptr<arrow::DataType> arrow_dt;
