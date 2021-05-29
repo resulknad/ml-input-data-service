@@ -391,7 +391,6 @@ Status MultiThreadedAsyncReader::Read(std::vector<Tensor>* &read_tensors, bool* 
   return Status::OK();*/
 }
 
-MultiThreadedAsyncReader::~MultiThreadedAsyncReader(){}
 
 Status MultiThreadedAsyncReader::ReadAndParseMetadataFile() {
   string metadata_filename = io::JoinPath(target_dir_, kMetadataFilename);
