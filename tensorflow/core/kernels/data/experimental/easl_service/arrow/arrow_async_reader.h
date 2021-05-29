@@ -31,6 +31,10 @@ public:
                         DataTypeVector output_types,
                         std::vector<PartialTensorShape> output_shapes) override;
 
+    ~ArrowAsyncReader() override {
+      VLOG(0) << "ArrowAsyncReader De-constructed";
+    }
+
 private:
     std::shared_ptr<ArrowMetadata> metadata_;
 };

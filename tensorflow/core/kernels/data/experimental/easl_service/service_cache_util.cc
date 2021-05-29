@@ -34,7 +34,9 @@ Writer::Writer(Env* env,
     output_dtypes_(output_dtypes), output_shapes_(output_shapes), 
     writer_count_(writer_count), writer_version_(writer_version) {}  // Constructor, store references in object
 
-Writer::~Writer() {}  // ~ Destructor
+Writer::~Writer() {
+  VLOG(0) << "Writer De-constructed";
+}  // ~ Destructor
 
 Status Writer::Initialize(){
   // TODO (damien-aymon) add constant for writer version.

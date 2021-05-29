@@ -61,7 +61,9 @@ class MultiThreadedAsyncWriter {
   // waiting for the writer to be closed.
   virtual void SignalEOF() TF_LOCKS_EXCLUDED(mu_);
 
-  virtual ~MultiThreadedAsyncWriter()= default;
+  virtual ~MultiThreadedAsyncWriter() {
+    VLOG(0) << "MultithreadedAsyncWriter De-constructed";
+  };
 
  protected:
   void Consume(snapshot_util::ElementOrEOF* be) TF_LOCKS_EXCLUDED(mu_);
@@ -139,7 +141,9 @@ class MultiThreadedAsyncReader {
 
   Status Read(std::vector<Tensor>* &read_tensors, bool* end_of_sequence);
 
-  ~MultiThreadedAsyncReader();
+  virtual ~MultiThreadedAsyncReader() {
+    VLOG(0) << "MultiThreadedAsyncReader De-constructed";
+  };
 
  protected:
   mutex mu_;
@@ -186,6 +190,10 @@ public:
     Status Initialize();
 
     Status Read(std::vector<Tensor>* &read_tensors, bool* end_of_sequence);
+
+    ~Reader() {
+      VLOG(0) << "Reader De-constructed";
+    }
 private:
     const int reader_version_;
     Env* env_;

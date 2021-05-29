@@ -38,7 +38,9 @@ public:
 
     void SignalEOF() override;
 
-    ~ArrowRoundRobinWriter() override = default;
+    ~ArrowRoundRobinWriter() override {
+      VLOG(0) << "ArrowRoundRobinWriter De-constructed";
+    };
 
 private:
 
