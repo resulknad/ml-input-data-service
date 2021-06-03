@@ -737,3 +737,4 @@ def stateless_parameterized_truncated_normal(shape,
         maxvals_tensor)
     tensor_util.maybe_set_static_shape(rnd, shape)
     return rnd
+    

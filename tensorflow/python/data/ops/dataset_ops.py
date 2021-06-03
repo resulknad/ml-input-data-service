@@ -13,6 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 """Python wrappers for Datasets."""
+
+#Functionality added for element seeds
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -205,7 +208,17 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     Args:
       variant_tensor: A DT_VARIANT tensor that represents the dataset.
     """
-    self._variant_tensor_attr = variant_tensor
+    #Overloading the Constructor base of dataset source for element seed
+    global_seed,op_level_seed = random_seed.get_seed()
+    variant_tensor_seed = ged_ops.random_dataset(
+         global_seed, op_level_seed, **self._flat_structure)
+    variant_tensor_seed_batched = gen_dataset_ops.batch_dataset_v2(
+        variant_tensor_seed,
+        batch_size=2,
+        **self._flat_structure)
+    # For zipping this variant tensor with the input_dataset that is also a variant tensor
+    associated_tensor = zip(variant_tensor,variant_tensor_seed_batched)
+    self._variant_tensor_attr = associated_tensor
     weak_self = weakref.proxy(self)
     self._variant_tracker = self._track_trackable(
         _VariantTracker(
@@ -283,6 +296,18 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
           strip_device_assignment=strip_device_assignment)
     return gen_dataset_ops.dataset_to_graph(
         self._variant_tensor, allow_stateful=allow_stateful)
+
+  # def associate_element_seeds(self):
+  #   length_dataset = self.__len__()
+  #   # eager = context.executing_eagerly()
+  #   # if eager:
+  #   #   global_seed = context.global_seed()
+  #   # else:
+  #   #   global_seed = ops.get_default_graph().seed
+  #   global_seed,op_level_seed = random_seed.get_seed()
+  #   variant_tensor = ged_ops.random_dataset(
+  #       global_seed, op_level_seed, **self._flat_structure)
+    
 
   def _trace_variant_creation(self):
     """Traces a function which outputs a variant `tf.Tensor` for this dataset.
@@ -679,6 +704,19 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       Dataset: A `Dataset`.
     """
     return TensorDataset(tensors)
+
+  @staticmethod
+  def deterministic_dataset(self):
+    """Creates a `Deterministic Dataset` associating seeds with input elements in the datasets.
+
+    
+    Args:
+      input datasets
+
+    Returns:
+      Dataset: A `Dataset`.
+    """
+    return DeterministicDataset(self)
 
   @staticmethod
   def from_tensor_slices(tensors):
@@ -4703,6 +4741,28 @@ class ParallelInterleaveDataset(UnaryDataset):
 
   def _transformation_name(self):
     return "Dataset.interleave()"
+
+class DeterministicDataset(UnaryDataset):
+  """A `Dataset` that associates seed with input dataset."""
+
+  def __init__(self,
+               input_dataset):
+    """See `Dataset.interleave()` for details."""
+    self._input_dataset = input_dataset
+    global_seed,op_level_seed = random_seed.get_seed()
+    variant_tensor_seed = ged_ops.random_dataset(
+         global_seed, op_level_seed, **self._flat_structure)
+    variant_tensor_seed_batched = gen_dataset_ops.batch_dataset_v2(
+        variant_tensor_seed,
+        batch_size=2,
+        **self._flat_structure)
+    variant_tensor = zip(self._input_dataset._variant_tensor, variant_tensor_seed_batched)
+    super(DeterministicDataset, self).__init__(input_dataset,
+                                                    variant_tensor)                                                 
+
+  @property
+  def element_spec(self):
+    return self._structure
 
 
 class FilterDataset(UnaryUnchangedStructureDataset):
