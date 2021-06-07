@@ -443,8 +443,12 @@ void StatsLogger::PrintStatsSummary() {
   if(num_writes_ == 0 || duration_cast<seconds>(high_resolution_clock::now() - last_log_).count() < log_wait_) {
     return;
   }
-  VLOG(0) << "{avg_write,avg_wait,num_write} _|LogStat|_ " << write_time_sum_ / num_writes_ << " "
-              "" << wait_time_sum_ / (num_writes_ - 1) << " "
+  uint64_t avg_sleep = 0;
+  if(num_sleeps_ > 0) {
+    avg_sleep = sleep_time_sum_ / num_sleeps_;
+  }
+  VLOG(0) << "{avg_write,avg_wait,avg_sleep,num_write,num_sleep} _|LogStat|_ " << write_time_sum_ / num_writes_ << " "
+              "" << wait_time_sum_ / (num_writes_ - 1) << " " << avg_sleep << " " << num_sleeps_ << ""
               "" << num_writes_;
 
   // reset
