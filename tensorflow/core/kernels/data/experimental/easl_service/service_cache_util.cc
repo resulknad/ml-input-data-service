@@ -449,7 +449,7 @@ void StatsLogger::PrintStatsSummary() {
   }
   VLOG(0) << "{avg_write,avg_wait,avg_sleep,num_write,num_sleep} _|LogStat|_ " << write_time_sum_ / num_writes_ << " "
               "" << wait_time_sum_ / (num_writes_ - 1) << " " << avg_sleep << " " << num_sleeps_ << ""
-              "" << num_writes_;
+              " " << num_writes_;
 
   // reset
   num_sleeps_ = 0;
