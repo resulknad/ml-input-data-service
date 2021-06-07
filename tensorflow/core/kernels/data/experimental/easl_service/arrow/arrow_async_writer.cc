@@ -88,7 +88,7 @@ bool ArrowAsyncWriter::ProducerSpaceAvailable() {
 }
 
 void ArrowAsyncWriter::Write(std::vector<Tensor> *tensors) {
-  logger.WriteInvoked();
+  logger->WriteInvoked();
   if(!first_row_info_set_) {
     for(Tensor t : *tensors) {
       bytes_per_row_ += t.TotalBytes();
@@ -98,12 +98,13 @@ void ArrowAsyncWriter::Write(std::vector<Tensor> *tensors) {
   }
   metadata_->SetRowShape(first_row_shape_);
   mutex_lock l(mu_);
+  logger->WriteSleep();
   mu_.Await( Condition(this, &ArrowAsyncWriter::ProducerSpaceAvailable));
-
+  logger->WriteAwake();
   snapshot_util::ElementOrEOF element;
   element.value = *tensors;
   deque_.push_back(std::move(element));
-  logger.WriteReturn();
+  logger->WriteReturn();
 }
 
 } // namespace arrow_async_wirter
