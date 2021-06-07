@@ -33,7 +33,7 @@ class DispatcherConfig(
     collections.namedtuple("DispatcherConfig", [
         "port", "protocol", "work_dir", "fault_tolerant_mode",
         "job_gc_check_interval_ms", "job_gc_timeout_ms", "cache_policy",
-        "cache_format", "cache_compression", "cache_ops_parallelism", "cache_path"
+        "cache_format", "cache_compression", "cache_ops_parallelism", "cache_path",
         "scaling_policy"
     ])):
   """Configuration class for tf.data service dispatchers.
