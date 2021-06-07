@@ -91,7 +91,9 @@ class MultiThreadedAsyncWriter {
 
   virtual ~MultiThreadedAsyncWriter()= default;
 
- protected:
+  std::shared_ptr<StatsLogger> logger;
+
+protected:
   void Consume(snapshot_util::ElementOrEOF* be) TF_LOCKS_EXCLUDED(mu_);
   bool ElementAvailable() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   virtual Status WriterThread(Env* env, const std::string& shard_directory,
@@ -107,7 +109,6 @@ class MultiThreadedAsyncWriter {
   bool first_row_info_set_ = false;
   std::vector<TensorShape> first_row_shape_;
   uint64 bytes_per_row_ = 0;
-  StatsLogger logger;
 
   // This has to be last. During destruction, we need to make sure that the
   // Thread object is destroyed first as its destructor blocks on thread

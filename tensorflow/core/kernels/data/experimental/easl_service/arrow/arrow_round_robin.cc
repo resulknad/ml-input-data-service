@@ -50,7 +50,7 @@ void ArrowRoundRobinWriter::PushCurrentBatch() {
 
 // invariants: incoming tensors have enough "space" in pipeline. write sleeps if we need to stall.
 void ArrowRoundRobinWriter::Write(std::vector<Tensor> *tensors) {
-  logger.WriteInvoked();
+  logger->WriteInvoked();
 
   // only take this branch once in the beginning
   if(!first_row_info_set_) {
@@ -96,7 +96,7 @@ void ArrowRoundRobinWriter::Write(std::vector<Tensor> *tensors) {
   if(available_row_capacity_ > 1) {  // capacity should be at least 1 when returning (for next invoke)
     available_row_capacity_--;
 //    VLOG(0) << "ARR - Write - row capacity reduced, next = " << available_row_capacity_;
-    logger.WriteReturn();
+    logger->WriteReturn();
     return;
   }
 
@@ -115,9 +115,14 @@ void ArrowRoundRobinWriter::Write(std::vector<Tensor> *tensors) {
     VLOG(0) << "_|Iterator|_ No-Capacity-Sleep";
     PushCurrentBatch();
 
+    logger->WriteSleep();
+
     //reacquire lock and release it
     mutex_lock l(mu_by_);
     capacity_available_.wait(l);
+
+    logger->WriteAwake();
+
     VLOG(0) << "_|Iterator|_ Awake-New-Capacity";
 
     bytes_written_local = bytes_written_;
@@ -127,7 +132,7 @@ void ArrowRoundRobinWriter::Write(std::vector<Tensor> *tensors) {
   size_t bytes_in_pipeline = bytes_received_ - bytes_written_local;
   available_row_capacity_ = (thresh_ - bytes_in_pipeline) / bytes_per_row_;
 
-  logger.WriteReturn();
+  logger->WriteReturn();
 } // mutex_lock's destructor automatically releases the lock
 
 void ArrowRoundRobinWriter::ConsumeTensors(TensorData* dat_out, int writer_id) {

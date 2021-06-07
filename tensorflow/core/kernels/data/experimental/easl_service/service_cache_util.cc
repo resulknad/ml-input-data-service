@@ -47,7 +47,7 @@ Status Writer::Initialize(){
   } else {
     async_writer_ = std::make_unique<MultiThreadedAsyncWriter>(writer_count_);
   }
-
+  async_writer_->logger = std::make_shared<StatsLogger>();
   async_writer_->Initialize(env_, /*file_index*/ 0, target_dir_, /*checkpoint_id*/ 0,
                             kCompression, writer_version_, output_dtypes_,
           /*done*/ [this](Status s){
@@ -127,7 +127,7 @@ void MultiThreadedAsyncWriter::Initialize(Env *env, int64 file_index, const std:
 }
 
 void MultiThreadedAsyncWriter::Write(std::vector<Tensor>* tensors) {
-  logger.WriteInvoked();
+  logger->WriteInvoked();
   if(!first_row_info_set_) {
     for(Tensor& t : *tensors) {
       bytes_per_row_ += t.TotalBytes();
@@ -136,14 +136,14 @@ void MultiThreadedAsyncWriter::Write(std::vector<Tensor>* tensors) {
   }
   mutex_lock l(mu_);
 //  VLOG(0) << "****************** Writer Queue Size: " << deque_.size() << "  of max:  " << producer_threshold_ / bytes_per_row_;
-  logger.WriteSleep();
+  logger->WriteSleep();
   mu_.Await(Condition(this,
             &MultiThreadedAsyncWriter::ProducerSpaceAvailable));
-  logger.WriteAwake();
+  logger->WriteAwake();
   snapshot_util::ElementOrEOF element;
   element.value = *tensors;
   deque_.push_back(std::move(element));
-  logger.WriteReturn();
+  logger->WriteReturn();
 }
 
 void MultiThreadedAsyncWriter::SignalEOF() {
@@ -220,7 +220,6 @@ Status Reader::Initialize() {
     async_reader_ = std::make_unique<MultiThreadedAsyncReader>(env_, target_dir_, output_dtypes_,
                                                                output_shapes_, reader_count_);
   }
-
   return async_reader_->Initialize();
 }
 
