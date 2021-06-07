@@ -169,8 +169,10 @@ Status DetermineJobType(::tensorflow::data::CacheState& cache_state,
   return Status::OK();
 }
 
-Status AddPutOperator(const DatasetDef& dataset, DatasetDef& updated_dataset,
-                      const experimental::DispatcherConfig& dispatcher_config) {
+Status AddPutOperator(const DatasetDef& dataset,
+                      const uint64 fingerprint,
+                      const experimental::DispatcherConfig& dispatcher_config,
+                      DatasetDef& updated_dataset) {
   // TODO remove this.
   //updated_dataset = dataset;
   //return Status::OK();
@@ -184,7 +186,8 @@ Status AddPutOperator(const DatasetDef& dataset, DatasetDef& updated_dataset,
   tensorflow::RewriterConfig_CustomGraphOptimizer config;
 
   // TODO - set path where to store graph.
-  (*(config.mutable_parameter_map()))["path"].set_placeholder("./outputs/");
+  (*(config.mutable_parameter_map()))["path"].set_placeholder(
+      absl::StrCat(dispatcher_config.cache_path(), "/", fingerprint));
   (*(config.mutable_parameter_map()))["cache_format"].set_i(
       dispatcher_config.cache_format());
   (*(config.mutable_parameter_map()))["cache_compression"].set_i(
@@ -231,8 +234,10 @@ Status AddPutOperator(const DatasetDef& dataset, DatasetDef& updated_dataset,
 }
 
 
-Status AddGetOperator(const DatasetDef& dataset, DatasetDef& updated_dataset,
-                      const experimental::DispatcherConfig& dispatcher_config){
+Status AddGetOperator(const DatasetDef& dataset,
+                      const uint64 fingerprint,
+                      const experimental::DispatcherConfig& dispatcher_config,
+                      DatasetDef& updated_dataset){
   // TODO remove this.
   //updated_dataset = dataset;
   //return Status::OK();
@@ -247,7 +252,8 @@ Status AddGetOperator(const DatasetDef& dataset, DatasetDef& updated_dataset,
   tensorflow::RewriterConfig_CustomGraphOptimizer config;
 
   // TODO - set path where to store graph.
-  (*(config.mutable_parameter_map()))["path"].set_placeholder("./outputs/");
+  (*(config.mutable_parameter_map()))["path"].set_placeholder(
+      absl::StrCat(dispatcher_config.cache_path(), "/", fingerprint));
   (*(config.mutable_parameter_map()))["cache_format"].set_i(
       dispatcher_config.cache_format());
   (*(config.mutable_parameter_map()))["cache_compression"].set_i(

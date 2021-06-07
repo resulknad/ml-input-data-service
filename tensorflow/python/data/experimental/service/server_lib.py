@@ -33,7 +33,7 @@ class DispatcherConfig(
     collections.namedtuple("DispatcherConfig", [
         "port", "protocol", "work_dir", "fault_tolerant_mode",
         "job_gc_check_interval_ms", "job_gc_timeout_ms", "cache_policy",
-        "cache_format", "cache_compression", "cache_ops_parallelism",
+        "cache_format", "cache_compression", "cache_ops_parallelism", "cache_path"
         "scaling_policy"
     ])):
   """Configuration class for tf.data service dispatchers.
@@ -70,6 +70,7 @@ class DispatcherConfig(
     cache_compression: The compression schema (if any) to use for the caching ops
     cache_ops_parallelism: The number of parallel threads the caching ops
       shoujld use for reading/writing to cache
+    cache_path: The base path to use for storing the cache contents.
     scaling_policy: The scaling policy applied by the dispatcher.
   """
 
@@ -84,6 +85,7 @@ class DispatcherConfig(
               cache_format=2,
               cache_compression=1,
               cache_ops_parallelism=8,
+              cache_path="./outputs",
               scaling_policy=1):
     if protocol is None:
       protocol = _pywrap_utils.TF_DATA_DefaultProtocol()
@@ -105,7 +107,7 @@ class DispatcherConfig(
                  cls).__new__(cls, port, protocol, work_dir,
                               fault_tolerant_mode, job_gc_check_interval_ms,
                               job_gc_timeout_ms, cache_policy, cache_format,
-                              cache_compression, cache_ops_parallelism, scaling_policy)
+                              cache_compression, cache_ops_parallelism, cache_path, scaling_policy)
 
 
 @tf_export("data.experimental.service.DispatchServer", v1=[])
@@ -174,6 +176,7 @@ class DispatchServer(object):
         cache_format=config.cache_format,
         cache_compression=config.cache_compression,
         cache_ops_parallelism=config.cache_ops_parallelism,
+        cache_path=config.cache_path,
         scaling_policy=config.scaling_policy)
     self._server = _pywrap_server_lib.TF_DATA_NewDispatchServer(
         config_proto.SerializeToString())

@@ -32,6 +32,8 @@ message DispatcherConfig {
   int32 cache_compression = 9;
   // The number of parallel readers and writers to use for the caching ops.
   int32 cache_ops_parallelism = 10;
+  // The base path to use for the cache content
+  string cache_path = 12;
   // The scaling policy applied by the service
   int32 scaling_policy = 11;
 

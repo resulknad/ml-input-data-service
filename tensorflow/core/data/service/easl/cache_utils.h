@@ -47,11 +47,15 @@ Status DetermineJobType(::tensorflow::data::CacheState& cache_state,
                      const int64 job_id,
                      std::string& job_type);
 
-Status AddPutOperator(const DatasetDef& dataset, DatasetDef& updated_dataset,
-                      const experimental::DispatcherConfig& dispatcher_config);
+Status AddPutOperator(const DatasetDef& dataset,
+                      const uint64 fingerprint,
+                      const experimental::DispatcherConfig& dispatcher_config,
+                      DatasetDef& updated_dataset);
 
-Status AddGetOperator(const DatasetDef& dataset, DatasetDef& updated_dataset,
-                      const experimental::DispatcherConfig& dispatcher_config);
+Status AddGetOperator(const DatasetDef& dataset,
+                      const uint64 fingerprint,
+                      const experimental::DispatcherConfig& dispatcher_config,
+                      DatasetDef& updated_dataset);
 
 
 } // namespace cache_utils
