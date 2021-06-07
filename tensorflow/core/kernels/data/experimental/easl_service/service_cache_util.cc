@@ -415,7 +415,7 @@ Status MultiThreadedAsyncReader::ReadAndParseMetadataFile() {
 using namespace std::chrono;
 void StatsLogger::WriteInvoked() {
   start_ = high_resolution_clock::now();
-  PrintLogging();
+  PrintStatsSummary();
   if(num_writes_++) {
     wait_time_sum_ += duration_cast<nanoseconds>(start_ - end_).count();
   }
@@ -428,8 +428,18 @@ void StatsLogger::WriteReturn() {
   end_ = high_resolution_clock::now();
 }
 
+void StatsLogger::WriteSleep() {
+  sleepStart_ = high_resolution_clock::now();
+}
+
+void StatsLogger::WriteAwake() {
+  auto now = high_resolution_clock::now();
+  num_sleeps_++;
+  sleep_time_sum_ += duration_cast<nanoseconds>(now - sleepStart_).count();
+}
+
 // printing logging message roughly every second
-void StatsLogger::PrintLogging() {
+void StatsLogger::PrintStatsSummary() {
   if(num_writes_ == 0 || duration_cast<seconds>(high_resolution_clock::now() - last_log_).count() < log_wait_) {
     return;
   }
@@ -438,11 +448,15 @@ void StatsLogger::PrintLogging() {
               "" << num_writes_;
 
   // reset
+  num_sleeps_ = 0;
   num_writes_ = 0;
+  sleep_time_sum_ = 0;
   write_time_sum_ = 0;
   wait_time_sum_ = 0;
   last_log_ = high_resolution_clock::now();
 }
+
+
 
 } // namespace service_cache_util
 } // namespace easl

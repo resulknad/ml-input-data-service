@@ -77,7 +77,7 @@ void ArrowRoundRobinWriter::Write(std::vector<Tensor> *tensors) {
 
   bytes_received_ += bytes_per_row_;
 //  std::vector<Tensor> local_tensors = *tensors;
-  current_batch_.tensor_batch.push_back(std::move(*tensors));  // copy of tensors now stored in class -> survive until written
+  current_batch_.tensor_batch.push_back(*tensors);  // copy of tensors now stored in class -> survive until written
   current_batch_.byte_count += bytes_per_row_;
 //  VLOG(0) << "ARR - Write - current_batch size: " << current_batch_.byte_count << "  /  " << max_batch_size_;
 
