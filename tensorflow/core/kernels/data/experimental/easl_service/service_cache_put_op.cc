@@ -229,7 +229,6 @@ Status ServiceCachePutOp::Dataset::Iterator::RestoreInternal(
 Status ServiceCachePutOp::Dataset::Iterator::GetNextInternal(
     IteratorContext* ctx, std::vector<Tensor>* out_tensors,
     bool* end_of_sequence) {
-  VLOG(0) << "EASL - enter cache put get next";
   mutex_lock l(mu_);
 
   TF_RETURN_IF_ERROR(input_impl_->GetNext(ctx, out_tensors, end_of_sequence));

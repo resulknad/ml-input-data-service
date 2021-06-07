@@ -222,12 +222,8 @@ Status ServiceCacheGetOp::Dataset::Iterator::GetNextInternal(
     IteratorContext* ctx, std::vector<Tensor>* out_tensors,
     bool* end_of_sequence) {
   mutex_lock l(mu_);
-  VLOG(0) << "EASL - entered cache get GetNextInternal";
   auto model = ctx->model();
 
-  if(model){
-    VLOG(0) << "EASL - serviceCacheGet: there is indeed a model here...";
-  }
   return reader_->Read(out_tensors, end_of_sequence);
 }
 
