@@ -694,7 +694,7 @@ Status DataServiceDispatcherImpl::CreateJob(
   std::string compute_dataset_key = DatasetKey(dataset_id, dataset_fingerprint);
 
   service::easl::cache_utils::DetermineJobType(
-      cache_state_, metadata_store_, dataset_fingerprint,
+      config_, cache_state_, metadata_store_, dataset_fingerprint,
       compute_dataset_key, job_id, job_type);
 
   VLOG(0) << "EASL - Caching decision for dataset_key " <<

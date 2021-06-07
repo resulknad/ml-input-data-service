@@ -105,12 +105,32 @@ Status DatasetKey(const ::tensorflow::data::easl::CacheState& cache_state,
   return Status::OK();
 }*/
 
-Status DetermineJobType(::tensorflow::data::CacheState& cache_state,
+Status DetermineJobType(const experimental::DispatcherConfig& dispatcher_config,
+                     ::tensorflow::data::CacheState& cache_state,
                      const ::tensorflow::data::easl::MetadataStore& metadata_store,
                      const uint64 fingerprint,
                      const std::string& dataset_key,
                      const int64 job_id,
                      std::string& job_type){
+  // First check if we should use a "fixed" cache policy:
+  // 2==compute, 3==cache(put, then get from 2nd epoch)
+  // ---------------------------------------------------------------------------
+  if(dispatcher_config.cache_policy()==2){
+    job_type = "COMPUTE";
+    return Status::OK();
+  } else if(dispatcher_config.cache_policy()==3){
+    if(cache_state.IsDatasetCached(fingerprint)){
+      job_type = "GET";
+    } else {
+      job_type = "PUT";
+    }
+    return Status::OK();
+  }
+  // ---------------------------------------------------------------------------
+
+  // Cache policy = EASL (cache_policy==1)
+  // ---------------------------------------------------------------------------
+
   // If dataset was previously cached, assume it was faster than compute
   // and decide to read.
   if(cache_state.IsDatasetCached(fingerprint)){
