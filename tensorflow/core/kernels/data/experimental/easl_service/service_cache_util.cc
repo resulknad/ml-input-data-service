@@ -136,9 +136,10 @@ void MultiThreadedAsyncWriter::Write(std::vector<Tensor>* tensors) {
   }
   mutex_lock l(mu_);
 //  VLOG(0) << "****************** Writer Queue Size: " << deque_.size() << "  of max:  " << producer_threshold_ / bytes_per_row_;
+  logger.WriteSleep();
   mu_.Await(Condition(this,
             &MultiThreadedAsyncWriter::ProducerSpaceAvailable));
-
+  logger.WriteAwake();
   snapshot_util::ElementOrEOF element;
   element.value = *tensors;
   deque_.push_back(std::move(element));
@@ -434,8 +435,11 @@ void StatsLogger::WriteSleep() {
 
 void StatsLogger::WriteAwake() {
   auto now = high_resolution_clock::now();
-  num_sleeps_++;
-  sleep_time_sum_ += duration_cast<nanoseconds>(now - sleepStart_).count();
+  auto sleep_time = duration_cast<nanoseconds>(now - sleepStart_).count();
+  if(sleep_time > 100) {
+    num_sleeps_++;
+    sleep_time_sum_ += sleep_time;
+  }
 }
 
 // printing logging message roughly every second
