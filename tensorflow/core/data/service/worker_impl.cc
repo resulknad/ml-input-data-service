@@ -388,7 +388,9 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
     for (const auto& task : tasks_) {
       current_tasks.push_back(task.first);
 
-      // Get the metrics 
+      // Get the metrics
+      using ModelMetrics =
+      std::shared_ptr<absl::flat_hash_map<string, Node::MetricDump>>;
       auto metrics = task.second->task_runner->GetMetrics();
       if (metrics) {
         tasks_metrics[task.first] = metrics;

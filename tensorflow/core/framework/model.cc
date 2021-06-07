@@ -1653,7 +1653,9 @@ Model::ModelMetrics Model::CollectMetrics() {
   std::deque<std::shared_ptr<Node>> stack;
   std::string last_node_name = "";
   Node::NodeValues node_times;
-  Node::NodeValues final_times;  
+  Node::NodeValues final_times;
+
+  VLOG(0) << "EASL - Trying to collect metrics";
 
   FlushMetrics();
   {
@@ -1700,6 +1702,9 @@ Model::ModelMetrics Model::CollectMetrics() {
     entry.second.set_in_prefix_time(final_times[entry.first] / 
       EnvTime::kMillisToMicros);
   }
+
+  VLOG(0) << "EASL - Done collecting metrics, returning";
+
 
   // Debug code below
   // for (const auto& entry : *metrics) {
