@@ -270,7 +270,8 @@ Status DataServiceWorkerImpl::GetElement(const GetElementRequest* request,
   response->set_skip_task(result.skip);
   if (response->end_of_sequence()) {
     mutex_lock l(mu_);
-    VLOG(3) << "Reached end_of_sequence for task " << request->task_id();
+    // TODO revert to 3
+    VLOG(0) << "Reached end_of_sequence for task " << request->task_id();
     pending_completed_tasks_.insert(request->task_id());
     task_completion_cv_.notify_one();
   } else if (!response->skip_task()) {
@@ -310,6 +311,7 @@ void DataServiceWorkerImpl::TaskCompletionThread() TF_LOCKS_EXCLUDED(mu_) {
 
     // EASL - Send heartbeat for metadata: makes sure the metrics have been sent
     // to the dispatcher at least once before the job gets deleted.
+    VLOG(0) << "EASL - calling heartbeat from taskCompletionThread";
     Status s = Heartbeat();
     if (!s.ok()) {
       LOG(WARNING) << "Failed to send heartbeat to dispatcher: " << s;
@@ -353,7 +355,7 @@ Status DataServiceWorkerImpl::SendTaskUpdates() TF_LOCKS_EXCLUDED(mu_) {
 void DataServiceWorkerImpl::HeartbeatThread() TF_LOCKS_EXCLUDED(mu_) {
   while (true) {
     int64 next_heartbeat_micros =
-        Env::Default()->NowMicros() + (500 * 1000);
+        Env::Default()->NowMicros() + (500 * 1000); // Heartbeat every 0.5 sec.
     {
       mutex_lock l(mu_);
       while (!cancelled_ &&
@@ -389,20 +391,22 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
       current_tasks.push_back(task.first);
 
       // Get the metrics
-      using ModelMetrics =
-      std::shared_ptr<absl::flat_hash_map<string, Node::MetricDump>>;
       auto metrics = task.second->task_runner->GetMetrics();
       if (metrics) {
+        VLOG(0) << "EASL - In heartbeat - got metrics";
         tasks_metrics[task.first] = metrics;
       }
     }
   }
   std::vector<TaskDef> new_tasks;
   std::vector<int64> tasks_to_delete;
+  VLOG(0) << "EASL - Just before sending heartbeat to dispatcher";
   TF_RETURN_IF_ERROR(
       dispatcher_->WorkerHeartbeat(worker_address_, transfer_address_,
                                    current_tasks, new_tasks, tasks_to_delete, 
                                    tasks_metrics));
+  VLOG(0) << "EASL - Just after sending heartbeat to dispatcher";
+
   mutex_lock l(mu_);
   for (const auto& task : new_tasks) {
     VLOG(1) << "Received new task from dispatcher with id " << task.task_id();
