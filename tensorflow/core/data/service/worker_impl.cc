@@ -385,22 +385,22 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
   std::vector<int64> current_tasks;
   absl::flat_hash_map<int64, model::Model::ModelMetrics> tasks_metrics;
   {
-    VLOG(1) << "(DataServiceWorkerImpl::Heartbeat) Starting heartbeat" << std::flush;
+    // TODO was 1
+    VLOG(0) << "(DataServiceWorkerImpl::Heartbeat) Starting heartbeat" << std::flush;
     mutex_lock l(mu_);
     for (const auto& task : tasks_) {
       current_tasks.push_back(task.first);
 
       // Get the metrics
+      VLOG(0) << "Getting metrics in heartbeat";
       auto metrics = task.second->task_runner->GetMetrics();
       if (metrics) {
-        VLOG(0) << "EASL - In heartbeat - got metrics";
         tasks_metrics[task.first] = metrics;
       }
     }
   }
   std::vector<TaskDef> new_tasks;
   std::vector<int64> tasks_to_delete;
-  VLOG(0) << "EASL - Just before sending heartbeat to dispatcher";
   TF_RETURN_IF_ERROR(
       dispatcher_->WorkerHeartbeat(worker_address_, transfer_address_,
                                    current_tasks, new_tasks, tasks_to_delete, 
@@ -409,7 +409,8 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
 
   mutex_lock l(mu_);
   for (const auto& task : new_tasks) {
-    VLOG(1) << "Received new task from dispatcher with id " << task.task_id();
+    // TODO was 1.
+    VLOG(0) << "Received new task from dispatcher with id " << task.task_id();
     Status s = ProcessTaskInternal(task);
     if (!s.ok() && !errors::IsAlreadyExists(s)) {
       LOG(WARNING) << "Failed to start processing task " << task.task_id()
@@ -417,11 +418,14 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
     }
   }
   for (int64 task_id : tasks_to_delete) {
-    VLOG(3) << "Deleting task " << task_id
+    // TODO was 3
+    VLOG(0) << "Deleting task " << task_id
             << " at the request of the dispatcher";
     tasks_.erase(task_id);
     finished_tasks_.insert(task_id);
   }
+  VLOG(0) << "EASL - End of heartbeat";
+
   return Status::OK();
 }
 
