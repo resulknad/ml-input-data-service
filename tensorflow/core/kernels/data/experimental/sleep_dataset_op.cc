@@ -129,12 +129,12 @@ class SleepDatasetOp : public UnaryDatasetOpKernel {
                              std::vector<Tensor>* out_tensors,
                              bool* end_of_sequence) override {
         mutex_lock l(mu_);
-        RecordStop(ctx);
+        //RecordStop(ctx);
         bool cancelled = mu_.AwaitWithDeadline(
             Condition(&cancelled_),
             EnvTime::NowNanos() +
                 dataset()->sleep_microseconds_ * EnvTime::kMicrosToNanos);
-        RecordStart(ctx);
+        //RecordStart(ctx);
         if (cancelled) {
           return errors::Cancelled("Operation was cancelled");
         }

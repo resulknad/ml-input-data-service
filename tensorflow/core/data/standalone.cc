@@ -40,15 +40,6 @@ namespace data {
 namespace standalone {
 
 Status Iterator::GetNext(std::vector<Tensor>* outputs, bool* end_of_input) {
-  monitoring::CounterCell* tf_data_elements_counter =
-      tensorflow::metrics::GetTFDataElementsCounter("ServiceCacheGet");
-  VLOG(0) << " EASL - serviceCacheGet elements counter: " <<
-  tf_data_elements_counter->value();
-  auto model = ctx_.get()->model();
-
-  if(model){
-    VLOG(0) << "EASL - serviceCacheGet: there is indeed a model here...";
-  }
   return iterator_->GetNext(ctx_.get(), outputs, end_of_input);
 }
 
