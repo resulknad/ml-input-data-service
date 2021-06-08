@@ -12,49 +12,37 @@ namespace data {
 namespace easl{
 namespace service_cache_util {
 
-// Logging class to accumulate and write stats:
-struct WriteLog {
-    uint64_t write_id;
-    uint64_t wait_time;
-    uint64_t write_time;
-    uint64_t sleep_time;
-    std::chrono::time_point<std::chrono::high_resolution_clock> timestamp;
-};
-
 struct ThreadLog {
-    uint64_t write_id;
-
+  bool used = false;
+  uint64_t write_time_sum = 0;
+  uint64_t not_write_time_sum = 0;
+  uint64_t num_writes = 0;
+  std::chrono::time_point<std::chrono::high_resolution_clock> timestamp;
 };
 
 class StatsLogger {
 public:
-//    StatsLogger();
-
     void WriteSleep();
     void WriteAwake();
-//    void BeginWriteTensors();
-//    void FinishWriteTensors();
+    void BeginWriteTensors(int id);
+    void FinishWriteTensors(int id);
     void WriteInvoked();
     void WriteReturn();   // printing logging message roughly every 2 second
-private:
-    void PrintStatsSummary();
-//    string WriteLogToString(WriteLog& wl);
-//    void OutputAllStats();
-
-//    std::vector<WriteLog> writeLogs;
-//    std::vector<ThreadLog> threadLogs;
+    void PrintStatsSummary(int id);
+    private:
 
     std::chrono::time_point<std::chrono::high_resolution_clock> sleepStart_;
     std::chrono::time_point<std::chrono::high_resolution_clock> start_;
     std::chrono::time_point<std::chrono::high_resolution_clock> end_;
     std::chrono::time_point<std::chrono::high_resolution_clock> last_log_ = std::chrono::high_resolution_clock::now();
 
+    ThreadLog thread_logs_[12];  // writers directly access this by writer_id
     uint64_t num_writes_ = 0;
     uint64_t num_sleeps_ = 0;
     uint64_t sleep_time_sum_ = 0;
     uint64_t write_time_sum_ = 0;  // duration of num_writes_ writes
     uint64_t wait_time_sum_ = 0;  // duration of (num_writes_ - 1) waits
-    const int log_wait_ = 1; // wait ~2s betw. logs
+    const int log_wait_ = 0; // wait ~1s betw. logs
 };
 
 // MultiThreadedAsyncWriter provides API for asynchronously writing dataset 

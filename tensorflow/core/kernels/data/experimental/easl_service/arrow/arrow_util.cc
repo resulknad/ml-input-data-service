@@ -108,14 +108,15 @@ Status ArrowMetadata::WriteData(const std::string& path) {
   return Status::OK();
 }
 
-Status ArrowMetadata::WriteMetadataToFile(const std::string& path) {
+int ArrowMetadata::WriteMetadataToFile(const std::string& path) {
   mutex_lock l(mu_);  // unlocked automatically upon function return
   --num_worker_threads_;
   if(num_worker_threads_ == 0) {
     WriteData(path);
+    return 1;
   }
 
-  return Status::OK();
+  return 0;
 }
 
 Status ArrowMetadata::ReadMetadataFromFile(Env* env, const std::string& path) {

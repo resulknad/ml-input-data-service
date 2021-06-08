@@ -32,7 +32,7 @@ ArrowRoundRobinWriter::ArrowRoundRobinWriter(const int writer_count)
   max_batch_size_ = thresh_ / (writer_count + 1);
   std::vector<std::vector<Tensor>> tensor_batch_vec;
   tensor_batch_vec.reserve(max_batch_size_ / sizeof(std::vector<Tensor>) + 1);
-  current_batch_ = {std::move(tensor_batch_vec), 0, false};
+  current_batch_ = {tensor_batch_vec, 0, false};
 }
 
 void ArrowRoundRobinWriter::PushCurrentBatch() {
@@ -40,12 +40,12 @@ void ArrowRoundRobinWriter::PushCurrentBatch() {
     return;
   }
   mu_.lock();
-  deque_.push_back(std::move(current_batch_));
+  deque_.push_back(current_batch_);
   mu_.unlock();
   tensors_available_.notify_one();
   std::vector<std::vector<Tensor>> tensor_batch_vec;
   tensor_batch_vec.reserve(max_batch_size_ / sizeof(std::vector<Tensor>) + 1);
-  current_batch_ = {std::move(tensor_batch_vec), 0, false};
+  current_batch_ = {tensor_batch_vec, 0, false};
 }
 
 // invariants: incoming tensors have enough "space" in pipeline. write sleeps if we need to stall.
@@ -277,7 +277,9 @@ Status ArrowRoundRobinWriter::WriterThread(tensorflow::Env *env,
   ConsumeTensors(&dat, writer_id);
   while(!dat.end_of_sequence) {
     size_t dat_size = dat.byte_count;
+    logger->BeginWriteTensors(writer_id);
     Status s = ArrowWrite(GetFileName(shard_directory, writer_id, split_id++), dat);
+    logger->FinishWriteTensors(writer_id);
     if(!s.ok()) {
       VLOG(0) << "Writer " << writer_id << "  not ok ... " << s.ToString();
     }
@@ -292,10 +294,10 @@ Status ArrowRoundRobinWriter::WriterThread(tensorflow::Env *env,
     ConsumeTensors(&dat, writer_id);
   }
 
-  metadata_->WriteMetadataToFile(shard_directory);  // de-registers worker, if last write out to disk
+  metadata_->WriteMetadataToFile(shard_directory); // de-registers worker, if last write out to disk
 
   VLOG(0) << "_|" << writer_id << "|_ De-Registered";
-
+  logger->PrintStatsSummary(writer_id);
   return Status::OK();
 }
 
@@ -308,7 +310,7 @@ void ArrowRoundRobinWriter::SignalEOF() {
   }
   for(int i = 0; i < writer_count_; i++) {
     std::vector<std::vector<Tensor>> empty;
-    deque_.push_back({std::move(empty), 0, true});
+    deque_.push_back({empty, 0, true});
   }
   tensors_available_.notify_all();
 }

@@ -196,9 +196,11 @@ Status MultiThreadedAsyncWriter::WriterThread(Env* env,
       writer->Close();
       break;
     }
-
+    logger->BeginWriteTensors(writer_id);
     TF_RETURN_IF_ERROR(writer->WriteTensors(be.value));
+    logger->FinishWriteTensors(writer_id);
   }
+  logger->PrintStatsSummary(writer_id);
   return Status::OK();
 }
 
@@ -415,7 +417,6 @@ Status MultiThreadedAsyncReader::ReadAndParseMetadataFile() {
 using namespace std::chrono;
 void StatsLogger::WriteInvoked() {
   start_ = high_resolution_clock::now();
-  PrintStatsSummary();
   if(num_writes_++) {
     wait_time_sum_ += duration_cast<nanoseconds>(start_ - end_).count();
   }
@@ -435,14 +436,14 @@ void StatsLogger::WriteSleep() {
 void StatsLogger::WriteAwake() {
   auto now = high_resolution_clock::now();
   auto sleep_time = duration_cast<nanoseconds>(now - sleepStart_).count();
-  if(sleep_time > 100) {
+  if(sleep_time > 500) {
     num_sleeps_++;
     sleep_time_sum_ += sleep_time;
   }
 }
 
 // printing logging message roughly every second
-void StatsLogger::PrintStatsSummary() {
+void StatsLogger::PrintStatsSummary(int writer_id) {
   if(num_writes_ == 0 || duration_cast<seconds>(high_resolution_clock::now() - last_log_).count() < log_wait_) {
     return;
   }
@@ -450,9 +451,17 @@ void StatsLogger::PrintStatsSummary() {
   if(num_sleeps_ > 0) {
     avg_sleep = sleep_time_sum_ / num_sleeps_;
   }
-  VLOG(0) << "{avg_write,avg_wait,avg_sleep,num_write,num_sleep} _|LogStat|_ " << write_time_sum_ / num_writes_ << " "
+  VLOG(0) << "{avg_write,avg_wait,avg_sleep,num_sleep,num_write} _|LogStat|_ " << write_time_sum_ / num_writes_ << " "
               "" << wait_time_sum_ / (num_writes_ - 1) << " " << avg_sleep << " " << num_sleeps_ << ""
               " " << num_writes_;
+
+  // iterate over threads and print statistics
+  ThreadLog& writer_thread = thread_logs_[writer_id];
+
+  VLOG(0) << "[Writer " << writer_id << "] {avg_write,avg_not_write,num_writes} _|LogStat|_ "
+                  "" << writer_thread.write_time_sum / writer_thread.num_writes << " "
+                  "" << writer_thread.not_write_time_sum / writer_thread.num_writes << " "
+                  "" << writer_thread.num_writes;
 
   // reset
   num_sleeps_ = 0;
@@ -463,9 +472,28 @@ void StatsLogger::PrintStatsSummary() {
   last_log_ = high_resolution_clock::now();
 }
 
+void StatsLogger::FinishWriteTensors(int id) {
+  auto now = high_resolution_clock::now();
+  auto since_last = duration_cast<nanoseconds>(now - thread_logs_[id].timestamp).count();
+  thread_logs_[id].write_time_sum += since_last;
+  thread_logs_[id].num_writes++;
+  thread_logs_[id].timestamp = now;
+}
+
+void StatsLogger::BeginWriteTensors(int id) {
+  auto now = high_resolution_clock::now();
+  if(!thread_logs_[id].num_writes) {
+    thread_logs_[id].timestamp = now;
+
+    return;
+  }
+  auto since_last = duration_cast<nanoseconds>(now - thread_logs_[id].timestamp).count();
+  thread_logs_[id].not_write_time_sum += since_last;
+  thread_logs_[id].timestamp = now;
+}
 
 
-} // namespace service_cache_util
+    } // namespace service_cache_util
 } // namespace easl
 } // namespace data
 } // namespace tensorflow

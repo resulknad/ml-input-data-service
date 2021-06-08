@@ -72,7 +72,9 @@ Status ArrowAsyncWriter::WriterThread(Env* env, const std::string& shard_directo
                                              compression, output_types, metadata_));
     }
 
+    logger->BeginWriteTensors(writer_id);
     TF_RETURN_IF_ERROR(arrowWriter->WriteTensors(be.value));
+    logger->FinishWriteTensors(writer_id);
 
     // Consume tensors for next round
     Consume(&be);
@@ -80,6 +82,7 @@ Status ArrowAsyncWriter::WriterThread(Env* env, const std::string& shard_directo
 
   // Write accumulated metadata before closing --> if last thread writes to file
   metadata_->WriteMetadataToFile(shard_directory);
+  logger->PrintStatsSummary(writer_id);
   return Status::OK();
 }
 

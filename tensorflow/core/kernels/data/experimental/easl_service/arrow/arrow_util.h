@@ -50,7 +50,7 @@ public:
     ArrowMetadata();
 
     /// \brief write accumulated metadata to a file in serialized form
-    Status WriteMetadataToFile(const std::string& path) TF_LOCKS_EXCLUDED(mu_);
+    int WriteMetadataToFile(const std::string& path) TF_LOCKS_EXCLUDED(mu_);
 
     /// \brief read and deserialize metadata from file
     Status ReadMetadataFromFile(Env* env, const std::string& path);
