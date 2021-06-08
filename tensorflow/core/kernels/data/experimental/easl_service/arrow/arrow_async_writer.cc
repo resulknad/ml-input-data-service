@@ -83,6 +83,8 @@ Status ArrowAsyncWriter::WriterThread(Env* env, const std::string& shard_directo
   // Write accumulated metadata before closing --> if last thread writes to file
   metadata_->WriteMetadataToFile(shard_directory);
   logger->PrintStatsSummary(writer_id);
+  mutex_lock l(mu_);
+  writer_finished_++;
   return Status::OK();
 }
 

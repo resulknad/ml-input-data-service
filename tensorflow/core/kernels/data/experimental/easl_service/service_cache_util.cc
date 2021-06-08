@@ -154,6 +154,9 @@ void MultiThreadedAsyncWriter::SignalEOF() {
     be.end_of_sequence = true;
     deque_.push_back(std::move(be));
   }
+
+  mu_.Await(tensorflow::Condition(this,
+      &MultiThreadedAsyncWriter::AllWritersFinished));
 }
 
 void MultiThreadedAsyncWriter::Consume(snapshot_util::ElementOrEOF* be) {
@@ -186,8 +189,6 @@ Status MultiThreadedAsyncWriter::WriterThread(Env* env,
           env, GetFileName(shard_directory, writer_id),
           compression, version, std::move(output_types), &writer));
 
-  int count = 0;
-
   while (true) {
     snapshot_util::ElementOrEOF be;
     Consume(&be);
@@ -201,6 +202,8 @@ Status MultiThreadedAsyncWriter::WriterThread(Env* env,
     logger->FinishWriteTensors(writer_id);
   }
   logger->PrintStatsSummary(writer_id);
+  mutex_lock l(mu_);
+  writer_finished_++;
   return Status::OK();
 }
 

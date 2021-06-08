@@ -285,8 +285,6 @@ Status ArrowRoundRobinWriter::WriterThread(tensorflow::Env *env,
     }
     VLOG(0) << "_|" << writer_id << "|_ Tensors-Written";
 
-    // "Release" old tensors
-    dat.tensor_batch.clear();
     mu_by_.lock();
     bytes_written_ += dat_size;
     mu_by_.unlock();
@@ -298,6 +296,9 @@ Status ArrowRoundRobinWriter::WriterThread(tensorflow::Env *env,
 
   VLOG(0) << "_|" << writer_id << "|_ De-Registered";
   logger->PrintStatsSummary(writer_id);
+
+  mutex_lock l(mu_);
+  writer_finished_++;
   return Status::OK();
 }
 
