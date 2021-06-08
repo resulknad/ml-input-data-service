@@ -23,7 +23,7 @@ class ArrowAsyncWriter : public MultiThreadedAsyncWriter {
 public:
     explicit ArrowAsyncWriter(const int writer_count);
 
-    void Write(std::vector<Tensor>* tensors) override TF_LOCKS_EXCLUDED(mu_);
+    void Write(const std::vector<Tensor>& tensors) override TF_LOCKS_EXCLUDED(mu_);
 
     Status WriterThread(Env* env, const std::string& shard_directory,
                         uint64 checkpoint_id, const std::string& compression,

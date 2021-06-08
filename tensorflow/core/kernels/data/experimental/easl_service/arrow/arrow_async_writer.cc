@@ -87,10 +87,10 @@ bool ArrowAsyncWriter::ProducerSpaceAvailable() {
   return (deque_.size() * bytes_per_row_) < producer_threshold_;
 }
 
-void ArrowAsyncWriter::Write(std::vector<Tensor> *tensors) {
+void ArrowAsyncWriter::Write(const std::vector<Tensor>& tensors) {
   logger->WriteInvoked();
   if(!first_row_info_set_) {
-    for(Tensor t : *tensors) {
+    for(const Tensor& t : tensors) {
       bytes_per_row_ += t.TotalBytes();
       first_row_shape_.push_back(t.shape());
     }
@@ -102,7 +102,7 @@ void ArrowAsyncWriter::Write(std::vector<Tensor> *tensors) {
   mu_.Await( Condition(this, &ArrowAsyncWriter::ProducerSpaceAvailable));
   logger->WriteAwake();
   snapshot_util::ElementOrEOF element;
-  element.value = *tensors;
+  element.value = tensors;
   deque_.push_back(std::move(element));
   logger->WriteReturn();
 }

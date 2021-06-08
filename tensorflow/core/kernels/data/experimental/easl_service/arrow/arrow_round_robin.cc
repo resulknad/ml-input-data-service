@@ -40,7 +40,7 @@ void ArrowRoundRobinWriter::PushCurrentBatch() {
     return;
   }
   mu_.lock();
-  deque_.push_back(current_batch_);
+  deque_.push_back(std::move(current_batch_));
   mu_.unlock();
   tensors_available_.notify_one();
   std::vector<std::vector<Tensor>> tensor_batch_vec;
@@ -49,12 +49,12 @@ void ArrowRoundRobinWriter::PushCurrentBatch() {
 }
 
 // invariants: incoming tensors have enough "space" in pipeline. write sleeps if we need to stall.
-void ArrowRoundRobinWriter::Write(std::vector<Tensor> *tensors) {
+void ArrowRoundRobinWriter::Write(const std::vector<Tensor>& tensors) {
   logger->WriteInvoked();
 
   // only take this branch once in the beginning
   if(!first_row_info_set_) {
-    for(const Tensor& t : *tensors) {
+    for(const Tensor& t : tensors) {
       size_t bytes = t.TotalBytes();
       bytes_per_row_ += bytes;
       tensor_data_len_.push_back(bytes);
@@ -77,7 +77,7 @@ void ArrowRoundRobinWriter::Write(std::vector<Tensor> *tensors) {
 
   bytes_received_ += bytes_per_row_;
 //  std::vector<Tensor> local_tensors = *tensors;
-  current_batch_.tensor_batch.push_back(*tensors);  // copy of tensors now stored in class -> survive until written
+  current_batch_.tensor_batch.push_back(tensors);  // copy of tensors now stored in class -> survive until written
   current_batch_.byte_count += bytes_per_row_;
 //  VLOG(0) << "ARR - Write - current_batch size: " << current_batch_.byte_count << "  /  " << max_batch_size_;
 

@@ -28,7 +28,7 @@ class ArrowRoundRobinWriter : public MultiThreadedAsyncWriter {
 public:
     explicit ArrowRoundRobinWriter(const int writer_count);
 
-    void Write(std::vector<Tensor>* tensors) override;
+    void Write(const std::vector<Tensor>& tensors) override;
 
     Status WriterThread(Env* env, const std::string& shard_directory,
                         uint64 checkpoint_id, const std::string& compression,

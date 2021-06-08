@@ -47,7 +47,7 @@ Status Writer::Initialize(){
   } else {
     async_writer_ = std::make_unique<MultiThreadedAsyncWriter>(writer_count_);
   }
-  async_writer_->logger = std::make_shared<StatsLogger>();
+  async_writer_->logger = std::make_unique<StatsLogger>();
   async_writer_->Initialize(env_, /*file_index*/ 0, target_dir_, /*checkpoint_id*/ 0,
                             kCompression, writer_version_, output_dtypes_,
           /*done*/ [this](Status s){
@@ -64,7 +64,7 @@ Status Writer::Initialize(){
   return WriteMetadataFile(env_, target_dir_, output_dtypes_, output_shapes_);
 }
 
-Status Writer::Write(std::vector<Tensor>* tensors){
+Status Writer::Write(const std::vector<Tensor>& tensors){
   async_writer_->Write(tensors);
   // TODO (damien-aymon) check for errors in the async writer
   return Status::OK();
@@ -126,10 +126,10 @@ void MultiThreadedAsyncWriter::Initialize(Env *env, int64 file_index, const std:
   }
 }
 
-void MultiThreadedAsyncWriter::Write(std::vector<Tensor>* tensors) {
+void MultiThreadedAsyncWriter::Write(const std::vector<Tensor>& tensors) {
   logger->WriteInvoked();
   if(!first_row_info_set_) {
-    for(Tensor& t : *tensors) {
+    for(const Tensor& t : tensors) {
       bytes_per_row_ += t.TotalBytes();
     }
     first_row_info_set_ = true;
@@ -141,7 +141,7 @@ void MultiThreadedAsyncWriter::Write(std::vector<Tensor>* tensors) {
             &MultiThreadedAsyncWriter::ProducerSpaceAvailable));
   logger->WriteAwake();
   snapshot_util::ElementOrEOF element;
-  element.value = *tensors;
+  element.value = tensors;
   deque_.push_back(std::move(element));
   logger->WriteReturn();
 }
