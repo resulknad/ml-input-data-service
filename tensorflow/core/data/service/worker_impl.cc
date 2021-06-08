@@ -270,8 +270,7 @@ Status DataServiceWorkerImpl::GetElement(const GetElementRequest* request,
   response->set_skip_task(result.skip);
   if (response->end_of_sequence()) {
     mutex_lock l(mu_);
-    // TODO revert to 3
-    VLOG(0) << "Reached end_of_sequence for task " << request->task_id();
+    VLOG(3) << "Reached end_of_sequence for task " << request->task_id();
     pending_completed_tasks_.insert(request->task_id());
     task_completion_cv_.notify_one();
   } else if (!response->skip_task()) {
@@ -385,19 +384,15 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
   std::vector<int64> current_tasks;
   absl::flat_hash_map<int64, model::Model::ModelMetrics> tasks_metrics;
   {
-    // TODO was 1
-    VLOG(0) << "(DataServiceWorkerImpl::Heartbeat) Starting heartbeat" << std::flush;
+    VLOG(1) << "(DataServiceWorkerImpl::Heartbeat) Starting heartbeat" << std::flush;
     mutex_lock l(mu_);
-    VLOG(0) << "EASL - remaining tasks at beginning of hb " << tasks_.size();
     for (const auto& task : tasks_) {
-      VLOG(0) << "EASL - in loop";
-      VLOG(0) << "Looking at task id " << task.first;
       current_tasks.push_back(task.first);
 
       // Get the metrics
       mutex_lock l(task.second->mu);
       if (task.second->initialized) {
-        VLOG(0) << "Getting metrics in heartbeat";
+        VLOG(3) << "Getting metrics in heartbeat";
         auto metrics = task.second->task_runner->GetMetrics();
         if (metrics) {
           tasks_metrics[task.first] = metrics;
@@ -413,12 +408,10 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
       dispatcher_->WorkerHeartbeat(worker_address_, transfer_address_,
                                    current_tasks, new_tasks, tasks_to_delete, 
                                    tasks_metrics));
-  VLOG(0) << "EASL - Just after sending heartbeat to dispatcher";
 
   mutex_lock l(mu_);
   for (const auto& task : new_tasks) {
-    // TODO was 1.
-    VLOG(0) << "Received new task from dispatcher with id " << task.task_id();
+    VLOG(1) << "Received new task from dispatcher with id " << task.task_id();
     Status s = ProcessTaskInternal(task);
     if (!s.ok() && !errors::IsAlreadyExists(s)) {
       LOG(WARNING) << "Failed to start processing task " << task.task_id()
@@ -426,14 +419,11 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
     }
   }
   for (int64 task_id : tasks_to_delete) {
-    // TODO was 3
-    VLOG(0) << "Deleting task " << task_id
+    VLOG(3) << "Deleting task " << task_id
             << " at the request of the dispatcher";
     tasks_.erase(task_id);
     finished_tasks_.insert(task_id);
   }
-  VLOG(0) << "EASL - remaining tasks at end of hb " << tasks_.size();
-  VLOG(0) << "EASL - End of heartbeat";
 
   return Status::OK();
 }
