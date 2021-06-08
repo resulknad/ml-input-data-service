@@ -388,14 +388,20 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
     // TODO was 1
     VLOG(0) << "(DataServiceWorkerImpl::Heartbeat) Starting heartbeat" << std::flush;
     mutex_lock l(mu_);
+    VLOG(0) << "EASL - remaining tasks at beginning of hb " << tasks_.size();
     for (const auto& task : tasks_) {
+      VLOG(0) << "EASL - in loop";
+      VLOG(0) << "Looking at task id " << task.first;
       current_tasks.push_back(task.first);
 
       // Get the metrics
       VLOG(0) << "Getting metrics in heartbeat";
-      auto metrics = task.second->task_runner->GetMetrics();
-      if (metrics) {
-        tasks_metrics[task.first] = metrics;
+      mutex_lock l(task.second->mu);
+      if (task.second->initialized) {
+        auto metrics = task.second->task_runner->GetMetrics();
+        if (metrics) {
+          tasks_metrics[task.first] = metrics;
+        }
       }
     }
   }
@@ -424,6 +430,7 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
     tasks_.erase(task_id);
     finished_tasks_.insert(task_id);
   }
+  VLOG(0) << "EASL - remaining tasks at end of hb " << tasks_.size();
   VLOG(0) << "EASL - End of heartbeat";
 
   return Status::OK();
