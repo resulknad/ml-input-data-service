@@ -395,13 +395,15 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
       current_tasks.push_back(task.first);
 
       // Get the metrics
-      VLOG(0) << "Getting metrics in heartbeat";
       mutex_lock l(task.second->mu);
       if (task.second->initialized) {
+        VLOG(0) << "Getting metrics in heartbeat";
         auto metrics = task.second->task_runner->GetMetrics();
         if (metrics) {
           tasks_metrics[task.first] = metrics;
         }
+      } else {
+        VLOG(0) << "Not getting metrics in heartbeat";
       }
     }
   }
