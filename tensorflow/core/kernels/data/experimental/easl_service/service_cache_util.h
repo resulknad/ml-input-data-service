@@ -105,7 +105,7 @@ protected:
   // thread to access invalid memory.
   const int writer_count_;
   int writer_finished_ = 0;  // also guarded by mu_
-  bool AllWritersFinished() const {  // needed to wait for condition
+  bool AllWritersFinished() {  // needed to wait for condition
     writer_finished_ >= writer_count_;
   }
   std::unique_ptr<thread::ThreadPool> thread_pool_;

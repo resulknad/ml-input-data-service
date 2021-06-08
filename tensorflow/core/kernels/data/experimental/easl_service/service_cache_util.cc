@@ -155,8 +155,10 @@ void MultiThreadedAsyncWriter::SignalEOF() {
     deque_.push_back(std::move(be));
   }
 
-  mu_.Await(tensorflow::Condition(this,
-      &MultiThreadedAsyncWriter::AllWritersFinished));
+  VLOG(0) << "[Iterator] Awaiting writers to finish...";
+  mu_.AwaitWithDeadline(tensorflow::Condition(this,
+      &MultiThreadedAsyncWriter::AllWritersFinished), 1000000000);
+  VLOG(0) << "[Iterator] Writers finished (or deadline exceeded)";
 }
 
 void MultiThreadedAsyncWriter::Consume(snapshot_util::ElementOrEOF* be) {
@@ -204,6 +206,7 @@ Status MultiThreadedAsyncWriter::WriterThread(Env* env,
   logger->PrintStatsSummary(writer_id);
   mutex_lock l(mu_);
   writer_finished_++;
+  VLOG(0) << "Writer " << writer_id << " finished. Num_writers_finished = " << writer_finished_;
   return Status::OK();
 }
 
