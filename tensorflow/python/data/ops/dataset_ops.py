@@ -209,7 +209,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       variant_tensor: A DT_VARIANT tensor that represents the dataset.
     """
     #Overloading the Constructor base of dataset source for element seed
-    global_seed,op_level_seed = random_seed.get_seed()
+    global_seed,op_level_seed = random_seed.get_seed(None)
     variant_tensor_seed = ged_ops.random_dataset(
          global_seed, op_level_seed, **self._flat_structure)
     variant_tensor_seed_batched = gen_dataset_ops.batch_dataset_v2(
