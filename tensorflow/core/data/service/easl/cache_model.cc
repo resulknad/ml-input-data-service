@@ -93,7 +93,7 @@ double GetTimePerRow(uint64 row_size) {
     double min_y = cache_table_row_times[0];
     double max_y = cache_table_row_times[1];
 
-    return lin_interpolate(min_x, max_x, min_y, max_y, row_size) * 0.001;
+    return lin_interpolate(min_x, max_x, min_y, max_y, row_size) * 1000; // sec to milisec...
   }
 
   // 1b - row size larger than smallest available in table
@@ -106,7 +106,7 @@ double GetTimePerRow(uint64 row_size) {
     double min_y = cache_table_row_times[CACHE_MODEL_TABLE_SIZE - 2];
     double max_y = cache_table_row_times[CACHE_MODEL_TABLE_SIZE - 1];
 
-    return lin_interpolate(min_x, max_x, min_y, max_y, row_size) * 0.001;
+    return lin_interpolate(min_x, max_x, min_y, max_y, row_size) * 1000; // sec to milisec...
   }
 
   // 2 - Linearly walk the table to find the proper index
@@ -118,7 +118,7 @@ double GetTimePerRow(uint64 row_size) {
       double min_y = cache_table_row_times[index - 1];
       double max_y = cache_table_row_times[index];
 
-      return lin_interpolate(min_x, max_x, min_y, max_y, row_size) * 0.001;
+      return lin_interpolate(min_x, max_x, min_y, max_y, row_size) * 1000; // sec to milisec...
     }
     index++;
   }
