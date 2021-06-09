@@ -1685,7 +1685,7 @@ Model::ModelMetrics Model::CollectMetrics() {
     // prefix_times[node->long_name()] = node->TotalProcessingTime(nullptr);
     auto node_metrics = node->SnapshotCurrentMetrics();
     node_metrics.set_in_node_time(node_times[node->long_name()] / 
-      EnvTime::kMillisToMicros);
+      EnvTime::kMillisToNanos);
     node_metrics.set_last_node_name(last_node_name);
     metrics->insert({node->long_name(), node_metrics});
   }
@@ -1704,7 +1704,7 @@ Model::ModelMetrics Model::CollectMetrics() {
   // Update the prefix times in the metrics data structure
   for (auto& entry : *metrics) {
     entry.second.set_in_prefix_time(final_times[entry.first] / 
-      EnvTime::kMillisToMicros);
+      EnvTime::kMillisToNanos);
   }
 
   VLOG(4) << "EASL - Done collecting metrics, returning";
