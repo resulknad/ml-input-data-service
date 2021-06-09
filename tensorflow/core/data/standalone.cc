@@ -47,10 +47,10 @@ model::Model::ModelMetrics Iterator::GetMetrics() {
   auto model = ctx_.get()->model();
 
   if(model != nullptr){
-    VLOG(0) << "EASL - Standalone iterator GetMetrics, model found";
+    VLOG(4) << "EASL - Standalone iterator GetMetrics, model found";
     return model->CollectMetrics();
   } else {
-    VLOG(0) << "EASL - Standalone iterator GetMetrics, model not yet created.";
+    VLOG(4) << "EASL - Standalone iterator GetMetrics, model not yet created.";
     return nullptr;
   }
 }

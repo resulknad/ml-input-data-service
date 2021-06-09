@@ -1655,7 +1655,7 @@ Model::ModelMetrics Model::CollectMetrics() {
   Node::NodeValues node_times;
   Node::NodeValues final_times;
 
-  VLOG(0) << "EASL - Trying to collect metrics";
+  VLOG(4) << "EASL - Trying to collect metrics";
 
   FlushMetrics();
   {
@@ -1669,7 +1669,7 @@ Model::ModelMetrics Model::CollectMetrics() {
     }
   }
 
-  VLOG(0) << "last node name " << last_node_name;
+  VLOG(4) << "last node name " << last_node_name;
 
   while (!queue.empty()) {
     auto node = queue.front();
@@ -1680,7 +1680,7 @@ Model::ModelMetrics Model::CollectMetrics() {
       queue.push_back(input);
     }
 
-    VLOG(0) << "BFS: current node " << node->long_name();
+    VLOG(4) << "BFS: current node " << node->long_name();
 
     // prefix_times[node->long_name()] = node->TotalProcessingTime(nullptr);
     auto node_metrics = node->SnapshotCurrentMetrics();
@@ -1707,7 +1707,7 @@ Model::ModelMetrics Model::CollectMetrics() {
       EnvTime::kMillisToMicros);
   }
 
-  VLOG(0) << "EASL - Done collecting metrics, returning";
+  VLOG(4) << "EASL - Done collecting metrics, returning";
 
 
   // Debug code below
