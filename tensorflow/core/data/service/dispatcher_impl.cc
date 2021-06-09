@@ -284,8 +284,7 @@ Status DataServiceDispatcherImpl::FindNewTasks(
 Status DataServiceDispatcherImpl::WorkerHeartbeat(
     const WorkerHeartbeatRequest* request, WorkerHeartbeatResponse* response) {
   TF_RETURN_IF_ERROR(CheckStarted());
-  // TODO revert to 4
-  VLOG(0) << "Received worker heartbeat request from worker "
+  VLOG(4) << "Received worker heartbeat request from worker "
           << request->worker_address();
   mutex_lock l(mu_);
   const std::string& worker_address = request->worker_address();
@@ -296,8 +295,7 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
     if (!errors::IsNotFound(s)) {
       return s;
     }
-    // TODO revert 1
-    VLOG(0) << "Registering new worker at address " << worker_address;
+    VLOG(1) << "Registering new worker at address " << worker_address;
     Update update;
     update.mutable_register_worker()->set_worker_address(worker_address);
     update.mutable_register_worker()->set_transfer_address(
@@ -701,13 +699,10 @@ Status DataServiceDispatcherImpl::CreateJob(
   compute_dataset_key << ": " << job_type;
 
   // EASL add job entry to metadata store
-  VLOG(0) << "(DataServiceDispatcherImpl::GetOrCreateJob) Adding a job to "
-          << "the metadata.";
   std::string dataset_key = service::easl::cache_utils::DatasetKey(
     dataset->dataset_id, dataset->fingerprint, job_type);
   TF_RETURN_IF_ERROR(metadata_store_.CreateJob(job_id, dataset->dataset_id,
                               dataset->fingerprint, dataset_key));
-  VLOG(0) << "after job creation in metadata store";
 
   Update update;
   CreateJobUpdate* create_job = update.mutable_create_job();
@@ -908,8 +903,8 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
   TF_RETURN_IF_ERROR(CheckStarted());
   mutex_lock l(mu_);
   // TODO (damien-aymon) revert back to level 4
-  VLOG(0) << "Received heartbeat from client id " << request->job_client_id();
-  VLOG(0) << "Avg inter-arrival time " << request->avg_inter_arrival_time();
+  VLOG(4) << "Received heartbeat from client id " << request->job_client_id();
+  VLOG(4) << "Avg inter-arrival time " << request->avg_inter_arrival_time();
 
   std::shared_ptr<const Job> job;
   Status s = state_.JobForJobClientId(request->job_client_id(), job);
@@ -924,14 +919,12 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
   // EASL: Update the client metrics
   easl::ModelMetrics::Metrics metrics(request->avg_get_next_processing_time(), 
     request->avg_inter_arrival_time());
-  VLOG(0) << "metrics processing_time: " << metrics.get_next_time_ms();
-  VLOG(0) << "update model metrics";
-  s = metadata_store_.UpdateModelMetrics(job->job_id, request->job_client_id(), 
+  VLOG(4) << "metrics processing_time: " << metrics.get_next_time_ms();
+  s = metadata_store_.UpdateModelMetrics(job->job_id, request->job_client_id(),
     metrics);
   // Ignore metrics for jobs which do not have metrics anymore
   // report error otherwise.
   if(!s.ok() && !errors::IsNotFound(s)){ return s; }
-  VLOG(0) << "Done updating model metrics";
 
   if (request->optional_current_round_case() ==
       ClientHeartbeatRequest::kCurrentRound) {
