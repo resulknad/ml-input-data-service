@@ -1669,6 +1669,8 @@ Model::ModelMetrics Model::CollectMetrics() {
     }
   }
 
+  VLOG(0) << "last node name " << last_node_name;
+
   while (!queue.empty()) {
     auto node = queue.front();
     queue.pop_front();
@@ -1677,6 +1679,8 @@ Model::ModelMetrics Model::CollectMetrics() {
     for (auto input : node->inputs()) {
       queue.push_back(input);
     }
+
+    VLOG(0) << "BFS: current node " << node->long_name();
 
     // prefix_times[node->long_name()] = node->TotalProcessingTime(nullptr);
     auto node_metrics = node->SnapshotCurrentMetrics();
