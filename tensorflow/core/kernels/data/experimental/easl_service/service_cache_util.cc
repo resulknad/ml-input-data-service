@@ -154,6 +154,7 @@ void MultiThreadedAsyncWriter::SignalEOF() {
     be.end_of_sequence = true;
     deque_.push_back(std::move(be));
   }
+
   while(!AllWritersFinished()) {
     VLOG(0) << "[Iterator] Awaiting writers to finish... " << writer_finished_;
     finish_cv_.wait(l);
