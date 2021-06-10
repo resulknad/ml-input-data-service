@@ -47,7 +47,6 @@ Status Writer::Initialize(){
   } else {
     async_writer_ = std::make_unique<MultiThreadedAsyncWriter>(writer_count_);
   }
-  async_writer_->logger = std::make_unique<StatsLogger>();
   async_writer_->Initialize(env_, /*file_index*/ 0, target_dir_, /*checkpoint_id*/ 0,
                             kCompression, writer_version_, output_dtypes_,
           /*done*/ [this](Status s){

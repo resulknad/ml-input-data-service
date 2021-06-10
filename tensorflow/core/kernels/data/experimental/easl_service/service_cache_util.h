@@ -46,8 +46,6 @@ class MultiThreadedAsyncWriter {
 
   virtual ~MultiThreadedAsyncWriter()= default;
 
-  std::unique_ptr<StatsLogger> logger;
-
 protected:
   void Consume(snapshot_util::ElementOrEOF* be) TF_LOCKS_EXCLUDED(mu_);
   bool ElementAvailable() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
