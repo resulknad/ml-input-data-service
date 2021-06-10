@@ -98,16 +98,20 @@ protected:
   std::vector<TensorShape> first_row_shape_;
   uint64 bytes_per_row_ = 0;
 
-  // This has to be last. During destruction, we need to make sure that the
-  // Thread object is destroyed first as its destructor blocks on thread
-  // completion. If there are other member variables after this, they may get
-  // destroyed first before the thread finishes, potentially causing the
-  // thread to access invalid memory.
+  // make sure that SignalEOF returns ones all writer threads have finished.
   const int writer_count_;
   int writer_finished_ = 0;  // also guarded by mu_
   bool AllWritersFinished() {  // needed to wait for condition
     writer_finished_ >= writer_count_;
   }
+  condition_variable finish_cv_ TF_GUARDED_BY(mu_);
+
+
+  // This has to be last. During destruction, we need to make sure that the
+  // Thread object is destroyed first as its destructor blocks on thread
+  // completion. If there are other member variables after this, they may get
+  // destroyed first before the thread finishes, potentially causing the
+  // thread to access invalid memory.
   std::unique_ptr<thread::ThreadPool> thread_pool_;
 };
 

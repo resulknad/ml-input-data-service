@@ -299,6 +299,7 @@ Status ArrowRoundRobinWriter::WriterThread(tensorflow::Env *env,
 
   mutex_lock l(mu_);
   writer_finished_++;
+  finish_cv_.notify_all();
   return Status::OK();
 }
 
@@ -314,6 +315,14 @@ void ArrowRoundRobinWriter::SignalEOF() {
     deque_.push_back({empty, 0, true});
   }
   tensors_available_.notify_all();
+
+  while(!AllWritersFinished()) {
+    VLOG(0) << "[Iterator] Awaiting writers to finish... " << writer_finished_;
+    finish_cv_.wait(l);
+    VLOG(0) << "[Iterator] Writers finished (or deadline exceeded)";
+  }
+  VLOG(0) << "[Iterator] exiting SignalEOF...";
+
 }
 
 } // namespace arrow_round_robin
