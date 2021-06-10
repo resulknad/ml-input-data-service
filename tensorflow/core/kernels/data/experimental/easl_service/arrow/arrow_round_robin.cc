@@ -323,6 +323,9 @@ void ArrowRoundRobinWriter::SignalEOF() {
   }
   VLOG(0) << "[Iterator] exiting SignalEOF...";
 
+  // all threads have exited --> we can print statistics now.
+
+
 }
 
 } // namespace arrow_round_robin
