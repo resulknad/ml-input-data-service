@@ -319,7 +319,7 @@ void ArrowRoundRobinWriter::SignalEOF() {
   while(!AllWritersFinished()) {
     VLOG(0) << "[Iterator] Awaiting writers to finish... " << writer_finished_;
     finish_cv_.wait(l);
-    VLOG(0) << "[Iterator] Writers finished (or deadline exceeded)";
+    VLOG(0) << "[Iterator] one writer finished";
   }
   VLOG(0) << "[Iterator] exiting SignalEOF...";
 

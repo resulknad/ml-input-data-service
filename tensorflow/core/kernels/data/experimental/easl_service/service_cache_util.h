@@ -102,7 +102,8 @@ protected:
   const int writer_count_;
   int writer_finished_ = 0;  // also guarded by mu_
   bool AllWritersFinished() {  // needed to wait for condition
-    writer_finished_ >= writer_count_;
+    VLOG(0) << "Checking AllWritersFinished: " << writer_finished_ << " of " << writer_count_ << " finished.";
+    return writer_finished_ == writer_count_;
   }
   condition_variable finish_cv_ TF_GUARDED_BY(mu_);
 
