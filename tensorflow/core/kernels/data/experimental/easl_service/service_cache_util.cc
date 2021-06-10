@@ -201,11 +201,11 @@ Status MultiThreadedAsyncWriter::WriterThread(Env* env,
       writer->Close();
       break;
     }
-    logger->BeginWriteTensors(writer_id);
+//    logger->BeginWriteTensors(writer_id);
     TF_RETURN_IF_ERROR(writer->WriteTensors(be.value));
-    logger->FinishWriteTensors(writer_id);
+//    logger->FinishWriteTensors(writer_id);
   }
-  logger->PrintStatsSummary(writer_id);
+//  logger->PrintStatsSummary(writer_id);
   mutex_lock l(mu_);
   writer_finished_++;
   VLOG(0) << "Writer " << writer_id << " finished. Num_writers_finished = " << writer_finished_;
