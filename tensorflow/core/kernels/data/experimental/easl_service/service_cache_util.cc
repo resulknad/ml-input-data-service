@@ -200,7 +200,6 @@ Status MultiThreadedAsyncWriter::WriterThread(Env* env,
 //    logger->FinishWriteTensors(writer_id);
   }
 //  logger->PrintStatsSummary(writer_id);
-  VLOG(0) << "Writer " << writer_id << " finished. Num_writers_finished = " << writer_finished_;
   return Status::OK();
 }
 
