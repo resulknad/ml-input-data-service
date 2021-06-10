@@ -71,7 +71,7 @@ namespace data {
 
 namespace {
 // Default interval between task list refreshes.
-const int64 kDefaultTaskRefreshIntervalMs = 50;  // 1 second.
+const int64 kDefaultTaskRefreshIntervalMs = 50;  // 1 second. => now 50msec.
 
 constexpr char kDataServiceDatasetV1[] = "DataServiceDataset";
 constexpr char kDataServiceDatasetV2[] = "DataServiceDatasetV2";
