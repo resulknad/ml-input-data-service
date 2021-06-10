@@ -154,12 +154,6 @@ void MultiThreadedAsyncWriter::SignalEOF() {
     be.end_of_sequence = true;
     deque_.push_back(std::move(be));
   }
-  while(!AllWritersFinished()) {
-    VLOG(0) << "[Iterator] Awaiting writers to finish... " << writer_finished_;
-    finish_cv_.wait(l);
-    VLOG(0) << "[Iterator] one writer finished";
-  }
-  VLOG(0) << "[Iterator] exiting SignalEOF...";
 
 }
 
@@ -206,10 +200,7 @@ Status MultiThreadedAsyncWriter::WriterThread(Env* env,
 //    logger->FinishWriteTensors(writer_id);
   }
 //  logger->PrintStatsSummary(writer_id);
-  mutex_lock l(mu_);
-  writer_finished_++;
   VLOG(0) << "Writer " << writer_id << " finished. Num_writers_finished = " << writer_finished_;
-  finish_cv_.notify_all();
   return Status::OK();
 }
 
