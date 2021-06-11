@@ -1,6 +1,9 @@
 #include "tensorflow/core/data/service/easl/metadata_store.h"
 
 #include <memory>
+#include <sstream>
+#include <ostream>
+#include <fstream>
 
 #include "tensorflow/core/platform/errors.h"
 
@@ -47,6 +50,20 @@ Status ModelMetrics::GetClientMetrics(int64 client_id,
   }
   return errors::NotFound("No metrics under the client with id ", client_id);
 }
+
+void ModelMetrics:: DumpToStream(std::stringstream& ss){
+  ss << "{ " << std::endl;
+  bool first = true;
+  for(auto pair : metrics_){
+    if(!first){ ss << "," << std::endl; first = false; } // Add comma before element, not for first though.
+    ss << "\"" << std::to_string(pair.first) << "\" : ";
+    ss << "{ \"get_next_time_ms\" : " << std::to_string(pair.second->get_next_time_ms()) << " , ";
+    ss << "\"inter_arrival_time_ms\" : " << std::to_string(pair.second->inter_arrival_time_ms()) << " }";
+    ss << std::endl;
+  }
+  ss << "}";
+}
+
 
 // Metrics from the Worker Nodes
 NodeMetrics::Metrics::Metrics(NodeMetrics::Metrics& other) 
@@ -97,6 +114,23 @@ Status NodeMetrics::GetWorkerMetrics(string worker_address,
   }
   return errors::NotFound("No metrics under the worker with address ", 
     worker_address);
+}
+
+void NodeMetrics::DumpToStream(std::stringstream &ss) {
+  ss << "{ " << std::endl;
+  bool first = true;
+  for(auto pair : metrics_){
+    if(!first){ ss << "," << std::endl; first = false; } // Add comma before element, not for first though.
+    ss << "\"" << pair.first << "\" : ";
+    ss << "{ \"bytes_consumed\" : " << std::to_string(pair.second->bytes_consumed()) << " , ";
+    ss << "\"bytes_produced\" : " << std::to_string(pair.second->bytes_produced()) << " , ";
+    ss << "\"num_elements\" : " << std::to_string(pair.second->num_elements()) << " , ";
+    ss << "\"computation_time\" : " << std::to_string(pair.second->computation_time()) << " , ";
+    ss << "\"in_node_time_ms\" : " << std::to_string(pair.second->in_node_time_ms()) << " , ";
+    ss << "\"in_prefix_time_ms\" : " << std::to_string(pair.second->in_prefix_time_ms()) << " }";
+    ss << std::endl;
+  }
+  ss << "}";
 }
 
 // Input pipeline metrics
@@ -153,6 +187,22 @@ void InputPipelineMetrics::SetLastNodeName(std::string last_node_name) {
   last_node_name_ = last_node_name;
 }
 
+
+void InputPipelineMetrics::DumpToStream(std::stringstream& ss){
+  ss << "{ " << std::endl;
+  ss << "\"last_node_name\" : \"" << last_node_name_ << "\", " << std::endl;
+
+  bool first = true;
+  for(auto pair : metrics_){
+    if(!first){ ss << "," << std::endl; first = false; } // Add comma before element, not for first though.
+    ss << "\"" << pair.first << "\" : ";
+    pair.second->DumpToStream(ss);
+    ss << std::endl;
+  }
+  ss << "}";
+}
+
+
 // Job metrics
 JobMetrics::JobMetrics(int64 job_id,
                        int64 dataset_id,
@@ -167,6 +217,32 @@ JobMetrics::JobMetrics(int64 job_id,
           model_metrics_ = std::make_shared<ModelMetrics>();
           input_pipeline_metrics_ = std::make_shared<InputPipelineMetrics>();
         }
+
+
+// JobMetrics
+void JobMetrics::DumpToFile(const std::string& path){
+  // Start constructing json string:
+  std::stringstream ss;
+  DumpToStream(ss);
+
+  std::ofstream fstream;
+  fstream.open(
+      path + "/metrics_job_" + std::to_string(job_id_) + "_ds_key_" + dataset_key_  + ".json",
+      std::ofstream::out | std::ofstream::app);
+  fstream << ss.rdbuf();
+  fstream.close();
+}
+
+void JobMetrics::DumpToStream(std::stringstream& ss){
+  ss << "{" << std::endl;
+  ss << "\"ModelMetrics\" : ";
+  model_metrics_->DumpToStream(ss);
+  ss << "," << std::endl;
+  ss << "\"PipelineMetrics\" : ";
+  input_pipeline_metrics_->DumpToStream(ss);
+  ss << "}" << std::endl;
+}
+
 
 // Metadata store 
 MetadataStore::MetadataStore() 
@@ -322,6 +398,55 @@ Status MetadataStore::UpdateLastNode(int64 job_id, string node_name) {
   // if s != ok --> no such job exists
   return s;
 }
+
+
+Status MetadataStore::DumpJobMetricsToFile(int64 job_id, const std::string& path){
+  std::shared_ptr<JobMetrics> jobMetrics;
+  TF_RETURN_IF_ERROR(GetJobMetrics(job_id, jobMetrics));
+  jobMetrics->DumpToFile(path);
+}
+
+Status MetadataStore::AppendJobMetricsDumps(Env* env, const std::string& path) {
+  for(auto pair: job_metadata_ ){
+    std::string fname = path + "metrics_updates_job_" + std::to_string(pair.first) + ".json";
+    std::stringstream ss;
+
+    Status s = env->FileExists(fname);
+    if(!s.ok()){ // Initialize file if not present.
+      if (!errors::IsNotFound(s)) {
+        return s;
+      }
+      ss << "[" << std::endl;
+    } else {
+      ss << ", " << std::endl;
+    }
+
+    pair.second->DumpToStream(ss);
+    // Append to file
+    std::ofstream fstream;
+    fstream.open(
+        fname,
+        std::ofstream::out | std::ofstream::app);
+    fstream << ss.rdbuf();
+    fstream.close();
+  }
+}
+
+void TerminateJobMetricsAppendDumps(int64 job_id, const std::string& path){
+  std::string fname = path + "metrics_updates_job_" + std::to_string(job_id) + ".json";
+  std::stringstream ss;
+
+  ss << " ]" << std::endl;
+
+  std::ofstream fstream;
+  fstream.open(
+      fname,
+      std::ofstream::out | std::ofstream::app);
+  fstream << ss.rdbuf();
+  fstream.close();
+}
+
+
 
 } // namespace easl
 } // namespace data
