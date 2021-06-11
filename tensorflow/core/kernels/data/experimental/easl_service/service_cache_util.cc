@@ -133,10 +133,13 @@ void MultiThreadedAsyncWriter::Write(const std::vector<Tensor>& tensors) {
       bytes_per_row_ += t.TotalBytes();
     }
     first_row_info_set_ = true;
+  VLOG(0) << "****************** Max Queue size:  " << producer_threshold_ / bytes_per_row_;
   }
   mutex_lock l(mu_);
-//  VLOG(0) << "****************** Writer Queue Size: " << deque_.size() << "  of max:  " << producer_threshold_ / bytes_per_row_;
   logger->WriteSleep();
+  if(!ProducerSpaceAvailable()) {
+    VLOG(0) << "No producer space available, should go to sleep now...";
+  }
   mu_.Await(Condition(this,
             &MultiThreadedAsyncWriter::ProducerSpaceAvailable));
   logger->WriteAwake();
@@ -214,6 +217,7 @@ Status MultiThreadedAsyncWriter::WriterThread(Env* env,
       t.AsProtoTensorContent(& proto);
       auto proto_buffer = new std::string();
       proto.SerializeToString(proto_buffer);
+      delete proto_buffer;
     }
 
     logger->FinishConversion(writer_id);

@@ -72,9 +72,9 @@ Status ArrowAsyncWriter::WriterThread(Env* env, const std::string& shard_directo
                                              compression, output_types, metadata_));
     }
 
-//    logger->BeginWriteTensors(writer_id);
+    logger->BeginWriteTensors(writer_id);
     TF_RETURN_IF_ERROR(arrowWriter->WriteTensors(be.value));
-//    logger->FinishWriteTensors(writer_id);
+    logger->FinishWriteTensors(writer_id);
 
     // Consume tensors for next round
     Consume(&be);
@@ -82,7 +82,7 @@ Status ArrowAsyncWriter::WriterThread(Env* env, const std::string& shard_directo
 
   // Write accumulated metadata before closing --> if last thread writes to file
   metadata_->WriteMetadataToFile(shard_directory);
-//  logger->PrintStatsSummary(writer_id);
+  logger->PrintStatsSummary(writer_id);
   mutex_lock l(mu_);
   writer_finished_++;
   return Status::OK();
@@ -93,7 +93,7 @@ bool ArrowAsyncWriter::ProducerSpaceAvailable() {
 }
 
 void ArrowAsyncWriter::Write(const std::vector<Tensor>& tensors) {
-//  logger->WriteInvoked();
+  logger->WriteInvoked();
   if(!first_row_info_set_) {
     for(const Tensor& t : tensors) {
       bytes_per_row_ += t.TotalBytes();
@@ -103,13 +103,13 @@ void ArrowAsyncWriter::Write(const std::vector<Tensor>& tensors) {
   }
   metadata_->SetRowShape(first_row_shape_);
   mutex_lock l(mu_);
-//  logger->WriteSleep();
+  logger->WriteSleep();
   mu_.Await( Condition(this, &ArrowAsyncWriter::ProducerSpaceAvailable));
-//  logger->WriteAwake();
+  logger->WriteAwake();
   snapshot_util::ElementOrEOF element;
   element.value = tensors;
   deque_.push_back(std::move(element));
-//  logger->WriteReturn();
+  logger->WriteReturn();
 }
 
 } // namespace arrow_async_wirter

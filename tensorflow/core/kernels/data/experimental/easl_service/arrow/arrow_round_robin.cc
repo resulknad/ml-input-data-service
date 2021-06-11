@@ -50,7 +50,7 @@ void ArrowRoundRobinWriter::PushCurrentBatch() {
 
 // invariants: incoming tensors have enough "space" in pipeline. write sleeps if we need to stall.
 void ArrowRoundRobinWriter::Write(const std::vector<Tensor>& tensors) {
-//  logger->WriteInvoked();
+  logger->WriteInvoked();
 
   // only take this branch once in the beginning
   if(!first_row_info_set_) {
@@ -96,7 +96,7 @@ void ArrowRoundRobinWriter::Write(const std::vector<Tensor>& tensors) {
   if(available_row_capacity_ > 1) {  // capacity should be at least 1 when returning (for next invoke)
     available_row_capacity_--;
 //    VLOG(0) << "ARR - Write - row capacity reduced, next = " << available_row_capacity_;
-//    logger->WriteReturn();
+    logger->WriteReturn();
     return;
   }
 
@@ -115,13 +115,13 @@ void ArrowRoundRobinWriter::Write(const std::vector<Tensor>& tensors) {
     VLOG(0) << "_|Iterator|_ No-Capacity-Sleep";
     PushCurrentBatch();
 
-//    logger->WriteSleep();
+    logger->WriteSleep();
 
     //reacquire lock and release it
     mutex_lock l(mu_by_);
     capacity_available_.wait(l);
 
-//    logger->WriteAwake();
+    logger->WriteAwake();
 
     VLOG(0) << "_|Iterator|_ Awake-New-Capacity";
 
@@ -132,7 +132,7 @@ void ArrowRoundRobinWriter::Write(const std::vector<Tensor>& tensors) {
   size_t bytes_in_pipeline = bytes_received_ - bytes_written_local;
   available_row_capacity_ = (thresh_ - bytes_in_pipeline) / bytes_per_row_;
 
-//  logger->WriteReturn();
+  logger->WriteReturn();
 } // mutex_lock's destructor automatically releases the lock
 
 void ArrowRoundRobinWriter::ConsumeTensors(TensorData* dat_out, int writer_id) {
@@ -279,9 +279,9 @@ Status ArrowRoundRobinWriter::WriterThread(tensorflow::Env *env,
   ConsumeTensors(&dat, writer_id);
   while(!dat.end_of_sequence) {
     size_t dat_size = dat.byte_count;
-//    logger->BeginWriteTensors(writer_id);
+    logger->BeginWriteTensors(writer_id);
     Status s = ArrowWrite(GetFileName(shard_directory, writer_id, split_id++), dat, writer_id);
-//    logger->FinishWriteTensors(writer_id);
+    logger->FinishWriteTensors(writer_id);
     if(!s.ok()) {
       VLOG(0) << "Writer " << writer_id << "  not ok ... " << s.ToString();
     }
@@ -297,7 +297,7 @@ Status ArrowRoundRobinWriter::WriterThread(tensorflow::Env *env,
   metadata_->WriteMetadataToFile(shard_directory); // de-registers worker, if last write out to disk
 
   VLOG(0) << "_|" << writer_id << "|_ De-Registered";
-//  logger->PrintStatsSummary(writer_id);
+  logger->PrintStatsSummary(writer_id);
 
   mutex_lock l(mu_);
   writer_finished_++;
