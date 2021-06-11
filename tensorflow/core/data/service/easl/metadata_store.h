@@ -156,6 +156,7 @@ class JobMetrics {
                std::string& dataset_key);
 
     void DumpToFile(const std::string& path);
+    void DumpToStream(std::stringstream& ss);
 
     int64 job_id_;
     int64 dataset_id_;
@@ -218,7 +219,11 @@ class MetadataStore {
   Status UpdateDatasetKeyJobMetrics(int64 job_id, const std::string& dataset_key);
 
   // Dumps the job metrics in a file named after its id at the given path.
-  Status DumpJobMetrics(int64 job_id, const std::string& path);
+  Status DumpJobMetricsToFile(int64 job_id, const std::string& path);
+
+  // Appends json representation of current status to a separate file for each job
+  Status AppendJobMetricsDumps(Env* env, const std::string& path);
+
 
  private:
   // Key is job id

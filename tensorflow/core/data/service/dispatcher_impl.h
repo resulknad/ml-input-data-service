@@ -260,6 +260,8 @@ class DataServiceDispatcherImpl {
   // EASL
   // A thread which periodically decides which jobs to cache or use cache on 
   //void CachewThread();
+  // A thread which periodically dumps various logs to the log_dir
+  void LogDumpsThread();
 
   // Gets a `DatasetDef` from `dataset_store_` for the given dataset id, and
   // stores it in `dataset_def`.
@@ -278,6 +280,9 @@ class DataServiceDispatcherImpl {
   mutex mu_;
   bool started_ TF_GUARDED_BY(mu_) = false;
   bool cancelled_ TF_GUARDED_BY(mu_) = false;
+
+  // EASL - we use this flag to enable logging to files for debugging purposes
+  bool log_dumps_enabled_ TF_GUARDED_BY(mu_) = true;
 
   // Cached worker stubs for communicating with workers.
   absl::flat_hash_map<std::string, std::unique_ptr<WorkerService::Stub>>
@@ -304,6 +309,8 @@ class DataServiceDispatcherImpl {
   // Condition variable for waking up the job gc thread.
   condition_variable job_gc_thread_cv_;
   std::unique_ptr<Thread> job_gc_thread_;
+  condition_variable log_dumps_thread_cv_;
+  std::unique_ptr<Thread> log_dumps_thread_;
   std::unique_ptr<Thread> cachew_thread_;
 
   // Cachew decision data: bytes to 

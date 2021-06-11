@@ -223,6 +223,17 @@ JobMetrics::JobMetrics(int64 job_id,
 void JobMetrics::DumpToFile(const std::string& path){
   // Start constructing json string:
   std::stringstream ss;
+  DumpToStream(ss);
+
+  std::ofstream fstream;
+  fstream.open(
+      path + "/metrics_job_" + std::to_string(job_id_) + "_ds_key_" + dataset_key_  + ".json",
+      std::ofstream::out | std::ofstream::app);
+  fstream << ss.rdbuf();
+  fstream.close();
+}
+
+void JobMetrics::DumpToStream(std::stringstream& ss){
   ss << "{" << std::endl;
   ss << "\"ModelMetrics\" : ";
   model_metrics_->DumpToStream(ss);
@@ -230,11 +241,6 @@ void JobMetrics::DumpToFile(const std::string& path){
   ss << "\"PipelineMetrics\" : ";
   input_pipeline_metrics_->DumpToStream(ss);
   ss << "}" << std::endl;
-
-  std::ofstream fstream;
-  fstream.open(path + "/metrics_job_" + std::to_string(job_id_) + "_ds_key_" + dataset_key_  + ".json");
-  fstream << ss.rdbuf();
-  fstream.close();
 }
 
 
@@ -394,10 +400,36 @@ Status MetadataStore::UpdateLastNode(int64 job_id, string node_name) {
 }
 
 
-Status MetadataStore::DumpJobMetrics(int64 job_id, const std::string& path){
+Status MetadataStore::DumpJobMetricsToFile(int64 job_id, const std::string& path){
   std::shared_ptr<JobMetrics> jobMetrics;
   TF_RETURN_IF_ERROR(GetJobMetrics(job_id, jobMetrics));
   jobMetrics->DumpToFile(path);
+}
+
+Status MetadataStore::AppendJobMetricsDumps(Env* env, const std::string& path) {
+  for(auto pair: job_metadata_ ){
+    std::string fname = path + "metrics_updates_job_" + std::to_string(pair.first) + ".json";
+    std::stringstream ss;
+
+    Status s = env->FileExists(fname);
+    if(!s.ok()){ // Initialize file if not present.
+      if (!errors::IsNotFound(s)) {
+        return s;
+      }
+      ss << "[" << std::endl;
+    } else {
+      ss << ", " << std::endl;
+    }
+
+    pair.second->DumpToStream(ss);
+    // Append to file
+    std::ofstream fstream;
+    fstream.open(
+        fname,
+        std::ofstream::out | std::ofstream::app);
+    fstream << ss.rdbuf();
+    fstream.close();
+  }
 }
 
 

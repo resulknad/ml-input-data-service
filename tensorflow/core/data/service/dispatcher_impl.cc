@@ -145,6 +145,14 @@ DataServiceDispatcherImpl::~DataServiceDispatcherImpl() {
 
 Status DataServiceDispatcherImpl::Start() {
   mutex_lock l(mu_);
+
+  // EASL - Enable logging if a logging directory is provided:
+  if(!config_.log_dir().empty()){
+    env_->RecursivelyCreateDir(config_.log_dir());
+    log_dumps_enabled_ = true;
+    log_dumps_thread_ = absl::WrapUnique(
+        env_->StartThread({}, "log-dumps-thread", [&] { LogDumpsThread(); }));
+  }
   job_gc_thread_ = absl::WrapUnique(
       env_->StartThread({}, "job-gc-thread", [&] { JobGcThread(); }));
   //cachew_thread_ = absl::WrapUnique(
@@ -380,6 +388,9 @@ Status DataServiceDispatcherImpl::WorkerUpdate(
       // Update metadata store directly, quicker than waiting for the GCOldJobs to run.
       if(job->finished){
         TF_RETURN_IF_ERROR(metadata_store_.UpdateDatasetKeyJobMetrics(job->job_id, task->dataset_key));
+        if(log_dumps_enabled_){
+          TF_RETURN_IF_ERROR(metadata_store_.DumpJobMetricsToFile(job->job_id, config_.log_dir()));
+        }
         TF_RETURN_IF_ERROR(metadata_store_.RemoveJob(job->job_id));
 
       }
@@ -1109,6 +1120,28 @@ void DataServiceDispatcherImpl::CachewThread() {
         env_->NowMicros() + (2000 * 1000);
   }
 }*/
+
+
+void DataServiceDispatcherImpl::LogDumpsThread() {
+  int64 next_check_micros = 0;
+  while (true) {
+    mutex_lock l(mu_);
+    while (!cancelled_ && env_->NowMicros() < next_check_micros) {
+      int64 remaining_micros = next_check_micros - env_->NowMicros();
+      log_dumps_thread_cv_.wait_for(l,
+                                 std::chrono::microseconds(remaining_micros));
+    }
+    if (cancelled_) {
+      return;
+    }
+    //Status s = GcOldJobs();
+    if (!s.ok()) {
+      LOG(WARNING) << "Error garbage collecting old jobs: " << s;
+    }
+    next_check_micros =
+        env_->NowMicros() + (config_.log_dumps_interval_ms() * 1000);
+  }
+}
 
 
 Status DataServiceDispatcherImpl::GetDatasetDef(

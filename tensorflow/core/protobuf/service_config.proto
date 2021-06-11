@@ -36,6 +36,10 @@ message DispatcherConfig {
   string cache_path = 12;
   // The scaling policy applied by the service
   int32 scaling_policy = 11;
+  // The directory to use for logging files
+  string log_dir = 13;
+  // The interval at which the dispatcher should dump log files.
+  int64 log_dumps_interval_ms = 14;
 
 }
 
