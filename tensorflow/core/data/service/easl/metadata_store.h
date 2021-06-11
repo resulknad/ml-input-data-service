@@ -232,6 +232,9 @@ class MetadataStore {
   absl::flat_hash_map<std::string, std::shared_ptr<JobMetrics>> dataset_key_metadata_;
 };
 
+// Utils function to append the missing trailing "]"
+// at the end of a metrics update dump file.
+void TerminateJobMetricsAppendDumps(int64 job_id, const std::string& path);
 } // namespace easl
 } // namespace data
 } // namespace tensorflow

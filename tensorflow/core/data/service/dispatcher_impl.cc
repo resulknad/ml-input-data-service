@@ -390,6 +390,7 @@ Status DataServiceDispatcherImpl::WorkerUpdate(
         TF_RETURN_IF_ERROR(metadata_store_.UpdateDatasetKeyJobMetrics(job->job_id, task->dataset_key));
         if(log_dumps_enabled_){
           TF_RETURN_IF_ERROR(metadata_store_.DumpJobMetricsToFile(job->job_id, config_.log_dir()));
+          easl::TerminateJobMetricsAppendDumps(job->job_id, config_.log_dir());
         }
         TF_RETURN_IF_ERROR(metadata_store_.RemoveJob(job->job_id));
 
