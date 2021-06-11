@@ -54,6 +54,9 @@ class ModelMetrics {
     Status UpdateClientMetrics(int64 client_id, Metrics& metrics);
     Status GetClientMetrics(int64 client_id, std::shared_ptr<Metrics>& metrics);
 
+    // Dump metrics to a string stream
+    void DumpToStream(std::stringstream& ss);
+
     // The keys are the client id
     MetricsCollection metrics_;
 };
@@ -101,8 +104,11 @@ class NodeMetrics {
     Status UpdateWorkerMetrics(string worker_address, Metrics& metrics);
     Status GetWorkerMetrics(string worker_address, 
       std::shared_ptr<Metrics>& metrics);
-  
-    // The key here is the worker address
+
+    // Dump metrics to string stream
+    void DumpToStream(std::stringstream& ss);
+
+  // The key here is the worker address
     MetricsCollection metrics_;
 };
 
@@ -132,7 +138,9 @@ class InputPipelineMetrics {
 
     // Methods for managing the last node name
     std::string GetLastNodeName();
-    void SetLastNodeName(std::string last_node_name); 
+    void SetLastNodeName(std::string last_node_name);
+
+    void DumpToStream(std::stringstream& ss);
 
     // Last user node name
     std::string last_node_name_;
@@ -146,6 +154,8 @@ class JobMetrics {
                int64 dataset_id,
                int64 dataset_fingerprint,
                std::string& dataset_key);
+
+    void DumpToFile(const std::string& path);
 
     int64 job_id_;
     int64 dataset_id_;
@@ -206,6 +216,9 @@ class MetadataStore {
 
   // Update or create the metrics for the dataset key from the given job.
   Status UpdateDatasetKeyJobMetrics(int64 job_id, const std::string& dataset_key);
+
+  // Dumps the job metrics in a file named after its id at the given path.
+  Status DumpJobMetrics(int64 job_id, const std::string& path);
 
  private:
   // Key is job id
