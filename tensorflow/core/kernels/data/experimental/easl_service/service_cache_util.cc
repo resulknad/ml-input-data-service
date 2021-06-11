@@ -202,7 +202,22 @@ Status MultiThreadedAsyncWriter::WriterThread(Env* env,
       writer->Close();
       break;
     }
+
+
+
+
     logger->BeginWriteTensors(writer_id);
+
+    // TODO for now: measure time it takes to serialize tensors to string:
+    for(Tensor& t : be.value) {
+      TensorProto proto;
+      t.AsProtoTensorContent(& proto);
+      auto proto_buffer = new std::string();
+      proto.SerializeToString(proto_buffer);
+    }
+
+    logger->FinishConversion(writer_id);
+
     TF_RETURN_IF_ERROR(writer->WriteTensors(be.value));
     logger->FinishWriteTensors(writer_id);
   }
@@ -468,9 +483,10 @@ void StatsLogger::PrintStatsSummary(int writer_id) {
   // iterate over threads and print statistics
   ThreadLog& writer_thread = thread_logs_[writer_id];
 
-  VLOG(0) << "[Writer " << writer_id << "] {avg_write,avg_not_write,num_writes} _|LogStat|_ "
+  VLOG(0) << "[Writer " << writer_id << "] {avg_write,avg_not_write,avg_conversion,num_writes} _|LogStat|_ "
                   "" << writer_thread.write_time_sum / writer_thread.num_writes << " "
                   "" << writer_thread.not_write_time_sum / writer_thread.num_writes << " "
+                  "" << writer_thread.conversion_time_sum / writer_thread.num_writes << " "
                   "" << writer_thread.num_writes;
 
   // reset
@@ -502,8 +518,13 @@ void StatsLogger::BeginWriteTensors(int id) {
   thread_logs_[id].timestamp = now;
 }
 
+void StatsLogger::FinishConversion(int id) {
+  auto now = high_resolution_clock::now();
+  auto since_last = duration_cast<nanoseconds>(now - thread_logs_[id].timestamp).count();
+  thread_logs_[id].conversion_time_sum += since_last;
+}
 
-    } // namespace service_cache_util
+} // namespace service_cache_util
 } // namespace easl
 } // namespace data
 } // namespace tensorflow

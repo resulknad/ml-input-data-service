@@ -34,7 +34,7 @@ public:
                         uint64 checkpoint_id, const std::string& compression,
                         int64 version, DataTypeVector output_types) override;
 
-    Status ArrowWrite(const std::string& shard_directory, TensorData &dat);
+    Status ArrowWrite(const std::string& shard_directory, TensorData &dat, uint64 writer_id);
 
     void SignalEOF() override;
 

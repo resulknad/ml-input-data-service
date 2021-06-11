@@ -151,7 +151,7 @@ void ArrowRoundRobinWriter::ConsumeTensors(TensorData* dat_out, int writer_id) {
 /***********************
  * Arrow Writer *
  ***********************/
-Status ArrowRoundRobinWriter::ArrowWrite(const std::string &filename, TensorData &dat) {
+Status ArrowRoundRobinWriter::ArrowWrite(const std::string &filename, TensorData &dat, uint64 writer_id) {
 
   // initializing writer process
   int ncols = tensor_data_len_.size();
@@ -246,6 +246,8 @@ Status ArrowRoundRobinWriter::ArrowWrite(const std::string &filename, TensorData
   std::shared_ptr<arrow::Table> table;
   table = arrow::Table::Make(schema, arrays);
 
+  logger->FinishConversion(writer_id);
+
   std::shared_ptr<arrow::io::FileOutputStream> file;
   ARROW_ASSIGN_CHECKED(file, arrow::io::FileOutputStream::Open(filename, /*append=*/false));
 
@@ -278,7 +280,7 @@ Status ArrowRoundRobinWriter::WriterThread(tensorflow::Env *env,
   while(!dat.end_of_sequence) {
     size_t dat_size = dat.byte_count;
 //    logger->BeginWriteTensors(writer_id);
-    Status s = ArrowWrite(GetFileName(shard_directory, writer_id, split_id++), dat);
+    Status s = ArrowWrite(GetFileName(shard_directory, writer_id, split_id++), dat, writer_id);
 //    logger->FinishWriteTensors(writer_id);
     if(!s.ok()) {
       VLOG(0) << "Writer " << writer_id << "  not ok ... " << s.ToString();

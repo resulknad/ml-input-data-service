@@ -18,12 +18,14 @@ struct ThreadLog {
   uint64_t not_write_time_sum = 0;
   uint64_t num_writes = 0;
   std::chrono::time_point<std::chrono::high_resolution_clock> timestamp;
+  uint64_t conversion_time_sum = 0;
 };
 
 class StatsLogger {
 public:
     void WriteSleep();
     void WriteAwake();
+    void FinishConversion(int id);
     void BeginWriteTensors(int id);
     void FinishWriteTensors(int id);
     void WriteInvoked();
@@ -37,6 +39,7 @@ public:
     std::chrono::time_point<std::chrono::high_resolution_clock> last_log_ = std::chrono::high_resolution_clock::now();
 
     ThreadLog thread_logs_[12];  // writers directly access this by writer_id
+    bool measure_conversion_ = false;
     uint64_t num_writes_ = 0;
     uint64_t num_sleeps_ = 0;
     uint64_t sleep_time_sum_ = 0;
