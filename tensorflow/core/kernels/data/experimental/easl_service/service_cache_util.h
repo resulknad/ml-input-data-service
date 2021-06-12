@@ -15,8 +15,10 @@ namespace service_cache_util {
 #define STATS_LOG  // comment this if no stats should be printed as log output
 #define DEBUGGING // comment this if debugging statements should be removed
 
-uint64 MEMORY_THRESH = 2e9;
-
+#ifndef MEM_THRESH
+#define MEM_THRESH
+uint64 MEMORY_THRESHOLD = 2e9;
+#endif
 
 // Logging utility class to get info where we spend how much time.
 struct ThreadLog {
