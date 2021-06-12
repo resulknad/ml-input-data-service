@@ -812,14 +812,10 @@ cc_library(
 cc_library(
     name = "arrow_writer",
     srcs = [
-        "easl_service/arrow/arrow_async_writer.cc",
         "easl_service/arrow/arrow_round_robin.cc",
-        "easl_service/arrow/arrow_writer.cc",
     ],
     hdrs = [
-        "easl_service/arrow/arrow_async_writer.h",
         "easl_service/arrow/arrow_round_robin.h",
-        "easl_service/arrow/arrow_writer.h",
         "easl_service/service_cache_util.h",
     ],
     deps = [
