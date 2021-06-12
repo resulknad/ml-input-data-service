@@ -12,6 +12,13 @@ namespace data {
 namespace easl{
 namespace service_cache_util {
 
+#define STATS_LOG  // comment this if no stats should be printed as log output
+#define DEBUGGING // comment this if debugging statements should be removed
+
+uint64 MEMORY_THRESHOLD = 2e9;
+
+
+// Logging utility class to get info where we spend how much time.
 struct ThreadLog {
   bool used = false;
   uint64_t write_time_sum = 0;
@@ -39,7 +46,6 @@ public:
     std::chrono::time_point<std::chrono::high_resolution_clock> last_log_ = std::chrono::high_resolution_clock::now();
 
     ThreadLog thread_logs_[12];  // writers directly access this by writer_id
-    bool measure_conversion_ = false;
     uint64_t num_writes_ = 0;
     uint64_t num_sleeps_ = 0;
     uint64_t sleep_time_sum_ = 0;
@@ -48,76 +54,138 @@ public:
     const int log_wait_ = 0; // wait ~1s betw. logs
 };
 
-// MultiThreadedAsyncWriter provides API for asynchronously writing dataset 
-// elements (each represented as a vector of tensors) to a file.
-//
-// The expected use of this API is:
-//
-// std::unique_ptr<MultiThreadedAsyncWriter> writer = 
-// absl_make_unique<MultiThreadedAsyncWriter>(...);
-//
-// while (data_available()) {
-//   std::vector<Tensor> data = read_data()
-//   writer->Write(data);
-// }
-// writer->SignalEOF();
-// writer = nullptr;  // This will block until writes are flushed.
-class MultiThreadedAsyncWriter {
- public:
-  MultiThreadedAsyncWriter(const int writer_count);
+// struct that is extended with data by class implementing BoundedMemoryWriter
+struct ElementOrEOF {
+    bool eof = false;
+    virtual ~ElementOrEOF() = default;  // needs to be virtual s.t. unique_ptr<ElementOrEOF> calls dtor of derived
+};
 
-  virtual void Initialize(Env* env, int64 file_index,
-                  const std::string& shard_directory, uint64 checkpoint_id,
-                  const std::string& compression, int64 version,
-                  const DataTypeVector& output_types,
-                  std::function<void(Status)> done);
+// BoundedMemoryWriter is base class for TFRecordWriter and the Arrow family writers.
+// It ensures that bytes_written_ - bytes_received_ < memory_threshold_.
+// Further it provides convenient abstraction to implement any new data type with little effort.
+class BoundedMemoryWriter {
+public:
+    BoundedMemoryWriter(int writer_count, uint64 memory_threshold);
 
-  // Writes the given tensors. The method is non-blocking and returns without
-  // waiting for the element to be written.
-  virtual void Write(const std::vector<Tensor>& tensors) TF_LOCKS_EXCLUDED(mu_);
+    // Initializes the writer and spans writer_count_ writer threads.
+    Status Initialize(Env* env, const std::string& shard_directory, int compression,
+            const DataTypeVector& output_types, int64 version);
 
-  // Signals the end of input. The method is non-blocking and returns without
-  // waiting for the writer to be closed.
-  virtual void SignalEOF() TF_LOCKS_EXCLUDED(mu_);
+    // Provides stats telling how big the in-flow throughput is, as well as
+    Status Write(const std::vector<Tensor>& tensors) TF_LOCKS_EXCLUDED(mu_, mu_by_);
 
-  virtual ~MultiThreadedAsyncWriter()= default;
+    void SignalEOF();
 
-  std::unique_ptr<StatsLogger> logger;
+    virtual ~BoundedMemoryWriter() = default;  // this is important to be virtual --> else memory leak
 
 protected:
-  void Consume(snapshot_util::ElementOrEOF* be) TF_LOCKS_EXCLUDED(mu_);
-  bool ElementAvailable() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  virtual Status WriterThread(Env* env, const std::string& shard_directory,
-                      uint64 checkpoint_id, const std::string& compression,
-                      int64 version, DataTypeVector output_types);
+    // abstract method used to insert data into deque_ or accumulate them internally into batches.
+    virtual void InsertData(const std::vector<Tensor>& tensors) = 0;  // Guarded by mu_
 
-  mutex mu_;
-  std::deque<snapshot_util::ElementOrEOF> deque_ TF_GUARDED_BY(mu_);
+    // this method gets invoked the first time a dataset element is passed to the writer.
+    // it's used to extract shape and datatype information if needed.
+    virtual void FirstRowInfo(const std::vector<Tensor>& tensors) = 0;
 
-  // look at first row of dataset to infer bytes per row and dataset shape
-  virtual bool ProducerSpaceAvailable() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  const uint64 producer_threshold_ = 1e9;  // allow producer queue to hold 1 GB
-  bool first_row_info_set_ = false;
-  std::vector<TensorShape> first_row_shape_;
-  uint64 bytes_per_row_ = 0;
+    // creates an empty ElementOrEOF with eof set to true.
+    virtual std::unique_ptr<ElementOrEOF> CreateEOFToken() = 0;
 
-  // make sure that SignalEOF returns ones all writer threads have finished.
-  const int writer_count_;
-  int writer_finished_ = 0;  // also guarded by mu_
-  bool AllWritersFinished() {  // needed to wait for condition
-    VLOG(0) << "Checking AllWritersFinished: " << writer_finished_ << " of " << writer_count_ << " finished.";
-    return writer_finished_ == writer_count_;
-  }
-  condition_variable finish_cv_ TF_GUARDED_BY(mu_);
+    // function where the main conversion happens. It must use the "BeforeWrite" and "AfterWrite" functions
+    // to support logging.
+    virtual void WriterThread(Env *env, const std::string &shard_directory,
+                      int writer_id, int compression, const DataTypeVector& output_types, int64 version) = 0;  // Guarded by mu_by_
 
+    // utility function that can be implemented by class inheriting from this to support stats logging.
+    void BeforeWrite(int thread_id) {
+      #ifdef STATS_LOG
+      logger_->BeginWriteTensors(thread_id);
+      #endif
+    }
 
-  // This has to be last. During destruction, we need to make sure that the
-  // Thread object is destroyed first as its destructor blocks on thread
-  // completion. If there are other member variables after this, they may get
-  // destroyed first before the thread finishes, potentially causing the
-  // thread to access invalid memory.
-  std::unique_ptr<thread::ThreadPool> thread_pool_;
+    void FinishedConversion(int thread_id) {
+      #ifdef STATS_LOG
+      logger_->FinishConversion(thread_id);
+      #endif
+    }
+
+    // utility function that can be implemented by class inheriting from this to support stats logging.
+    void AfterWrite(int thread_id) {
+      #ifdef STATS_LOG
+      logger_->FinishWriteTensors(thread_id);
+      #endif
+    }
+
+    // inheriting class must put this at the end of the WriterThread function.
+    void WriterReturn(int thread_id) TF_LOCKS_EXCLUDED(mu_){
+      mutex l(mu_);
+      writers_finished_++;
+      #ifdef DEBUGGING
+      VLOG(0) << "Thread " << thread_id << " finished writing, returning.";
+      #endif
+    }
+
+    // transfers ownership of the first unique_ptr to an ElementOrEOF to the passed unique_ptr and pops it from deque
+    std::unique_ptr<ElementOrEOF> Consume(int writer_id) TF_LOCKS_EXCLUDED(mu_);
+
+    // mutex has to be available in sub-class
+    mutex mu_;  // mutex guarding deque
+    mutex mu_by_; // mutex guarding bytes written
+    std::deque<std::unique_ptr<ElementOrEOF>> deque_ TF_GUARDED_BY(mu_);
+    uint64 bytes_per_row_; // initialized to 0 by constructor. Used to calculate mem-usage.
+    uint64 bytes_written_ TF_GUARDED_BY(mu_by_); // initialized to 0 by constructor.
+
+private:
+    // private functions
+    bool ElementAvailable() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);  // writer_threads consume if element available
+    bool ProducerSpaceAvailable() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_by_);  // if no more space, wait() goes to sleep
+    bool AllWritersFinished() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);  // only destruct once all threads returned
+
+    // class internal variables:
+    bool first_row_info_set_; // initialized to false. Signals that first row has already arrived.
+    const int writer_count_; // initialized by constructor.
+    const int memory_threshold_; // initialized by constructor.
+    uint64 bytes_received_; // initialized to 0 by constructor.
+    int writers_finished_ TF_GUARDED_BY(mu_);  // initialized to 0 by constructor.
+    // indicates how many rows can be received at least until it has to check the overall memory in pipeline again.
+    uint64 available_row_capacity_;  // initialized to 0 by constructor, later when first row received.
+
+    // logging utility.
+    #ifdef STATS_LOG
+    std::unique_ptr<StatsLogger> logger_;
+    #endif
+
+    // This has to be last. During destruction, we need to make sure that the
+    // Thread object is destroyed first as its destructor blocks on thread
+    // completion. If there are other member variables after this, they may get
+    // destroyed first before the thread finishes, potentially causing the
+    // thread to access invalid memory.
+    std::unique_ptr<thread::ThreadPool> thread_pool_;
 };
+
+
+struct RowOrEOF : public ElementOrEOF {
+  std::vector<Tensor> data;
+};
+
+class TFRecordWriter : public BoundedMemoryWriter {
+public:
+    explicit TFRecordWriter(int writer_count, uint64 memory_threshold);
+
+    // method used to insert data into deque_.
+    void InsertData(const std::vector<Tensor>& tensors) override;
+
+    // unuesed in TFRecord writer
+    void FirstRowInfo(const std::vector<Tensor>& tensors) override;
+
+    // creates an empty ElementOrEOF with eof set to true.
+    std::unique_ptr<ElementOrEOF> CreateEOFToken() override;
+
+    void WriterThread(Env *env, const std::string &shard_directory,
+                      int writer_id, int compression, const DataTypeVector& output_types, int64 version) override;
+
+};
+
+
+
 
 // EASL (damien-aymon)
 // Top-level writer that handles writes to the service cache.
@@ -131,8 +199,9 @@ class Writer {
          const std::string& target_dir,
          const DataTypeVector& output_dtypes,
          const std::vector<PartialTensorShape>& output_shapes,
-         const int writer_count = 8,
-         const int writer_version = 0);
+         int writer_count = 8,
+         int writer_version = 0,
+         int compression = 0);
 
   Status Write(const std::vector<Tensor>& tensors);
 
@@ -143,17 +212,14 @@ class Writer {
   Status Initialize();
 
  private:
-  Status WriteMetadataFile(
-      Env* env, const std::string& path, const DataTypeVector& output_dtypes,
-      const std::vector<PartialTensorShape>& output_shapes);
-
   const int writer_version_;
   Env* env_;
   const int writer_count_;
+  const int compression_;
   const std::string target_dir_;
   const DataTypeVector output_dtypes_;
   const std::vector<PartialTensorShape> output_shapes_;
-  std::unique_ptr<MultiThreadedAsyncWriter> async_writer_;
+  std::unique_ptr<BoundedMemoryWriter> async_writer_;
 };
 
 class MultiThreadedAsyncReader {
@@ -178,7 +244,6 @@ class MultiThreadedAsyncReader {
   const int reader_count_;
   int8 num_readers_done_ TF_GUARDED_BY(mu_add_);
 
-  Status ReadAndParseMetadataFile();
   void Consume(string* s, bool* end_of_sequence) TF_LOCKS_EXCLUDED(mu_);
   void Add(std::vector<Tensor>& tensors)  TF_LOCKS_EXCLUDED(mu_add_);
   virtual Status ReaderThread(Env *env, uint64 writer_id, int64 version,

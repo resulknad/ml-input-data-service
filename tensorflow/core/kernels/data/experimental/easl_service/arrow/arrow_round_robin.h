@@ -17,52 +17,56 @@ namespace service_cache_util {
 namespace arrow_round_robin {
 
 
-struct TensorData {
+struct TensorData : ElementOrEOF{
     std::vector<std::vector<Tensor>> tensor_batch;
     size_t byte_count = 0;
-    bool end_of_sequence = false;
 };
 
 
-class ArrowRoundRobinWriter : public MultiThreadedAsyncWriter {
+class ArrowRoundRobinWriter : public BoundedMemoryWriter {
 public:
-    explicit ArrowRoundRobinWriter(const int writer_count);
+    explicit ArrowRoundRobinWriter(int writer_count, uint64 memory_threshold);
 
-    void Write(const std::vector<Tensor>& tensors) override;
+    // method used to insert data into deque_.
+    void InsertData(const std::vector<Tensor>& tensors) override;
 
-    Status WriterThread(Env* env, const std::string& shard_directory,
-                        uint64 checkpoint_id, const std::string& compression,
-                        int64 version, DataTypeVector output_types) override;
+    // unuesed in TFRecord writer
+    void FirstRowInfo(const std::vector<Tensor>& tensors) override;
 
-    Status ArrowWrite(const std::string& shard_directory, TensorData &dat, uint64 writer_id);
+    // creates an empty ElementOrEOF with eof set to true.
+    std::unique_ptr<ElementOrEOF> CreateEOFToken() override;
 
-    void SignalEOF() override;
+    void WriterThread(Env *env, const std::string &shard_directory,
+                      int writer_id, int compression, const DataTypeVector& output_types, int64 version) override;
 
-    ~ArrowRoundRobinWriter() override= default;
+    std::shared_ptr<arrow::RecordBatch> RecordBatchFromTensorData(const std::string& filename, TensorData &dat);
 
 private:
+    arrow::ipc::IpcWriteOptions wo_ = {
+            false,
+            10,
+            8,
+            false,
+            arrow::default_memory_pool(),
+            arrow::util::Codec::Create(arrow::Compression::UNCOMPRESSED).ValueOrDie(),
+            false,
+            false,
+            arrow::ipc::MetadataVersion::V5
+    };
 
-    void ConsumeTensors(TensorData* dat_out, int writer_id);
-    void PushCurrentBatch();
+    std::shared_ptr<arrow::Schema> schema_;
+    std::shared_ptr<arrow::ipc::RecordBatchWriter> rbw_;
+    std::shared_ptr<arrow::io::FileOutputStream> file_;
 
-    // store tensors until a writer thread "consumes" them
-    std::deque<TensorData> deque_ TF_GUARDED_BY(mu_);
-    TensorData current_batch_;
+    std::unique_ptr<TensorData> current_batch_;  // batch we're currently filling
 
     // arrow metadata
     std::shared_ptr<ArrowUtil::ArrowMetadata> metadata_;
     std::vector<DataType> first_row_dtype_;
+    std::vector<TensorShape> first_row_shape_;
     std::vector<size_t> tensor_data_len_;
 
-    // threshold used to control bytes in entire writer pipeline. Default or set via version (TODO)
-    size_t thresh_ = 2e9;
-    size_t max_batch_size_ = 1e8;  // wait for this amount of data until waking up writer -> set by constructor
-    size_t available_row_capacity_ = 0;  // how many rows can be inserted without checking bytes_written?
-    mutex mu_by_;
-    size_t bytes_written_ = 0;  // guraded by mu_by_ --> bytes written out to disk by writers
-    size_t bytes_received_ = 0;  // bytes received by iterator. Make sure bytes_received_ - bytes_written < thresh_
-    condition_variable capacity_available_;  // if pipeline full, iterator thread waits until capacity available
-    condition_variable tensors_available_;  // if pipeline empty, writer-threads sleep until tensors available
+    size_t max_batch_size_;  // wait for this amount of data until waking up writer -> set by constructor
 };
 
 } // namespace arrow_round_robin

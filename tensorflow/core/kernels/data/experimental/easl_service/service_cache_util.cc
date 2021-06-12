@@ -12,7 +12,7 @@ namespace data {
 namespace easl{
 namespace service_cache_util {
 
-namespace { // anonymous namespace => declared functions only visible within this file
+namespace {
 static constexpr const char *const kCacheLocation = "";
 
 std::string GetFileName(const std::string& shard_directory,
@@ -25,43 +25,29 @@ std::string GetFileName(const std::string& shard_directory,
 
 constexpr const char* const kMetadataFilename = "service_cache.metadata";
 const int64 kWriterVersion = 2; // 0 --> ArrowWriter; 2 --> TFRecordWriter
-const char kCompression[] = ""; // can be SNAPPY, GZIP, ZLIB, "" for none.
 
 Writer::Writer(Env* env,
     const std::string& target_dir, const DataTypeVector& output_dtypes,
     const std::vector<PartialTensorShape>& output_shapes, 
-    const int writer_count, const int writer_version) : env_(env), target_dir_(target_dir),
+    const int writer_count, const int writer_version, const int compression) : env_(env), target_dir_(target_dir),
     output_dtypes_(output_dtypes), output_shapes_(output_shapes), 
-    writer_count_(writer_count), writer_version_(writer_version) {}  // Constructor, store references in object
+    writer_count_(writer_count), writer_version_(writer_version), compression_(compression) {}  // Constructor, store references in object
 
 Writer::~Writer()= default;
 
 Status Writer::Initialize(){
-  // TODO (damien-aymon) add constant for writer version.
-
   if(writer_version_ == 0) { // 0 -> arrow
-    async_writer_ = std::make_unique<arrow_async_writer::ArrowAsyncWriter>(writer_count_);
+//    async_writer_ = std::make_unique<arrow_async_writer::ArrowAsyncWriter>(writer_count_);
   } else if(writer_version_ == 7) {
-    async_writer_ = std::make_unique<arrow_round_robin::ArrowRoundRobinWriter>(writer_count_);
-    VLOG(0) << "SCU -- created ARR Writer";
+    async_writer_ = absl::make_unique<arrow_round_robin::ArrowRoundRobinWriter>(writer_count_, MEMORY_THRESHOLD);
+//    VLOG(0) << "SCU -- created ARR Writer";
   } else {
-    async_writer_ = std::make_unique<MultiThreadedAsyncWriter>(writer_count_);
+    async_writer_ = absl::make_unique<TFRecordWriter>(writer_count_, MEMORY_THRESHOLD);
   }
-  async_writer_->logger = std::make_unique<StatsLogger>();
-  async_writer_->Initialize(env_, /*file_index*/ 0, target_dir_, /*checkpoint_id*/ 0,
-                            kCompression, writer_version_, output_dtypes_,
-          /*done*/ [this](Status s){
-              // TODO (damien-aymon) check and propagate errors here!
-              if (!s.ok()) {
-                VLOG(0) << "EASL - writer error: "<< s.ToString();
-              }
-              //LOG(ERROR) << "MultiThreadedAsyncWriter in snapshot writer failed: " << s;
-              //mutex_lock l(writer_status_mu_);
-              //writer_status_ = s;
-              return;
-          });
+//  async_writer_->logger = std::make_unique<StatsLogger>();
+  async_writer_->Initialize(env_, target_dir_, compression_, output_dtypes_, writer_version_);
   VLOG(0) << "SCU -- Initialized Writer";
-  return WriteMetadataFile(env_, target_dir_, output_dtypes_, output_shapes_);
+  return Status::OK();
 }
 
 Status Writer::Write(const std::vector<Tensor>& tensors){
@@ -78,160 +64,200 @@ Status Writer::Close(){
   return Status::OK();
 }
 
-Status Writer::WriteMetadataFile(
-    Env* env, const std::string& path, const DataTypeVector& output_dtypes,
-    const std::vector<PartialTensorShape>& output_shapes){
-  experimental::CacheMetadataRecord metadata;
-  metadata.set_creation_timestamp(EnvTime::NowMicros());
-  metadata.set_version(kWriterVersion);
-  for (const auto& output_dtype : output_dtypes) {
-    metadata.add_dtype(output_dtype);
-  }
-  for (const auto& output_shape : output_shapes){
-    TensorShapeProto* shape_proto = metadata.add_tensor_shape();
-    output_shape.AsProto(shape_proto);
-  }
-  metadata.set_num_writers(writer_count_);
+// -----------------------------------------------------------------------------
+// BoundedMemoryWriter
+// -----------------------------------------------------------------------------
 
-  string metadata_filename = io::JoinPath(target_dir_, kMetadataFilename);
-  TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(target_dir_));
-  std::string tmp_filename =
-      absl::StrCat(metadata_filename, "-tmp-", random::New64());
-  TF_RETURN_IF_ERROR(WriteBinaryProto(env, tmp_filename, metadata));
-  return env->RenameFile(tmp_filename, metadata_filename);
+BoundedMemoryWriter::BoundedMemoryWriter(const int writer_count, const uint64 memory_threshold) :
+        memory_threshold_(writer_count), writer_count_(memory_threshold) {
+  bytes_per_row_ = 0;
+  bytes_written_ = 0;
+  bytes_received_ = 0;
+  writers_finished_ = 0;
+  first_row_info_set_ = false;
+  available_row_capacity_ = 0;
+
+  #ifdef STATS_LOG
+  logger_ = absl::make_unique<StatsLogger>();
+  #endif
 }
 
-// -----------------------------------------------------------------------------
-// MultiThreadedAsyncWriter
-// -----------------------------------------------------------------------------
 
-MultiThreadedAsyncWriter::MultiThreadedAsyncWriter(const int writer_count) : writer_count_(writer_count) {}
-
-void MultiThreadedAsyncWriter::Initialize(Env *env, int64 file_index, const std::string &shard_directory,
-        uint64 checkpoint_id, const std::string &compression, int64 version,
-        const DataTypeVector &output_types, std::function<void (Status)> done) {
+Status BoundedMemoryWriter::Initialize(Env *env, const std::string &shard_directory,
+        const int compression, const DataTypeVector& output_types, int64 version) {
   thread_pool_ = absl::make_unique<thread::ThreadPool>(env, ThreadOptions(),
-           absl::StrCat("thread_pool_", file_index), writer_count_, false);
+        absl::StrCat("thread_pool_", 0), writer_count_, false);
 
   for (int i = 0; i < writer_count_; ++i) {
     thread_pool_->Schedule(
-            [this, env, shard_directory, checkpoint_id, compression, version,
-                    &output_types, done = std::move(done), i] {
+            [this, env, shard_directory, compression, output_types, version, i] {
                 // Note that `done` is not used since it causes a bug here
-                WriterThread(env, shard_directory, i, compression, version,
-                             output_types);
+                WriterThread(env, shard_directory, i, compression, output_types, version);
             }
     );
-
   }
 }
 
-void MultiThreadedAsyncWriter::Write(const std::vector<Tensor>& tensors) {
-  logger->WriteInvoked();
+Status BoundedMemoryWriter::Write(const std::vector<Tensor> &tensors) {
+  #ifdef STATS_LOG
+  logger_->WriteInvoked();
+  #endif
+
   if(!first_row_info_set_) {
     for(const Tensor& t : tensors) {
-      bytes_per_row_ += t.TotalBytes();
+      size_t bytes = t.TotalBytes();
+      bytes_per_row_ += bytes;
     }
+
+    FirstRowInfo(tensors);  // inheriting sub classes can extract needed information here
     first_row_info_set_ = true;
-  VLOG(0) << "****************** Max Queue size:  " << producer_threshold_ / bytes_per_row_;
+    available_row_capacity_ = memory_threshold_ / bytes_per_row_;
+    assert(memory_threshold_ > bytes_per_row_);  // has to hold, otherwise get negative av_row_capacity below.
   }
-  mutex_lock l(mu_);
-  logger->WriteSleep();
-  if(!ProducerSpaceAvailable()) {
-    VLOG(0) << "No producer space available, should go to sleep now...";
+
+  bytes_received_ += bytes_per_row_;
+  available_row_capacity_--;
+
+  InsertData(tensors);
+
+  // if insert data returns true --> don't have to check if pipeline full
+  if(available_row_capacity_ >= 1) {
+    #ifdef STATS_LOG
+    logger_->WriteReturn();
+    #endif
   }
-  mu_.Await(Condition(this,
-            &MultiThreadedAsyncWriter::ProducerSpaceAvailable));
-  logger->WriteAwake();
-  snapshot_util::ElementOrEOF element;
-  element.value = tensors;
-  deque_.push_back(std::move(element));
-  logger->WriteReturn();
+
+
+  // check if pipeline full upon receiving next batch -> go to sleep:
+  mutex_lock lb(mu_by_);
+  if(bytes_received_ - bytes_written_ > memory_threshold_ - bytes_per_row_) {
+    #ifdef STATS_LOG
+    logger_->WriteSleep();
+    #endif
+
+    mu_by_.Await(Condition(this,
+                &BoundedMemoryWriter::ProducerSpaceAvailable));
+
+    #ifdef STATS_LOG
+    logger_->WriteAwake();
+    #endif
+  }
+
+  // update row capacity available
+  uint64 bytes_in_pipeline = bytes_received_ - bytes_written_;
+  available_row_capacity_ = (memory_threshold_ - bytes_in_pipeline)  / bytes_per_row_;
+
+  #ifdef STATS_LOG
+  logger_->WriteReturn();
+  #endif
 }
 
-void MultiThreadedAsyncWriter::SignalEOF() {
-  mutex_lock l(mu_);
-  
-  for (int i = 0; i < writer_count_; ++i) {
-    snapshot_util::ElementOrEOF be;
-    be.end_of_sequence = true;
-    deque_.push_back(std::move(be));
-  }
-
-  while(!AllWritersFinished()) {
-    VLOG(0) << "[Iterator] Awaiting writers to finish... " << writer_finished_;
-    finish_cv_.wait(l);
-    VLOG(0) << "[Iterator] one writer finished";
-  }
-  VLOG(0) << "[Iterator] exiting SignalEOF...";
-
+bool BoundedMemoryWriter::ProducerSpaceAvailable() const {
+  return bytes_received_ - bytes_written_ <= memory_threshold_ - bytes_per_row_;
 }
 
-void MultiThreadedAsyncWriter::Consume(snapshot_util::ElementOrEOF* be) {
+std::unique_ptr<ElementOrEOF> BoundedMemoryWriter::Consume(int writer_id) {
   mutex_lock l(mu_);
-  mu_.Await(tensorflow::Condition(this, 
-      &MultiThreadedAsyncWriter::ElementAvailable));
-  *be = deque_.front();
+  mu_.Await(tensorflow::Condition(this,
+            &BoundedMemoryWriter::ElementAvailable));
+  std::unique_ptr<ElementOrEOF> temp = std::move(deque_.front());
   deque_.pop_front();
+  return std::move(temp);
 }
 
-bool MultiThreadedAsyncWriter::ProducerSpaceAvailable() {
-   return (deque_.size() * bytes_per_row_) < producer_threshold_;
+bool BoundedMemoryWriter::ElementAvailable() const {
+  return !deque_.empty();
 }
 
-bool MultiThreadedAsyncWriter::ElementAvailable() { return !deque_.empty(); }
+void BoundedMemoryWriter::SignalEOF() {
+  mutex_lock l(mu_);
 
-Status MultiThreadedAsyncWriter::WriterThread(Env* env, 
-                                 const std::string& shard_directory,
-                                 uint64 writer_id,
-                                 const std::string& compression, int64 version,
-                                 DataTypeVector output_types) {
+  for (int i = 0; i < writer_count_; ++i) {
+    std::unique_ptr<ElementOrEOF> eof_token = CreateEOFToken();
+    deque_.push_back(std::move(eof_token));
+  }
 
-  // TODO (damien-aymon) Push this to the specific writers, so that we can make
-  // the async writer more general (e.g. different file system, gs://, etc...)
-  TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(shard_directory));
+  // wait for all writers to finish.
+  mu_.Await(tensorflow::Condition(this,
+            &BoundedMemoryWriter::AllWritersFinished));
+
+  // print stats summary of all writers
+  #ifdef STATS_LOG
+  for(int i = 0; i < writer_count_; i++) {
+    logger_->PrintStatsSummary(i);
+  }
+  #endif
+}
+
+bool BoundedMemoryWriter::AllWritersFinished() const {
+  return writers_finished_ == writer_count_;
+}
+
+
+// -----------------------------------------------------------------------------
+// TFRecord Writer
+// -----------------------------------------------------------------------------
+
+TFRecordWriter::TFRecordWriter(int writer_count, uint64 memory_threshold) :
+          BoundedMemoryWriter(writer_count, memory_threshold){}
+
+void TFRecordWriter::InsertData(const std::vector<Tensor> &tensors) {
+  mutex_lock l(mu_);
+  std::unique_ptr<RowOrEOF> r_dat = absl::make_unique<RowOrEOF>();
+  r_dat->eof = false;
+  r_dat->data = tensors;
+  deque_.push_back(std::move(r_dat));
+}
+
+void TFRecordWriter::FirstRowInfo(const std::vector<Tensor> &tensors) {}  // leave empty
+
+std::unique_ptr<ElementOrEOF> TFRecordWriter::CreateEOFToken() {
+  std::unique_ptr<RowOrEOF> r_eof = absl::make_unique<RowOrEOF>();
+  r_eof->eof = true;
+  return std::move(r_eof);
+}
+
+void TFRecordWriter::WriterThread(Env *env, const std::string &shard_directory,
+                  int writer_id, int compression, const DataTypeVector& output_types, int64 version) {
+
+  env->RecursivelyCreateDir(shard_directory);
 
   std::unique_ptr<snapshot_util::Writer> writer;
 
-  TF_RETURN_IF_ERROR(snapshot_util::Writer::Create(
+  snapshot_util::Writer::Create(
           env, GetFileName(shard_directory, writer_id),
-          compression, version, std::move(output_types), &writer));
+          "", version, output_types, &writer);
 
   while (true) {
-    snapshot_util::ElementOrEOF be;
-    Consume(&be);
+    // parent_be now has ownership over the pointer. When out of scope destructed
+    std::unique_ptr<ElementOrEOF> parent_be = Consume(writer_id);
+    auto* r_be = dynamic_cast<RowOrEOF*>(parent_be.get());
 
-    if (be.end_of_sequence) {
+    if (r_be->eof) {
       writer->Close();
       break;
     }
 
-
-
-
-    logger->BeginWriteTensors(writer_id);
-
+    BeforeWrite(writer_id);
     // TODO for now: measure time it takes to serialize tensors to string:
-    for(Tensor& t : be.value) {
+    for(Tensor& t : r_be->data) {
       TensorProto proto;
       t.AsProtoTensorContent(& proto);
       auto proto_buffer = new std::string();
       proto.SerializeToString(proto_buffer);
       delete proto_buffer;
     }
+    FinishedConversion(writer_id);
+    writer->WriteTensors(r_be->data);
+    AfterWrite(writer_id);
 
-    logger->FinishConversion(writer_id);
-
-    TF_RETURN_IF_ERROR(writer->WriteTensors(be.value));
-    logger->FinishWriteTensors(writer_id);
+    mu_by_.lock();
+    bytes_written_ += bytes_per_row_;
+    mu_by_.unlock();
   }
-  logger->PrintStatsSummary(writer_id);
-  mutex_lock l(mu_);
-  writer_finished_++;
-  VLOG(0) << "Writer " << writer_id << " finished. Num_writers_finished = " << writer_finished_;
-  finish_cv_.notify_all();
-  return Status::OK();
+  WriterReturn(writer_id);
 }
+
 
 // -----------------------------------------------------------------------------
 // Reader
@@ -280,9 +306,7 @@ MultiThreadedAsyncReader::MultiThreadedAsyncReader(Env *env, const std::string &
 }
 
 Status MultiThreadedAsyncReader::Initialize() {
-  // Don't use metadata file at the moment...
-  // TF_RETURN_IF_ERROR(ReadAndParseMetadataFile());
-  
+
   // Find all the files of this dataset
   std::vector<string> files;
   TF_CHECK_OK(env_->GetMatchingPaths(io::JoinPath(target_dir_, "*\\.easl"), 
@@ -418,29 +442,6 @@ Status MultiThreadedAsyncReader::Read(std::vector<Tensor>* &read_tensors, bool* 
     return Status::OK();
   }
   return Status::OK();*/
-}
-
-
-Status MultiThreadedAsyncReader::ReadAndParseMetadataFile() {
-  string metadata_filename = io::JoinPath(target_dir_, kMetadataFilename);
-  TF_RETURN_IF_ERROR(env_->FileExists(metadata_filename));
-
-  experimental::CacheMetadataRecord metadata;
-  TF_RETURN_IF_ERROR(ReadBinaryProto(env_, metadata_filename, &metadata));
-
-  cache_file_version_ = metadata.version();
-
-  output_dtypes_ = DataTypeVector();
-  for(auto dtype : metadata.dtype()){
-    output_dtypes_.push_back(static_cast<DataType>(dtype));
-  }
-
-  output_shapes_ = std::vector<PartialTensorShape>();
-  for(auto &shape : metadata.tensor_shape()){
-    output_shapes_.emplace_back(PartialTensorShape(shape));
-  }
-
-  return Status::OK();
 }
 
 using namespace std::chrono;
