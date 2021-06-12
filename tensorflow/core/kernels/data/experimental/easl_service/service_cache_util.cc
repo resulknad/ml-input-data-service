@@ -2,7 +2,6 @@
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/protobuf/service_cache.pb.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/core/kernels/data/experimental/easl_service/arrow/arrow_async_writer.h"
 #include "tensorflow/core/kernels/data/experimental/easl_service/arrow/arrow_async_reader.h"
 #include "tensorflow/core/kernels/data/experimental/easl_service/arrow/arrow_round_robin.h"
 
