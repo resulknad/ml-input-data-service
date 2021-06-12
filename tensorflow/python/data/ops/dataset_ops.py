@@ -209,16 +209,17 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       variant_tensor: A DT_VARIANT tensor that represents the dataset.
     """
     #Overloading the Constructor base of dataset source for element seed
-    global_seed,op_level_seed = random_seed.get_seed(None)
-    variant_tensor_seed = ged_ops.random_dataset(
-         global_seed, op_level_seed, **self._flat_structure)
-    variant_tensor_seed_batched = gen_dataset_ops.batch_dataset_v2(
-        variant_tensor_seed,
-        batch_size=2,
-        **self._flat_structure)
-    # For zipping this variant tensor with the input_dataset that is also a variant tensor
-    associated_tensor = zip(variant_tensor,variant_tensor_seed_batched)
-    self._variant_tensor_attr = associated_tensor
+    # global_seed,op_level_seed = random_seed.get_seed(None)
+    # variant_tensor_seed = ged_ops.random_dataset(
+    #      global_seed, op_level_seed, **self._flat_structure)
+    # variant_tensor_seed_batched = gen_dataset_ops.batch_dataset_v2(
+    #     variant_tensor_seed,
+    #     batch_size=2,
+    #     **self._flat_structure)
+    # # For zipping this variant tensor with the input_dataset that is also a variant tensor
+    # associated_tensor = zip(variant_tensor,variant_tensor_seed_batched)
+    # self._variant_tensor_attr = associated_tensor
+    self._variant_tensor_attr = variant_tensor
     weak_self = weakref.proxy(self)
     self._variant_tracker = self._track_trackable(
         _VariantTracker(
@@ -706,7 +707,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     return TensorDataset(tensors)
 
   @staticmethod
-  def deterministic_dataset(self):
+  def deterministic_dataset():
     """Creates a `Deterministic Dataset` associating seeds with input elements in the datasets.
 
     
@@ -716,7 +717,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     Returns:
       Dataset: A `Dataset`.
     """
-    return DeterministicDataset(self)
+    return DeterministicDataset()
 
   @staticmethod
   def from_tensor_slices(tensors):
@@ -4749,7 +4750,7 @@ class DeterministicDataset(UnaryDataset):
                input_dataset):
     """See `Dataset.interleave()` for details."""
     self._input_dataset = input_dataset
-    global_seed,op_level_seed = random_seed.get_seed()
+    global_seed,op_level_seed = random_seed.get_seed(None)
     variant_tensor_seed = ged_ops.random_dataset(
          global_seed, op_level_seed, **self._flat_structure)
     variant_tensor_seed_batched = gen_dataset_ops.batch_dataset_v2(
