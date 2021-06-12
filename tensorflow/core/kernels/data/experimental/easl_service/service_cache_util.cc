@@ -38,10 +38,10 @@ Status Writer::Initialize(){
   if(writer_version_ == 0) { // 0 -> arrow
 //    async_writer_ = std::make_unique<arrow_async_writer::ArrowAsyncWriter>(writer_count_);
   } else if(writer_version_ == 7) {
-    async_writer_ = absl::make_unique<arrow_round_robin::ArrowRoundRobinWriter>(writer_count_, MEMORY_THRESH);
+    async_writer_ = absl::make_unique<arrow_round_robin::ArrowRoundRobinWriter>(writer_count_, MEMORY_THRESHOLD);
 //    VLOG(0) << "SCU -- created ARR Writer";
   } else {
-    async_writer_ = absl::make_unique<TFRecordWriter>(writer_count_, MEMORY_THRESH);
+    async_writer_ = absl::make_unique<TFRecordWriter>(writer_count_, MEMORY_THRESHOLD);
   }
 //  async_writer_->logger = std::make_unique<StatsLogger>();
   async_writer_->Initialize(env_, target_dir_, compression_, output_dtypes_, writer_version_);
