@@ -15,7 +15,7 @@ namespace service_cache_util {
 #define STATS_LOG  // comment this if no stats should be printed as log output
 #define DEBUGGING // comment this if debugging statements should be removed
 
-uint64 MEMORY_THRESHOLD = 2e9;
+uint64 MEMORY_THRESH = 2e9;
 
 
 // Logging utility class to get info where we spend how much time.
