@@ -71,6 +71,7 @@ from tensorflow.python.ops import gen_io_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import string_ops
+from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.training.tracking import base as tracking_base
 from tensorflow.python.training.tracking import tracking
@@ -705,19 +706,6 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       Dataset: A `Dataset`.
     """
     return TensorDataset(tensors)
-
-  @staticmethod
-  def deterministic_dataset():
-    """Creates a `Deterministic Dataset` associating seeds with input elements in the datasets.
-
-    
-    Args:
-      input datasets
-
-    Returns:
-      Dataset: A `Dataset`.
-    """
-    return DeterministicDataset()
 
   @staticmethod
   def from_tensor_slices(tensors):
@@ -1628,6 +1616,19 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
         in an error during a session.run call.)
     """
     return ShardDataset(self, num_shards, index)
+
+  def deterministic_dataset(self):
+    """Creates a `Deterministic Dataset` associating seeds with input elements in the datasets.
+
+    
+    Args:
+      input datasets
+
+    Returns:
+      Dataset: A `Dataset`.
+    """
+    return DeterministicDataset(self)
+
 
   def batch(self,
             batch_size,
@@ -4748,16 +4749,32 @@ class DeterministicDataset(UnaryDataset):
 
   def __init__(self,
                input_dataset):
-    """See `Dataset.interleave()` for details."""
+   
     self._input_dataset = input_dataset
     global_seed,op_level_seed = random_seed.get_seed(None)
+    # spec needed for the random seeds to be generated
+    seed_spec = tensor_spec.TensorSpec([],dtypes.int64)
+    seed_dict = {
+        "output_shapes": structure.get_flat_tensor_shapes(seed_spec),
+        "output_types": structure.get_flat_tensor_types(seed_spec),
+        }
+
     variant_tensor_seed = ged_ops.random_dataset(
-         global_seed, op_level_seed, **self._flat_structure)
+         global_seed, op_level_seed, **seed_dict)
+    drop_remainder_defined = ops.convert_to_tensor(
+        True, dtype=dtypes.bool, name="drop_remainder")
     variant_tensor_seed_batched = gen_dataset_ops.batch_dataset_v2(
         variant_tensor_seed,
         batch_size=2,
-        **self._flat_structure)
+        drop_remainder=drop_remainder_defined,
+        **seed_dict)
+    #batch_size = tensor_util.constant_value(2)
+    structure_batched = nest.map_structure(
+          lambda component_spec: component_spec._batch(2),
+          seed_spec)
     variant_tensor = zip(self._input_dataset._variant_tensor, variant_tensor_seed_batched)
+    logging_ops.print_v2 (variant_tensor)
+    #self._structure = 
     super(DeterministicDataset, self).__init__(input_dataset,
                                                     variant_tensor)                                                 
 
