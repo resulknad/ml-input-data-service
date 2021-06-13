@@ -39,6 +39,8 @@ public:
     void WriterThread(Env *env, const std::string &shard_directory,
                       int writer_id, const std::string& compression, const DataTypeVector& output_types, int64 version) override;
 
+    void Cleanup() override;
+
     std::shared_ptr<arrow::RecordBatch> RecordBatchFromTensorData(const std::string& filename, BatchOrEOF &dat);
 
 private:

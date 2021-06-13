@@ -70,6 +70,12 @@ std::unique_ptr<ElementOrEOF> ArrowRoundRobinWriter::CreateEOFToken() {
   return std::move(r_eof);
 }
 
+// called before signalling EOF. Push last batch being filled up.
+void ArrowRoundRobinWriter::Cleanup() {
+      mutex_lock l(mu_);
+      deque_.push_back(std::move(current_batch_));
+}
+
 /***********************
  * Arrow Writer *
  ***********************/
