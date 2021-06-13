@@ -76,6 +76,10 @@ BoundedMemoryWriter::BoundedMemoryWriter(const int writer_count, const uint64 me
   first_row_info_set_ = false;
   available_row_capacity_ = 0;
 
+  #ifdef DEBUGGING
+  VLOG(0) << "[BoundedMemoryWriter] Constructed BoundedMemoryWriter...";
+  #endif
+
   #ifdef STATS_LOG
   logger_ = absl::make_unique<StatsLogger>();
   #endif
@@ -86,6 +90,10 @@ Status BoundedMemoryWriter::Initialize(Env *env, const std::string &shard_direct
         const int compression, const DataTypeVector& output_types, int64 version) {
   thread_pool_ = absl::make_unique<thread::ThreadPool>(env, ThreadOptions(),
         absl::StrCat("thread_pool_", 0), writer_count_, false);
+
+  #ifdef DEBUGGING
+  VLOG(0) << "[BoundedMemoryWriter] Initialized BoundedMemoryWriter, Starting writer threads...";
+  #endif
 
   for (int i = 0; i < writer_count_; ++i) {
     thread_pool_->Schedule(
@@ -111,6 +119,12 @@ Status BoundedMemoryWriter::Write(const std::vector<Tensor> &tensors) {
     FirstRowInfo(tensors);  // inheriting sub classes can extract needed information here
     first_row_info_set_ = true;
     available_row_capacity_ = memory_threshold_ / bytes_per_row_;
+
+    #ifdef DEBUGGING
+    VLOG(0) << "[BoundedMemoryWriter] Extracted first row info. mem_thresh: " << memory_threshold_ << "  bpr: " << bytes_per_row_ << ""
+                     " available row cap: " << available_row_capacity_;
+    #endif
+
     assert(memory_threshold_ > bytes_per_row_);  // has to hold, otherwise get negative av_row_capacity below.
   }
 
@@ -130,6 +144,10 @@ Status BoundedMemoryWriter::Write(const std::vector<Tensor> &tensors) {
   // check if pipeline full upon receiving next batch -> go to sleep:
   mutex_lock lb(mu_by_);
   if(bytes_received_ - bytes_written_ > memory_threshold_ - bytes_per_row_) {
+    #ifdef DEBUGGING
+    VLOG(0) << "[BoundedMemoryWriter] Write Pipeline Full, Going to Sleep...";
+    #endif
+
     #ifdef STATS_LOG
     logger_->WriteSleep();
     #endif
@@ -139,6 +157,10 @@ Status BoundedMemoryWriter::Write(const std::vector<Tensor> &tensors) {
 
     #ifdef STATS_LOG
     logger_->WriteAwake();
+    #endif
+
+    #ifdef DEBUGGING
+    VLOG(0) << "[BoundedMemoryWriter] write wake up, new capacity in Pipeline...";
     #endif
   }
 
@@ -157,8 +179,22 @@ bool BoundedMemoryWriter::ProducerSpaceAvailable() const {
 
 std::unique_ptr<ElementOrEOF> BoundedMemoryWriter::Consume(int writer_id) {
   mutex_lock l(mu_);
+
+  #ifdef DEBUGGING
+  auto before = std::chrono::high_resolution_clock::now();
+  #endif
+
   mu_.Await(tensorflow::Condition(this,
             &BoundedMemoryWriter::ElementAvailable));
+
+  #ifdef DEBUGGING
+  auto after = std::chrono::high_resolution_clock::now();
+  auto since_last = duration_cast<std::chrono::nanoseconds>(after - before).count();
+  if(since_last > 1000000000) {
+    VLOG(0) << "[Thread " << writer_id << "] was sleeping for " << since_last / 1000000 << "ms to consume queue element";
+  }
+  #endif
+
   std::unique_ptr<ElementOrEOF> temp = std::move(deque_.front());
   deque_.pop_front();
   return std::move(temp);
@@ -169,6 +205,10 @@ bool BoundedMemoryWriter::ElementAvailable() const {
 }
 
 void BoundedMemoryWriter::SignalEOF() {
+  #ifdef DEBUGGING
+  VLOG(0) << "[BoundedMemoryWriter] signalling eof";
+  #endif
+
   mutex_lock l(mu_);
 
   for (int i = 0; i < writer_count_; ++i) {
