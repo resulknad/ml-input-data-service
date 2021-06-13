@@ -65,9 +65,11 @@ class BoundedMemoryWriter {
 public:
     BoundedMemoryWriter(int writer_count, uint64 memory_threshold);
 
-    // Initializes the writer and spawns writer_count_ writer threads.
-    Status Initialize(Env* env, const std::string& shard_directory, int compression,
-            const DataTypeVector& output_types, int64 version);
+  void Initialize(Env* env, int64 file_index,
+                  const std::string& shard_directory, uint64 checkpoint_id,
+                  const std::string& compression, int64 version,
+                  const DataTypeVector& output_types,
+                  std::function<void(Status)> done);
 
     // Provides stats telling how big the in-flow throughput is, as well as
     Status Write(const std::vector<Tensor>& tensors) TF_LOCKS_EXCLUDED(mu_, mu_by_);
@@ -90,7 +92,7 @@ protected:
     // function where the main conversion happens. It must use the "BeforeWrite" and "AfterWrite" functions
     // to support logging.
     virtual void WriterThread(Env *env, const std::string &shard_directory,
-                      int writer_id, int compression, const DataTypeVector& output_types, int64 version) = 0;  // Guarded by mu_by_
+                      int writer_id, const std::string& compression, const DataTypeVector& output_types, int64 version) = 0;  // Guarded by mu_by_
 
     // utility function that can be implemented by class inheriting from this to support stats logging.
     void BeforeWrite(int thread_id) {
@@ -178,7 +180,7 @@ public:
     std::unique_ptr<ElementOrEOF> CreateEOFToken() override;
 
     void WriterThread(Env *env, const std::string &shard_directory,
-                      int writer_id, int compression, const DataTypeVector& output_types, int64 version) override;
+                      int writer_id, const std::string& compression, const DataTypeVector& output_types, int64 version) override;
 
 };
 

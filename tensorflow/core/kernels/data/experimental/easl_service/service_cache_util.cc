@@ -24,6 +24,7 @@ std::string GetFileName(const std::string& shard_directory,
 
 constexpr const char* const kMetadataFilename = "service_cache.metadata";
 const int64 kWriterVersion = 2; // 0 --> ArrowWriter; 2 --> TFRecordWriter
+const char kCompression[] = ""; // can be SNAPPY, GZIP, ZLIB, "" for none.
 
 Writer::Writer(Env* env,
     const std::string& target_dir, const DataTypeVector& output_dtypes,
@@ -50,10 +51,20 @@ Status Writer::Initialize(){
     #ifdef DEBUGGING
     VLOG(0) << "[Writer] Created TFRecordWriter.";
     #endif
-
   }
-  async_writer_->Initialize(env_, target_dir_, compression_, output_dtypes_, writer_version_);
-  VLOG(0) << "SCU -- Initialized Writer";
+  async_writer_->Initialize(env_, /*file_index*/ 0, target_dir_, /*checkpoint_id*/ 0,
+                            kCompression, writer_version_, output_dtypes_,
+          /*done*/ [this](Status s){
+              // TODO (damien-aymon) check and propagate errors here!
+              if (!s.ok()) {
+                VLOG(0) << "EASL - writer error: "<< s.ToString();
+              }
+              //LOG(ERROR) << "MultiThreadedAsyncWriter in snapshot writer failed: " << s;
+              //mutex_lock l(writer_status_mu_);
+              //writer_status_ = s;
+              return;
+          });
+
   return Status::OK();
 }
 
@@ -92,19 +103,12 @@ BoundedMemoryWriter::BoundedMemoryWriter(const int writer_count, const uint64 me
 }
 
 
-Status BoundedMemoryWriter::Initialize(Env *env, const std::string &shard_directory,
-        const int compression, const DataTypeVector& output_types, int64 version) {
 
-  #ifdef DEBUGGING
-  VLOG(0) << "[BoundedMemoryWriter] Initializing BoundedMemoryWriter, creating threadpool...";
-  #endif
-
+void BoundedMemoryWriter::Initialize(Env *env, int64 file_index, const std::string &shard_directory,
+        uint64 checkpoint_id, const std::string &compression, int64 version,
+        const DataTypeVector &output_types, std::function<void (Status)> done) {
   thread_pool_ = absl::make_unique<thread::ThreadPool>(env, ThreadOptions(),
-           "threadpool_0", writer_count_, false);
-
-  #ifdef DEBUGGING
-  VLOG(0) << "[BoundedMemoryWriter] Starting writer threads...";
-  #endif
+           absl::StrCat("thread_pool_", file_index), writer_count_, false);
 
   for (int i = 0; i < writer_count_; ++i) {
     thread_pool_->Schedule(
@@ -117,7 +121,6 @@ Status BoundedMemoryWriter::Initialize(Env *env, const std::string &shard_direct
   #ifdef DEBUGGING
   VLOG(0) << "[BoundedMemoryWriter] Finished Initialization";
   #endif
-  return Status::OK();
 }
 
 Status BoundedMemoryWriter::Write(const std::vector<Tensor> &tensors) {
@@ -274,7 +277,7 @@ std::unique_ptr<ElementOrEOF> TFRecordWriter::CreateEOFToken() {
 }
 
 void TFRecordWriter::WriterThread(Env *env, const std::string &shard_directory,
-                  int writer_id, int compression, const DataTypeVector& output_types, int64 version) {
+                  int writer_id, const std::string& compression, const DataTypeVector& output_types, int64 version) {
 
   #ifdef DEBUGGING
   VLOG(0) << "[Thread " << writer_id << "] started running.";

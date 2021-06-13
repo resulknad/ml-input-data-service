@@ -154,7 +154,7 @@ std::shared_ptr<arrow::RecordBatch> ArrowRoundRobinWriter::RecordBatchFromTensor
 }
 
 void ArrowRoundRobinWriter::WriterThread(Env *env, const std::string &shard_directory, int writer_id,
-        int compression, const DataTypeVector &output_types, int64 version) {
+                                         const std::string& compression, const DataTypeVector &output_types, int64 version) {
 
   metadata_->RegisterWorker();
   const string filename = GetFileName(shard_directory, writer_id);
