@@ -39,11 +39,19 @@ Status Writer::Initialize(){
 //    async_writer_ = std::make_unique<arrow_async_writer::ArrowAsyncWriter>(writer_count_);
   } else if(writer_version_ == 7) {
     async_writer_ = absl::make_unique<arrow_round_robin::ArrowRoundRobinWriter>(writer_count_, MEMORY_THRESHOLD_);
-//    VLOG(0) << "SCU -- created ARR Writer";
+
+    #ifdef DEBUGGING
+    VLOG(0) << "[Writer] Created Round Robin Writer.";
+    #endif
+
   } else {
     async_writer_ = absl::make_unique<TFRecordWriter>(writer_count_, MEMORY_THRESHOLD_);
+
+    #ifdef DEBUGGING
+    VLOG(0) << "[Writer] Created TFRecordWriter.";
+    #endif
+
   }
-//  async_writer_->logger = std::make_unique<StatsLogger>();
   async_writer_->Initialize(env_, target_dir_, compression_, output_dtypes_, writer_version_);
   VLOG(0) << "SCU -- Initialized Writer";
   return Status::OK();
@@ -51,7 +59,6 @@ Status Writer::Initialize(){
 
 Status Writer::Write(const std::vector<Tensor>& tensors){
   async_writer_->Write(tensors);
-  // TODO (damien-aymon) check for errors in the async writer
   return Status::OK();
 }
 
@@ -59,7 +66,6 @@ Status Writer::Close(){
   // Will call the destructor and block until done writing.
   async_writer_->SignalEOF();
   async_writer_.reset();
-  // TODO(damien-aymon) check status in the async writer.
   return Status::OK();
 }
 
@@ -259,7 +265,15 @@ std::unique_ptr<ElementOrEOF> TFRecordWriter::CreateEOFToken() {
 void TFRecordWriter::WriterThread(Env *env, const std::string &shard_directory,
                   int writer_id, int compression, const DataTypeVector& output_types, int64 version) {
 
+  #ifdef DEBUGGING
+  VLOG(0) << "[Thread " << writer_id << "] started running.";
+  #endif
+
   env->RecursivelyCreateDir(shard_directory);
+
+  #ifdef DEBUGGING
+  VLOG(0) << "[Thread " << writer_id << "] created shard directory.";
+  #endif
 
   std::unique_ptr<snapshot_util::Writer> writer;
 
@@ -267,12 +281,19 @@ void TFRecordWriter::WriterThread(Env *env, const std::string &shard_directory,
           env, GetFileName(shard_directory, writer_id),
           "", version, output_types, &writer);
 
+  #ifdef DEBUGGING
+  VLOG(0) << "[Thread " << writer_id << "] created TFRecord writer.";
+  #endif
+
   while (true) {
     // parent_be now has ownership over the pointer. When out of scope destructed
     std::unique_ptr<ElementOrEOF> parent_be = Consume(writer_id);
     auto* r_be = dynamic_cast<RowOrEOF*>(parent_be.get());
 
     if (r_be->eof) {
+      #ifdef DEBUGGING
+      VLOG(0) << "[Thread " << writer_id << "] closing TFRecord writer...";
+      #endif
       writer->Close();
       break;
     }
