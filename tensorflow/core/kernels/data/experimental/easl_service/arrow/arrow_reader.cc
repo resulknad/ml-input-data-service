@@ -32,28 +32,22 @@ Status ArrowReader::Initialize(Env *env, const std::string &filename, const stri
   this->filename_ = filename;
   this->compression_type_ = compression_type;
   this->dtypes_ = dtypes;
-  this->current_batch_idx_ = -1; // gets increased upon every invocation of read_tensors
+  this->current_batch_idx_ = 0; // gets increased upon every invocation of read_tensors
   this->current_row_idx_ = 0;
 
 
   // open file and read table
-  std::shared_ptr<arrow::io::MemoryMappedFile> file;
-  ARROW_ASSIGN_CHECKED(file, arrow::io::MemoryMappedFile::Open(filename_, arrow::io::FileMode::READ))
-  std::shared_ptr<arrow::ipc::feather::Reader> reader;
-  ARROW_ASSIGN_CHECKED(reader, arrow::ipc::feather::Reader::Open(file));
-  std::shared_ptr<::arrow::Table> table;
-  CHECK_ARROW(reader->Read(&table));
-  total_rows_ = table->num_rows();
-  // read individual record batches and append to class internal datastructure (size of record batches
-  // given by configuration of writer)
-  arrow::TableBatchReader tr(*table);
-  std::shared_ptr<arrow::RecordBatch> batch;
-  CHECK_ARROW(tr.ReadNext(&batch));
-  while(batch != nullptr) {
-    record_batches_.push_back(batch);
-    CHECK_ARROW(tr.ReadNext(&batch));
-  }
+  ARROW_ASSIGN_CHECKED(file_, arrow::io::MemoryMappedFile::Open(filename_, arrow::io::FileMode::READ))
 
+  // read options
+  arrow::ipc::IpcReadOptions ro = {
+          10,
+          arrow::default_memory_pool(),
+          col_selection_,
+          false,  // already multithreading...
+  };
+  // RecordBatchFileReader
+  rfr_ = arrow::ipc::RecordBatchFileReader::Open(file_, ro).ValueOrDie();
   return Status::OK();
 }
 
@@ -128,9 +122,11 @@ Status ArrowReader::ReadTensors(std::vector<Tensor> *read_tensors) {
 
 
 Status ArrowReader::NextBatch() {
-  if (++current_batch_idx_ < record_batches_.size()) {
-    current_batch_ = record_batches_[current_batch_idx_];
+  if (current_batch_idx_ < rfr_->num_record_batches()) {
+    current_batch_ = std::move(rfr_->ReadRecordBatch(current_batch_idx_).ValueOrDie());
+    current_batch_idx_++;
   } else  {
+    file_->Close();  // close mmapped file
     return Status(error::OUT_OF_RANGE, "finished reading all record batches");
   }
   return Status::OK();

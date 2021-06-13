@@ -54,18 +54,18 @@ Status Writer::Initialize(){
   }
 
   VLOG(0) << "async_writer nullptr? : " << (async_writer_ == nullptr);
-//  async_writer_->Initialize(env_, /*file_index*/ 0, target_dir_, /*checkpoint_id*/ 0,
-//                            kCompression, writer_version_, output_dtypes_,
-//          /*done*/ [this](Status s){
-//              // TODO (damien-aymon) check and propagate errors here!
-//              if (!s.ok()) {
-//                VLOG(0) << "EASL - writer error: "<< s.ToString();
-//              }
-//              //LOG(ERROR) << "MultiThreadedAsyncWriter in snapshot writer failed: " << s;
-//              //mutex_lock l(writer_status_mu_);
-//              //writer_status_ = s;
-//              return;
-//          });
+  async_writer_->Initialize(env_, /*file_index*/ 0, target_dir_, /*checkpoint_id*/ 0,
+                            kCompression, writer_version_, output_dtypes_,
+          /*done*/ [this](Status s){
+              // TODO (damien-aymon) check and propagate errors here!
+              if (!s.ok()) {
+                VLOG(0) << "EASL - writer error: "<< s.ToString();
+              }
+              //LOG(ERROR) << "MultiThreadedAsyncWriter in snapshot writer failed: " << s;
+              //mutex_lock l(writer_status_mu_);
+              //writer_status_ = s;
+              return;
+          });
 
   return Status::OK();
 }
@@ -87,7 +87,7 @@ Status Writer::Close(){
 // -----------------------------------------------------------------------------
 
 BoundedMemoryWriter::BoundedMemoryWriter(const int writer_count, const uint64 memory_threshold) :
-        memory_threshold_(writer_count), writer_count_(memory_threshold) {
+        memory_threshold_(memory_threshold), writer_count_(writer_count) {
   bytes_per_row_ = 0;
   bytes_written_ = 0;
   bytes_received_ = 0;

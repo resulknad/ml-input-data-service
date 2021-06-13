@@ -56,7 +56,9 @@ private:
     int64_t current_row_idx_;
 
     // used for column selection. hardcoded at the moment.
-    std::vector<int> col_selection_ {5};  // only take one column for now
+    std::vector<int> col_selection_ {5};  // only take one column for now. If empty return all.
+    std::shared_ptr<arrow::ipc::RecordBatchFileReader> rfr_;
+    std::shared_ptr<arrow::io::MemoryMappedFile> file_;
 };
 
 } // namespace easl
