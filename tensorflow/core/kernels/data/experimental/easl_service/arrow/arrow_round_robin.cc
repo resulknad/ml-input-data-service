@@ -178,8 +178,10 @@ void ArrowRoundRobinWriter::WriterThread(Env *env, const std::string &shard_dire
     #endif
 
     if (r_be->eof) {
-      rbw->Close();
-      file->Close();
+      if(rbw != nullptr) {
+        rbw->Close();
+        file->Close();
+      }
       break;
     }
 
