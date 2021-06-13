@@ -236,6 +236,8 @@ void BoundedMemoryWriter::SignalEOF() {
   VLOG(0) << "[BoundedMemoryWriter] signalling eof";
   #endif
 
+  Cleanup();  // Letting subclasses clean up their data structures before destruction.
+
   mutex_lock l(mu_);
 
   for (int i = 0; i < writer_count_; ++i) {
