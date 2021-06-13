@@ -4768,11 +4768,18 @@ class DeterministicDataset(UnaryDataset):
         batch_size=2,
         drop_remainder=drop_remainder_defined,
         **seed_dict)
+  #  logging_ops.print_v2 (variant_tensor_seed_batched)
     #batch_size = tensor_util.constant_value(2)
     structure_batched = nest.map_structure(
           lambda component_spec: component_spec._batch(2),
           seed_spec)
-    variant_tensor = zip(self._input_dataset._variant_tensor, variant_tensor_seed_batched)
+    #variant_tensor = zip(self._input_dataset._variant_tensor, variant_tensor_seed_batched)
+    self._structure = nest.pack_sequence_as(
+        ('a','b'),
+        [self._input_dataset.element_spec,structure_batched])
+    variant_tensor = gen_dataset_ops.zip_dataset(
+        [self._input_dataset._variant_tensor, variant_tensor_seed_batched],
+        **self._flat_structure)
     logging_ops.print_v2 (variant_tensor)
     #self._structure = 
     super(DeterministicDataset, self).__init__(input_dataset,
