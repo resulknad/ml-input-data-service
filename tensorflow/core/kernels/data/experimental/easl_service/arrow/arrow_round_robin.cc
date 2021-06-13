@@ -173,6 +173,10 @@ void ArrowRoundRobinWriter::WriterThread(Env *env, const std::string &shard_dire
     auto* r_be = dynamic_cast<BatchOrEOF*>(parent_be.get());
     size_t dat_size = r_be->byte_count;
 
+    #ifdef DEBUGGING
+    VLOG(0) << "[RR-Thread " << writer_id << "] consumed tensor-batch of " << dat_size << " bytes.";
+    #endif
+
     if (r_be->eof) {
       rbw_->Close();
       file_->Close();
