@@ -116,7 +116,7 @@ protected:
 
     // inheriting class must put this at the end of the WriterThread function.
     void WriterReturn(int thread_id) TF_LOCKS_EXCLUDED(mu_){
-      mutex l(mu_);
+      mutex_lock l(mu_);
       writers_finished_++;
       #ifdef DEBUGGING
       VLOG(0) << "Thread " << thread_id << " finished writing, returning.";
