@@ -189,7 +189,7 @@ std::unique_ptr<ElementOrEOF> BoundedMemoryWriter::Consume(int writer_id) {
 
   #ifdef DEBUGGING
   auto after = std::chrono::high_resolution_clock::now();
-  auto since_last = duration_cast<std::chrono::nanoseconds>(after - before).count();
+  auto since_last = std::chrono::duration_cast<std::chrono::nanoseconds>(after - before).count();
   if(since_last > 1000000000) {
     VLOG(0) << "[Thread " << writer_id << "] was sleeping for " << since_last / 1000000 << "ms to consume queue element";
   }
