@@ -4745,43 +4745,67 @@ class ParallelInterleaveDataset(UnaryDataset):
     return "Dataset.interleave()"
 
 class DeterministicDataset(UnaryDataset):
-  """A `Dataset` that associates seed with input dataset."""
+  """A `Dataset` that associates seed with any input dataset.
+     It does not take any arguments and is supposed to be called at the end
+     by the user in case they require a deterministic operation on the input dataset 
+     Example of use: 
+      inc_dataset = tf.data.Dataset.range(16).deterministic_dataset()
+
+     No Arguments expected.
+     Returns the dataset with elemnt seeds
+  """
 
   def __init__(self,
                input_dataset):
    
     self._input_dataset = input_dataset
+
+    # Using the global seed to generate the element level seed
+
     global_seed,op_level_seed = random_seed.get_seed(None)
-    # spec needed for the random seeds to be generated
+    # spec and dict needed for the random seeds to be generated, compulsory requirement!
     seed_spec = tensor_spec.TensorSpec([],dtypes.int64)
     seed_dict = {
         "output_shapes": structure.get_flat_tensor_shapes(seed_spec),
         "output_types": structure.get_flat_tensor_types(seed_spec),
         }
 
-    variant_tensor_seed = ged_ops.random_dataset(
+    element_seed = ged_ops.random_dataset(
          global_seed, op_level_seed, **seed_dict)
+
+    # Compulsory requirement for the batch_op to create a drop_remainder
     drop_remainder_defined = ops.convert_to_tensor(
         True, dtype=dtypes.bool, name="drop_remainder")
-    variant_tensor_seed_batched = gen_dataset_ops.batch_dataset_v2(
-        variant_tensor_seed,
+
+    # Seed requires two integers for the random generation algorithm to work    
+    element_seed_batched = gen_dataset_ops.batch_dataset_v2(
+        element_seed,
         batch_size=2,
         drop_remainder=drop_remainder_defined,
         **seed_dict)
   #  logging_ops.print_v2 (variant_tensor_seed_batched)
     #batch_size = tensor_util.constant_value(2)
+
+    # Find the structure after batching, essential for zipping the datasets
+
     structure_batched = nest.map_structure(
           lambda component_spec: component_spec._batch(2),
           seed_spec)
     #variant_tensor = zip(self._input_dataset._variant_tensor, variant_tensor_seed_batched)
+
+    # the pack operation needs to have a structure as a list of two datasets
+
     self._structure = nest.pack_sequence_as(
         ('a','b'),
         [self._input_dataset.element_spec,structure_batched])
+
+    # flat structure internally calls the element|_spec property
+
     variant_tensor = gen_dataset_ops.zip_dataset(
-        [self._input_dataset._variant_tensor, variant_tensor_seed_batched],
+        [self._input_dataset._variant_tensor, element_seed_batched],
         **self._flat_structure)
-    logging_ops.print_v2 (variant_tensor)
-    #self._structure = 
+    #logging_ops.print_v2 (variant_tensor)
+
     super(DeterministicDataset, self).__init__(input_dataset,
                                                     variant_tensor)                                                 
 
