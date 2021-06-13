@@ -30,7 +30,7 @@ ArrowRoundRobinWriter::ArrowRoundRobinWriter(const int writer_count, const uint6
   max_batch_size_ = memory_threshold / (writer_count + 1);
   std::vector<std::vector<Tensor>> tensor_batch_vec;
   tensor_batch_vec.reserve(max_batch_size_ / sizeof(std::vector<Tensor>) + 1);
-  current_batch_ = absl::make_unique<TensorData>();
+  current_batch_ = absl::make_unique<BatchOrEOF>();
   current_batch_->eof = false;
   current_batch_->tensor_batch = tensor_batch_vec;
   current_batch_->byte_count = 0;
@@ -44,7 +44,7 @@ void ArrowRoundRobinWriter::InsertData(const std::vector<Tensor>& tensors) {
 
   if(current_batch_->byte_count + bytes_per_row_ > max_batch_size_) {
     deque_.push_back(std::move(current_batch_));
-    current_batch_ = absl::make_unique<TensorData>();
+    current_batch_ = absl::make_unique<BatchOrEOF>();
     current_batch_->eof = false;
     current_batch_->tensor_batch = std::vector<std::vector<Tensor>> ();
     current_batch_->byte_count = 0;
@@ -65,7 +65,7 @@ void ArrowRoundRobinWriter::FirstRowInfo(const std::vector<Tensor> &tensors) {
 }
 
 std::unique_ptr<ElementOrEOF> ArrowRoundRobinWriter::CreateEOFToken() {
-  std::unique_ptr<TensorData> r_eof = absl::make_unique<TensorData>();
+  std::unique_ptr<BatchOrEOF> r_eof = absl::make_unique<BatchOrEOF>();
   r_eof->eof = true;
   return std::move(r_eof);
 }
@@ -75,7 +75,7 @@ std::unique_ptr<ElementOrEOF> ArrowRoundRobinWriter::CreateEOFToken() {
  ***********************/
 
 
-std::shared_ptr<arrow::RecordBatch> ArrowRoundRobinWriter::RecordBatchFromTensorData(const std::string& filename, TensorData &dat) {
+std::shared_ptr<arrow::RecordBatch> ArrowRoundRobinWriter::RecordBatchFromTensorData(const std::string& filename, BatchOrEOF &dat) {
 
   // initializing writer process
   int ncols = tensor_data_len_.size();
@@ -164,7 +164,7 @@ void ArrowRoundRobinWriter::WriterThread(Env *env, const std::string &shard_dire
   while (true) {
     // parent_be now has ownership over the pointer. When out of scope destructed
     std::unique_ptr<ElementOrEOF> parent_be = Consume(writer_id);
-    auto* r_be = dynamic_cast<TensorData*>(parent_be.get());
+    auto* r_be = dynamic_cast<BatchOrEOF*>(parent_be.get());
     size_t dat_size = r_be->byte_count;
 
     if (r_be->eof) {

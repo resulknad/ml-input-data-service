@@ -17,7 +17,7 @@ namespace service_cache_util {
 namespace arrow_round_robin {
 
 
-struct TensorData : ElementOrEOF{
+struct BatchOrEOF : ElementOrEOF{
     std::vector<std::vector<Tensor>> tensor_batch;
     size_t byte_count = 0;
 };
@@ -39,7 +39,7 @@ public:
     void WriterThread(Env *env, const std::string &shard_directory,
                       int writer_id, const std::string& compression, const DataTypeVector& output_types, int64 version) override;
 
-    std::shared_ptr<arrow::RecordBatch> RecordBatchFromTensorData(const std::string& filename, TensorData &dat);
+    std::shared_ptr<arrow::RecordBatch> RecordBatchFromTensorData(const std::string& filename, BatchOrEOF &dat);
 
 private:
     arrow::ipc::IpcWriteOptions wo_ = {
@@ -58,7 +58,7 @@ private:
     std::shared_ptr<arrow::ipc::RecordBatchWriter> rbw_;
     std::shared_ptr<arrow::io::FileOutputStream> file_;
 
-    std::unique_ptr<TensorData> current_batch_;  // batch we're currently filling
+    std::unique_ptr<BatchOrEOF> current_batch_;  // batch we're currently filling
 
     // arrow metadata
     std::shared_ptr<ArrowUtil::ArrowMetadata> metadata_;
