@@ -152,10 +152,8 @@ std::shared_ptr<arrow::RecordBatch> ArrowRoundRobinWriter::RecordBatchFromTensor
 
   // create schema from fields
   auto schema = std::make_shared<arrow::Schema>(schema_vector);
-  schema_ = schema;
-  if(rbw_ == nullptr) {
-    file_ = arrow::io::FileOutputStream::Open(filename, /*append=*/false).ValueOrDie();
-    rbw_ = arrow::ipc::MakeFileWriter(file_, schema_, wo_).ValueOrDie();
+  if(schema_ == nullptr) {
+    schema_ = schema;  // TODO: In theory thread unsafe as is. In practice threads will probably not assign at same time.
   }
   return std::move(arrow::RecordBatch::Make(schema, arrays[0]->length(), arrays));
 }
@@ -166,6 +164,8 @@ void ArrowRoundRobinWriter::WriterThread(Env *env, const std::string &shard_dire
   metadata_->RegisterWorker();
   const string filename = GetFileName(shard_directory, writer_id);
   std::shared_ptr<arrow::RecordBatch> rb;
+  std::shared_ptr<arrow::ipc::RecordBatchWriter> rbw;
+  std::shared_ptr<arrow::io::FileOutputStream> file;
 
   while (true) {
     // parent_be now has ownership over the pointer. When out of scope destructed
@@ -178,15 +178,21 @@ void ArrowRoundRobinWriter::WriterThread(Env *env, const std::string &shard_dire
     #endif
 
     if (r_be->eof) {
-      rbw_->Close();
-      file_->Close();
+      rbw->Close();
+      file->Close();
       break;
+    }
+
+    // we know here that BatchOrEOF has data Payload
+    if(rbw == nullptr) {
+      file = arrow::io::FileOutputStream::Open(filename, /*append=*/false).ValueOrDie();
+      rbw = arrow::ipc::MakeFileWriter(file, schema_, wo_).ValueOrDie();
     }
 
     BeforeWrite(writer_id);
     rb = RecordBatchFromTensorData(filename, *r_be);
     FinishedConversion(writer_id);
-    rbw_->WriteRecordBatch(*rb);
+    rbw->WriteRecordBatch(*rb);
     AfterWrite(writer_id);
 
     mu_by_.lock();

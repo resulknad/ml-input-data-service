@@ -57,9 +57,6 @@ private:
     };
 
     std::shared_ptr<arrow::Schema> schema_;
-    std::shared_ptr<arrow::ipc::RecordBatchWriter> rbw_;
-    std::shared_ptr<arrow::io::FileOutputStream> file_;
-
     std::unique_ptr<BatchOrEOF> current_batch_;  // batch we're currently filling
 
     // arrow metadata
