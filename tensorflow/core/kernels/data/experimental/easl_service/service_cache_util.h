@@ -49,7 +49,6 @@ public:
     uint64_t sleep_time_sum_ = 0;
     uint64_t write_time_sum_ = 0;  // duration of num_writes_ writes
     uint64_t wait_time_sum_ = 0;  // duration of (num_writes_ - 1) waits
-    const int log_wait_ = 0; // wait ~1s betw. logs
 };
 
 // struct that is extended with data by class implementing BoundedMemoryWriter

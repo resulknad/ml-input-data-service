@@ -557,7 +557,7 @@ void StatsLogger::WriteAwake() {
 
 // printing logging message roughly every second
 void StatsLogger::PrintStatsSummary(int writer_id) {
-  if(num_writes_ == 0 || duration_cast<seconds>(high_resolution_clock::now() - last_log_).count() < log_wait_) {
+  if(num_writes_ == 0) {
     return;
   }
   uint64_t avg_sleep = 0;
