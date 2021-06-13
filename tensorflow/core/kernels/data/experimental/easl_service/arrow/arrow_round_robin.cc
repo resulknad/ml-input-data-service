@@ -154,6 +154,7 @@ std::shared_ptr<arrow::RecordBatch> ArrowRoundRobinWriter::RecordBatchFromTensor
   auto schema = std::make_shared<arrow::Schema>(schema_vector);
   schema_ = schema;
   if(rbw_ == nullptr) {
+    file_ = arrow::io::FileOutputStream::Open(filename, /*append=*/false).ValueOrDie();
     rbw_ = arrow::ipc::MakeFileWriter(file_, schema_, wo_).ValueOrDie();
   }
   return std::move(arrow::RecordBatch::Make(schema, arrays[0]->length(), arrays));
@@ -165,7 +166,6 @@ void ArrowRoundRobinWriter::WriterThread(Env *env, const std::string &shard_dire
   metadata_->RegisterWorker();
   const string filename = GetFileName(shard_directory, writer_id);
   std::shared_ptr<arrow::RecordBatch> rb;
-  file_ = arrow::io::FileOutputStream::Open(filename, /*append=*/false).ValueOrDie();
 
   while (true) {
     // parent_be now has ownership over the pointer. When out of scope destructed
