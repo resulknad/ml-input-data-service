@@ -100,7 +100,7 @@ Status BoundedMemoryWriter::Initialize(Env *env, const std::string &shard_direct
   #endif
 
   thread_pool_ = absl::make_unique<thread::ThreadPool>(env, ThreadOptions(),
-        absl::StrCat("thread_pool_", 0), writer_count_, false);
+           absl::StrCat("thread_pool_", "zero"), writer_count_, false);
 
   for (int i = 0; i < writer_count_; ++i) {
     thread_pool_->Schedule(
