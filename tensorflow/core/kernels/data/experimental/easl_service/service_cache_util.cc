@@ -94,12 +94,13 @@ BoundedMemoryWriter::BoundedMemoryWriter(const int writer_count, const uint64 me
 
 Status BoundedMemoryWriter::Initialize(Env *env, const std::string &shard_directory,
         const int compression, const DataTypeVector& output_types, int64 version) {
-  thread_pool_ = absl::make_unique<thread::ThreadPool>(env, ThreadOptions(),
-        absl::StrCat("thread_pool_", 0), writer_count_, false);
 
   #ifdef DEBUGGING
   VLOG(0) << "[BoundedMemoryWriter] Initialized BoundedMemoryWriter, Starting writer threads...";
   #endif
+
+  thread_pool_ = absl::make_unique<thread::ThreadPool>(env, ThreadOptions(),
+        absl::StrCat("thread_pool_", 0), writer_count_, false);
 
   for (int i = 0; i < writer_count_; ++i) {
     thread_pool_->Schedule(

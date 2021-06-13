@@ -65,7 +65,7 @@ class BoundedMemoryWriter {
 public:
     BoundedMemoryWriter(int writer_count, uint64 memory_threshold);
 
-    // Initializes the writer and spans writer_count_ writer threads.
+    // Initializes the writer and spawns writer_count_ writer threads.
     Status Initialize(Env* env, const std::string& shard_directory, int compression,
             const DataTypeVector& output_types, int64 version);
 
