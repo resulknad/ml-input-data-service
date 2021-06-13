@@ -96,11 +96,15 @@ Status BoundedMemoryWriter::Initialize(Env *env, const std::string &shard_direct
         const int compression, const DataTypeVector& output_types, int64 version) {
 
   #ifdef DEBUGGING
-  VLOG(0) << "[BoundedMemoryWriter] Initialized BoundedMemoryWriter, Starting writer threads...";
+  VLOG(0) << "[BoundedMemoryWriter] Initializing BoundedMemoryWriter, creating threadpool...";
   #endif
 
   thread_pool_ = absl::make_unique<thread::ThreadPool>(env, ThreadOptions(),
-           absl::StrCat("thread_pool_", "zero"), writer_count_, false);
+           "threadpool_0", writer_count_, false);
+
+  #ifdef DEBUGGING
+  VLOG(0) << "[BoundedMemoryWriter] Starting writer threads...";
+  #endif
 
   for (int i = 0; i < writer_count_; ++i) {
     thread_pool_->Schedule(
@@ -110,7 +114,9 @@ Status BoundedMemoryWriter::Initialize(Env *env, const std::string &shard_direct
             }
     );
   }
-
+  #ifdef DEBUGGING
+  VLOG(0) << "[BoundedMemoryWriter] Finished Initialization";
+  #endif
   return Status::OK();
 }
 
