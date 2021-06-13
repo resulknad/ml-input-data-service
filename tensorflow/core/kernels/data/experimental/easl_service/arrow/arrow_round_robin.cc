@@ -183,14 +183,15 @@ void ArrowRoundRobinWriter::WriterThread(Env *env, const std::string &shard_dire
       break;
     }
 
-    // we know here that BatchOrEOF has data Payload
-    if(rbw == nullptr) {
+    BeforeWrite(writer_id);
+    rb = RecordBatchFromTensorData(filename, *r_be);
+
+    // we know here that BatchOrEOF has data Payload and schema_ has been initialized.
+    if(rbw == nullptr) {  // initialize record_batch_writer and file.
       file = arrow::io::FileOutputStream::Open(filename, /*append=*/false).ValueOrDie();
       rbw = arrow::ipc::MakeFileWriter(file, schema_, wo_).ValueOrDie();
     }
 
-    BeforeWrite(writer_id);
-    rb = RecordBatchFromTensorData(filename, *r_be);
     FinishedConversion(writer_id);
     rbw->WriteRecordBatch(*rb);
     AfterWrite(writer_id);
