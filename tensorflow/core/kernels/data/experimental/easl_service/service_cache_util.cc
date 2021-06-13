@@ -110,6 +110,8 @@ Status BoundedMemoryWriter::Initialize(Env *env, const std::string &shard_direct
             }
     );
   }
+
+  return Status::OK();
 }
 
 Status BoundedMemoryWriter::Write(const std::vector<Tensor> &tensors) {
@@ -145,6 +147,7 @@ Status BoundedMemoryWriter::Write(const std::vector<Tensor> &tensors) {
     #ifdef STATS_LOG
     logger_->WriteReturn();
     #endif
+    return Status::OK();
   }
 
 
@@ -178,6 +181,7 @@ Status BoundedMemoryWriter::Write(const std::vector<Tensor> &tensors) {
   #ifdef STATS_LOG
   logger_->WriteReturn();
   #endif
+  return Status::OK();
 }
 
 bool BoundedMemoryWriter::ProducerSpaceAvailable() const {
