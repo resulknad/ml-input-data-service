@@ -54,6 +54,9 @@ private:
     bool shapes_initialized_ = false;
     bool experimental_ = false;
     int64_t current_row_idx_;
+
+    // used for column selection. hardcoded at the moment.
+    std::vector<int> col_selection_ {5};  // only take one column for now
 };
 
 } // namespace easl

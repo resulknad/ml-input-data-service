@@ -36,7 +36,6 @@ Status ArrowReader::Initialize(Env *env, const std::string &filename, const stri
   this->current_row_idx_ = 0;
 
 
-  // TODO: maybe use env to open file, here I use the built-in functionality of arrow.
   // open file and read table
   std::shared_ptr<arrow::io::MemoryMappedFile> file;
   ARROW_ASSIGN_CHECKED(file, arrow::io::MemoryMappedFile::Open(filename_, arrow::io::FileMode::READ))

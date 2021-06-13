@@ -52,18 +52,20 @@ Status Writer::Initialize(){
     VLOG(0) << "[Writer] Created TFRecordWriter.";
     #endif
   }
-  async_writer_->Initialize(env_, /*file_index*/ 0, target_dir_, /*checkpoint_id*/ 0,
-                            kCompression, writer_version_, output_dtypes_,
-          /*done*/ [this](Status s){
-              // TODO (damien-aymon) check and propagate errors here!
-              if (!s.ok()) {
-                VLOG(0) << "EASL - writer error: "<< s.ToString();
-              }
-              //LOG(ERROR) << "MultiThreadedAsyncWriter in snapshot writer failed: " << s;
-              //mutex_lock l(writer_status_mu_);
-              //writer_status_ = s;
-              return;
-          });
+
+  VLOG(0) << "async_writer nullptr? : " << (async_writer_ == nullptr);
+//  async_writer_->Initialize(env_, /*file_index*/ 0, target_dir_, /*checkpoint_id*/ 0,
+//                            kCompression, writer_version_, output_dtypes_,
+//          /*done*/ [this](Status s){
+//              // TODO (damien-aymon) check and propagate errors here!
+//              if (!s.ok()) {
+//                VLOG(0) << "EASL - writer error: "<< s.ToString();
+//              }
+//              //LOG(ERROR) << "MultiThreadedAsyncWriter in snapshot writer failed: " << s;
+//              //mutex_lock l(writer_status_mu_);
+//              //writer_status_ = s;
+//              return;
+//          });
 
   return Status::OK();
 }
