@@ -108,21 +108,20 @@ void BoundedMemoryWriter::Initialize(Env *env, int64 file_index, const std::stri
         uint64 checkpoint_id, const std::string &compression, int64 version,
         const DataTypeVector &output_types, std::function<void (Status)> done) {
 
-  thread_pool_ = absl::make_unique<thread::ThreadPool>(env, ThreadOptions(),
-           absl::StrCat("thread_pool_", file_index), writer_count_, false);
+  thread_pool_ = absl::make_unique<thread::ThreadPool>(env, "mem_bounded_threads", writer_count_);
 
   #ifdef DEBUGGING
   VLOG(0) << "[BoundedMemoryWriter] Finished Creating Threadpool.";
   #endif
 
-//  for (int i = 0; i < writer_count_; ++i) {
-//    thread_pool_->Schedule(
-//            [this, env, shard_directory, compression, output_types, version, i] {
-//                // Note that `done` is not used since it causes a bug here
-//                WriterThread(env, shard_directory, i, compression, output_types, version);
-//            }
-//    );
-//  }
+  for (int i = 0; i < writer_count_; ++i) {
+    thread_pool_->Schedule(
+            [this, env, shard_directory, compression, output_types, version, i] {
+                // Note that `done` is not used since it causes a bug here
+                WriterThread(env, shard_directory, i, compression, output_types, version);
+            }
+    );
+  }
 
   #ifdef DEBUGGING
   VLOG(0) << "[BoundedMemoryWriter] Finished Initialization";
