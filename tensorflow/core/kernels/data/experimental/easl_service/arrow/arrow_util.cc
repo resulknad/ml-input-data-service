@@ -926,10 +926,10 @@ Status AssignTensorExperimental(
   size_t len = str_arr->value_offset(i+1) - value_offset;  // Note: no out of bounds error
   VLOG(0) << "get len: " << len;
   const void* src = str_arr->raw_data() + value_offset;
-  VLOG(0) << "get src buff";
+  VLOG(0) << "get src buff " << src;
   void* dst = const_cast<char*>(out_tensor->tensor_data().data());
-  VLOG(0) << "get dest buff";
-  memcpy(dst, src, len);
+  VLOG(0) << "get dest buff " << dst;
+//  memcpy(dst, src, len);
   VLOG(0) << "memcpy";
   return Status::OK();
 }

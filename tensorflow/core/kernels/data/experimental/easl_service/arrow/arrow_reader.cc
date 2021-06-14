@@ -91,7 +91,7 @@ Status ArrowReader::ReadTensors(std::vector<Tensor> *read_tensors) {
 
   #ifdef DEBUGGING
   VLOG(0) << "[ArrowReader] Converting RecordBatch with " << current_batch_->num_rows() << ""
-                  " rows and " << current_batch_ << " columns";
+                  " rows and " << current_batch_->num_columns() << " columns";
   #endif
 
   // go over all rows of record batch

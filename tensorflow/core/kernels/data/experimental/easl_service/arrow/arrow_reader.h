@@ -56,7 +56,7 @@ private:
     bool experimental_ = false;
 
     // used for column selection. hardcoded at the moment.
-    std::vector<int> col_selection_ {0};  // only take one column for now. If empty return all.
+    std::vector<int> col_selection_ {0, 2};  // only take one column for now. If empty return all.
     std::shared_ptr<arrow::ipc::RecordBatchFileReader> rfr_;
     std::shared_ptr<arrow::io::MemoryMappedFile> file_;
 };

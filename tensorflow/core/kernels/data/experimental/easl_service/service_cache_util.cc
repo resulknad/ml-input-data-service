@@ -385,6 +385,10 @@ MultiThreadedAsyncReader::MultiThreadedAsyncReader(Env *env, const std::string &
     : env_(env), output_dtypes_(output_dtypes), output_shapes_(output_shapes),
     target_dir_(target_dir), reader_count_(reader_count), tensors_() {
   this->num_readers_done_ = 0;
+
+  #ifdef STATS_LOG
+  logger_ = absl::make_unique<StatsLogger>();
+  #endif
   // TODO (damien-aymon) add constant for writer version.
 }
 

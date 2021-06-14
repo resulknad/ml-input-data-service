@@ -186,9 +186,6 @@ public:
 
 };
 
-
-
-
 // EASL (damien-aymon)
 // Top-level writer that handles writes to the service cache.
 // In the future, this class should handle more complex logic on how and where
@@ -227,6 +224,12 @@ class Writer {
   // Memory threshold of writers (and all async_writers)
   uint64 MEMORY_THRESHOLD_ = 2e9;
 };
+
+
+// -----------------------------------------------------------------------------
+// READERS
+// -----------------------------------------------------------------------------
+
 
 class MultiThreadedAsyncReader {
  public:
@@ -267,7 +270,11 @@ class MultiThreadedAsyncReader {
   bool first_row_info_set_ = false;
   uint64 bytes_per_tensor_ = 0;
 
-    //   std::unique_ptr<snapshot_util::Reader> reader_;
+  // logging utility.
+  #ifdef STATS_LOG
+  std::unique_ptr<StatsLogger> logger_;
+  #endif
+
   std::deque<string> file_names_ TF_GUARDED_BY(mu_);
   std::deque<Tensor> tensors_ TF_GUARDED_BY(mu_add_);
   std::unique_ptr<thread::ThreadPool> thread_pool_;
