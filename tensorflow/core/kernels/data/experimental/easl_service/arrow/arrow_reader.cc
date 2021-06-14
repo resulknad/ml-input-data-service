@@ -13,7 +13,7 @@ namespace data {
 namespace easl{
 
 ArrowReader::ArrowReader(std::vector<int> col_selection) {
-  this->col_selection_ = std::move(col_selection);
+  this->col_selection_ = col_selection;
 }
 
 Status ArrowReader::Initialize(Env *env, const std::string &filename, const string &compression_type,
