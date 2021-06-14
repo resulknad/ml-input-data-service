@@ -54,7 +54,6 @@ private:
     size_t current_batch_idx_;
     bool shapes_initialized_ = false;
     bool experimental_ = false;
-    int64_t current_row_idx_;
 
     // used for column selection. hardcoded at the moment.
     std::vector<int> col_selection_ {0};  // only take one column for now. If empty return all.

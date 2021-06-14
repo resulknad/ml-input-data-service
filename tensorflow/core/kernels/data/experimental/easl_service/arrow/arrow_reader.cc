@@ -33,7 +33,6 @@ Status ArrowReader::Initialize(Env *env, const std::string &filename, const stri
   this->compression_type_ = compression_type;
   this->dtypes_ = dtypes;
   this->current_batch_idx_ = 0; // gets increased upon every invocation of read_tensors
-  this->current_row_idx_ = 0;
 
 
   // open file and read table
@@ -86,23 +85,25 @@ Status ArrowReader::ReadTensors(std::vector<Tensor> *read_tensors) {
   if(!shapes_initialized_) {  // if no metadata --> fall back to implicitly extracting shape / type
     TF_RETURN_IF_ERROR(InitShapesAndTypes());
     #ifdef DEBUGGING
-    VLOG(0) << "[ArrowReader] Initialized tensor shapes and dtypes.";
+    VLOG(0) << "[ArrowReader] Initialized tensor shapes and dtypes implicitly from data.";
     #endif
   }
 
   // go over all rows of record batch
   for(int i = 0; i < current_batch_->num_rows(); i++) {
     for(int j = 0; j < current_batch_->num_columns(); j++) {
-      std::shared_ptr<arrow::Array> arr = current_batch_->column(j);
+      std::shared_ptr<arrow::Array> arr = current_batch_->column(j);  // don't need redirection here -> already filtered
 
-      DataType output_type = this->dtypes_[j];
+      DataType output_type = this->dtypes_[col_selection_[j]];  // metadata containts all shapes of all columns
       TensorShape output_shape;
-      bool partial_batch = !partial_shapes.empty() && current_row_idx_ == total_rows_ - 1;
+      bool partial_batch = !partial_shapes.empty() &&
+              current_batch_idx_ == rfr_->num_record_batches() - 1 &&
+              i == current_batch_->num_rows() - 1;
 
       if(partial_batch) {  // if partial batch in last row
-        output_shape = this->partial_shapes[j];
+        output_shape = this->partial_shapes[col_selection_[j]];
       } else {
-        output_shape = this->shapes_[j];
+        output_shape = this->shapes_[col_selection_[j]];
       }
 
       // Allocate a new tensor and assign Arrow data to it
@@ -110,8 +111,16 @@ Status ArrowReader::ReadTensors(std::vector<Tensor> *read_tensors) {
 
       // String arrays and normal arrays have different shapes in experimental.
       if(output_type == DataType::DT_STRING || !experimental_) {
+        #ifdef DEBUGGING
+        VLOG(0) << "[ArrowReader] Assign Tensor Standard";
+        #endif
+
         TF_RETURN_IF_ERROR(ArrowUtil::AssignTensor(arr, i, &tensor));
       } else {
+        #ifdef DEBUGGING
+        VLOG(0) << "[ArrowReader] Assign Tensor Experimental";
+        #endif
+
         TF_RETURN_IF_ERROR(ArrowUtil::AssignTensorExperimental(arr, i, &tensor));
       }
 
@@ -126,7 +135,6 @@ Status ArrowReader::ReadTensors(std::vector<Tensor> *read_tensors) {
       #endif
 
     }
-    current_row_idx_++;
   }
 
   return Status::OK();
