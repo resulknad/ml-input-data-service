@@ -15,6 +15,11 @@ ArrowAsyncReader::ArrowAsyncReader(Env *env, const std::string &target_dir, cons
         MultiThreadedAsyncReader(env, target_dir, output_dtypes, output_shapes, reader_count) {
   metadata_ = std::make_shared<ArrowUtil::ArrowMetadata>();
   metadata_->ReadMetadataFromFile(env, target_dir);
+
+  #ifdef DEBUGGING
+  VLOG(0) << "[ArrowAsyncReader] created.";
+  #endif
+
 }
 
 Status ArrowAsyncReader::ReaderThread(
@@ -22,7 +27,9 @@ Status ArrowAsyncReader::ReaderThread(
         DataTypeVector output_types,
         std::vector<PartialTensorShape> output_shapes) {
 
-
+  #ifdef DEBUGGING
+  VLOG(0) << "[Thread " << writer_id << "] started running.";
+  #endif
   metadata_->RegisterWorker();
 
   tensorflow::profiler::TraceMe activity(
@@ -34,32 +41,46 @@ Status ArrowAsyncReader::ReaderThread(
     std::string file_path;
     Consume(&file_path, &end_of_sequence);
 
+
     if (!end_of_sequence) {
+      #ifdef DEBUGGING
+      VLOG(0) << "[Thread " << writer_id << "] reading file " << file_path;
+      #endif
 
-      std::unique_ptr<ArrowReader> arrowReader;
-
+      // create new arrow reader for each new file
+      std::unique_ptr<ArrowReader> arrowReader;  // once out of scope -> destroyed
       arrowReader = absl::make_unique<ArrowReader>();
-      Status s = arrowReader->Initialize(env, file_path, io::compression::kNone,
-              output_types, output_shapes, metadata_);
+      // arrow reader gets re-initialized for every new file it is reading.
+      arrowReader->Initialize(env, file_path, io::compression::kNone,
+                              output_types, output_shapes, metadata_);
 
-      if(s != Status::OK()) {
-        return s;
-      }
+      #ifdef DEBUGGING
+      int count = 0;
+      VLOG(0) << "[Thread " << writer_id << "] initialized arrowReader";
+      #endif
 
-      int64 count = 0;
       bool eof = false;
       while (!eof) {
-        std::string t_str = "Reading Tensors:";
+        #ifdef DEBUGGING
+        VLOG(0) << "[Thread " << writer_id << "] reading tensors from RecordBatch...";
+        #endif
         std::vector<Tensor> tensors;
         Status s = arrowReader->ReadTensors(&tensors);
         if (errors::IsOutOfRange(s)) {
           eof = true;  // can't break because of TFRecordReader.
+          #ifdef DEBUGGING
+          VLOG(0) << "[Thread " << writer_id << "] eof, fetching next file or exit...";
+          #endif
         } else if(s != Status::OK()) {
+          VLOG(0) << "Unexpected Error in ArrowAsyncReader, returning...";
           return s;
         }
 
         if(!tensors.empty()) {
           Add(tensors);
+          #ifdef DEBUGGING
+          VLOG(0) << "[Thread " << writer_id << "] tensors added to iterator. Total reads: " << ++count;
+          #endif
         }
       }
     }
@@ -72,10 +93,13 @@ Status ArrowAsyncReader::ReaderThread(
     Add(tensors);
   }
 
+  #ifdef DEBUGGING
+  VLOG(0) << "[Thread " << writer_id << "] exit, notifying reader done";
+  #endif
+
   mutex_lock l(mu_add_);
   num_readers_done_++;
   read_cv_.notify_one();
-
   return Status::OK();
 }
 
