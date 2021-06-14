@@ -448,10 +448,17 @@ void MultiThreadedAsyncReader::Add(std::vector<Tensor>& tensors) {
 
   // do column selection only if not done by reader already:
   if(tensors.size() == col_selection_.size() || col_selection_.empty()) { // take all tensors
+    #ifdef DEBUGGING
+    VLOG(0) << "[AsyncReader] adding all " << tensors.size() << " of tensor-reader to queue (no further filtering)";
+    #endif
     for (const auto& t : tensors) {
       tensors_.push_back(t);
     }
   } else {
+    #ifdef DEBUGGING
+    VLOG(0) << "[AsyncReader] adding " << col_selection_.size() << " of possible " << tensors.size() << " tensors to queue (col filtering)";
+    #endif
+
     for(int i : col_selection_) {
       tensors_.push_back(tensors[i]);
     }
@@ -478,8 +485,6 @@ Status MultiThreadedAsyncReader::ReaderThread(Env *env, uint64 writer_id, int64 
       snapshot_util::Reader::Create(env, file_path, io::compression::kNone,
                                     version, output_types, &reader);
 
-
-      int64 count = 0;
       bool eof = false;
       while (!eof) {
         std::string t_str = "Reading Tensors:";
@@ -531,6 +536,10 @@ Status MultiThreadedAsyncReader::Read(std::vector<Tensor>* &read_tensors, bool* 
 
   while(true){
     if(!tensors_.empty()) {
+      #ifdef DEBUGGING
+      VLOG(0) << "[AsyncReader] Reading " << n << " tensors from queue. Queue has: " << tensors_.size();
+      #endif
+
       while (n > 0) {  // return one dataset element (row of tensors)
         n--;
         read_tensors->push_back(tensors_.front());
