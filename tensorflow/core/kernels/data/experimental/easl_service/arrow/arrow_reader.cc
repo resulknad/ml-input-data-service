@@ -89,10 +89,19 @@ Status ArrowReader::ReadTensors(std::vector<Tensor> *read_tensors) {
     #endif
   }
 
+  #ifdef DEBUGGING
+  VLOG(0) << "[ArrowReader] Converting RecordBatch with " << current_batch_->num_rows() << ""
+                  " rows and " << current_batch_ << " columns";
+  #endif
+
   // go over all rows of record batch
   for(int i = 0; i < current_batch_->num_rows(); i++) {
     for(int j = 0; j < current_batch_->num_columns(); j++) {
       std::shared_ptr<arrow::Array> arr = current_batch_->column(j);  // don't need redirection here -> already filtered
+
+      #ifdef DEBUGGING
+      VLOG(0) << "[ArrowReader] extracted array from RecordBatch, array null? : " << (arr == nullptr);
+      #endif
 
       DataType output_type = this->dtypes_[col_selection_[j]];  // metadata containts all shapes of all columns
       TensorShape output_shape;

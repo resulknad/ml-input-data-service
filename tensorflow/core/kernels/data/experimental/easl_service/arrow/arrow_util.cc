@@ -920,7 +920,7 @@ Status AssignTensorExperimental(
         int64 i,
         Tensor* out_tensor) {
 
-  arrow::StringArray* str_arr = dynamic_cast<arrow::StringArray*>(array.get());
+  auto* str_arr = dynamic_cast<arrow::StringArray*>(array.get());
 
   int64 value_offset = str_arr->value_offset(i);
   size_t len = str_arr->value_offset(i+1) - value_offset;  // Note: no out of bounds error
