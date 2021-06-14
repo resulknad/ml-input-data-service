@@ -23,13 +23,14 @@ namespace {
     }
 }
 
-ArrowRoundRobinWriter::ArrowRoundRobinWriter(const int writer_count, const uint64 memory_threshold)
+ArrowRoundRobinWriter::ArrowRoundRobinWriter(const int writer_count, const uint64 memory_threshold, int compression)
         : BoundedMemoryWriter(writer_count, memory_threshold) {
   metadata_ = std::make_shared<ArrowUtil::ArrowMetadata>();
   metadata_->SetExperimental(true);
-  max_batch_size_ = memory_threshold / (writer_count + 1);
+
+  uint64 max_possible_batch_size = memory_threshold / writer_count;
+  max_batch_size_ = max_possible_batch_size * compression / 100;  // assume compression varies from 1 to 100 (percentage)
   std::vector<std::vector<Tensor>> tensor_batch_vec;
-  tensor_batch_vec.reserve(max_batch_size_ / sizeof(std::vector<Tensor>) + 1);
   current_batch_ = absl::make_unique<BatchOrEOF>();
   current_batch_->eof = false;
   current_batch_->tensor_batch = tensor_batch_vec;

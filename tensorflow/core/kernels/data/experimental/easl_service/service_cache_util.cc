@@ -39,7 +39,7 @@ Status Writer::Initialize(){
   if(writer_version_ == 0) { // 0 -> arrow
 //    async_writer_ = std::make_unique<arrow_async_writer::ArrowAsyncWriter>(writer_count_);
   } else if(writer_version_ == 7) {
-    async_writer_ = absl::make_unique<arrow_round_robin::ArrowRoundRobinWriter>(writer_count_, MEMORY_THRESHOLD_);
+    async_writer_ = absl::make_unique<arrow_round_robin::ArrowRoundRobinWriter>(writer_count_, MEMORY_THRESHOLD_, compression_);
 
     #ifdef DEBUGGING
     VLOG(0) << "[Writer] Created Round Robin Writer.";
@@ -530,9 +530,6 @@ Status MultiThreadedAsyncReader::Read(std::vector<Tensor>* &read_tensors, bool* 
 
   while(true){
     if(!tensors_.empty()) {
-      #ifdef DEBUGGING
-      VLOG(0) << "[AsyncReader] Reading " << n << " tensors from queue. Queue has: " << tensors_.size();
-      #endif
 
       while (n > 0) {  // return one dataset element (row of tensors)
         n--;

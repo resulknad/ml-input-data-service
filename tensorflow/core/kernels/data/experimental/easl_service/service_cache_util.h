@@ -270,7 +270,7 @@ class MultiThreadedAsyncReader {
   bool first_row_info_set_ = false;
   uint64 bytes_per_tensor_ = 0;
 
-  std::vector<int> col_selection_ {0};
+  std::vector<int> col_selection_ {};
 
   // logging utility.
   #ifdef STATS_LOG

@@ -25,7 +25,7 @@ struct BatchOrEOF : ElementOrEOF{
 
 class ArrowRoundRobinWriter : public BoundedMemoryWriter {
 public:
-    explicit ArrowRoundRobinWriter(int writer_count, uint64 memory_threshold);
+    explicit ArrowRoundRobinWriter(int writer_count, uint64 memory_threshold, int compression);
 
     // method used to insert data into deque_.
     void InsertData(const std::vector<Tensor>& tensors) override;
