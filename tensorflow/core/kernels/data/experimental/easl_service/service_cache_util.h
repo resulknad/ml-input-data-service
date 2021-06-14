@@ -12,8 +12,8 @@ namespace data {
 namespace easl{
 namespace service_cache_util {
 
-#define STATS_LOG  // comment this if no stats should be printed as log output
-#define DEBUGGING // comment this if debugging statements should be removed
+//#define STATS_LOG  // comment this if no stats should be printed as log output
+//#define DEBUGGING // comment this if debugging statements should be removed
 
 
 // Logging utility class to get info where we spend how much time.
