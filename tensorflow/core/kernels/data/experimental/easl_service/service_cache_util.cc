@@ -605,7 +605,7 @@ void StatsLogger::WriteAwake() {
 
 // printing logging message roughly every second
 void StatsLogger::PrintStatsSummary(int writer_id) {
-  if(num_writes_ == 0) {
+  if(num_writes_ <= 1) {
     return;
   }
   uint64_t avg_sleep = 0;
@@ -613,11 +613,15 @@ void StatsLogger::PrintStatsSummary(int writer_id) {
     avg_sleep = sleep_time_sum_ / num_sleeps_;
   }
   VLOG(0) << "{avg_write,avg_wait,avg_sleep,num_sleep,num_write} _|LogStat|_ " << write_time_sum_ / num_writes_ << " "
-              "" << wait_time_sum_ / (num_writes_ - 1) << " " << avg_sleep << " " << num_sleeps_ << ""
+              "" << wait_time_sum_ / num_writes_ - 1  << " " << avg_sleep << " " << num_sleeps_ << ""
               " " << num_writes_;
 
   // iterate over threads and print statistics
   ThreadLog& writer_thread = thread_logs_[writer_id];
+
+  if(writer_thread.num_writes <= 0) {
+    return;
+  }
 
   VLOG(0) << "[Writer " << writer_id << "] {avg_write,avg_not_write,avg_conversion,num_writes} _|LogStat|_ "
                   "" << writer_thread.write_time_sum / writer_thread.num_writes << " "
