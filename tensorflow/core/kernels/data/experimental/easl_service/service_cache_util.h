@@ -43,7 +43,7 @@ public:
     std::chrono::time_point<std::chrono::high_resolution_clock> end_;
     std::chrono::time_point<std::chrono::high_resolution_clock> last_log_ = std::chrono::high_resolution_clock::now();
 
-    ThreadLog thread_logs_[12];  // writers directly access this by writer_id
+    ThreadLog thread_logs_[100];  // writers directly access this by writer_id
     uint64_t num_writes_ = 0;
     uint64_t num_sleeps_ = 0;
     uint64_t sleep_time_sum_ = 0;
@@ -270,7 +270,7 @@ class MultiThreadedAsyncReader {
   bool first_row_info_set_ = false;
   uint64 bytes_per_tensor_ = 0;
 
-  std::vector<int> col_selection_ {};
+  std::vector<int> col_selection_ {0};
 
   // logging utility.
   #ifdef STATS_LOG

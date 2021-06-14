@@ -93,9 +93,6 @@ Status ArrowReader::ReadTensors(std::vector<Tensor> *read_tensors) {
   TF_RETURN_IF_ERROR(NextBatch());
   // Invariant: current_batch_ != nullptr
 
-  #ifdef DEBUGGING
-  VLOG(0) << "[ArrowReader] successfully read next RecordBatch. Nullptr? : " << (current_batch_ == nullptr);
-  #endif
 
   if(!shapes_initialized_) {  // if no metadata --> fall back to implicitly extracting shape / type
     TF_RETURN_IF_ERROR(InitShapesAndTypes());
@@ -114,10 +111,6 @@ Status ArrowReader::ReadTensors(std::vector<Tensor> *read_tensors) {
     for(int j = 0; j < current_batch_->num_columns(); j++) {
       std::shared_ptr<arrow::Array> arr = current_batch_->column(j);  // don't need redirection here -> already filtered
 
-      #ifdef DEBUGGING
-      VLOG(0) << "[ArrowReader] extracted array from RecordBatch, array null? : " << (arr == nullptr);
-      #endif
-
       DataType output_type = this->dtypes_[GetColIdx(j)];  // metadata containts all shapes of all columns
       TensorShape output_shape;
       bool partial_batch = !partial_shapes.empty() && current_row_idx_ == total_rows_ - 1;
@@ -130,21 +123,12 @@ Status ArrowReader::ReadTensors(std::vector<Tensor> *read_tensors) {
 
       // Allocate a new tensor and assign Arrow data to it
       Tensor tensor(output_type, output_shape); // this constructor will use the default_cpu_allocator.
-      #ifdef DEBUGGING
-      VLOG(0) << "Allocated tensor with dtype: " << DataTypeString(output_type) << "  shape: " << output_shape.DebugString();
-      #endif
 
       // String arrays and normal arrays have different shapes in experimental.
       if(output_type == DataType::DT_STRING || !experimental_) {
-        #ifdef DEBUGGING
-        VLOG(0) << "[ArrowReader] Assign Tensor Standard";
-        #endif
 
         TF_RETURN_IF_ERROR(ArrowUtil::AssignTensor(arr, i, &tensor));
       } else {
-        #ifdef DEBUGGING
-        VLOG(0) << "[ArrowReader] Assign Tensor Experimental";
-        #endif
 
         TF_RETURN_IF_ERROR(ArrowUtil::AssignTensorExperimental(arr, i, &tensor));
       }
@@ -154,11 +138,6 @@ Status ArrowReader::ReadTensors(std::vector<Tensor> *read_tensors) {
       } else {
         read_tensors->emplace_back(std::move(tensor));
       }
-
-      #ifdef DEBUGGING
-      VLOG(0) << "[ArrowReader] Produced one tensor.";
-      #endif
-
     }
   }
 

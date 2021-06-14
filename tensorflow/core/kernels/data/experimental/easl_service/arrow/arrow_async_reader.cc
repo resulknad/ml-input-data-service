@@ -43,9 +43,6 @@ Status ArrowAsyncReader::ReaderThread(
 
 
     if (!end_of_sequence) {
-      #ifdef DEBUGGING
-      VLOG(0) << "[Thread " << writer_id << "] reading file " << file_path;
-      #endif
 
       // create new arrow reader for each new file
       std::unique_ptr<ArrowReader> arrowReader;  // once out of scope -> destroyed

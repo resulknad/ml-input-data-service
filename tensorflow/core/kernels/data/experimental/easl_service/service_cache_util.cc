@@ -449,17 +449,10 @@ void MultiThreadedAsyncReader::Add(std::vector<Tensor>& tensors) {
 
   // do column selection only if not done by reader already:
   if(tensors.size() == col_selection_.size() || col_selection_.empty()) { // take all tensors
-    #ifdef DEBUGGING
-    VLOG(0) << "[AsyncReader] adding all " << tensors.size() << " of tensor-reader to queue (no further filtering)";
-    #endif
     for (const auto& t : tensors) {
       tensors_.push_back(t);
     }
   } else {
-    #ifdef DEBUGGING
-    VLOG(0) << "[AsyncReader] adding " << col_selection_.size() << " of possible " << tensors.size() << " tensors to queue (col filtering)";
-    #endif
-
     for(int i : col_selection_) {
       tensors_.push_back(tensors[i]);
     }
