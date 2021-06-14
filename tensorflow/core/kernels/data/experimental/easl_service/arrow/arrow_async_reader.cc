@@ -49,7 +49,7 @@ Status ArrowAsyncReader::ReaderThread(
 
       // create new arrow reader for each new file
       std::unique_ptr<ArrowReader> arrowReader;  // once out of scope -> destroyed
-      arrowReader = absl::make_unique<ArrowReader>();
+      arrowReader = absl::make_unique<ArrowReader>(col_selection_);
       // arrow reader gets re-initialized for every new file it is reading.
       arrowReader->Initialize(env, file_path, io::compression::kNone,
                               output_types, output_shapes, metadata_);
@@ -65,7 +65,15 @@ Status ArrowAsyncReader::ReaderThread(
         VLOG(0) << "[Thread " << writer_id << "] reading tensors from RecordBatch...";
         #endif
         std::vector<Tensor> tensors;
+
+        #ifdef STATS_LOG
+        logger_->BeginWriteTensors(writer_id);
+        #endif
         Status s = arrowReader->ReadTensors(&tensors);
+        #ifdef STATS_LOG
+        logger_->FinishWriteTensors(writer_id);
+        #endif
+
         if (errors::IsOutOfRange(s)) {
           eof = true;  // can't break because of TFRecordReader.
           #ifdef DEBUGGING

@@ -12,7 +12,9 @@ namespace tensorflow {
 namespace data {
 namespace easl{
 
-ArrowReader::ArrowReader()= default;
+ArrowReader::ArrowReader(std::vector<int> col_selection) {
+  this->col_selection_ = std::move(col_selection);
+}
 
 Status ArrowReader::Initialize(Env *env, const std::string &filename, const string &compression_type,
                                const DataTypeVector &dtypes, const std::vector<PartialTensorShape> &shapes,

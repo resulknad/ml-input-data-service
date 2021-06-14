@@ -444,11 +444,18 @@ void MultiThreadedAsyncReader::Add(std::vector<Tensor>& tensors) {
     VLOG(0) << "EASL - set bytes per tensor: " << bytes_per_tensor_;
     first_row_info_set_ = true;
   }
-//  VLOG(0) << "****************** Reader Queue Size: " << tensors_.size() << "  of max:  " << producer_threshold_ / bytes_per_tensor_;
   mu_add_.Await(Condition(this, &MultiThreadedAsyncReader::ProducerSpaceAvailable));
-  for (const auto& t : tensors)
-    tensors_.push_back(t);
 
+  // do column selection only if not done by reader already:
+  if(tensors.size() == col_selection_.size() || col_selection_.empty()) { // take all tensors
+    for (const auto& t : tensors) {
+      tensors_.push_back(t);
+    }
+  } else {
+    for(int i : col_selection_) {
+      tensors_.push_back(tensors[i]);
+    }
+  }
   read_cv_.notify_one();
 }
 
@@ -477,7 +484,17 @@ Status MultiThreadedAsyncReader::ReaderThread(Env *env, uint64 writer_id, int64 
       while (!eof) {
         std::string t_str = "Reading Tensors:";
         std::vector<Tensor> tensors;
+
+        #ifdef STATS_LOG
+        logger_->BeginWriteTensors(writer_id);
+        #endif
+
         Status s = reader->ReadTensors(&tensors);
+
+        #ifdef STATS_LOG
+        logger_->FinishWriteTensors(writer_id);
+        #endif
+
         if (errors::IsOutOfRange(s)) {
           eof = true;  // can't break because of TFRecordReader.
         } else if(s != Status::OK()) {
@@ -499,26 +516,53 @@ Status MultiThreadedAsyncReader::ReaderThread(Env *env, uint64 writer_id, int64 
 }
 
 Status MultiThreadedAsyncReader::Read(std::vector<Tensor>* &read_tensors, bool* end_of_sequence) {
+  #ifdef STATS_LOG
+  logger_->WriteInvoked();
+  #endif
+
   mutex_lock l(mu_add_);
   *end_of_sequence = false;
-  int64 n = output_dtypes_.size();
+  int64 n;
+  if(col_selection_.empty()) {
+    n = output_dtypes_.size();  // make sure correct with column selection
+  } else {
+    n = col_selection_.size();
+  }
 
   while(true){
     if(!tensors_.empty()) {
-      while (n > 0) {
+      while (n > 0) {  // return one dataset element (row of tensors)
         n--;
         read_tensors->push_back(tensors_.front());
         tensors_.pop_front();
       }
+
+      #ifdef STATS_LOG
+      logger_->WriteReturn();
+      #endif
       return Status::OK();
     } else {
       if(num_readers_done_ == reader_count_){
         *end_of_sequence = true;
         tensors_.clear();
+
+        // returning EOF -> no more calls to read, can print stats.
+        #ifdef STATS_LOG
+        logger_->WriteReturn();
+        for(int i = 0; i < reader_count_; i++) {
+          logger_->PrintStatsSummary(i);
+        }
+        #endif
         return Status::OK();
       }
-      // Readers are not done, waiting on data...
+      // Readers are not done, waiting on data
+      #ifdef STATS_LOG
+      logger_->WriteSleep();
+      #endif
       read_cv_.wait(l);
+      #ifdef STATS_LOG
+      logger_->WriteAwake();
+      #endif
     }
   }
   
