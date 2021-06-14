@@ -35,20 +35,26 @@ Status ArrowReader::Initialize(Env *env, const std::string &filename, const stri
   this->compression_type_ = compression_type;
   this->dtypes_ = dtypes;
   this->current_batch_idx_ = 0; // gets increased upon every invocation of read_tensors
+  this->current_row_idx_ = 0;
 
 
   // open file and read table
   file_ = arrow::io::MemoryMappedFile::Open(filename_, arrow::io::FileMode::READ).ValueOrDie();
+  std::shared_ptr<arrow::ipc::feather::Reader> reader;
+  ARROW_ASSIGN_CHECKED(reader, arrow::ipc::feather::Reader::Open(file_));
+  std::shared_ptr<::arrow::Table> table;
+  CHECK_ARROW(reader->Read(col_selection_, &table));
+  total_rows_ = table->num_rows();
+  // read individual record batches and append to class internal datastructure (size of record batches
+  // given by configuration of writer)
+  arrow::TableBatchReader tr(*table);
+  std::shared_ptr<arrow::RecordBatch> batch;
+  CHECK_ARROW(tr.ReadNext(&batch));
+  while(batch != nullptr) {
+    record_batches_.push_back(batch);
+    CHECK_ARROW(tr.ReadNext(&batch));
+  }
 
-  // read options
-  arrow::ipc::IpcReadOptions ro = {
-          10,
-          arrow::default_memory_pool(),
-          col_selection_,
-          false,  // already multithreading...
-  };
-  // RecordBatchFileReader
-  rfr_ = arrow::ipc::RecordBatchFileReader::Open(file_, ro).ValueOrDie();
   return Status::OK();
 }
 
@@ -107,9 +113,7 @@ Status ArrowReader::ReadTensors(std::vector<Tensor> *read_tensors) {
 
       DataType output_type = this->dtypes_[col_selection_[j]];  // metadata containts all shapes of all columns
       TensorShape output_shape;
-      bool partial_batch = !partial_shapes.empty() &&
-              current_batch_idx_ == rfr_->num_record_batches() - 1 &&
-              i == current_batch_->num_rows() - 1;
+      bool partial_batch = !partial_shapes.empty() && current_row_idx_ == total_rows_ - 1;
 
       if(partial_batch) {  // if partial batch in last row
         output_shape = this->partial_shapes[col_selection_[j]];
@@ -157,13 +161,11 @@ Status ArrowReader::ReadTensors(std::vector<Tensor> *read_tensors) {
 
 Status ArrowReader::NextBatch() {
   #ifdef DEBUGGING
-  VLOG(0) << "[ArrowReader] retrieving RecordBatch (idx): " << current_batch_idx_ << ". Total: "
-                  "" << rfr_->num_record_batches();
+  VLOG(0) << "[ArrowReader] retrieving RecordBatch (idx): " << current_batch_idx_ << " of tot: " << record_batches_.size();
   #endif
 
-  if (current_batch_idx_ < rfr_->num_record_batches()) {
-    current_batch_.reset();
-    current_batch_ = std::move(rfr_->ReadRecordBatch(current_batch_idx_).ValueOrDie());
+  if (current_batch_idx_ < record_batches_.size()) {
+    current_batch_ = record_batches_[current_batch_idx_];
     current_batch_idx_++;
   } else  {
     file_->Close();  // close mmapped file

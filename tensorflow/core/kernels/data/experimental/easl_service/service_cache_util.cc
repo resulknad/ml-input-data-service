@@ -360,6 +360,7 @@ Status Reader::Initialize() {
     async_reader_ = std::make_unique<MultiThreadedAsyncReader>(env_, target_dir_, output_dtypes_,
                                                                output_shapes_, reader_count_);
   }
+
   return async_reader_->Initialize();
 }
 
