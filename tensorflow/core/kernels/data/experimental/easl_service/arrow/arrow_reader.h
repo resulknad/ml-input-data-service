@@ -59,6 +59,8 @@ private:
     // used for column selection. hardcoded at the moment.
     std::vector<int> col_selection_;  // only take one column for now. If empty return all.
     std::shared_ptr<arrow::io::MemoryMappedFile> file_;
+
+    int GetColIdx(int i);
 };
 
 } // namespace easl

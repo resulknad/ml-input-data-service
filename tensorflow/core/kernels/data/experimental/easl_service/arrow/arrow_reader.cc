@@ -13,7 +13,7 @@ namespace data {
 namespace easl{
 
 ArrowReader::ArrowReader(std::vector<int> col_selection) {
-  this->col_selection_ = col_selection;
+  this->col_selection_ = std::move(col_selection);
 }
 
 Status ArrowReader::Initialize(Env *env, const std::string &filename, const string &compression_type,
@@ -78,6 +78,13 @@ Status ArrowReader::InitShapesAndTypes() {
   return Status::OK();
 }
 
+int ArrowReader::GetColIdx(int i) {
+  if(col_selection_.empty()) {
+    return i;
+  } else {
+    return col_selection_[i];
+  }
+}
 
 Status ArrowReader::ReadTensors(std::vector<Tensor> *read_tensors) {
 
@@ -111,14 +118,14 @@ Status ArrowReader::ReadTensors(std::vector<Tensor> *read_tensors) {
       VLOG(0) << "[ArrowReader] extracted array from RecordBatch, array null? : " << (arr == nullptr);
       #endif
 
-      DataType output_type = this->dtypes_[col_selection_[j]];  // metadata containts all shapes of all columns
+      DataType output_type = this->dtypes_[GetColIdx(j)];  // metadata containts all shapes of all columns
       TensorShape output_shape;
       bool partial_batch = !partial_shapes.empty() && current_row_idx_ == total_rows_ - 1;
 
       if(partial_batch) {  // if partial batch in last row
-        output_shape = this->partial_shapes[col_selection_[j]];
+        output_shape = this->partial_shapes[GetColIdx(j)];
       } else {
-        output_shape = this->shapes_[col_selection_[j]];
+        output_shape = this->shapes_[GetColIdx(j)];
       }
 
       // Allocate a new tensor and assign Arrow data to it
