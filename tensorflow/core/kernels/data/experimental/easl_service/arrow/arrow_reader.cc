@@ -37,7 +37,7 @@ Status ArrowReader::Initialize(Env *env, const std::string &filename, const stri
 
 
   // open file and read table
-  ARROW_ASSIGN_CHECKED(file_, arrow::io::MemoryMappedFile::Open(filename_, arrow::io::FileMode::READ))
+  file_ = arrow::io::MemoryMappedFile::Open(filename_, arrow::io::FileMode::READ).ValueOrDie();
 
   // read options
   arrow::ipc::IpcReadOptions ro = {
@@ -79,8 +79,15 @@ Status ArrowReader::ReadTensors(std::vector<Tensor> *read_tensors) {
   TF_RETURN_IF_ERROR(NextBatch());
   // Invariant: current_batch_ != nullptr
 
+  #ifdef DEBUGGING
+  VLOG(0) << "[ArrowReader] successfully read next RecordBatch. Nullptr? : " << (current_batch_ == nullptr);
+  #endif
+
   if(!shapes_initialized_) {  // if no metadata --> fall back to implicitly extracting shape / type
     TF_RETURN_IF_ERROR(InitShapesAndTypes());
+    #ifdef DEBUGGING
+    VLOG(0) << "[ArrowReader] Initialized tensor shapes and dtypes.";
+    #endif
   }
 
   // go over all rows of record batch
@@ -113,6 +120,11 @@ Status ArrowReader::ReadTensors(std::vector<Tensor> *read_tensors) {
       } else {
         read_tensors->emplace_back(std::move(tensor));
       }
+
+      #ifdef DEBUGGING
+      VLOG(0) << "[ArrowReader] Produced one tensor.";
+      #endif
+
     }
     current_row_idx_++;
   }
@@ -122,7 +134,13 @@ Status ArrowReader::ReadTensors(std::vector<Tensor> *read_tensors) {
 
 
 Status ArrowReader::NextBatch() {
+  #ifdef DEBUGGING
+  VLOG(0) << "[ArrowReader] retrieving RecordBatch (idx): " << current_batch_idx_ << ". Total: "
+                  "" << rfr_->num_record_batches();
+  #endif
+
   if (current_batch_idx_ < rfr_->num_record_batches()) {
+    current_batch_.reset();
     current_batch_ = std::move(rfr_->ReadRecordBatch(current_batch_idx_).ValueOrDie());
     current_batch_idx_++;
   } else  {

@@ -7,6 +7,7 @@
 
 #include "tensorflow/core/kernels/data/experimental/easl_service/arrow/arrow_util.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/data/experimental/easl_service/service_cache_util.h"
 
 namespace tensorflow {
 namespace data {

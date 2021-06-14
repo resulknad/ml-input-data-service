@@ -44,6 +44,7 @@ void ArrowRoundRobinWriter::InsertData(const std::vector<Tensor>& tensors) {
 
   if(current_batch_->byte_count + bytes_per_row_ > max_batch_size_) {
     deque_.push_back(std::move(current_batch_));
+    current_batch_.reset();
     current_batch_ = absl::make_unique<BatchOrEOF>();
     current_batch_->eof = false;
     current_batch_->tensor_batch = std::vector<std::vector<Tensor>> ();
