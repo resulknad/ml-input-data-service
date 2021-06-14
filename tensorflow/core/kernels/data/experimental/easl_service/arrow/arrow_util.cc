@@ -919,17 +919,18 @@ Status AssignTensorExperimental(
         std::shared_ptr<arrow::Array> array,
         int64 i,
         Tensor* out_tensor) {
-
   auto* str_arr = dynamic_cast<arrow::StringArray*>(array.get());
-
+  VLOG(0) << "cast";
   int64 value_offset = str_arr->value_offset(i);
+  VLOG(0) << "def value_offset " << value_offset;
   size_t len = str_arr->value_offset(i+1) - value_offset;  // Note: no out of bounds error
-
+  VLOG(0) << "get len: " << len;
   const void* src = str_arr->raw_data() + value_offset;
-
+  VLOG(0) << "get src buff";
   void* dst = const_cast<char*>(out_tensor->tensor_data().data());
+  VLOG(0) << "get dest buff";
   memcpy(dst, src, len);
-
+  VLOG(0) << "memcpy";
   return Status::OK();
 }
 

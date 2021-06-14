@@ -117,6 +117,9 @@ Status ArrowReader::ReadTensors(std::vector<Tensor> *read_tensors) {
 
       // Allocate a new tensor and assign Arrow data to it
       Tensor tensor(output_type, output_shape); // this constructor will use the default_cpu_allocator.
+      #ifdef DEBUGGING
+      VLOG(0) << "Allocated tensor with dtype: " << DataTypeString(output_type) << "  shape: " << output_shape.DebugString();
+      #endif
 
       // String arrays and normal arrays have different shapes in experimental.
       if(output_type == DataType::DT_STRING || !experimental_) {
