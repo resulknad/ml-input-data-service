@@ -322,7 +322,8 @@ void TFRecordWriter::WriterThread(Env *env, const std::string &shard_directory,
     }
 
     BeforeWrite(writer_id);
-    // TODO for now: measure time it takes to serialize tensors to string:
+
+    #ifdef STATS_LOG  // need extra serialization to measure its overhead. Need to subtract it from overall time in the end.
     for(Tensor& t : r_be->data) {
       TensorProto proto;
       t.AsProtoTensorContent(& proto);
@@ -330,6 +331,7 @@ void TFRecordWriter::WriterThread(Env *env, const std::string &shard_directory,
       proto.SerializeToString(proto_buffer);
       delete proto_buffer;
     }
+    #endif
     FinishedConversion(writer_id);
     writer->WriteTensors(r_be->data);
     AfterWrite(writer_id);
