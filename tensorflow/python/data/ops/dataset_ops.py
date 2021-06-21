@@ -3852,6 +3852,276 @@ class StructuredFunctionWrapper(object):
     return self._function
 
 
+class DeterministicStructuredFunctionWrapper(object):
+  """A function wrapper that supports structured arguments and return values.
+    By default assuming there exists an element seed argument which is passed to the
+    map function.
+
+    
+  """
+
+  #TODO Some work to cut off unnecessary arguments which might not be required when a map function
+  # is passed. For now just checking the functionality.
+
+  def __init__(self,
+               func,
+               transformation_name,
+               dataset=None,
+               input_classes=None,
+               input_shapes=None,
+               input_types=None,
+               input_structure=None,
+               add_to_graph=True,
+               use_legacy_function=False,
+               defun_kwargs=None):
+    """Creates a new `StructuredFunctionWrapper` for the given function.
+
+    Args:
+      func: A function from a (nested) structure to another (nested) structure.
+      transformation_name: Human-readable name of the transformation in which
+        this function is being instantiated, for error messages.
+      dataset: (Optional.) A `tf.data.Dataset`. If given, the structure of this
+        dataset will be assumed as the structure for `func` arguments; otherwise
+        `input_classes`, `input_shapes`, and `input_types` must be defined.
+      input_classes: (Optional.) A (nested) structure of `type`. If given, this
+        argument defines the Python types for `func` arguments.
+      input_shapes: (Optional.) A (nested) structure of `tf.TensorShape`. If
+        given, this argument defines the shapes and structure for `func`
+        arguments.
+      input_types: (Optional.) A (nested) structure of `tf.DType`. If given,
+        this argument defines the element types and structure for `func`
+        arguments.
+      input_structure: (Optional.) A `Structure` object. If given, this argument
+        defines the element types and structure for `func` arguments.
+      add_to_graph: (Optional.) If `True`, the function will be added to the
+        default graph, if it exists.
+      use_legacy_function: (Optional.) A boolean that determines whether the
+        function be created using `tensorflow.python.eager.function.defun`
+        (default behavior) or `tensorflow.python.framework.function.Defun`
+        (legacy behavior).
+      defun_kwargs: (Optional.) A dictionary mapping string argument names to
+        values. If supplied, will be passed to `function` as keyword arguments.
+
+    Raises:
+      ValueError: If an invalid combination of `dataset`, `input_classes`,
+        `input_shapes`, and `input_types` is passed.
+    """
+    # pylint: disable=protected-access
+    if input_structure is None:
+      if dataset is None:
+        if input_classes is None or input_shapes is None or input_types is None:
+          raise ValueError("Either `dataset`, `input_structure` or all of "
+                           "`input_classes`, `input_shapes`, and `input_types` "
+                           "must be specified.")
+        self._input_structure = structure.convert_legacy_structure(
+            input_types, input_shapes, input_classes)
+      else:
+        if not (input_classes is None and input_shapes is None and
+                input_types is None):
+          raise ValueError("Either `dataset`, `input_structure` or all of "
+                           "`input_classes`, `input_shapes`, and `input_types` "
+                           "must be specified.")
+        self._input_structure = dataset.element_spec
+    else:
+      if not (dataset is None and input_classes is None and input_shapes is None
+              and input_types is None):
+        raise ValueError("Either `dataset`, `input_structure`, or all of "
+                         "`input_classes`, `input_shapes`, and `input_types` "
+                         "must be specified.")
+      self._input_structure = input_structure
+
+    self._func = func
+
+    if defun_kwargs is None:
+      defun_kwargs = {}
+
+    readable_transformation_name = transformation_name.replace(
+        ".", "_")[:-2] if len(transformation_name) > 2 else ""
+
+    func_name = "_".join(
+        [readable_transformation_name,
+         function_utils.get_func_name(func)])
+    # Sanitize function name to remove symbols that interfere with graph
+    # construction.
+    for symbol in ["<", ">", "\\", "'", " "]:
+      func_name = func_name.replace(symbol, "")
+
+    ag_ctx = autograph_ctx.control_status_ctx()
+
+    def warn_if_collections(transformation_name):
+      """Prints a warning if the given graph uses common graph collections.
+
+      NOTE(mrry): Currently a warning is only generated for resources. Any
+      variables created will be automatically hoisted out to the outermost scope
+      using `init_scope()`. Some collections (such as for control-flow contexts)
+      are benign and should not generate a warning.
+
+      Args:
+        transformation_name: A human-readable name for the transformation.
+      """
+      warnings.warn("Creating resources inside a function passed to %s "
+                    "is not supported. Create each resource outside the "
+                    "function, and capture it inside the function to use it." %
+                    transformation_name, stacklevel=5)
+
+    def wrapper_helper(*args):
+      """Wrapper for passing nested structures to and from tf.data functions."""
+      nested_args = structure.from_compatible_tensor_list(
+          self._input_structure, args)['element']
+      if not _should_unpack(nested_args):
+        nested_args = (nested_args,)
+        logging.info('nested args Value is _should_unpack {}'.format(nested_args))
+      ret = autograph.tf_convert(self._func, ag_ctx)(*nested_args)
+      logging.info('ret without _should_pack {}'.format(ret))
+      if _should_pack(ret):
+        ret = tuple(ret)
+        logging.info('ret with _should_pack{}'.format(ret))
+
+      try:
+        self._output_structure = structure.type_spec_from_value(ret)
+        logging.info('Output structure {}'.format(self._output_structure))
+
+      except (ValueError, TypeError):
+        six.reraise(
+            TypeError,
+            TypeError("Unsupported return value from function passed to "
+                      "%s: %s." % (transformation_name, ret)),
+            sys.exc_info()[2])
+      return ret
+
+    def trace_legacy_function(defun_kwargs):
+      @function.Defun(*structure.get_flat_tensor_types(self._input_structure),
+                      **defun_kwargs)
+      def wrapped_fn(*args):
+        ret = wrapper_helper(*args)
+        logging.info(ret)
+        logging.info('output structure to tensor list {}'.format(structure.to_tensor_list(self._output_structure, ret)))
+        return structure.to_tensor_list(self._output_structure, ret)
+
+      return lambda: wrapped_fn
+
+    def trace_py_function(defun_kwargs):
+      # First we trace the function to infer the output structure.
+      @eager_function.defun_with_attributes(
+          input_signature=structure.get_flat_tensor_specs(
+              self._input_structure),
+          autograph=False,
+          attributes=defun_kwargs)
+      def unused(*args):  # pylint: disable=missing-docstring,unused-variable
+        ret = wrapper_helper(*args)
+        ret = structure.to_tensor_list(self._output_structure, ret)
+        return [ops.convert_to_tensor(t) for t in ret]
+
+      _ = unused.get_concrete_function()
+
+      def py_function_wrapper(*args):
+        nested_args = structure.from_compatible_tensor_list(
+            self._input_structure, args)['element']
+        if not _should_unpack(nested_args):
+          nested_args = (nested_args,)
+        ret = self._func(*nested_args)
+        if _should_pack(ret):
+          ret = tuple(ret)
+        ret = structure.to_tensor_list(self._output_structure, ret)
+        return [ops.convert_to_tensor(t) for t in ret]
+
+      # Next we trace the function wrapped in `eager_py_func` to force eager
+      # execution.
+      @eager_function.defun_with_attributes(
+          input_signature=structure.get_flat_tensor_specs(
+              self._input_structure),
+          autograph=False,
+          attributes=defun_kwargs)
+      def wrapped_fn(*args):  # pylint: disable=missing-docstring
+        return script_ops.eager_py_func(
+            py_function_wrapper, args,
+            structure.get_flat_tensor_types(self._output_structure))
+
+      return wrapped_fn.get_concrete_function
+
+    def trace_tf_function(defun_kwargs):
+      # Note: wrapper_helper will apply autograph based on context.
+      @eager_function.defun_with_attributes(
+          input_signature=structure.get_flat_tensor_specs(
+              self._input_structure),
+          autograph=False,
+          attributes=defun_kwargs)
+      def wrapped_fn(*args):  # pylint: disable=missing-docstring
+        ret = wrapper_helper(*args)
+        ret = structure.to_tensor_list(self._output_structure, ret)
+        logging.info('Output structure to tensor list {}'.format(ret))
+        return [ops.convert_to_tensor(t) for t in ret]
+
+      return wrapped_fn.get_concrete_function
+
+    if use_legacy_function:
+      defun_kwargs.update({"func_name": func_name + "_" + str(ops.uid())})
+      fn_factory = trace_legacy_function(defun_kwargs)
+    else:
+      defun_kwargs.update({"func_name": func_name})
+      defun_kwargs.update({"_tf_data_function": True})
+      if DEBUG_MODE:
+        fn_factory = trace_py_function(defun_kwargs)
+      else:
+        if def_function.functions_run_eagerly():
+          warnings.warn(
+              "Even though the `tf.config.experimental_run_functions_eagerly` "
+              "option is set, this option does not apply to tf.data functions. "
+              "To force eager execution of tf.data functions, please use "
+              "`tf.data.experimental.enable.debug_mode()`.")
+        fn_factory = trace_tf_function(defun_kwargs)
+
+    resource_tracker = tracking.ResourceTracker()
+    with tracking.resource_tracker_scope(resource_tracker):
+      self._function = fn_factory()
+      # There is no graph to add in eager mode.
+      add_to_graph &= not context.executing_eagerly()
+      # There are some lifetime issues when a legacy function is not added to a
+      # out-living graph. It's already deprecated so de-prioritizing the fix.
+      add_to_graph |= use_legacy_function
+      if add_to_graph:
+        self._function.add_to_graph(ops.get_default_graph())
+
+    if resource_tracker.resources:
+      warn_if_collections(transformation_name)
+    #TODO Set the seed here....More concepts to be incorporated
+    if not use_legacy_function:
+      outer_graph_seed = ops.get_default_graph().seed
+      if outer_graph_seed and self._function.graph.seed == outer_graph_seed:
+        if self._function.graph._seed_used:
+          warnings.warn(
+              "Seed %s from outer graph might be getting used by function %s, "
+              "if the random op has not been provided any seed. Explicitly set "
+              "the seed in the function if this is not the intended behavior."
+              %(outer_graph_seed, func_name), stacklevel=4)
+
+  @property
+  def output_structure(self):
+    return self._output_structure
+
+  @property
+  def output_classes(self):
+    return nest.map_structure(
+        lambda component_spec: component_spec._to_legacy_output_classes(),  # pylint: disable=protected-access
+        self._output_structure)
+
+  @property
+  def output_shapes(self):
+    return nest.map_structure(
+        lambda component_spec: component_spec._to_legacy_output_shapes(),  # pylint: disable=protected-access
+        self._output_structure)
+
+  @property
+  def output_types(self):
+    return nest.map_structure(
+        lambda component_spec: component_spec._to_legacy_output_types(),  # pylint: disable=protected-access
+        self._output_structure)
+
+  @property
+  def function(self):
+    return self._function
+
+
 class _GeneratorDataset(DatasetSource):
   """A `Dataset` that generates elements by invoking a function."""
 
@@ -4672,7 +4942,7 @@ class DeterministicMapDataset(UnaryDataset):
     self._preserve_cardinality = preserve_cardinality
     #TODO Modify here, add the three arguments which will also serve as the function arguments
      
-    self._map_func = StructuredFunctionWrapper(
+    self._map_func = DeterministicStructuredFunctionWrapper(
         map_func,
         self._transformation_name(),
         dataset=input_dataset,
@@ -4685,7 +4955,7 @@ class DeterministicMapDataset(UnaryDataset):
         preserve_cardinality=self._preserve_cardinality,
         **self._flat_structure)
 
-    super(MapDataset, self).__init__(input_dataset, variant_tensor)
+    super(DeterministicMapDataset, self).__init__(input_dataset, variant_tensor)
 
   def _functions(self):
     return [self._map_func]
@@ -4735,7 +5005,7 @@ class DeterministicParallelMapDataset(UnaryDataset):
         use_inter_op_parallelism=self._use_inter_op_parallelism,
         preserve_cardinality=self._preserve_cardinality,
         **self._flat_structure)
-    super(ParallelMapDataset, self).__init__(input_dataset, variant_tensor)
+    super(DeterministicParallelMapDataset, self).__init__(input_dataset, variant_tensor)
 
   def _functions(self):
     return [self._map_func]
