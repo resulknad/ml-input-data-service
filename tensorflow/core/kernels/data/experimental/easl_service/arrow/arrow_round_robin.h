@@ -50,7 +50,7 @@ private:
             8,
             false,
             arrow::default_memory_pool(),
-            arrow::util::Codec::Create(arrow::Compression::LZ4_FRAME).ValueOrDie(),
+            arrow::util::Codec::Create(arrow::Compression::UNCOMPRESSED).ValueOrDie(),
             false,
             false,
             arrow::ipc::MetadataVersion::V5

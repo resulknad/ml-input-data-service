@@ -106,19 +106,23 @@ Status ArrowReader::ReadTensors(std::vector<Tensor> *read_tensors) {
                   " rows and " << current_batch_->num_columns() << " columns";
   #endif
 
+  uint64 num_tensors = current_batch_->num_rows() * current_batch_->num_columns();
+  Tensor tensors[num_tensors];
+
   // go over all rows of record batch
-  for(int i = 0; i < current_batch_->num_rows(); i++) {
-    for(int j = 0; j < current_batch_->num_columns(); j++) {
-      std::shared_ptr<arrow::Array> arr = current_batch_->column(j);  // don't need redirection here -> already filtered
+  for(int i = 0; i < current_batch_->num_columns(); i++) {
+    std::shared_ptr<arrow::Array> arr = current_batch_->column(i);  // don't need redirection here -> already filtered
+    DataType output_type = this->dtypes_[GetColIdx(i)];  // metadata containts all shapes of all columns
+    TensorShape output_shape;
+    output_shape = this->shapes_[GetColIdx(i)];
+    for(int j = 0; j < current_batch_->num_rows(); j++) {
 
-      DataType output_type = this->dtypes_[GetColIdx(j)];  // metadata containts all shapes of all columns
-      TensorShape output_shape;
+      // last row of dataset treated differently if partial batch.
       bool partial_batch = !partial_shapes.empty() && current_row_idx_ == total_rows_ - 1;
-
       if(partial_batch) {  // if partial batch in last row
-        output_shape = this->partial_shapes[GetColIdx(j)];
+        output_shape = this->partial_shapes[GetColIdx(i)];
       } else {
-        output_shape = this->shapes_[GetColIdx(j)];
+
       }
 
       // Allocate a new tensor and assign Arrow data to it
@@ -127,17 +131,23 @@ Status ArrowReader::ReadTensors(std::vector<Tensor> *read_tensors) {
       // String arrays and normal arrays have different shapes in experimental.
       if(output_type == DataType::DT_STRING || !experimental_) {
 
-        TF_RETURN_IF_ERROR(ArrowUtil::AssignTensor(arr, i, &tensor));
+        TF_RETURN_IF_ERROR(ArrowUtil::AssignTensor(arr, j, &tensor));
       } else {
 
-        TF_RETURN_IF_ERROR(ArrowUtil::AssignTensorExperimental(arr, i, &tensor));
+        TF_RETURN_IF_ERROR(ArrowUtil::AssignTensorExperimental(arr, j, &tensor));
       }
 
       if(partial_batch) {
         metadata_->AddLastRowBatch(tensor);
       } else {
-        read_tensors->emplace_back(std::move(tensor));
+        tensors[j * current_batch_->num_columns() + i] = std::move(tensor);
       }
+    }
+  }
+
+  for(int i = 0; i < current_batch_->num_rows(); i++) {
+    for(int j = 0; j < current_batch_->num_columns(); j++) {
+      read_tensors->emplace_back(std::move(tensors[i * current_batch_->num_columns() + j]));
     }
   }
 
