@@ -120,7 +120,9 @@ void NodeMetrics::DumpToStream(std::stringstream &ss) {
   ss << "{ " << std::endl;
   bool first = true;
   for(auto pair : metrics_){
-    if(!first){ ss << "," << std::endl; first = false; } // Add comma before element, not for first though.
+    // Add comma before element, not for first though.
+    if(!first){ ss << "," << std::endl; }
+    else { first = false; }
     ss << "\"" << pair.first << "\" : ";
     ss << "{ \"bytes_consumed\" : " << std::to_string(pair.second->bytes_consumed()) << " , ";
     ss << "\"bytes_produced\" : " << std::to_string(pair.second->bytes_produced()) << " , ";
@@ -190,16 +192,15 @@ void InputPipelineMetrics::SetLastNodeName(std::string last_node_name) {
 
 void InputPipelineMetrics::DumpToStream(std::stringstream& ss){
   ss << "{ " << std::endl;
-  ss << "\"last_node_name\" : \"" << last_node_name_ << "\", " << std::endl;
+  ss << "\"last_node_name\" : \"" << last_node_name_ << "\"";
 
   bool first = true;
   for(auto pair : metrics_){
-    if(!first){ ss << "," << std::endl; first = false; } // Add comma before element, not for first though.
+    ss << ", " << std::endl;
     ss << "\"" << pair.first << "\" : ";
     pair.second->DumpToStream(ss);
-    ss << std::endl;
   }
-  ss << "}";
+  ss << std::endl << "}";
 }
 
 
@@ -408,7 +409,7 @@ Status MetadataStore::DumpJobMetricsToFile(int64 job_id, const std::string& path
 
 Status MetadataStore::AppendJobMetricsDumps(Env* env, const std::string& path) {
   for(auto pair: job_metadata_ ){
-    std::string fname = path + "metrics_updates_job_" + std::to_string(pair.first) + ".json";
+    std::string fname = path + "/metrics_updates_job_" + std::to_string(pair.first) + ".json";
     std::stringstream ss;
 
     Status s = env->FileExists(fname);
