@@ -29,8 +29,8 @@ ArrowRoundRobinWriter::ArrowRoundRobinWriter(const int writer_count, const uint6
   metadata_->SetExperimental(true);
 
   if(compression != 0) {
-    uint64 max_possible_batch_size = memory_threshold / writer_count;
-    max_batch_size_ = max_possible_batch_size * compression / 100;  // assume compression varies from 1 to 100 (percentage)
+//    uint64 max_possible_batch_size = memory_threshold / writer_count;
+    max_batch_size_ = compression;  // assume compression varies from 1 to 100 (percentage)
   } else {
     max_batch_size_ = memory_threshold / (writer_count + 1);
   }
