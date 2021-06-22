@@ -1135,7 +1135,7 @@ void DataServiceDispatcherImpl::LogDumpsThread() {
     if (cancelled_) {
       return;
     }
-    //Status s = GcOldJobs();
+    Status s = metadata_store_.AppendJobMetricsDumps(env_, config_.log_dir());
     if (!s.ok()) {
       LOG(WARNING) << "Error garbage collecting old jobs: " << s;
     }
