@@ -1790,6 +1790,7 @@ py_library(
         ":math_ops",
         ":random_ops",
         ":stateless_random_ops",
+        ":deterministic_random_ops",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/util",
@@ -2224,6 +2225,22 @@ py_library(
         ":stateless_random_ops_v2_gen",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
+    ],
+)
+
+py_library(
+    name = "deterministic_random_ops",
+    srcs = ["ops/deterministic_random_ops.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":array_ops",
+        ":control_flow_ops",
+        ":math_ops",
+        ":random_ops_gen",
+        ":stateless_random_ops",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:random_seed",
     ],
 )
 

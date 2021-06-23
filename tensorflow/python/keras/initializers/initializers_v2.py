@@ -26,6 +26,7 @@ from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import stateless_random_ops
+from tensorflow.python.ops import deterministic_random_ops
 from tensorflow.python.util.tf_export import keras_export
 
 _PARTITION_SHAPE = 'partition_shape'

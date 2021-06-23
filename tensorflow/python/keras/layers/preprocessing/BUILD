@@ -128,6 +128,7 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:stateful_random_ops",
         "//tensorflow/python:stateless_random_ops",
+        "//tensorflow/python:deterministic_random_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:variables",

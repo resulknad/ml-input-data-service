@@ -227,6 +227,7 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_ops",
         "//tensorflow/python:stateless_random_ops",
+        "//tensorflow/python:deterministic_random_ops",
         "//tensorflow/python:tf2",
         "//tensorflow/python/keras/utils:generic_utils",
         "//tensorflow/python/keras/utils:tf_inspect",

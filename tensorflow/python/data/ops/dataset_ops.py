@@ -3968,6 +3968,11 @@ class DeterministicStructuredFunctionWrapper(object):
       """Wrapper for passing nested structures to and from tf.data functions."""
       nested_args = structure.from_compatible_tensor_list(
           self._input_structure, args)['element']
+      #Adding a parameter element seed
+      self._elem_seed = structure.from_compatible_tensor_list(
+            self._input_structure, args)['element_seed']
+      logging.info('The element seed is {}'.format(self._elem_seed))
+      
       if not _should_unpack(nested_args):
         nested_args = (nested_args,)
         logging.info('nested args Value is _should_unpack {}'.format(nested_args))
@@ -3994,8 +3999,6 @@ class DeterministicStructuredFunctionWrapper(object):
                       **defun_kwargs)
       def wrapped_fn(*args):
         ret = wrapper_helper(*args)
-        logging.info(ret)
-        logging.info('output structure to tensor list {}'.format(structure.to_tensor_list(self._output_structure, ret)))
         return structure.to_tensor_list(self._output_structure, ret)
 
       return lambda: wrapped_fn
