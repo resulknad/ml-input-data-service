@@ -270,7 +270,7 @@ class MultiThreadedAsyncReader {
   bool first_row_info_set_ = false;
   uint64 bytes_per_tensor_ = 0;
 
-  std::vector<int> col_selection_ {25};  // hardcoded column selection. Empty = all columns.
+  std::vector<int> col_selection_ {0};  // hardcoded column selection. Empty = all columns.
 
   // logging utility.
   #ifdef STATS_LOG
