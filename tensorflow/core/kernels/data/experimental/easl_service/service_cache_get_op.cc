@@ -41,6 +41,10 @@ class ServiceCacheGetOp::Dataset : public DatasetBase {
 
   Status CheckExternalState() const override;
 
+  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+    return Status::OK();
+  }
+
  protected:
 
   Status AsGraphDefInternal(SerializationContext* ctx,
