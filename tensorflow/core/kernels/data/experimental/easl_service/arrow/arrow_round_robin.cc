@@ -167,6 +167,7 @@ void ArrowRoundRobinWriter::WriterThread(Env *env, const std::string &shard_dire
                                          const std::string& compression, const DataTypeVector &output_types, int64 version) {
 
   metadata_->RegisterWorker();
+  env->RecursivelyCreateDir(shard_directory);
   const string filename = GetFileName(shard_directory, writer_id);
   std::shared_ptr<arrow::RecordBatch> rb;
   std::shared_ptr<arrow::ipc::RecordBatchWriter> rbw;
