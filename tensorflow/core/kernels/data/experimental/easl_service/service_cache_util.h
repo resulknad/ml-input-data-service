@@ -12,8 +12,8 @@ namespace data {
 namespace easl{
 namespace service_cache_util {
 
-#define STATS_LOG  // comment this if no stats should be printed as log output
-#define DEBUGGING // comment this if debugging statements should be removed
+//#define STATS_LOG  // comment this if no stats should be printed as log output
+//#define DEBUGGING // comment this if debugging statements should be removed
 
 
 // Logging utility class to get info where we spend how much time.
@@ -275,7 +275,7 @@ class MultiThreadedAsyncReader {
   bool first_row_info_set_ = false;
   uint64 bytes_per_tensor_ = 0;
 
-  std::vector<int> col_selection_ {0};  // hardcoded column selection. Empty = all columns.
+  std::vector<int> col_selection_ {};  // hardcoded column selection. Empty = all columns.
 
   // logging utility.
   #ifdef STATS_LOG
