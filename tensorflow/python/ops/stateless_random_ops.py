@@ -19,6 +19,10 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+import logging
+
+logging.basicConfig(filename='check.log',level=logging.INFO,
+                    format='%(levelname)s:%(message)s')
 
 from tensorflow.python.compat import compat
 from tensorflow.python.framework import dtypes
@@ -133,11 +137,20 @@ def _get_key_counter_alg(seed):
     return gen_stateless_random_ops_v2.stateless_random_get_key_counter_alg(
         seed)
 
+def _get_key_counter_alg_det():
+  seed=0
+  if compat.forward_compatible(2021, 3, 1):
+    key, counter = gen_stateless_random_ops_v2.stateless_random_get_key_counter(
+        seed)
+    alg = gen_stateless_random_ops_v2.stateless_random_get_alg()
+    return key, counter, alg
+  else:
+    return gen_stateless_random_ops_v2.stateless_random_get_key_counter_alg(
+        seed)
 
 @tf_export("random.stateless_uniform")
 @dispatch.add_dispatch_support
 def stateless_random_uniform(shape,
-                             seed,
                              minval=0,
                              maxval=None,
                              dtype=dtypes.float32,
@@ -210,38 +223,40 @@ def stateless_random_uniform(shape,
   elif maxval is None:
     maxval = 1
   with ops.name_scope(name, "stateless_random_uniform",
-                      [shape, seed, minval, maxval]) as name:
+                      [shape, minval, maxval]) as name:
     shape = tensor_util.shape_tensor(shape)
+    seed=ops.get_default_graph().seed
+    logging.info('Op seed is {}'.format(seed))
     if dtype.is_integer and minval is None:
-      if compat.forward_compatible(2020, 10, 25):
-        key, counter, alg = _get_key_counter_alg(seed)
-        result = (gen_stateless_random_ops_v2
-                  .stateless_random_uniform_full_int_v2(
-                      shape, key=key, counter=counter, dtype=dtype, alg=alg,
-                      name=name))
-      else:
-        result = gen_stateless_random_ops.stateless_random_uniform_full_int(
-            shape, seed=seed, dtype=dtype, name=name)
+      # if compat.forward_compatible(2020, 10, 25):
+      #   key, counter, alg = _get_key_counter_alg_det()
+      #   result = (gen_stateless_random_ops_v2
+      #             .stateless_random_uniform_full_int_v2(
+      #                 shape, key=key, counter=counter, dtype=dtype, alg=alg,
+      #                 name=name))
+      # else:
+      result = gen_stateless_random_ops.stateless_random_uniform_full_int(
+          shape, seed=seed, dtype=dtype, name=name)
     else:
       minval = ops.convert_to_tensor(minval, dtype=dtype, name="min")
       maxval = ops.convert_to_tensor(maxval, dtype=dtype, name="max")
       if dtype.is_integer:
-        if compat.forward_compatible(2020, 10, 25):
-          key, counter, alg = _get_key_counter_alg(seed)
-          result = gen_stateless_random_ops_v2.stateless_random_uniform_int_v2(
-              shape, key=key, counter=counter, minval=minval, maxval=maxval,
-              alg=alg, name=name)
-        else:
-          result = gen_stateless_random_ops.stateless_random_uniform_int(
-              shape, seed=seed, minval=minval, maxval=maxval, name=name)
+        # if compat.forward_compatible(2020, 10, 25):
+        #   key, counter, alg = _get_key_counter_alg(seed)
+        #   result = gen_stateless_random_ops_v2.stateless_random_uniform_int_v2(
+        #       shape, key=key, counter=counter, minval=minval, maxval=maxval,
+        #       alg=alg, name=name)
+        # else:
+        result = gen_stateless_random_ops.stateless_random_uniform_int(
+            shape, seed=seed, minval=minval, maxval=maxval, name=name)
       else:
-        if compat.forward_compatible(2020, 10, 25):
-          key, counter, alg = _get_key_counter_alg(seed)
-          rnd = gen_stateless_random_ops_v2.stateless_random_uniform_v2(
-              shape, key=key, counter=counter, dtype=dtype, alg=alg)
-        else:
-          rnd = gen_stateless_random_ops.stateless_random_uniform(
-              shape, seed=seed, dtype=dtype)
+        # if compat.forward_compatible(2020, 10, 25):
+        #   key, counter, alg = _get_key_counter_alg(seed)
+        #   rnd = gen_stateless_random_ops_v2.stateless_random_uniform_v2(
+        #       shape, key=key, counter=counter, dtype=dtype, alg=alg)
+        # else:
+        rnd = gen_stateless_random_ops.stateless_random_uniform(
+            shape, seed=seed, dtype=dtype)
         result = math_ops.add(rnd * (maxval - minval), minval, name=name)
     tensor_util.maybe_set_static_shape(result, shape)
     return result

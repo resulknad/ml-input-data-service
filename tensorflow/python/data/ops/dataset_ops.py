@@ -114,6 +114,7 @@ UNKNOWN = -2
 tf_export("data.INFINITE_CARDINALITY").export_constant(__name__, "INFINITE")
 tf_export("data.UNKNOWN_CARDINALITY").export_constant(__name__, "UNKNOWN")
 
+FLAG_GLOBAL_SEED=True
 
 @tf_export("data.Dataset", v1=[])
 @six.add_metaclass(abc.ABCMeta)
@@ -3599,7 +3600,6 @@ class StructuredFunctionWrapper(object):
                use_legacy_function=False,
                defun_kwargs=None):
     """Creates a new `StructuredFunctionWrapper` for the given function.
-
     Args:
       func: A function from a (nested) structure to another (nested) structure.
       transformation_name: Human-readable name of the transformation in which
@@ -3625,7 +3625,6 @@ class StructuredFunctionWrapper(object):
         (legacy behavior).
       defun_kwargs: (Optional.) A dictionary mapping string argument names to
         values. If supplied, will be passed to `function` as keyword arguments.
-
     Raises:
       ValueError: If an invalid combination of `dataset`, `input_classes`,
         `input_shapes`, and `input_types` is passed.
@@ -3674,12 +3673,10 @@ class StructuredFunctionWrapper(object):
 
     def warn_if_collections(transformation_name):
       """Prints a warning if the given graph uses common graph collections.
-
       NOTE(mrry): Currently a warning is only generated for resources. Any
       variables created will be automatically hoisted out to the outermost scope
       using `init_scope()`. Some collections (such as for control-flow contexts)
       are benign and should not generate a warning.
-
       Args:
         transformation_name: A human-readable name for the transformation.
       """
@@ -3692,24 +3689,14 @@ class StructuredFunctionWrapper(object):
       """Wrapper for passing nested structures to and from tf.data functions."""
       nested_args = structure.from_compatible_tensor_list(
           self._input_structure, args)
-      logging.info('Input Structure Tensors {}'.format(structure.get_flat_tensor_types(self._input_structure)))
-      logging.info('Input Structure Specs {}'.format(structure.get_flat_tensor_specs(
-              self._input_structure)))
-      logging.info('Hello Nested args {}'.format(nested_args))
-      #logging.info('First argument is {} second one is {}'.format(nested_args[0],nested_args[1]))
       if not _should_unpack(nested_args):
         nested_args = (nested_args,)
-        logging.info('nested args Value is _should_unpack {}'.format(nested_args))
       ret = autograph.tf_convert(self._func, ag_ctx)(*nested_args)
-      logging.info('ret without _should_pack {}'.format(ret))
       if _should_pack(ret):
         ret = tuple(ret)
-        logging.info('ret with _should_pack{}'.format(ret))
 
       try:
         self._output_structure = structure.type_spec_from_value(ret)
-        logging.info('Output structure {}'.format(self._output_structure))
-
       except (ValueError, TypeError):
         six.reraise(
             TypeError,
@@ -3723,8 +3710,6 @@ class StructuredFunctionWrapper(object):
                       **defun_kwargs)
       def wrapped_fn(*args):
         ret = wrapper_helper(*args)
-        logging.info(ret)
-        logging.info('output structure to tensor list {}'.format(structure.to_tensor_list(self._output_structure, ret)))
         return structure.to_tensor_list(self._output_structure, ret)
 
       return lambda: wrapped_fn
@@ -3738,7 +3723,6 @@ class StructuredFunctionWrapper(object):
           attributes=defun_kwargs)
       def unused(*args):  # pylint: disable=missing-docstring,unused-variable
         ret = wrapper_helper(*args)
-        logging.info('output structure element {}'.format(ret))
         ret = structure.to_tensor_list(self._output_structure, ret)
         return [ops.convert_to_tensor(t) for t in ret]
 
@@ -3779,7 +3763,6 @@ class StructuredFunctionWrapper(object):
       def wrapped_fn(*args):  # pylint: disable=missing-docstring
         ret = wrapper_helper(*args)
         ret = structure.to_tensor_list(self._output_structure, ret)
-        logging.info('Output structure to tensor list {}'.format(ret))
         return [ops.convert_to_tensor(t) for t in ret]
 
       return wrapped_fn.get_concrete_function
@@ -3815,15 +3798,16 @@ class StructuredFunctionWrapper(object):
     if resource_tracker.resources:
       warn_if_collections(transformation_name)
 
-    if not use_legacy_function:
-      outer_graph_seed = ops.get_default_graph().seed
-      if outer_graph_seed and self._function.graph.seed == outer_graph_seed:
-        if self._function.graph._seed_used:
-          warnings.warn(
-              "Seed %s from outer graph might be getting used by function %s, "
-              "if the random op has not been provided any seed. Explicitly set "
-              "the seed in the function if this is not the intended behavior."
-              %(outer_graph_seed, func_name), stacklevel=4)
+    # if FLAG_GLOBAL_SEED:
+    #   if not use_legacy_function:
+    #     outer_graph_seed = ops.get_default_graph().seed
+    #     if outer_graph_seed and self._function.graph.seed == outer_graph_seed:
+    #       if self._function.graph._seed_used:
+    #         warnings.warn(
+    #             "Seed %s from outer graph might be getting used by function %s, "
+    #             "if the random op has not been provided any seed. Explicitly set "
+    #             "the seed in the function if this is not the intended behavior."
+    #             %(outer_graph_seed, func_name), stacklevel=4)
 
   @property
   def output_structure(self):
@@ -3907,6 +3891,7 @@ class DeterministicStructuredFunctionWrapper(object):
         `input_shapes`, and `input_types` is passed.
     """
     # pylint: disable=protected-access
+    FLAG_GLOBAL_SEED=False
     if input_structure is None:
       if dataset is None:
         if input_classes is None or input_shapes is None or input_types is None:
@@ -3963,11 +3948,14 @@ class DeterministicStructuredFunctionWrapper(object):
                     "is not supported. Create each resource outside the "
                     "function, and capture it inside the function to use it." %
                     transformation_name, stacklevel=5)
-
+    self._seed=[0,0]
     def wrapper_helper(*args):
       """Wrapper for passing nested structures to and from tf.data functions."""
       nested_args = structure.from_compatible_tensor_list(
           self._input_structure, args)['element']
+      self._seed = structure.from_compatible_tensor_list(
+          self._input_structure, args)['element_seed']
+      ops.get_default_graph().seed = self._seed
       if not _should_unpack(nested_args):
         nested_args = (nested_args,)
         logging.info('nested args Value is _should_unpack {}'.format(nested_args))
@@ -4086,14 +4074,18 @@ class DeterministicStructuredFunctionWrapper(object):
       warn_if_collections(transformation_name)
     #TODO Set the seed here....More concepts to be incorporated
     if not use_legacy_function:
-      outer_graph_seed = ops.get_default_graph().seed
-      if outer_graph_seed and self._function.graph.seed == outer_graph_seed:
-        if self._function.graph._seed_used:
-          warnings.warn(
-              "Seed %s from outer graph might be getting used by function %s, "
-              "if the random op has not been provided any seed. Explicitly set "
-              "the seed in the function if this is not the intended behavior."
-              %(outer_graph_seed, func_name), stacklevel=4)
+      ops.get_default_graph().seed = self._seed
+      #outer_graph_seed = self._seed
+      self._function.graph.seed = self._seed
+      logging.info('Before seed is {}'.format(self._seed))
+      logging.info('Setter seed is {}'.format(self._function.graph.seed))
+      # if outer_graph_seed and self._function.graph.seed == outer_graph_seed:
+      #   if self._function.graph._seed_used:
+      #     warnings.warn(
+      #         "Seed %s from outer graph might be getting used by function %s, "
+      #         "if the random op has not been provided any seed. Explicitly set "
+      #         "the seed in the function if this is not the intended behavior."
+      #         %(outer_graph_seed, func_name), stacklevel=4)
 
   @property
   def output_structure(self):
@@ -4982,7 +4974,7 @@ class DeterministicParallelMapDataset(UnaryDataset):
     """See `Dataset.map()` for details."""
     self._input_dataset = input_dataset
     self._use_inter_op_parallelism = use_inter_op_parallelism
-    self._map_func = StructuredFunctionWrapper(
+    self._map_func = DeterministicStructuredFunctionWrapper(
         map_func,
         self._transformation_name(),
         dataset=input_dataset,
