@@ -91,7 +91,8 @@ protected:
     // function where the main conversion happens. It must use the "BeforeWrite" and "AfterWrite" functions
     // to support logging.
     virtual void WriterThread(Env *env, const std::string &shard_directory,
-                      int writer_id, const std::string& compression, const DataTypeVector& output_types, int64 version) = 0;  // Guarded by mu_by_
+                      int writer_id, const std::string& compression,
+                      const DataTypeVector& output_types, int64 version) = 0;  // Guarded by mu_by_
 
     // method optionally implemented by subclass to clean up datastructures. Called before signalling EOF to writer threads.
     virtual void Cleanup() {}
