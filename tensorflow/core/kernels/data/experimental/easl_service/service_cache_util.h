@@ -135,6 +135,8 @@ protected:
     std::deque<std::unique_ptr<ElementOrEOF>> deque_ TF_GUARDED_BY(mu_);
     uint64 bytes_per_row_; // initialized to 0 by constructor. Used to calculate mem-usage.
     uint64 bytes_written_ TF_GUARDED_BY(mu_by_); // initialized to 0 by constructor.
+    const int writer_count_; // initialized by constructor.
+    const int memory_threshold_; // initialized by constructor.
 
 private:
     // private functions
@@ -144,8 +146,6 @@ private:
 
     // class internal variables:
     bool first_row_info_set_; // initialized to false. Signals that first row has already arrived.
-    const int writer_count_; // initialized by constructor.
-    const int memory_threshold_; // initialized by constructor.
     uint64 bytes_received_; // initialized to 0 by constructor.
     int writers_finished_ TF_GUARDED_BY(mu_);  // initialized to 0 by constructor.
     // indicates how many rows can be received at least until it has to check the overall memory in pipeline again.

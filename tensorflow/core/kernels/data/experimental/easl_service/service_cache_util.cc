@@ -4,6 +4,7 @@
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/kernels/data/experimental/easl_service/arrow/arrow_async_reader.h"
 #include "tensorflow/core/kernels/data/experimental/easl_service/arrow/arrow_round_robin.h"
+#include "tensorflow/core/kernels/data/experimental/easl_service/arrow/arrow_async_writer.h"
 
 
 namespace tensorflow {
@@ -37,7 +38,7 @@ Writer::~Writer()= default;
 
 Status Writer::Initialize(){
   if(writer_version_ == 0) { // 0 -> arrow
-//    async_writer_ = std::make_unique<arrow_async_writer::ArrowAsyncWriter>(writer_count_);
+    async_writer_ = std::make_unique<arrow_async_writer::ArrowAsyncWriter>(writer_count_, MEMORY_THRESHOLD_);
   } else if(writer_version_ == 7) {
     async_writer_ = absl::make_unique<arrow_round_robin::ArrowRoundRobinWriter>(writer_count_, MEMORY_THRESHOLD_, compression_);
 
