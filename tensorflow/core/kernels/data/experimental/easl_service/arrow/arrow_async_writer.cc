@@ -58,7 +58,9 @@ void ArrowAsyncWriter::WriterThread(Env *env, const std::string &shard_directory
     auto* be = dynamic_cast<RowOrEOF*>(parent_be.get());
 
     if (be->eof) {
+      BeforeWrite(writer_id);
       arrowWriter->Close();
+      AfterWrite(writer_id, storageEstimate);
       break;
     }
 
@@ -70,7 +72,10 @@ void ArrowAsyncWriter::WriterThread(Env *env, const std::string &shard_directory
 
     // create new reader if memoryThreshold exceeded
     if(storageEstimate >= memory_threshold_ / writer_count_) {
+      BeforeWrite(writer_id);
       arrowWriter->Close();
+      AfterWrite(writer_id, storageEstimate - bytes_per_row_);
+
       storageEstimate = bytes_per_row_; // reset storage estimate
       // create new writer for remaining tensors:
       arrowWriter = absl::make_unique<ArrowWriter>();
@@ -86,7 +91,6 @@ void ArrowAsyncWriter::WriterThread(Env *env, const std::string &shard_directory
 
   // Write accumulated metadata before closing --> if last thread writes to file
   metadata_->WriteMetadataToFile(shard_directory);
-  mutex_lock l(mu_);
   WriterReturn(writer_id);
 }
 

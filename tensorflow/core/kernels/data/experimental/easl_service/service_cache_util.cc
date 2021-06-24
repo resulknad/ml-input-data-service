@@ -335,11 +335,8 @@ void TFRecordWriter::WriterThread(Env *env, const std::string &shard_directory,
     #endif
     FinishedConversion(writer_id);
     writer->WriteTensors(r_be->data);
-    AfterWrite(writer_id);
+    AfterWrite(writer_id, bytes_per_row_);
 
-    mu_by_.lock();
-    bytes_written_ += bytes_per_row_;
-    mu_by_.unlock();
   }
   WriterReturn(writer_id);
 }

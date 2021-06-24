@@ -201,11 +201,7 @@ void ArrowRoundRobinWriter::WriterThread(Env *env, const std::string &shard_dire
 
     FinishedConversion(writer_id);
     rbw->WriteRecordBatch(*rb);
-    AfterWrite(writer_id);
-
-    mu_by_.lock();
-    bytes_written_ += dat_size;
-    mu_by_.unlock();
+    AfterWrite(writer_id, dat_size);
   }
   metadata_->WriteMetadataToFile(shard_directory);
   WriterReturn(writer_id);

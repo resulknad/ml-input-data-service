@@ -111,10 +111,14 @@ protected:
     }
 
     // utility function that can be implemented by class inheriting from this to support stats logging.
-    void AfterWrite(int thread_id) {
+    void AfterWrite(int thread_id, uint64 bytes_written) {
       #ifdef STATS_LOG
       logger_->FinishWriteTensors(thread_id);
       #endif
+
+      mu_by_.lock();
+      bytes_written_ += bytes_written;
+      mu_by_.unlock();
     }
 
     // inheriting class must put this at the end of the WriterThread function.
