@@ -71,7 +71,7 @@ void ArrowAsyncWriter::WriterThread(Env *env, const std::string &shard_directory
     #endif
 
     // create new reader if memoryThreshold exceeded
-    if(storageEstimate >= memory_threshold_ / writer_count_) {
+    if(storageEstimate + bytes_per_row_ >= memory_threshold_ / writer_count_) {
       BeforeWrite(writer_id);
       arrowWriter->Close();
       AfterWrite(writer_id, storageEstimate - bytes_per_row_);
