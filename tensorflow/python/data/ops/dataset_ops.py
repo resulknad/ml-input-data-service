@@ -1817,7 +1817,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     return PaddedBatchDataset(self, batch_size, padded_shapes, padding_values,
                               drop_remainder)
 
-  def map(self, map_func, num_parallel_calls=None, deterministic=None):
+  def map(self, map_func, num_parallel_calls=None, deterministic=None,deterministic_randomness=False):
     """Maps `map_func` across the elements of this dataset.
 
     This transformation applies `map_func` to each element of this dataset, and
@@ -1965,18 +1965,32 @@ name=None))
     Returns:
       Dataset: A `Dataset`.
     """
-    if num_parallel_calls is None or DEBUG_MODE:
-      if deterministic is not None and not DEBUG_MODE:
-        warnings.warn("The `deterministic` argument has no effect unless the "
-                      "`num_parallel_calls` argument is specified.")
-      return MapDataset(self, map_func, preserve_cardinality=True)
+    if deterministic_randomness is True:
+      if num_parallel_calls is None or DEBUG_MODE:
+        if deterministic is not None and not DEBUG_MODE:
+          warnings.warn("The `deterministic` argument has no effect unless the "
+                        "`num_parallel_calls` argument is specified.")
+        return DeterministicMapDataset(self, map_func, preserve_cardinality=True)
+      else:
+        return DeterministicParallelMapDataset(
+            self,
+            map_func,
+            num_parallel_calls,
+            deterministic,
+            preserve_cardinality=True)
     else:
-      return ParallelMapDataset(
-          self,
-          map_func,
-          num_parallel_calls,
-          deterministic,
-          preserve_cardinality=True)
+      if num_parallel_calls is None or DEBUG_MODE:
+        if deterministic is not None and not DEBUG_MODE:
+          warnings.warn("The `deterministic` argument has no effect unless the "
+                        "`num_parallel_calls` argument is specified.")
+        return MapDataset(self, map_func, preserve_cardinality=True)
+      else:
+        return ParallelMapDataset(
+            self,
+            map_func,
+            num_parallel_calls,
+            deterministic,
+            preserve_cardinality=True)
 
   def deterministic_map(self, map_func, num_parallel_calls=None):
     """Maps `map_func` across the elements of this dataset.
@@ -3182,6 +3196,13 @@ class Options(options_lib.OptionsBase):
       docstring=
       "Whether the outputs need to be produced in deterministic order. If None,"
       " defaults to True.")
+# TODO: Add this functionality if needed. need to work with the graphs' result etc
+  # experimental_deterministic_randomness = options_lib.create_option(
+  #     name="experimental_deterministic_randomness",
+  #     ty=bool,
+  #     docstring=
+  #     "Whether the outputs by a random OP need to be deterministic in identical training runs." 
+  #     "If None, defaults to True.")
 
   experimental_distribute = options_lib.create_option(
       name="experimental_distribute",
@@ -3238,6 +3259,8 @@ class Options(options_lib.OptionsBase):
     pb = dataset_options_pb2.Options()
     if self.experimental_deterministic is not None:
       pb.deterministic = self.experimental_deterministic
+    # if self.experimental_deterministic_randomness is not None:
+    #   pb.deterministic_randomness = self.experimental_deterministic_randomness
     pb.distribute_options.CopyFrom(self.experimental_distribute._to_proto())  # pylint: disable=protected-access
     if self.experimental_external_state_policy is not None:
       pb.external_state_policy = (
@@ -3252,6 +3275,8 @@ class Options(options_lib.OptionsBase):
   def _from_proto(self, pb):
     if pb.WhichOneof("optional_deterministic") is not None:
       self.experimental_deterministic = pb.deterministic
+    # if pb.WhichOneof("optional_deterministic_randomness") is not None:
+    #   self.experimental_deterministic_randomness = pb.deterministic_randomness
     self.experimental_distribute._from_proto(pb.distribute_options)  # pylint: disable=protected-access
     if pb.WhichOneof("optional_external_state_policy") is not None:
       self.experimental_external_state_policy = (

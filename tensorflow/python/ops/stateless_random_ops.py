@@ -137,8 +137,7 @@ def _get_key_counter_alg(seed):
     return gen_stateless_random_ops_v2.stateless_random_get_key_counter_alg(
         seed)
 
-def _get_key_counter_alg_det():
-  seed=0
+def _get_key_counter_alg(seed):
   if compat.forward_compatible(2021, 3, 1):
     key, counter = gen_stateless_random_ops_v2.stateless_random_get_key_counter(
         seed)
@@ -151,30 +150,26 @@ def _get_key_counter_alg_det():
 @tf_export("random.stateless_uniform")
 @dispatch.add_dispatch_support
 def stateless_random_uniform(shape,
+                             seed,
                              minval=0,
                              maxval=None,
                              dtype=dtypes.float32,
                              name=None):
   """Outputs deterministic pseudorandom values from a uniform distribution.
-
   This is a stateless version of `tf.random.uniform`: if run twice with the
   same seeds and shapes, it will produce the same pseudorandom numbers.  The
   output is consistent across multiple runs on the same hardware (and between
   CPU and GPU), but may change between versions of TensorFlow or on non-CPU/GPU
   hardware.
-
   The generated values follow a uniform distribution in the range
   `[minval, maxval)`. The lower bound `minval` is included in the range, while
   the upper bound `maxval` is excluded.
-
   For floats, the default range is `[0, 1)`.  For ints, at least `maxval` must
   be specified explicitly.
-
   In the integer case, the random integers are slightly biased unless
   `maxval - minval` is an exact power of two.  The bias is small for values of
   `maxval - minval` significantly smaller than the range of the output (either
   `2**32` or `2**64`).
-
   For full-range (i.e. inclusive of both max and min) random integers, pass
   `minval=None` and `maxval=None` with an integer `dtype`. For an integer dtype
   either both `minval` and `maxval` must be `None` or neither may be `None`. For
@@ -183,7 +178,6 @@ def stateless_random_uniform(shape,
   ints = tf.random.stateless_uniform(
       [10], seed=(2, 3), minval=None, maxval=None, dtype=tf.int32)
   ```
-
   Args:
     shape: A 1-D integer Tensor or Python array. The shape of the output tensor.
     seed: A shape [2] Tensor, the seed to the random number generator. Must have
@@ -201,14 +195,70 @@ def stateless_random_uniform(shape,
       `int64`. For unbounded uniform ints (`minval`, `maxval` both `None`),
       `uint32` and `uint64` may be used.
     name: A name for the operation (optional).
-
   Returns:
     A tensor of the specified shape filled with random uniform values.
-
   Raises:
     ValueError: If `dtype` is integral and only one of `minval` or `maxval` is
       specified.
   """
+  dtype = dtypes.as_dtype(dtype)
+  if dtype not in (dtypes.float16, dtypes.bfloat16, dtypes.float32,
+                   dtypes.float64, dtypes.int32, dtypes.int64, dtypes.uint32,
+                   dtypes.uint64):
+    raise ValueError("Invalid dtype %r" % dtype)
+  if dtype.is_integer:
+    if (minval is None) != (maxval is None):
+      raise ValueError("For integer dtype {}, minval and maxval must be both "
+                       "`None` or both non-`None`.".format(dtype))
+    if minval is not None and dtype in (dtypes.uint32, dtypes.uint64):
+      raise ValueError("Invalid dtype for bounded uniform integers: %r" % dtype)
+  elif maxval is None:
+    maxval = 1
+  with ops.name_scope(name, "stateless_random_uniform",
+                      [shape, seed, minval, maxval]) as name:
+    shape = tensor_util.shape_tensor(shape)
+    if dtype.is_integer and minval is None:
+      if compat.forward_compatible(2020, 10, 25):
+        key, counter, alg = _get_key_counter_alg(seed)
+        result = (gen_stateless_random_ops_v2
+                  .stateless_random_uniform_full_int_v2(
+                      shape, key=key, counter=counter, dtype=dtype, alg=alg,
+                      name=name))
+      else:
+        result = gen_stateless_random_ops.stateless_random_uniform_full_int(
+            shape, seed=seed, dtype=dtype, name=name)
+    else:
+      minval = ops.convert_to_tensor(minval, dtype=dtype, name="min")
+      maxval = ops.convert_to_tensor(maxval, dtype=dtype, name="max")
+      if dtype.is_integer:
+        if compat.forward_compatible(2020, 10, 25):
+          key, counter, alg = _get_key_counter_alg(seed)
+          result = gen_stateless_random_ops_v2.stateless_random_uniform_int_v2(
+              shape, key=key, counter=counter, minval=minval, maxval=maxval,
+              alg=alg, name=name)
+        else:
+          result = gen_stateless_random_ops.stateless_random_uniform_int(
+              shape, seed=seed, minval=minval, maxval=maxval, name=name)
+      else:
+        if compat.forward_compatible(2020, 10, 25):
+          key, counter, alg = _get_key_counter_alg(seed)
+          rnd = gen_stateless_random_ops_v2.stateless_random_uniform_v2(
+              shape, key=key, counter=counter, dtype=dtype, alg=alg)
+        else:
+          rnd = gen_stateless_random_ops.stateless_random_uniform(
+              shape, seed=seed, dtype=dtype)
+        result = math_ops.add(rnd * (maxval - minval), minval, name=name)
+    tensor_util.maybe_set_static_shape(result, shape)
+    return result
+
+@tf_export("random.deterministic_uniform")
+@dispatch.add_dispatch_support
+def deterministic_random_uniform(shape,
+                             minval=0,
+                             maxval=None,
+                             dtype=dtypes.float32,
+                             name=None):
+
   dtype = dtypes.as_dtype(dtype)
   if dtype not in (dtypes.float16, dtypes.bfloat16, dtypes.float32,
                    dtypes.float64, dtypes.int32, dtypes.int64, dtypes.uint32,
@@ -228,39 +278,20 @@ def stateless_random_uniform(shape,
     seed=ops.get_default_graph().seed
     logging.info('Op seed is {}'.format(seed))
     if dtype.is_integer and minval is None:
-      # if compat.forward_compatible(2020, 10, 25):
-      #   key, counter, alg = _get_key_counter_alg_det()
-      #   result = (gen_stateless_random_ops_v2
-      #             .stateless_random_uniform_full_int_v2(
-      #                 shape, key=key, counter=counter, dtype=dtype, alg=alg,
-      #                 name=name))
-      # else:
       result = gen_stateless_random_ops.stateless_random_uniform_full_int(
           shape, seed=seed, dtype=dtype, name=name)
     else:
       minval = ops.convert_to_tensor(minval, dtype=dtype, name="min")
       maxval = ops.convert_to_tensor(maxval, dtype=dtype, name="max")
       if dtype.is_integer:
-        # if compat.forward_compatible(2020, 10, 25):
-        #   key, counter, alg = _get_key_counter_alg(seed)
-        #   result = gen_stateless_random_ops_v2.stateless_random_uniform_int_v2(
-        #       shape, key=key, counter=counter, minval=minval, maxval=maxval,
-        #       alg=alg, name=name)
-        # else:
         result = gen_stateless_random_ops.stateless_random_uniform_int(
             shape, seed=seed, minval=minval, maxval=maxval, name=name)
       else:
-        # if compat.forward_compatible(2020, 10, 25):
-        #   key, counter, alg = _get_key_counter_alg(seed)
-        #   rnd = gen_stateless_random_ops_v2.stateless_random_uniform_v2(
-        #       shape, key=key, counter=counter, dtype=dtype, alg=alg)
-        # else:
         rnd = gen_stateless_random_ops.stateless_random_uniform(
             shape, seed=seed, dtype=dtype)
         result = math_ops.add(rnd * (maxval - minval), minval, name=name)
     tensor_util.maybe_set_static_shape(result, shape)
     return result
-
 
 @tf_export("random.stateless_binomial")
 @dispatch.add_dispatch_support
