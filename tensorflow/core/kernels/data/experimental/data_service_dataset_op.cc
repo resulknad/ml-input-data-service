@@ -69,6 +69,11 @@ namespace data {
 /* static */ constexpr const char* const DataServiceDatasetOp::kOutputTypes;
 /* static */ constexpr const char* const DataServiceDatasetOp::kOutputShapes;
 
+// EASL
+/* static */ constexpr const char* const
+    DataServiceDatasetOp::kMaxRequestPipeliningPerTask;
+
+
 namespace {
 // Default interval between task list refreshes.
 const int64 kDefaultTaskRefreshIntervalMs = 50;  // 1 second. => now 50msec.
@@ -90,8 +95,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           const std::string& data_transfer_protocol,
           const std::string& job_name, absl::optional<int64> consumer_index,
           absl::optional<int64> num_consumers, int64 max_outstanding_requests,
-          int64 task_refresh_interval_ms, IterationCounter* iteration_counter,
-          bool owns_resource, ResourceHandle iteration_counter_handle,
+          int64 max_request_pipelining_per_task, int64 task_refresh_interval_ms,
+          IterationCounter* iteration_counter, bool owns_resource,
+          ResourceHandle iteration_counter_handle,
           const DataTypeVector& output_types,
           const std::vector<PartialTensorShape>& output_shapes)
       : DatasetBase(DatasetContext(ctx)),
@@ -105,6 +111,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         consumer_index_(consumer_index),
         num_consumers_(num_consumers),
         max_outstanding_requests_(max_outstanding_requests),
+        max_request_pipelining_per_task_(max_request_pipelining_per_task),
         task_refresh_interval_ms_(task_refresh_interval_ms),
         iteration_counter_(iteration_counter),
         owns_resource_(owns_resource),
@@ -420,6 +427,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       bool in_use TF_GUARDED_BY(&Iterator::mu_) = false;
       // Indicates whether the worker has returned end_of_sequence for the task.
       bool end_of_sequence TF_GUARDED_BY(&Iterator::mu_) = false;
+
+      // EASL - we use this to allow for multiple requests per task.
+      int64 num_outstanding_requests TF_GUARDED_BY(&Iterator::mu_) = 0;
     };
 
     struct Result {
@@ -512,7 +522,10 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           task_info.transfer_address(), dataset()->protocol_,
           dataset()->data_transfer_protocol_, worker));
       tasks_.push_back(std::make_shared<Task>(task_info, std::move(worker)));
-      worker_thread_cv_.notify_one();
+      // EASL - notify kMaxParallelCallsPerTask threads to pipeline requests
+      for(int i=0; i++; i<max_request_pipelining_per_task_){
+        worker_thread_cv_.notify_one();
+      }
       if (StrictRoundRobin()) {
         VLOG(1) << "Consumer " << dataset()->consumer_index_.value()
                 << " adding task " << task_info.task_id()
@@ -689,12 +702,16 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
                   << round_robin_round_limit_.value_or(-1);
           return nullptr;
         }
-        if (current_round_ < task->info.starting_round() || task->in_use ||
+        // EASL - request pipelining: change skipping condition.
+        //if (current_round_ < task->info.starting_round() || task->in_use ||
+        if(current_round_ < task->info.starting_round() ||
+            task->num_outstanding_requests > max_request_pipelining_per_task_ ||
             task->end_of_sequence || task->removed) {
           VLOG(3) << "Skipping task " << next_task_index_
                   << ". starting round: " << task->info.starting_round()
                   << ". current round: " << current_round_
                   << ". task->in_use: " << task->in_use
+                  << ". task->num_outstanding_requests: " << task->num_outstanding_requests
                   << ". end_of_sequence: " << task->end_of_sequence
                   << ". task->removed: " << task->removed;
           AdvanceTaskIndex();
@@ -719,7 +736,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         {
           mutex_lock l(mu_);
           if (task_to_process) {
-            task_to_process->in_use = false;
+            task_to_process->in_use = false; // Only holds for round_robin.
+            task_to_process->num_outstanding_requests--;
             task_to_process = nullptr;
             worker_thread_cv_.notify_one();
           }
@@ -745,6 +763,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           //DCHECK(task_to_process != nullptr);
           DCHECK(task_to_process); // (damien-aymon) This will never segfault..
           task_to_process->in_use = true;
+          task_to_process->num_outstanding_requests++;
           VLOG(3) << "Processing task " << task_to_process->info.task_id();
         }
         int64 deadline_micros = kint64max;
@@ -761,7 +780,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           mutex_lock l(mu_);
           VLOG(1) << "Failed to get element from worker "
                   << task_to_process->info.worker_address() << ": " << s;
-          task_to_process->in_use = false;
+          task_to_process->in_use = false; // only holds for round robin
+          task_to_process->num_outstanding_requests--;
           status_ = Status(s.code(),
                            absl::StrCat("Failed to get element from worker ",
                                         task_to_process->info.worker_address(),
@@ -1007,6 +1027,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
   ResourceMgr* const resource_mgr_;  // Not owned
   const DataTypeVector output_types_;
   const std::vector<PartialTensorShape> output_shapes_;
+
+  // EASL
+  const int64 max_request_pipelining_per_task_;
 };
 
 DataServiceDatasetOp::DataServiceDatasetOp(OpKernelConstruction* ctx)
@@ -1082,6 +1105,10 @@ void DataServiceDatasetOp::MakeDataset(OpKernelContext* ctx,
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kMaxOutstandingRequests,
                                           &max_outstanding_requests));
 
+  int64 max_request_pipelining_per_task;
+  OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kMaxRequestPipeliningPerTask,
+                                          &max_outstanding_requests));
+
   ResourceHandle iteration_counter_handle;
   OP_REQUIRES_OK(
       ctx, HandleFromInput(ctx, kIterationCounter, &iteration_counter_handle));
@@ -1120,6 +1147,7 @@ void DataServiceDatasetOp::MakeDataset(OpKernelContext* ctx,
   *output = new Dataset(ctx, op_version_, dataset_id, processing_mode, address,
                         protocol, data_transfer_protocol_, job_name,
                         consumer_index, num_consumers, max_outstanding_requests,
+                        max_request_pipelining_per_task,
                         task_refresh_interval_hint_ms_, iteration_counter,
                         owns_resource, iteration_counter_handle, output_types_,
                         output_shapes_);

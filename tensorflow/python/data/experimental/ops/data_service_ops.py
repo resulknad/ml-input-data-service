@@ -69,6 +69,7 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
                consumer_index=None,
                num_consumers=None,
                max_outstanding_requests=None,
+               max_request_pipelining_per_worker=1,
                task_refresh_interval_hint_ms=None):
     """Constructs a _DataServiceDatasetV2.
 
@@ -105,6 +106,11 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
         `element_size` * `max_outstanding_requests` of memory.
       task_refresh_interval_hint_ms: (Optional.) A hint for how often to query
         the dispatcher for task changes.
+
+      EASL:
+        max_request_pipelining_per_worker: (Optional.) We add this parameter to increase
+          the number of parallel request a client can send to a single worker. Defaults
+          to 1 to default to original behaviour.
     """
     if consumer_index is None != num_consumers is None:
       raise ValueError(
@@ -143,6 +149,10 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
         max_outstanding_requests,
         dtype=dtypes.int64,
         name="max_outstanding_requests")
+    self._max_request_pipelining_per_worker = ops.convert_to_tensor(
+        max_request_pipelining_per_worker,
+        dtype=dtypes.int64,
+        name="max_request_pipelining_per_task")
     self._element_spec = element_spec
 
     compat_kwargs = {}
@@ -157,6 +167,7 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
         consumer_index=self._consumer_index,
         num_consumers=self._num_consumers,
         max_outstanding_requests=self._max_outstanding_requests,
+        max_request_pipelining_per_task=self._max_request_pipelining_per_worker,
         task_refresh_interval_hint_ms=task_refresh_interval_hint_ms,
         iteration_counter=gen_experimental_dataset_ops.dummy_iteration_counter(
         ),
@@ -176,6 +187,7 @@ class _DataServiceDatasetV1(dataset_ops.DatasetV1Adapter):
   def __init__(self, dataset_id, processing_mode, address, element_spec,
                protocol, data_transfer_protocol, job_name, consumer_index,
                num_consumers, max_outstanding_requests,
+               max_request_pipelining_per_worker,
                task_refresh_interval_hint_ms):
 
     self._wrapped = _DataServiceDatasetV2(
@@ -189,6 +201,7 @@ class _DataServiceDatasetV1(dataset_ops.DatasetV1Adapter):
         consumer_index=consumer_index,
         num_consumers=num_consumers,
         max_outstanding_requests=max_outstanding_requests,
+        max_request_pipelining_per_worker=max_request_pipelining_per_worker,
         task_refresh_interval_hint_ms=task_refresh_interval_hint_ms)
     super(_DataServiceDatasetV1, self).__init__(self._wrapped)
 
@@ -233,6 +246,7 @@ def _distribute(processing_mode,
                 consumer_index=None,
                 num_consumers=None,
                 max_outstanding_requests=None,
+                max_request_pipelining_per_worker=1, # EASL original behaviour.
                 task_refresh_interval_hint_ms=None,
                 data_transfer_protocol=None,
                 compression="AUTO"):
@@ -276,6 +290,12 @@ def _distribute(processing_mode,
       over the network. "AUTO" leaves the decision of how to compress up to the
       tf.data service runtime. `None` indicates not to compress.
 
+    EASL:
+    max_request_pipelining_per_worker: (Optional.) We add this parameter to increase
+      the number of parallel request a client can send to a single worker. Defaults
+      to 1 to default to original behaviour.
+
+
   Returns:
     Dataset: A `Dataset` of the elements produced by the data service.
   """
@@ -298,6 +318,7 @@ def _distribute(processing_mode,
         consumer_index=consumer_index,
         num_consumers=num_consumers,
         max_outstanding_requests=max_outstanding_requests,
+        max_request_pipelining_per_worker=max_request_pipelining_per_worker,
         task_refresh_interval_hint_ms=task_refresh_interval_hint_ms,
         data_transfer_protocol=data_transfer_protocol,
         compression=compression)
@@ -312,6 +333,7 @@ def distribute(processing_mode,
                consumer_index=None,
                num_consumers=None,
                max_outstanding_requests=None,
+               max_request_pipelining_per_worker=1, # like default behaviour.
                data_transfer_protocol=None,
                compression="AUTO"):
   """A transformation that moves dataset processing to the tf.data service.
@@ -519,6 +541,11 @@ def distribute(processing_mode,
       over the network. "AUTO" leaves the decision of how to compress up to the
       tf.data service runtime. `None` indicates not to compress.
 
+    EASL:
+    max_request_pipelining_per_worker: (Optional.) We add this parameter to increase
+      the number of parallel request a client can send to a single worker. Defaults
+      to 1 to default to original behaviour.
+
   Returns:
     Dataset: A `Dataset` of the elements produced by the data service.
   """
@@ -529,6 +556,7 @@ def distribute(processing_mode,
       consumer_index=consumer_index,
       num_consumers=num_consumers,
       max_outstanding_requests=max_outstanding_requests,
+      max_request_pipelining_per_worker=max_request_pipelining_per_worker,
       data_transfer_protocol=data_transfer_protocol,
       compression=compression)
 
@@ -566,6 +594,14 @@ def _register_dataset(service, dataset, compression):
     dataset = dataset.map(
         lambda *x: compression_ops.compress(x),
         num_parallel_calls=dataset_ops.AUTOTUNE)
+  else:
+    # TODO (damien-aymon) Make this cleaner
+    # EASL - we set this because we look out for the first "map" operation to
+    # insert our caching ops.
+    dataset = dataset.map(
+        lambda x: x,
+        num_parallel_calls=dataset_ops.AUTOTUNE)
+
   dataset = dataset.prefetch(dataset_ops.AUTOTUNE)
   # Apply options so that the dataset executed in the tf.data service will
   # be optimized and support autotuning.
@@ -633,6 +669,7 @@ def _from_dataset_id(processing_mode,
                      consumer_index=None,
                      num_consumers=None,
                      max_outstanding_requests=None,
+                     max_request_pipelining_per_worker=1,
                      task_refresh_interval_hint_ms=None,
                      data_transfer_protocol=None,
                      compression="AUTO"):
@@ -681,6 +718,11 @@ def _from_dataset_id(processing_mode,
     compression: An indication of how the dataset's elements were compressed, so
       that `from_dataset_id` can uncompress them if necessary.
 
+    EASL:
+    max_request_pipelining_per_worker: (Optional.) We add this parameter to increase
+      the number of parallel request a client can send to a single worker. Defaults
+      to 1 to default to original behaviour.
+
   Returns:
     A `tf.data.Dataset` which reads from the tf.data service.
   """
@@ -716,6 +758,7 @@ def _from_dataset_id(processing_mode,
       consumer_index=consumer_index,
       num_consumers=num_consumers,
       max_outstanding_requests=max_outstanding_requests,
+      max_request_pipelining_per_worker=max_request_pipelining_per_worker,
       task_refresh_interval_hint_ms=task_refresh_interval_hint_ms)
   if compression == COMPRESSION_AUTO:
     dataset = dataset.map(
@@ -738,7 +781,8 @@ def from_dataset_id(processing_mode,
                     job_name=None,
                     consumer_index=None,
                     num_consumers=None,
-                    max_outstanding_requests=None):
+                    max_outstanding_requests=None,
+                    max_request_pipelining_per_worker=1):
   """Creates a dataset which reads data from the tf.data service.
 
   This is useful when the dataset is registered by one process, then used in
@@ -813,6 +857,11 @@ def from_dataset_id(processing_mode,
       of memory used, since `distribute` won't use more than `element_size` *
       `max_outstanding_requests` of memory.
 
+    EASL:
+    max_request_pipelining_per_worker: (Optional.) We add this parameter to increase
+      the number of parallel request a client can send to a single worker. Defaults
+      to 1 to default to original behaviour.
+
   Returns:
     A `tf.data.Dataset` which reads from the tf.data service.
   """
@@ -824,4 +873,5 @@ def from_dataset_id(processing_mode,
       job_name=job_name,
       consumer_index=consumer_index,
       num_consumers=num_consumers,
-      max_outstanding_requests=max_outstanding_requests)
+      max_outstanding_requests=max_outstanding_requests,
+      max_request_pipelining_per_worker=max_request_pipelining_per_worker)

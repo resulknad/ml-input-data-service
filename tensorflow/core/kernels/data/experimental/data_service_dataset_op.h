@@ -66,6 +66,10 @@ class DataServiceDatasetOp : public DatasetOpKernel {
   // Note: If a new constant is declared here, it *must* be defined in
   // data_service_dataset_op.cc, otherwise it will not compile in debug mode.
 
+  // EASL
+  static constexpr const char* const kMaxRequestPipeliningPerTask =
+      "max_request_pipelining_per_task";
+
   explicit DataServiceDatasetOp(OpKernelConstruction* ctx);
 
  protected:
