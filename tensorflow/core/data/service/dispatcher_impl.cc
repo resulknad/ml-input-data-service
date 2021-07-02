@@ -240,7 +240,7 @@ Status DataServiceDispatcherImpl::FindNewTasks(
   for (const auto& task : assigned_tasks) {
     assigned_job_ids.insert(task->job->job_id);
   }
-  for (const auto& job : state_.ListJobs()) {
+  for (const auto& job : state_.ListJobsForWorker(worker_address)) {
     if (!assigned_job_ids.contains(job->job_id) && job->IsRoundRobin() &&
         !job->finished) {
       VLOG(1) << "Creating pending task for reconnected worker "
@@ -725,7 +725,7 @@ Status DataServiceDispatcherImpl::CreateJob(
 
 Status DataServiceDispatcherImpl::CreateTasksForWorker(
     const std::string& worker_address) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  std::vector<std::shared_ptr<const Job>> jobs = state_.ListJobs();
+  std::vector<std::shared_ptr<const Job>> jobs = state_.ListJobsForWorker(worker_address);
   for (const auto& job : jobs) {
     if (job->finished) {
       continue;
@@ -757,10 +757,14 @@ Status DataServiceDispatcherImpl::CreateTasksForJob(
     std::shared_ptr<const Job> job,
     std::vector<std::shared_ptr<const Task>>& tasks)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  std::vector<std::shared_ptr<const Worker>> workers = state_.ListWorkers();
+  // Find the next available workers and assign them to this job.
+  // By default, start by using a single worker for initial metric collection run. 
+  // TODO(easl): Implement policy to decide the number of workers for a job.
+  int num_workers = 1;
+  std::vector<std::shared_ptr<Worker>> workers = state_.ReserveWorkers(num_workers, job->job_id);
   tasks.clear();
   tasks.reserve(workers.size());
-  for (const auto& worker : workers) {
+  for (auto& worker : workers) {
     std::shared_ptr<const Task> task;
     TF_RETURN_IF_ERROR(CreateTask(job, worker->address, task));
     tasks.push_back(task);

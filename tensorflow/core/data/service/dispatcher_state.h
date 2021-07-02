@@ -176,6 +176,7 @@ class DispatcherState {
   };
 
   using TasksById = absl::flat_hash_map<int64, std::shared_ptr<Task>>;
+  using JobsById = absl::flat_hash_map<int64, std::shared_ptr<Job>>;
 
   // Returns the next available dataset id.
   int64 NextAvailableDatasetId() const;
@@ -192,10 +193,18 @@ class DispatcherState {
   // Lists all workers registered with the dispatcher.
   std::vector<std::shared_ptr<const Worker>> ListWorkers() const;
 
+  // Lists workers registered with the dispatcher with no jobs assigned.
+  std::vector<std::shared_ptr<const Worker>> ListAvailableWorkers() const;
+
+  // Reserves a number of available workers for a particular job.
+  std::vector<std::shared_ptr<Worker>> ReserveWorkers(int64 num_workers, int64 job_id);
+
   // Returns the next available job id.
   int64 NextAvailableJobId() const;
   // Returns a list of all jobs.
   std::vector<std::shared_ptr<const Job>> ListJobs();
+  // Returns a list of jobs assigned to particular worker.
+  std::vector<std::shared_ptr<const Job>> ListJobsForWorker(const absl::string_view worker_address);
   // Gets a job by id. Returns NOT_FOUND if there is no such job.
   Status JobFromId(int64 id, std::shared_ptr<const Job>& job) const;
   // Gets a named job by key. Returns NOT_FOUND if there is no such job.
@@ -244,9 +253,13 @@ class DispatcherState {
   // Registered workers, keyed by address.
   absl::flat_hash_map<std::string, std::shared_ptr<Worker>> workers_;
 
+  // Avaialable workers (no job assigned), keyed by address.
+  absl::flat_hash_map<std::string, std::shared_ptr<Worker>> avail_workers_;
+
   int64 next_available_job_id_ = 2000;
   // Jobs, keyed by job ids.
-  absl::flat_hash_map<int64, std::shared_ptr<Job>> jobs_;
+  JobsById jobs_;
+
   // Named jobs, keyed by their names and indices. Not all jobs have names, so
   // this is a subset of the jobs stored in `jobs_`.
   absl::flat_hash_map<NamedJobKey, std::shared_ptr<Job>> named_jobs_;
@@ -263,6 +276,10 @@ class DispatcherState {
   // Tasks, keyed by worker addresses. The values are a map from task id to
   // task.
   absl::flat_hash_map<std::string, TasksById> tasks_by_worker_;
+  // List of workers associated with each job.
+  absl::flat_hash_map<int64, std::vector<std::shared_ptr<Worker>>> workers_by_job_;
+  // List of jobs associated with each worker, keyed by worker address.
+  absl::flat_hash_map<std::string, JobsById> jobs_by_worker_;
 };
 
 }  // namespace data
