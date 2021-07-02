@@ -208,6 +208,11 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         b->AddScalar(max_outstanding_requests_, &max_outstanding_requests));
     inputs.push_back(max_outstanding_requests);
 
+    Node* max_request_pipelining_per_task;
+    TF_RETURN_IF_ERROR(
+        b->AddScalar(max_request_pipelining_per_task_, &max_request_pipelining_per_task));
+    inputs.push_back(max_request_pipelining_per_task);
+
     Node* iteration_counter_handle = nullptr;
     Tensor handle(DT_RESOURCE, TensorShape({}));
     handle.scalar<ResourceHandle>()() = iteration_counter_handle_;
@@ -233,7 +238,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     explicit Iterator(const Params& params, int64 iterator_index)
         : DatasetIterator<Dataset>(params),
           iterator_index_(iterator_index),
-          max_outstanding_requests_(params.dataset->max_outstanding_requests_){
+          max_outstanding_requests_(params.dataset->max_outstanding_requests_),
+          max_request_pipelining_per_task_(params.dataset->max_request_pipelining_per_task_){
     }
 
     ~Iterator() override {
@@ -316,12 +322,14 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         while ((results_.empty() || !results_.front().ready) &&
             !(job_finished_ && num_running_worker_threads_ == 0) &&
             !cancelled_ && status_.ok()) {
-          VLOG(3) << "Blocking in GetNext. results_.size():" << results_.size()
+          VLOG(0) << "Blocking in GetNext. results_.size():" << results_.size()
                   << " results_.front().ready:"
                   << (!results_.empty() && results_.front().ready)
                   << " job_finished_:" << job_finished_
                   << " num_running_worker_threads_:"
-                  << num_running_worker_threads_;
+                  << num_running_worker_threads_
+                  << " outstanding_requests_:"
+                  << outstanding_requests_;
           get_next_cv_.wait(l);
           hadToWait = true; // EASL - metrics collection.
         }
@@ -707,7 +715,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         if(current_round_ < task->info.starting_round() ||
             task->num_outstanding_requests > max_request_pipelining_per_task_ ||
             task->end_of_sequence || task->removed) {
-          VLOG(3) << "Skipping task " << next_task_index_
+          VLOG(0) << "Skipping task " << next_task_index_
                   << ". starting round: " << task->info.starting_round()
                   << ". current round: " << current_round_
                   << ". task->in_use: " << task->in_use
@@ -961,6 +969,12 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     // elements as well as completed requests which haven't yet been produced.
     int64 max_outstanding_requests_ TF_GUARDED_BY(mu_);
 
+    // EASL
+    // max_request_pipelining_per_task_ controls the max number of parallel
+    // requests can be sent to a single task.
+    int64 max_request_pipelining_per_task_ TF_GUARDED_BY(mu_);
+
+
     // The number of threads in `worker_threads_` which are still running.
     int64 num_running_worker_threads_ TF_GUARDED_BY(mu_) = 0;
 
@@ -1107,7 +1121,7 @@ void DataServiceDatasetOp::MakeDataset(OpKernelContext* ctx,
 
   int64 max_request_pipelining_per_task;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kMaxRequestPipeliningPerTask,
-                                          &max_outstanding_requests));
+                                          &max_request_pipelining_per_task));
 
   ResourceHandle iteration_counter_handle;
   OP_REQUIRES_OK(
