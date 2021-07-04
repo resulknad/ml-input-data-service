@@ -43,6 +43,9 @@ class MultiThreadedAsyncWriter {
   // waiting for the writer to be closed.
   void SignalEOF() TF_LOCKS_EXCLUDED(mu_);
 
+ private:
+  std::string GeneratePrefixHash();
+
  protected:
   void Consume(snapshot_util::ElementOrEOF* be) TF_LOCKS_EXCLUDED(mu_);
   bool ElementAvailable() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
@@ -66,6 +69,8 @@ class MultiThreadedAsyncWriter {
   // destroyed first before the thread finishes, potentially causing the
   // thread to access invalid memory.
   const int writer_count_;
+  // We define a prefix to ensure no name collisions occur
+  const std::string prefix_hash_;
   std::unique_ptr<thread::ThreadPool> thread_pool_;
 };
 
