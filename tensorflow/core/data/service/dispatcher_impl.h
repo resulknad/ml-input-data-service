@@ -327,21 +327,6 @@ class DataServiceDispatcherImpl {
   std::unique_ptr<Thread> job_gc_thread_;
   condition_variable log_dumps_thread_cv_;
   std::unique_ptr<Thread> log_dumps_thread_;
-  std::unique_ptr<Thread> cachew_thread_;
-
-  // Cachew decision data: bytes to 
-  std::vector<std::tuple<double, double>> read_times_ = {
-    {4, 0.001468},
-    {64, 0.021496},
-    {512, 0.175405},
-    {1024, 0.355569},
-    {10000, 3.396340},
-    {100000, 31.818158},
-    {1000000, 349.849086},
-    {10000000, 1221.657678},
-    {100000000, 1117.086616},
-    {500000000, 1072.647283}
-  };
 
   TF_DISALLOW_COPY_AND_ASSIGN(DataServiceDispatcherImpl);
 };

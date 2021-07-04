@@ -169,9 +169,6 @@ Status DataServiceDispatcherImpl::Start() {
         env_->StartThread({}, "job-gc-thread", [&] { JobGcThread(); }));
   }
 
-  //cachew_thread_ = absl::WrapUnique(
-  //env_->StartThread({}, "cachew-thread", [&] { CachewThread(); }));
-
   if (config_.work_dir().empty()) {
     if (config_.fault_tolerant_mode()) {
       return errors::InvalidArgument(

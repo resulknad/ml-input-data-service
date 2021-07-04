@@ -1,3 +1,5 @@
+#include <random>
+
 #include "tensorflow/core/kernels/data/experimental/easl_service/service_cache_util.h"
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/protobuf/service_cache.pb.h"
@@ -10,12 +12,19 @@ namespace data {
 namespace easl{
 namespace service_cache_util {
 
+namespace {
+  // Define the max file size as 30 MB
+  const int64 kMaxFileSize = 30 * 1e6; 
+}
+
 namespace { // anonymous namespace => declared functions only visible within this file
 static constexpr const char *const kCacheLocation = "";
 
-std::string GetFileName(const std::string& shard_directory,
-                                uint64 file_id, uint64 split_id = 0) {
-  return io::JoinPath(shard_directory, strings::Printf("%08llu.easl",
+std::string GetFileName(const std::string& shard_directory, uint64 writer_id, 
+                        uint64 file_id, std::string prefix_hash) {
+  return io::JoinPath(shard_directory, strings::Printf("%s_%02llu_%08llu.easl",
+                      prefix_hash.c_str(), 
+                      static_cast<unsigned long long>(writer_id),
                       static_cast<unsigned long long>(file_id)));
 }
 
@@ -100,7 +109,17 @@ Status Writer::WriteMetadataFile(
 // MultiThreadedAsyncWriter
 // -----------------------------------------------------------------------------
 
-MultiThreadedAsyncWriter::MultiThreadedAsyncWriter(const int writer_count) : writer_count_(writer_count) {}
+MultiThreadedAsyncWriter::MultiThreadedAsyncWriter(const int writer_count) : 
+  writer_count_(writer_count), prefix_hash_(GeneratePrefixHash()) {}
+
+std::string MultiThreadedAsyncWriter::GeneratePrefixHash() {
+  std::string str("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij"
+  "klmnopqrstuvwxyz");
+  std::random_device rd;
+  std::mt19937 generator(rd());
+  std::shuffle(str.begin(), str.end(), generator);
+  return str.substr(0, 8);
+}
 
 void MultiThreadedAsyncWriter::Initialize(Env *env, int64 file_index, const std::string &shard_directory,
         uint64 checkpoint_id, const std::string &compression, int64 version,
@@ -133,7 +152,8 @@ void MultiThreadedAsyncWriter::Write(const std::vector<Tensor>& tensors) {
     first_row_info_set_ = true;
   }
   mutex_lock l(mu_);
-  VLOG(3) << "****************** Reader Queue Size: " << deque_.size() << "  of max:  " << producer_threshold_ / bytes_per_row_;
+  VLOG(3) << "****************** Reader Queue Size: " << deque_.size() 
+          << "  of max:  " << producer_threshold_ / bytes_per_row_;
   mu_.Await(Condition(this,
             &MultiThreadedAsyncWriter::ProducerSpaceAvailable));
 
@@ -171,17 +191,20 @@ Status MultiThreadedAsyncWriter::WriterThread(Env* env,
                                  uint64 writer_id,
                                  const std::string& compression, int64 version,
                                  DataTypeVector output_types) {
-
   // TODO (damien-aymon) Push this to the specific writers, so that we can make
   // the async writer more general (e.g. different file system, gs://, etc...)
+  uint64 file_size = 0;
+  uint64 file_index = 0;
   TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(shard_directory));
-  VLOG(3) << "(Writer_" << writer_id << ") Created Dir ";
+  VLOG(3) << "(Writer_" << writer_id << ") Created Directory " 
+          << shard_directory;
 
   std::unique_ptr<snapshot_util::Writer> writer;
 
   TF_RETURN_IF_ERROR(snapshot_util::Writer::Create(
-          env, GetFileName(shard_directory, writer_id),
-          compression, version, std::move(output_types), &writer));
+          env, GetFileName(shard_directory, writer_id, file_index, 
+          prefix_hash_), compression, version, std::move(output_types), 
+          &writer));
 
   int count = 0;
   VLOG(3) << "(Writer_" << writer_id << ") Starting to write ";
@@ -200,6 +223,19 @@ Status MultiThreadedAsyncWriter::WriterThread(Env* env,
     }
 
     TF_RETURN_IF_ERROR(writer->WriteTensors(be.value));
+    
+    // If the current file exceeded size limits, close it and open another
+    file_size += bytes_per_row_;
+    if (file_size > kMaxFileSize) {
+      writer->Close();
+      VLOG(3) << "(Writer_" << writer_id << ") Closed file with "
+                << file_size << " bytes written.";
+      TF_RETURN_IF_ERROR(snapshot_util::Writer::Create(
+          env, GetFileName(shard_directory, writer_id, ++file_index, 
+          prefix_hash_), compression, version, std::move(output_types), 
+          &writer));
+      count = file_size = 0;
+    }
   }
   return Status::OK();
 }
