@@ -829,6 +829,7 @@ tf_kernel_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/framework:op_requires",
         "//tensorflow/core/data:name_utils",
+        "//tensorflow/core/data:split_utils",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -841,6 +842,7 @@ cc_library(
         ":arrow_reader",  # simonsom
         ":arrow_writer",
         "//tensorflow/core/data:snapshot_utils",
+        "//tensorflow/core/data:split_utils",
     ],
 )
 
@@ -860,6 +862,7 @@ cc_library(
     deps = [
         ":arrow_util",
         "//tensorflow/core/data:snapshot_utils",
+        "//tensorflow/core/data:split_utils", # Required for build
         "@arrow",
     ],
 )
@@ -878,6 +881,8 @@ cc_library(
     deps = [
         ":arrow_util",
         "//tensorflow/core/data:snapshot_utils",
+        ":snapshot_util",
+        "//tensorflow/core/data:split_utils", # Required for build
         "@arrow",
     ],
 )
