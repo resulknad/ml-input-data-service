@@ -1,10 +1,11 @@
 #include "tensorflow/core/kernels/data/experimental/easl_service/service_cache_get_op.h"
 
-#include "tensorflow/core/platform/tstring.h"
 #include "absl/memory/memory.h"
+#include "tensorflow/core/kernels/data/split_utils.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/data/name_utils.h"
 #include "tensorflow/core/kernels/data/experimental/easl_service/service_cache_util.h"
+#include "tensorflow/core/kernels/data/name_utils.h"
+#include "tensorflow/core/platform/tstring.h"
 
 
 namespace tensorflow {
@@ -45,6 +46,9 @@ class ServiceCacheGetOp::Dataset : public DatasetBase {
     return Status::OK();
   }
 
+  Status MakeSplitProvider(std::unique_ptr<SplitProvider>* split_provider) 
+    const override;
+
  protected:
 
   Status AsGraphDefInternal(SerializationContext* ctx,
@@ -60,6 +64,7 @@ class ServiceCacheGetOp::Dataset : public DatasetBase {
   const int32 cache_format_;
   const int32 cache_compression_;
   const int32 parallelism_;
+  Env* env_;
 
 };
 
@@ -136,7 +141,8 @@ ServiceCacheGetOp::Dataset::Dataset(
     output_shapes_(output_shapes),
     cache_format_(cache_format),
     cache_compression_(cache_compression),
-    parallelism_(parallelism){}
+    parallelism_(parallelism),
+    env_(ctx->env()) {}
 
 ServiceCacheGetOp::Dataset::~Dataset() {}
 
@@ -187,6 +193,17 @@ Status ServiceCacheGetOp::Dataset::AsGraphDefInternal(
       output);
 }
 
+Status ServiceCacheGetOp::Dataset::MakeSplitProvider(
+  std::unique_ptr<SplitProvider>* split_provider) const {
+  std::vector<string> files;
+  TF_CHECK_OK(env_->GetMatchingPaths(io::JoinPath(path_, "*\\.easl"), 
+    &files));
+  *split_provider = absl::make_unique<IndexSplitProvider>(files.size());
+
+  // TODO(DanGraur): These constants need to be replaced by runtime values
+  // *split_provider = absl::make_unique<ShardingSplitProvider>(1, 0, base); // base is unique_ptr<IndexSplitProvider>(files.size());
+  return Status::OK();
+}
 
 // -----------------------------------------------------------------------------
 // Iterator
@@ -201,13 +218,19 @@ Status ServiceCacheGetOp::Dataset::Iterator::Initialize(
   VLOG(0) << "EASL - File format: " << dataset()->cache_format_;
   VLOG(0) << "EASL - Compression format: " << dataset()->cache_compression_;
 
+  // If we're in distributed epoch mode we should have a split provider
+  std::shared_ptr<SplitProvider> split_provider_ = nullptr;
+  if (ctx->split_provider() != nullptr) {
+    split_provider_ = ctx->split_provider();
+  }
+
   for(auto dt: dataset()->output_dtypes_){
     VLOG(0) << DataTypeString(dt);
   }
   reader_ =
       std::make_unique<tensorflow::data::easl::service_cache_util::Reader>(
-          ctx->env(), dataset()->path_, dataset()->output_dtypes_,
-          dataset()->output_shapes_, dataset()->parallelism_, dataset()->cache_format_);
+          ctx->env(), split_provider_, dataset()->path_, 
+          dataset()->output_dtypes_, dataset()->output_shapes_, dataset()->parallelism_, dataset()->cache_format_);
 
   return reader_->Initialize();
 }

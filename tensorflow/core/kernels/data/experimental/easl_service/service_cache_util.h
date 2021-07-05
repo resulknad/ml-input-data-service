@@ -3,6 +3,7 @@
 
 
 #include "tensorflow/core/kernels/data/experimental/snapshot_util.h"
+#include "tensorflow/core/kernels/data/split_utils.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/threadpool.h"
 
@@ -119,6 +120,13 @@ class MultiThreadedAsyncReader {
                            const std::vector<PartialTensorShape> &output_shapes,
                            int reader_count = 8);
 
+  MultiThreadedAsyncReader(Env *env,
+                           std::shared_ptr<SplitProvider> split_provider,
+                           const std::string &target_dir,
+                           const DataTypeVector &output_dtypes,
+                           const std::vector<PartialTensorShape> &output_shapes,
+                           int reader_count = 8);
+
   Status Initialize();
 
   Status Read(std::vector<Tensor>* &read_tensors, bool* end_of_sequence);
@@ -155,12 +163,14 @@ class MultiThreadedAsyncReader {
   std::deque<string> file_names_ TF_GUARDED_BY(mu_);
   std::deque<Tensor> tensors_ TF_GUARDED_BY(mu_add_);
   std::unique_ptr<thread::ThreadPool> thread_pool_;
+  std::shared_ptr<SplitProvider> split_provider_;
 };
 
 
 class Reader {
 public:
     Reader(Env *env,
+           std::shared_ptr<SplitProvider> split_provider,
            const std::string &target_dir,
            const DataTypeVector& output_dtypes,
            const std::vector<PartialTensorShape>& output_shapes,
@@ -176,6 +186,7 @@ private:
     const int reader_count_;
     const std::string target_dir_;
     const DataTypeVector output_dtypes_;
+    std::shared_ptr<SplitProvider> split_provider_;
     const std::vector<PartialTensorShape> output_shapes_;
     std::unique_ptr<MultiThreadedAsyncReader> async_reader_;
 };

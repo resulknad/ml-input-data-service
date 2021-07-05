@@ -244,19 +244,23 @@ Status MultiThreadedAsyncWriter::WriterThread(Env* env,
 // Reader
 // -----------------------------------------------------------------------------
 
-Reader::Reader(Env *env, const std::string &target_dir, const DataTypeVector& output_dtypes,
-        const std::vector<PartialTensorShape>& output_shapes, const int reader_count, const int reader_version)
-        : target_dir_(target_dir), env_(env), output_dtypes_(output_dtypes), reader_count_(reader_count),
-        reader_version_(reader_version){}
+Reader::Reader(Env *env, std::shared_ptr<SplitProvider> split_provider,
+  const std::string &target_dir, const DataTypeVector& output_dtypes,
+  const std::vector<PartialTensorShape>& output_shapes, const int reader_count, 
+  const int reader_version) 
+  : target_dir_(target_dir), split_provider_(split_provider), env_(env), 
+    output_dtypes_(output_dtypes), reader_count_(reader_count), 
+    reader_version_(reader_version) {}
 
 Status Reader::Initialize() {
 
   if(reader_version_ == 0) { // 0 -> arrow
-    async_reader_ = std::make_unique<arrow_async_reader::ArrowAsyncReader>(env_, target_dir_, output_dtypes_,
-                                                               output_shapes_, reader_count_);
+    async_reader_ = std::make_unique<arrow_async_reader::ArrowAsyncReader>(
+      env_, target_dir_, output_dtypes_, output_shapes_, reader_count_);
   } else {
-    async_reader_ = std::make_unique<MultiThreadedAsyncReader>(env_, target_dir_, output_dtypes_,
-                                                               output_shapes_, reader_count_);
+    async_reader_ = std::make_unique<MultiThreadedAsyncReader>(
+      env_, split_provider_, target_dir_, output_dtypes_, output_shapes_, 
+      reader_count_);
   }
 
   return async_reader_->Initialize();
@@ -271,17 +275,20 @@ Status Reader::Read(std::vector<Tensor>* &read_tensors, bool* end_of_sequence) {
 // MultiThreadedAsyncReader (Base Class for ArrowAsyncReader)
 // -----------------------------------------------------------------------------
 
+MultiThreadedAsyncReader::MultiThreadedAsyncReader(Env *env,
+  const std::string &target_dir, const DataTypeVector &output_dtypes,
+  const std::vector<PartialTensorShape> &output_shapes, const int reader_count)
+    : env_(env), split_provider_(nullptr), output_dtypes_(output_dtypes), 
+    output_shapes_(output_shapes), target_dir_(target_dir), 
+    reader_count_(reader_count), tensors_(), num_readers_done_(0) {}
 
-
-MultiThreadedAsyncReader::MultiThreadedAsyncReader(Env *env, const std::string &target_dir,
-                                                   const DataTypeVector &output_dtypes,
-                                                   const std::vector<PartialTensorShape> &output_shapes,
-                                                   const int reader_count)
-    : env_(env), output_dtypes_(output_dtypes), output_shapes_(output_shapes),
-    target_dir_(target_dir), reader_count_(reader_count), tensors_() {
-  this->num_readers_done_ = 0;
-  // TODO (damien-aymon) add constant for writer version.
-}
+MultiThreadedAsyncReader::MultiThreadedAsyncReader(Env *env, 
+  std::shared_ptr<SplitProvider> split_provider,
+  const std::string &target_dir, const DataTypeVector &output_dtypes,
+  const std::vector<PartialTensorShape> &output_shapes, const int reader_count)
+    : env_(env), split_provider_(split_provider), output_dtypes_(output_dtypes), 
+    output_shapes_(output_shapes), target_dir_(target_dir), 
+    reader_count_(reader_count), tensors_(), num_readers_done_(0) {}
 
 Status MultiThreadedAsyncReader::Initialize() {
   // Don't use metadata file at the moment...
@@ -308,7 +315,6 @@ Status MultiThreadedAsyncReader::Initialize() {
   for (int i = 0; i < reader_count_; ++i) {
     thread_pool_->Schedule(
       [this, i] {
-        // ReaderThread(env_, i, cache_file_version_, output_dtypes_);
         ReaderThread(env_, i, kWriterVersion, output_dtypes_, output_shapes_);
         }
     );
@@ -318,13 +324,25 @@ Status MultiThreadedAsyncReader::Initialize() {
 
 void MultiThreadedAsyncReader::Consume(string* s, bool* end_of_sequence) {
   mutex_lock l(mu_);
-  if (file_names_.empty()) {
-    *s = ""; 
-    *end_of_sequence = true;
+  if (split_provider_ == nullptr) { 
+    if (file_names_.empty()) {
+      *s = ""; 
+      *end_of_sequence = true;
+    } else {
+      *s = file_names_.front();
+      file_names_.pop_front();
+      *end_of_sequence = false;
+    }
   } else {
-    *s = file_names_.front();
-    file_names_.pop_front();
-    *end_of_sequence = false;
+    // We should be running in distributed epoch mode
+    Tensor split;
+    split_provider_->GetNext(&split, end_of_sequence);
+    if (!end_of_sequence) {
+      int64 file_idx = split.scalar<int64>()();
+      *s = file_names_[file_idx];
+    } else {
+      *s = ""; 
+    }
   }
 }
 
@@ -344,8 +362,13 @@ void MultiThreadedAsyncReader::Add(std::vector<Tensor>& tensors) {
     VLOG(3) << "EASL - set bytes per tensor: " << bytes_per_tensor_;
     first_row_info_set_ = true;
   }
-  VLOG(3) << "****************** Reader Queue Size: " << tensors_.size() << "  of max:  " << producer_threshold_ / bytes_per_tensor_;
-  mu_add_.Await(Condition(this, &MultiThreadedAsyncReader::ProducerSpaceAvailable));
+  VLOG(3) << "****************** Reader Queue Size: " 
+          << tensors_.size() << "  of max:  " 
+          << producer_threshold_ / bytes_per_tensor_;
+  
+  mu_add_.Await(Condition(this, 
+    &MultiThreadedAsyncReader::ProducerSpaceAvailable));
+  
   for (const auto& t : tensors)
     tensors_.push_back(t);
 
@@ -378,7 +401,6 @@ Status MultiThreadedAsyncReader::ReaderThread(Env *env, uint64 writer_id, int64 
       int64 count = 0;
       bool eof = false;
       while (!eof) {
-        std::string t_str = "Reading Tensors:";
         std::vector<Tensor> tensors;
         Status s = reader->ReadTensors(&tensors);
         if (errors::IsOutOfRange(s)) {
