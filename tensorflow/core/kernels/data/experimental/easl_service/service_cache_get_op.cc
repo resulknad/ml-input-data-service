@@ -86,7 +86,8 @@ class ServiceCacheGetOp::Dataset::Iterator : public DatasetIterator<Dataset> {
 
  private:
   mutex mu_;
-  std::unique_ptr<tensorflow::data::easl::service_cache_util::Reader> reader_
+  std::shared_ptr<SplitProvider> split_provider_;
+  std::unique_ptr<tensorflow::data::easl::service_cache_util::Reader> reader_;
   TF_GUARDED_BY(mu_);
 };
 
@@ -219,7 +220,6 @@ Status ServiceCacheGetOp::Dataset::Iterator::Initialize(
   VLOG(0) << "EASL - Compression format: " << dataset()->cache_compression_;
 
   // If we're in distributed epoch mode we should have a split provider
-  std::shared_ptr<SplitProvider> split_provider_ = nullptr;
   if (ctx->split_provider() != nullptr) {
     split_provider_ = ctx->split_provider();
   }
