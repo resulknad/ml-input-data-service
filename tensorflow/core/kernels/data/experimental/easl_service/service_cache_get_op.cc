@@ -87,7 +87,8 @@ class ServiceCacheGetOp::Dataset::Iterator : public DatasetIterator<Dataset> {
 
  private:
   mutex mu_;
-  std::unique_ptr<tensorflow::data::easl::service_cache_util::Reader> reader_
+  std::shared_ptr<SplitProvider> split_provider_;
+  std::unique_ptr<tensorflow::data::easl::service_cache_util::Reader> reader_;
   TF_GUARDED_BY(mu_);
 };
 

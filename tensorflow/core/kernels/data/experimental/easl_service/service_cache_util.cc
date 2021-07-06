@@ -324,26 +324,35 @@ Status MultiThreadedAsyncReader::Initialize() {
 
 void MultiThreadedAsyncReader::Consume(string* s, bool* end_of_sequence) {
   mutex_lock l(mu_);
-  if (split_provider_ == nullptr) { 
-    if (file_names_.empty()) {
-      *s = ""; 
-      *end_of_sequence = true;
-    } else {
-      *s = file_names_.front();
-      file_names_.pop_front();
-      *end_of_sequence = false;
-    }
+  if (file_names_.empty()) {
+    *s = ""; 
+    *end_of_sequence = true;
   } else {
-    // We should be running in distributed epoch mode
-    Tensor split;
-    split_provider_->GetNext(&split, end_of_sequence);
-    if (!end_of_sequence) {
-      int64 file_idx = split.scalar<int64>()();
-      *s = file_names_[file_idx];
-    } else {
-      *s = ""; 
-    }
+    *s = file_names_.front();
+    file_names_.pop_front();
+    *end_of_sequence = false;
   }
+  // mutex_lock l(mu_);
+  // if (split_provider_ == nullptr) { 
+  //   if (file_names_.empty()) {
+  //     *s = ""; 
+  //     *end_of_sequence = true;
+  //   } else {
+  //     *s = file_names_.front();
+  //     file_names_.pop_front();
+  //     *end_of_sequence = false;
+  //   }
+  // } else {
+  //   // We should be running in distributed epoch mode
+  //   Tensor split;
+  //   split_provider_->GetNext(&split, end_of_sequence);
+  //   if (!end_of_sequence) {
+  //     int64 file_idx = split.scalar<int64>()();
+  //     *s = file_names_[file_idx];
+  //   } else {
+  //     *s = ""; 
+  //   }
+  // }
 }
 
 bool MultiThreadedAsyncReader::ProducerSpaceAvailable() {
