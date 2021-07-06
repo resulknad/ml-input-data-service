@@ -76,7 +76,7 @@ namespace data {
 
 namespace {
 // Default interval between task list refreshes.
-const int64 kDefaultTaskRefreshIntervalMs = 50;  // 1 second. => now 50msec.
+const int64 kDefaultTaskRefreshIntervalMs = 500;  // 1 second. => now 0.5sec.
 
 constexpr char kDataServiceDatasetV1[] = "DataServiceDataset";
 constexpr char kDataServiceDatasetV2[] = "DataServiceDatasetV2";
@@ -322,7 +322,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         while ((results_.empty() || !results_.front().ready) &&
             !(job_finished_ && num_running_worker_threads_ == 0) &&
             !cancelled_ && status_.ok()) {
-          VLOG(0) << "Blocking in GetNext. results_.size():" << results_.size()
+          VLOG(3) << "Blocking in GetNext. results_.size():" << results_.size()
                   << " results_.front().ready:"
                   << (!results_.empty() && results_.front().ready)
                   << " job_finished_:" << job_finished_
@@ -341,9 +341,21 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           VLOG(3) << "Returning from GetNext with error " << status_;
           return status_;
         }
+        if(job_finished_){
+          VLOG(0) << "Job Finished in GetNext. results_.size():" << results_.size()
+                  << " results_.front().ready:"
+                  << (!results_.empty() && results_.front().ready)
+                  << " job_finished_:" << job_finished_
+                  << " num_running_worker_threads_:"
+                  << num_running_worker_threads_
+                  << " outstanding_requests_:"
+                  << outstanding_requests_
+                  << " time_milisec:"
+                  << Env::Default()->NowMicros() / EnvTime::kMillisToMicros;
+        }
         if (results_.empty()) {
           *end_of_sequence = true;
-          VLOG(3) << "Returning from GetNext with end_of_sequence";
+          VLOG(0) << "Returning from GetNext with end_of_sequence";
           return Status::OK();
         }
         skip = results_.front().skip;
@@ -519,6 +531,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       if (!job_finished) {
         return;
       }
+      VLOG(0) << "Got job finished from client heartbeat response.";
       job_finished_ = true;
       get_next_cv_.notify_all();
       worker_thread_cv_.notify_all();
@@ -550,6 +563,11 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     void Heartbeat(IteratorContext* ctx) TF_LOCKS_EXCLUDED(mu_) {
       ClientHeartbeatRequest req;
 
+      if(num_elements_ == 0){
+        VLOG(0) << "EASL - client heartbeat: still no elements processed.";
+      }
+
+
       // EASL - gather stats for dispatcher
       double get_next_processing_time = 0.0;
       double avg_get_next_inter_arrival_time = 0.0;
@@ -572,6 +590,14 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
                 tf_data_num_elements_counter->value();*/
 
         get_next_processing_time = node_->SelfProcessingTime();
+        VLOG(3) << "num_elements:"
+          << node_->num_elements()
+          << " processing_time:"
+          << node_->processing_time()
+          << " selfProcessingTime():"
+          << get_next_processing_time;
+      } else {
+        VLOG(0) << "There is no model in the data_service_dataset_op...";
       }
       // We use our own implementation for inter-arrival times.
       {
@@ -585,7 +611,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       }
       // Fill up the metadata fields in the heartbeat request
       req.set_avg_get_next_processing_time(get_next_processing_time / 
-        EnvTime::kMillisToMicros);
+        EnvTime::kMillisToNanos);
       req.set_avg_inter_arrival_time(avg_get_next_inter_arrival_time / 
         EnvTime::kMillisToMicros);
 
@@ -713,9 +739,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         // EASL - request pipelining: change skipping condition.
         //if (current_round_ < task->info.starting_round() || task->in_use ||
         if(current_round_ < task->info.starting_round() ||
-            task->num_outstanding_requests > max_request_pipelining_per_task_ ||
+            task->num_outstanding_requests >= max_request_pipelining_per_task_ ||
             task->end_of_sequence || task->removed) {
-          VLOG(0) << "Skipping task " << next_task_index_
+          VLOG(3) << "Skipping task " << next_task_index_
                   << ". starting round: " << task->info.starting_round()
                   << ". current round: " << current_round_
                   << ". task->in_use: " << task->in_use
@@ -737,7 +763,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         done();
         VLOG(1) << "Worker thread exiting";
       });
-      VLOG(1) << "Starting worker thread";
+      VLOG(0) << "Starting worker thread";
       std::shared_ptr<Task> task_to_process;
       while (true) {
         Result* result;
