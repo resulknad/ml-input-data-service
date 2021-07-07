@@ -17,6 +17,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/SCF.h"
@@ -234,8 +235,8 @@ class ReduceOpConverter : public OpConversionPattern<lmhlo::ReduceOp> {
       reducing_dims.insert(rdim.getSExtValue());
     }
 
-    Value operand = *reduce_op.operands().begin();
-    Value out = *reduce_op.out().begin();
+    Value operand = reduce_op.inputs().front();
+    Value out = reduce_op.out().front();
     SmallVector<Value, 2> parallel_lower, parallel_upper, parallel_step;
     SmallVector<Value, 2> reduce_lower, reduce_upper, reduce_step;
     auto operand_shape = operand.getType().cast<MemRefType>().getShape();
@@ -293,7 +294,7 @@ class ReduceOpConverter : public OpConversionPattern<lmhlo::ReduceOp> {
 
     rewriter->setInsertionPointToStart(inner.getBody());
     Value elem = rewriter->create<mlir::memref::LoadOp>(
-        loc, *reduce_op.operands().begin(), indices);
+        loc, reduce_op.inputs().front(), indices);
     return rewriter->create<scf::ReduceOp>(loc, elem);
   }
 };
@@ -700,9 +701,11 @@ class SelectAndScatterOpConverter
 };
 
 struct LhloLegalizeToParallelLoopsPass
-    : public PassWrapper<LhloLegalizeToParallelLoopsPass, FunctionPass> {
+    : public LhloLegalizeToParallelLoopsPassBase<
+          LhloLegalizeToParallelLoopsPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<StandardOpsDialect, scf::SCFDialect>();
+    registry
+        .insert<StandardOpsDialect, memref::MemRefDialect, scf::SCFDialect>();
   }
 
   void runOnFunction() override {

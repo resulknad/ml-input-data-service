@@ -149,7 +149,7 @@ exports_files(
         "service_cache.proto",
         "service_config.proto",
         "debug_event.proto",
-        "extension_type_variant.proto",
+        "composite_tensor_variant.proto",
         "meta_graph.proto",
         "named_tensor.proto",
         "remote_tensor_handle.proto",
@@ -180,7 +180,7 @@ tf_proto_library(
         "service_cache.proto",
         "service_config.proto",
         "debug_event.proto",
-        "extension_type_variant.proto",
+        "composite_tensor_variant.proto",
         "meta_graph.proto",
         "named_tensor.proto",
         "remote_tensor_handle.proto",
@@ -197,6 +197,7 @@ tf_proto_library(
         ":error_codes_proto_impl",
         "//tensorflow/core/framework:protos_all",
     ],
+    tags = ["alt_dep=//third_party/tensorflow/core:protos_all"],
 )
 
 # copybara:uncomment_begin(google-only)

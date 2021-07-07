@@ -17,10 +17,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import contextlib
 import copy
 import warnings
 
 from absl import logging
+import six
 
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -35,17 +37,6 @@ from tensorflow.python.util.tf_export import tf_export
 
 # global _RESOURCE_TRACKER_STACK
 _RESOURCE_TRACKER_STACK = []
-
-
-class NotTrackable(object):
-  """Marks instances of child classes as unsaveable using an object-based API.
-
-  Useful for marking objects which would otherwise look trackable because
-  of inheritance (e.g. through `Layer`) as not trackable. Inheriting from
-  `NotTrackable` does not prevent an object from being assigned to any
-  attributes, but will throw an error on save/restore.
-  """
-  pass
 
 
 @tf_export("__internal__.tracking.AutoTrackable", v1=[])
@@ -181,7 +172,35 @@ def resource_tracker_scope(resource_tracker):
     _RESOURCE_TRACKER_STACK = old
 
 
-class CapturableResource(base.Trackable):
+def _make_getter(captured_getter, captured_previous):
+  """To avoid capturing loop variables."""
+
+  def getter(*args, **kwargs):
+    return captured_getter(captured_previous, *args, **kwargs)
+
+  return getter
+
+
+class ResourceMetaclass(type):
+  """Metaclass for CapturableResource."""
+
+  def __call__(cls, *args, **kwargs):
+
+    def default_resource_creator(next_creator, *a, **kw):
+      assert next_creator is None
+      obj = cls.__new__(cls, *a, **kw)
+      obj.__init__(*a, **kw)
+      return obj
+
+    previous_getter = lambda *a, **kw: default_resource_creator(None, *a, **kw)
+    resource_creator_stack = ops.get_default_graph()._resource_creator_stack
+    for getter in resource_creator_stack[cls._resource_type()]:
+      previous_getter = _make_getter(getter, previous_getter)
+
+    return previous_getter(*args, **kwargs)
+
+
+class CapturableResource(six.with_metaclass(ResourceMetaclass, base.Trackable)):
   """Holds a Tensor which a tf.function can capture.
 
   `CapturableResource`s are discovered by traversing the graph of object
@@ -202,9 +221,23 @@ class CapturableResource(base.Trackable):
     """
     self._resource_handle = None
     self._resource_device = device
-    self._destruction_context = (
+    self._self_destruction_context = (
         context.eager_mode if context.executing_eagerly()
         else ops.get_default_graph().as_default)
+
+  @classmethod
+  def _resource_type(cls):
+    return cls.__name__
+
+  @property
+  def _destruction_context(self):
+    return getattr(self, "_self_destruction_context",
+                   # no-op context
+                   contextlib.suppress)
+
+  @_destruction_context.setter
+  def _destruction_context(self, destruction_context):
+    self._self_destruction_context = destruction_context
 
   def _create_resource(self):
     """A function that creates a resource handle."""
@@ -273,12 +306,10 @@ class CapturableResource(base.Trackable):
         # cycle, the __del__ for `ScopedTFFunction` can be collected before
         # this method is called. In that case, we can't do much but
         # continue.
-        try:
-          self._destroy_resource()
-
-        except defun.FunctionAlreadyGarbageCollectedError:
-          pass
-    except TypeError:
+        self._destroy_resource()
+    except Exception:  # pylint: disable=broad-except
+      # Silence all error logs that occur when attempting to destroy this
+      # resource.
       pass
 
 
@@ -308,10 +339,10 @@ class TrackableResource(CapturableResource):
   ...   def _create_resource(self):
   ...     return tf.raw_ops.VarHandleOp(dtype=tf.float32, shape=[2])
   ...   def _initialize(self):
-  ...     return tf.raw_ops.AssignVariableOp(
+  ...     tf.raw_ops.AssignVariableOp(
   ...         resource=self.resource_handle, value=tf.ones([2]))
   ...   def _destroy_resource(self):
-  ...     return tf.raw_ops.DestroyResourceOp(resource=self.resource_handle)
+  ...     tf.raw_ops.DestroyResourceOp(resource=self.resource_handle)
   >>> class DemoModule(tf.Module):
   ...   def __init__(self):
   ...     self.resource = DemoResource()

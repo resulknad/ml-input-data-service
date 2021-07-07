@@ -38,17 +38,15 @@ from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.util import tf_inspect
 
 
-if sys.version_info >= (3, 9):
-  # ast has an unparse function in 3.9+
-  astunparse = ast
-
-
 PY2_PREAMBLE = textwrap.dedent("""
 from __future__ import division
 from __future__ import print_function
 """)
 PY3_PREAMBLE = ''
 MAX_SIZE = 0
+
+if sys.version_info >= (3, 9):
+  astunparse = ast
 
 if sys.version_info >= (3,):
   STANDARD_PREAMBLE = PY3_PREAMBLE
@@ -157,11 +155,12 @@ def parse_entity(entity, future_features):
   except (IOError, OSError) as e:
     raise ValueError(
         'Unable to locate the source code of {}. Note that functions defined'
-        ' in certain environments, like the interactive Python shell do not'
-        ' expose their source code. If that is the case, you should to define'
+        ' in certain environments, like the interactive Python shell, do not'
+        ' expose their source code. If that is the case, you should define'
         ' them in a .py source file. If you are certain the code is'
         ' graph-compatible, wrap the call using'
-        ' @tf.autograph.do_not_convert. Original error: {}'.format(entity, e))
+        ' @tf.autograph.experimental.do_not_convert. Original error: {}'.format(
+            entity, e))
 
   source = dedent_block(original_source)
 
@@ -395,7 +394,9 @@ def unparse(node, indentation=None, include_encoding_marker=True):
       ast_n = gast.gast_to_ast(n)
     else:
       ast_n = n
-    ast_n = ast.fix_missing_locations(ast_n)
+
+    if astunparse is ast:
+      ast.fix_missing_locations(ast_n)  # Only ast needs to call this.
     codes.append(astunparse.unparse(ast_n).strip())
 
   return '\n'.join(codes)

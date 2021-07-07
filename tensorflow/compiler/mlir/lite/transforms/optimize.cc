@@ -23,12 +23,14 @@ limitations under the License.
 #include <iterator>
 #include <map>
 #include <numeric>
+#include <utility>
 
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/None.h"
 #include "llvm/ADT/Optional.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -37,6 +39,7 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
@@ -92,6 +95,17 @@ class OptimizePass : public PassWrapper<OptimizePass, FunctionPass> {
   explicit OptimizePass(bool enable_canonicalization) {
     enable_canonicalization_ = enable_canonicalization;
   }
+
+  StringRef getArgument() const final {
+    // This is the argument used to refer to the pass in
+    // the textual format (on the commandline for example).
+    return "tfl-optimize";
+  }
+  StringRef getDescription() const final {
+    // This is a brief description of the pass.
+    return "Optimize within the TensorFlow Lite dialect";
+  }
+
   void runOnFunction() override;
 
  private:
@@ -358,6 +372,91 @@ static bool FloatValueEquals(const Attribute &attr, double value) {
   });
 }
 
+// Returns true if the value's element type is F32.
+bool IsF32Value(Value value) {
+  return value.getType().cast<ShapedType>().getElementType().isF32();
+}
+
+// Returns the number of elements in attr if it is a DenseElementsAttr, 1
+// otherwise, as an unranked int32 Attribute.
+Attribute GetNumElementsOrOne(Attribute attr) {
+  const auto dense_attr = attr.dyn_cast_or_null<DenseElementsAttr>();
+  int32_t num_elements = dense_attr ? dense_attr.getNumElements() : 1;
+
+  OpBuilder builder(attr.getContext());
+
+  return DenseIntElementsAttr::get(
+      RankedTensorType::get({}, builder.getI32Type()),
+      {llvm::APInt(32, num_elements, true)});
+}
+
+// Returns true if attr is a DenseIntElementsAttr with the last element equal 1.
+bool IsLastElementEqualsOne(Attribute attr) {
+  const auto ints = attr.dyn_cast_or_null<DenseIntElementsAttr>();
+  if (!ints) return false;
+  if (ints.empty()) return false;
+  const auto last_element_index = ints.getNumElements() - 1;
+  const auto iterator = ints.getIntValues().begin();
+  const APInt last_element = iterator[last_element_index];
+  return last_element == 1;
+}
+
+// Returns true if attr is a DenseIntElementsAttr of int32 or int64 values or an
+// incrementing sequence from 0 to N-1.
+//
+// If such a value is used in an Equal operator, it can be replaced with OneHot.
+bool IsOneHotIndexAttribute(Attribute attr) {
+  const auto dense_attr = attr.dyn_cast_or_null<DenseIntElementsAttr>();
+  if (!dense_attr) {
+    return false;
+  }
+  auto index_type = dense_attr.getType();
+  const auto index_elem_bits = index_type.getElementTypeBitWidth();
+  if (index_elem_bits != 32 && index_elem_bits != 64) {
+    return false;
+  }
+  if (index_type.getRank() != 1) {
+    return false;
+  }
+  const auto elems = dense_attr.getIntValues().begin();
+  for (int i = 0; i < dense_attr.getNumElements(); ++i) {
+    if (i != elems[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// Converts an Attribute with a single value of float or integral type to an
+// Attribute holding a single value of float type. If attr has no elements, the
+// result is 0.0f.
+Attribute ConvertSingleElementAttrToFloatAttr(Attribute attr) {
+  const auto dense_fp_attr = attr.dyn_cast_or_null<DenseFPElementsAttr>();
+  if (dense_fp_attr) {
+    // Already float => return
+    return dense_fp_attr;
+  }
+
+  OpBuilder builder(attr.getContext());
+
+  const auto dense_int_attr = attr.dyn_cast<DenseIntElementsAttr>();
+  const auto int_values = dense_int_attr.getIntValues();
+  float float_val = 0.0f;
+  if (!int_values.empty()) {
+    const APInt apint_val = *int_values.begin();
+    if (dense_int_attr.getType().getElementType().isSignedInteger()) {
+      // Get the sign-extended value (=>int64) if the type is signed.
+      float_val = apint_val.getSExtValue();
+    } else {
+      // Get the zero-extended value (=>uint64) if unsigned or signless.
+      float_val = apint_val.getZExtValue();
+    }
+  }
+  return DenseFPElementsAttr::get(
+      RankedTensorType::get({}, builder.getF32Type()),
+      {llvm::APFloat(float_val)});
+}
+
 #include "tensorflow/compiler/mlir/lite/transforms/generated_optimize.inc"
 
 // Fuse Add with proceeding FullyConnected.
@@ -491,6 +590,15 @@ struct FuseAddAndFullyConnected
       // TODO(b/180752069): Figure out new bias' type when old bias is empty.
       return failure();
     }
+
+    // The FC relies on constant folding, which is implemented on F32. Checks
+    // types to be F32.
+    {
+      if (!IsF32Value(add_op.rhs()) || !IsF32Value(fc_op.filter()) ||
+          !IsF32Value(old_bias))
+        return failure();
+    }
+
     auto new_bias = rewriter.create<TFL::FullyConnectedOp>(
         fc_op.getLoc(), old_bias.getType(),
         /*input=*/add_op.rhs(),
@@ -507,6 +615,62 @@ struct FuseAddAndFullyConnected
         /*input=*/add_op.lhs(),
         /*filter=*/fc_op.filter(),
         /*bias=*/*new_bias.output().begin(),
+        /*fused_activation_function=*/
+        rewriter.getStringAttr(fc_op.fused_activation_function()),
+        /*weights_format=*/rewriter.getStringAttr("DEFAULT"),
+        /*keep_num_dims=*/rewriter.getBoolAttr(fc_op.keep_num_dims()));
+    rewriter.replaceOp(fc_op.getOperation(), new_fc.output());
+
+    return success();
+  }
+};
+
+// Replace ..
+// FC(Mul(lhs, rhs), filter, bias)
+// .. with ..
+// FC(lhs, Mul(filter, rhs), bias)
+// .. if rhs, filter, and bias are all constants.
+// The generated Mul will be constant folded to a single matrix.
+struct FuseMulAndFullyConnected
+    : public OpRewritePattern<TFL::FullyConnectedOp> {
+  using OpRewritePattern<TFL::FullyConnectedOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TFL::FullyConnectedOp fc_op,
+                                PatternRewriter &rewriter) const override {
+    // This only works with default format.
+    if (fc_op.weights_format() != "DEFAULT") return failure();
+
+    // Match Mul.
+    auto mul_op = dyn_cast_or_null<TFL::MulOp>(fc_op.input().getDefiningOp());
+    if (!mul_op) return failure();
+    if (mul_op.fused_activation_function() != "NONE") return failure();
+
+    // Don't match muls where the multiplier constant is not 1D.
+    {
+      auto multiplier_shape = mul_op.rhs().getType().cast<ShapedType>();
+      if (!multiplier_shape.hasStaticShape()) return failure();
+      if (multiplier_shape.getShape().size() != 1) return failure();
+    }
+
+    // We rely on constant folding, implemented only for F32. Check types.
+    if (!IsF32Value(mul_op.rhs()) || !IsF32Value(fc_op.filter())) {
+      return failure();
+    }
+
+    auto location =
+        FusedLoc::get(mul_op.getContext(), {mul_op.getLoc(), fc_op.getLoc()});
+
+    auto new_filter = rewriter.create<TFL::MulOp>(
+        location,
+        /*lhs=*/fc_op.filter(),
+        /*rhs=*/mul_op.rhs(),
+        /*fused_activation_function=*/rewriter.getStringAttr("NONE"));
+    // Create the updated FC.
+    auto new_fc = rewriter.create<TFL::FullyConnectedOp>(
+        location, fc_op.output().getTypes(),
+        /*input=*/mul_op.lhs(),
+        /*filter=*/new_filter,
+        /*bias=*/fc_op.bias(),
         /*fused_activation_function=*/
         rewriter.getStringAttr(fc_op.fused_activation_function()),
         /*weights_format=*/rewriter.getStringAttr("DEFAULT"),
@@ -793,7 +957,8 @@ struct FuseBinaryOpToFollowingAffineOp : public OpRewritePattern<AffineOpType> {
       // dimension of the weight.
       SmallVector<APFloat, 4> new_bias_values;
       if (bias.getType().isa<NoneType>()) {  // none bias, a list of zeros
-        new_bias_values.resize(bias_size, APFloat(0.0));
+        new_bias_values.resize(bias_size,
+                               APFloat::getZero(cst_value.getSemantics()));
       } else if (bias_cst.getNumElements() == 1) {  // scalar bias, broadcast it
         new_bias_values.resize(bias_size, *bias_cst.float_value_begin());
       } else if (bias_cst.getNumElements() == bias_size) {  // 1-d bias, copy it
@@ -1144,7 +1309,7 @@ struct RemoveReshapeAfterFullyConnected
         fully_connected_op.weights_format() != "DEFAULT" ||
         fully_connected_op.keep_num_dims())
       return failure();
-    if (!reshape_op.input().getUseList()->hasOneUse()) return failure();
+    if (!reshape_op.input().hasOneUse()) return failure();
 
     auto input_shape = fully_connected_op.input().getType().cast<ShapedType>();
     auto output_shape = fully_connected_op.getType(0).cast<ShapedType>();
@@ -1156,7 +1321,8 @@ struct RemoveReshapeAfterFullyConnected
     // Check that the reshape doesn't modify the last dimension and it restores
     // the input (batch) dimension with the exception of the feature (last)
     // dimension.
-    if (output_shape.getShape().back() != reshape_shape.getShape().back() ||
+    if (output_shape.getShape().empty() || reshape_shape.getShape().empty() ||
+        output_shape.getShape().back() != reshape_shape.getShape().back() ||
         input_shape.getShape().drop_back() !=
             reshape_shape.getShape().drop_back())
       return failure();
@@ -1167,6 +1333,66 @@ struct RemoveReshapeAfterFullyConnected
         fully_connected_op.filter(), fully_connected_op.bias(),
         fully_connected_op.fused_activation_function(),
         fully_connected_op.weights_format(), /*keep_num_dims=*/true);
+    return success();
+  }
+};
+
+// Fuses Unpack with proceeding Concatenation to Reshape if output type has
+// static shape and activation function is none. For example:
+//
+//   // %input: tensor<1x3x2xf32>
+//   %unpack:3 = "tfl.unpack"(%input) {axis = 1 : i32, num = 3 : i32}
+//   %res = "tfl.concatenation"(%unpack#0, %unpack#1, %unpack#2)
+//        {axis = -1 : i32, fused_activation_function = "NONE"}
+//
+// can be optimized to
+//
+//   %cst = constant dense<[1, 6]> : tensor<2xi32>
+//   %res = "tfl.reshape"(%input, %cst)
+struct FuseUnpackAndConcatToReshape
+    : public OpRewritePattern<TFL::ConcatenationOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TFL::ConcatenationOp concat_op,
+                                PatternRewriter &rewriter) const override {
+    if (concat_op.fused_activation_function() != "NONE") {
+      return failure();
+    }
+
+    // Checks all operands come from the same unpack op.
+    auto first_operand = concat_op.values().front();
+    auto unpack_op =
+        dyn_cast_or_null<TFL::UnpackOp>(first_operand.getDefiningOp());
+    if (!unpack_op || unpack_op.getNumResults() != concat_op.getNumOperands()) {
+      return failure();
+    }
+    for (auto &index_and_value : llvm::enumerate(concat_op.values())) {
+      if (index_and_value.value() !=
+          unpack_op.getResult(index_and_value.index())) {
+        return failure();
+      }
+    }
+
+    auto output_type = concat_op.getType().cast<ShapedType>();
+    if (!output_type.hasStaticShape()) {
+      return failure();
+    }
+
+    auto new_shape_array = output_type.getShape();
+    // This is to workaround the unnecessary cast i64 -> i32.
+    SmallVector<int32_t, 4> new_shape_array_i32;
+    for (auto size : new_shape_array) {
+      new_shape_array_i32.push_back(static_cast<int32_t>(size));
+    }
+    auto new_shape = rewriter.create<TFL::ConstOp>(
+        concat_op.getLoc(),
+        DenseIntElementsAttr::get(
+            RankedTensorType::get(new_shape_array_i32.size(),
+                                  rewriter.getIntegerType(32)),
+            new_shape_array_i32));
+
+    rewriter.replaceOpWithNewOp<TFL::ReshapeOp>(concat_op, output_type,
+                                                unpack_op.input(), new_shape);
     return success();
   }
 };
@@ -1201,10 +1427,10 @@ void OptimizePass::runOnFunction() {
   // following ops in a second pattern match.
   TFL::populateWithGenerated(patterns);
   patterns.insert<FuseFullyConnectedAndAdd, FuseAddAndFullyConnected,
+                  FuseFullyConnectedAndMul, FuseMulAndFullyConnected,
                   FuseFullyConnectedAndReluX<TFL::ReluOp, kRelu>,
                   FuseFullyConnectedAndReluX<TFL::Relu6Op, kRelu6>,
-                  FuseFullyConnectedAndReluX<TFL::Relu1Op, kRelu1>,
-                  FuseFullyConnectedAndMul>(ctx);
+                  FuseFullyConnectedAndReluX<TFL::Relu1Op, kRelu1>>(ctx);
   if (enable_canonicalization_) AddCanonicalizationPatterns(ctx, &patterns);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 
@@ -1215,14 +1441,15 @@ void OptimizePass::runOnFunction() {
       ScalarizeSplatConstantForAdd, ScalarizeSplatConstantForSub,
       ScalarizeSplatConstantForMul, ScalarizeSplatConstantForDiv,
       FuseFullyConnectedAndAdd, FuseAddAndFullyConnected,
+      FuseFullyConnectedAndMul, FuseMulAndFullyConnected,
       FuseFullyConnectedAndReluX<TFL::ReluOp, kRelu>,
       FuseFullyConnectedAndReluX<TFL::Relu6Op, kRelu6>,
       FuseFullyConnectedAndReluX<TFL::Relu1Op, kRelu1>,
-      FuseFullyConnectedAndMul, FuseBinaryOpToFollowingConv2D,
-      FuseBinaryOpToFollowingDepthwiseConv2D,
+      FuseBinaryOpToFollowingConv2D, FuseBinaryOpToFollowingDepthwiseConv2D,
       FuseBinaryOpToFollowingFullyConnected, FuseConv2DAndMulWithQDQs,
       FuseDepthwiseConv2DAndMulWithQDQs, ConvertTrivialTransposeOpToReshapeOp,
-      RemoveReshapeAfterFullyConnected, RemoveReshapeBeforeFullyConnected>(ctx);
+      RemoveReshapeAfterFullyConnected, RemoveReshapeBeforeFullyConnected,
+      FuseUnpackAndConcatToReshape>(ctx);
   if (enable_canonicalization_)
     AddCanonicalizationPatterns(ctx, &phase_2_patterns);
   (void)applyPatternsAndFoldGreedily(func, std::move(phase_2_patterns));
@@ -1235,8 +1462,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreateOptimizePass(
   return std::make_unique<OptimizePass>(enable_canonicalization);
 }
 
-static PassRegistration<OptimizePass> pass(
-    "tfl-optimize", "Optimize within the TensorFlow Lite dialect");
+static PassRegistration<OptimizePass> pass;
 
 }  // namespace TFL
 }  // namespace mlir

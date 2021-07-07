@@ -34,7 +34,7 @@ window ignores padded values, which is equivalent to the padded values being
 
 Passing `padding='VALID'` to an op causes no padding to be used. This causes the
 output size to typically be smaller than the input size, even when the stride is
-1. In the 2D case, the output size is computed as:
+one. In the 2D case, the output size is computed as:
 
 ```
 out_height = ceil((in_height - filter_height + 1) / stride_height)
@@ -3553,7 +3553,7 @@ def crelu(features, name=None, axis=-1):
   """
   with ops.name_scope(name, "CRelu", [features]) as name:
     features = ops.convert_to_tensor(features, name="features")
-    c = array_ops.concat([features, -features], axis, name=name)
+    c = array_ops.concat([features, -features], axis, name=name)  # pylint: disable=invalid-unary-operand-type
     return gen_nn_ops.relu(c)
 
 
@@ -4060,10 +4060,14 @@ def softmax_cross_entropy_with_logits_v2_helper(
     labels = _flatten_outer_dims(labels)
 
     # Do the actual op computation.
-    # The second output tensor contains the gradients.  We use it in
-    # CrossEntropyGrad() in nn_grad but not here.
-    cost, unused_backprop = gen_nn_ops.softmax_cross_entropy_with_logits(
-        precise_logits, labels, name=name)
+    if _tf_deterministic_ops():
+      log_probs = log_softmax_v2(precise_logits)
+      cost = -math_ops.reduce_sum(labels * log_probs, axis=1)
+    else:
+      # The second output tensor contains the gradients.  We use it in
+      # CrossEntropyGrad() in nn_grad but not here.
+      cost, unused_backprop = gen_nn_ops.softmax_cross_entropy_with_logits(
+          precise_logits, labels, name=name)
 
     # The output cost shape should be the input minus axis.
     output_shape = array_ops.slice(input_shape, [0],

@@ -234,7 +234,10 @@ func @testConcatCwiseBinaryInvalidInnerDim(%arg0: tensor<?x2xf32>,
   // Each individual binary operation has an implicit broadcast that will be
   // lost if we would reorder them with the concat.
 
-  // CHECK: "tf.ConcatV2"(%1, %2, %0)
+  // CHECK: %[[CONST:.*]] = "tf.Const"()
+  // CHECK-DAG: %[[MUL1:.*]] = "tf.Mul"(%arg0, %arg2)
+  // CHECK-DAG: %[[MUL2:.*]] = "tf.Mul"(%arg1, %arg3)
+  // CHECK: "tf.ConcatV2"(%[[MUL1]], %[[MUL2]], %[[CONST]])
   %0 = "tf.Const"() { value = dense<1> : tensor<i32> } : () -> tensor<i32>
   %1 = "tf.Mul"(%arg0, %arg2) : (tensor<?x2xf32>, tensor<f32>) -> tensor<?x2xf32>
   %2 = "tf.Mul"(%arg1, %arg3) : (tensor<?x2xf32>, tensor<f32>) -> tensor<?x2xf32>
@@ -242,6 +245,25 @@ func @testConcatCwiseBinaryInvalidInnerDim(%arg0: tensor<?x2xf32>,
 
   return %3 : tensor<?x4xf32>
 }
+
+// CHECK-LABEL: testConcatCwiseBinaryInvalidExceptions
+func @testConcatCwiseBinaryInvalidExceptions(%arg0: tensor<?x1xf32>,
+  %arg1: tensor<?x1xf32>, %arg2: tensor<f32>, %arg3: tensor<f32>, %arg4: tensor<?x2xf32>) -> tensor<?x4xf32> {
+  // Each individual binary operation has an implicit broadcast that will be
+  // lost if we would reorder them with the concat.
+
+  // CHECK: %[[CONST:.*]] = "tf.Const"()
+  // CHECK-DAG: %[[MUL1:.*]] = "tf.Mul"(%arg0, %arg2)
+  // CHECK-DAG: %[[MUL2:.*]] = "tf.Mul"(%arg1, %arg3)
+  // CHECK: "tf.ConcatV2"(%[[MUL1]], %[[MUL2]],
+  %0 = "tf.Const"() { value = dense<1> : tensor<i32> } : () -> tensor<i32>
+  %1 = "tf.Mul"(%arg0, %arg2) : (tensor<?x1xf32>, tensor<f32>) -> tensor<?x1xf32>
+  %2 = "tf.Mul"(%arg1, %arg3) : (tensor<?x1xf32>, tensor<f32>) -> tensor<?x1xf32>
+  %3 = "tf.ConcatV2"(%1, %2, %arg4, %0) : (tensor<?x1xf32>, tensor<?x1xf32>, tensor<?x2xf32>, tensor<i32>) -> tensor<?x4xf32>
+
+  return %3 : tensor<?x4xf32>
+}
+
 
 // CHECK-LABEL: testConcatCwiseBinaryNegativeAxis
 func @testConcatCwiseBinaryNegativeAxis(%arg0: tensor<f32>,
@@ -315,24 +337,24 @@ func @testLogToLog1p(%arg0 : tensor<4x4xf32>) -> tensor<4x4xf32> {
   %1 = "tf.Const"() {value = dense<2.0> : tensor<f32>} : () -> tensor<1xf32>
   %2 = "tf.Const"() {value = dense<[1.0, 1.0, 1.0, 1.0]> : tensor<4xf32>} : () -> tensor<4xf32>
 
-  // CHECK: %2 = "tf.Log1p"(%arg0) : (tensor<4x4xf32>) -> tensor<4x4xf32>
+  // CHECK: %[[LOGP:.*]] = "tf.Log1p"(%arg0) : (tensor<4x4xf32>) -> tensor<4x4xf32>
   %3 = "tf.AddV2"(%arg0, %0): (tensor<4x4xf32>, tensor<1xf32>) -> tensor<4x4xf32>
   %4 = "tf.Log"(%3): (tensor<4x4xf32>) -> tensor<4x4xf32>
 
-  // CHECK: %3 = "tf.AddV2"
-  // CHECK: %4 = "tf.Log"(%3)
+  // CHECK: %[[ADD1:.*]] = "tf.AddV2"
+  // CHECK: %[[LOG1:.*]] = "tf.Log"(%[[ADD1]])
   %5 = "tf.AddV2"(%4, %1): (tensor<4x4xf32>, tensor<1xf32>) -> tensor<4x4xf32>
   %6 = "tf.Log"(%5): (tensor<4x4xf32>) -> tensor<4x4xf32>
 
   // This is a legal canonicalization because constant shape 4xf32 is
   // broadcastable to 4x4xf32, however we currently do not support this case,
   // and canonicalize only if the constant is a scalar.
-  // CHECK: %5 = "tf.AddV2"
-  // CHECK: %6 = "tf.Log"(%5)
+  // CHECK: %[[ADD2:.*]] = "tf.AddV2"
+  // CHECK: %[[LOG2:.*]] = "tf.Log"(%[[ADD2]])
   %7 = "tf.AddV2"(%6, %2): (tensor<4x4xf32>, tensor<4xf32>) -> tensor<4x4xf32>
   %8 = "tf.Log"(%7): (tensor<4x4xf32>) -> tensor<4x4xf32>
 
-  // CHECK: return %6
+  // CHECK: return %[[LOG2]]
   return %8: tensor<4x4xf32>
 }
 
@@ -364,7 +386,9 @@ func @testSubOfZeroWithBroadcasting(%arg0: tensor<4x1xf32>) -> tensor<4x4xf32> {
   %1 = "tf.Sub"(%arg0, %0) : (tensor<4x1xf32>, tensor<1x4xf32>) -> tensor<4x4xf32>
   return %1 : tensor<4x4xf32>
 
-// CHECK: return %1
+// CHECK: %[[CONST:.*]] = "tf.Const"()
+// CHECK: %[[SUB:.*]] = "tf.Sub"(%arg0, %[[CONST]])
+// CHECK: return %[[SUB]]
 }
 
 // CHECK-LABEL: testSquareOfSub
@@ -470,7 +494,10 @@ func @testAddV2IdentityTensor(%arg0: tensor<f32>, %arg1: tensor<4xf32>) -> (tens
   %3 = "tf.AddV2"(%arg1, %0) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
   %4 = "tf.AddV2"(%0, %arg1) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
 
-  // CHECK: return %1, %2, %arg1, %arg1
+  // CHECK: %[[CONST:.*]] = "tf.Const"()
+  // CHECK-DAG: %[[ADD1:.*]] = "tf.AddV2"(%arg0, %[[CONST]])
+  // CHECK-DAG: %[[ADD2:.*]] = "tf.AddV2"(%arg0, %[[CONST]])
+  // CHECK: return %[[ADD1]], %[[ADD2]], %arg1, %arg1
   return %1, %2, %3, %4: tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>
 }
 
@@ -527,10 +554,10 @@ func @testRedundantReshape(%arg0: tensor<4x4xi32>) -> tensor<2x8xi32> {
   %3 = "tf.Reshape"(%2, %1) : (tensor<8x2xi32>, tensor<2xi32>) -> tensor<2x8xi32>
   return %3: tensor<2x8xi32>
 
-  // CHECK: %0 = "tf.Const"
+  // CHECK: %[[CONST:.*]] = "tf.Const"
   // CHECK-SAME: value = dense<[2, 8]> : tensor<2xi32>
-  // CHECK: %1 = "tf.Reshape"(%arg0, %0)
-  // CHECK: return %1 : tensor<2x8xi32>
+  // CHECK: %[[RES:.*]] = "tf.Reshape"(%arg0, %[[CONST]])
+  // CHECK: return %[[RES]] : tensor<2x8xi32>
 }
 
 // CHECK-LABEL: testReshapeToSelfShape
@@ -631,6 +658,14 @@ func @testStaticAndIdenticalTypeForEqualOp(%arg0: tensor<2xi32>, %arg1: tensor<2
   return %0: tensor<2xi1>
 }
 
+// CHECK-LABEL: func @testStaticAndIdenticalTypeForNotEqualOp
+func @testStaticAndIdenticalTypeForNotEqualOp(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2xi1> {
+  // CHECK:      "tf.NotEqual"(%arg0, %arg1)
+  // CHECK-SAME:   incompatible_shape_error = true
+  %0 = "tf.NotEqual"(%arg0, %arg1) { incompatible_shape_error = false } : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
+  return %0: tensor<2xi1>
+}
+
 // CHECK-LABEL: testLogicalNotOfEqual
 func @testLogicalNotOfEqual(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf32>) -> tensor<8x16xi1> {
   %0 = "tf.Equal"(%arg0, %arg1) : (tensor<8x16xf32>, tensor<8x16xf32>) -> tensor<8x16xi1>
@@ -696,8 +731,8 @@ func @testSizeFolding(%arg0: tensor<3x5x7xf32>) -> tensor<i32> {
   %0 = "tf.Size"(%arg0) : (tensor<3x5x7xf32>) -> tensor<i32>
   return %0: tensor<i32>
 
-// CHECK: %0 = "tf.Const"() {value = dense<105> : tensor<i32>} : () -> tensor<i32>
-// CHECK: return %0 : tensor<i32>
+// CHECK: %[[CONST:.*]] = "tf.Const"() {value = dense<105> : tensor<i32>} : () -> tensor<i32>
+// CHECK: return %[[CONST]] : tensor<i32>
 }
 
 // CHECK-LABEL: testDivWithSqrtDivisor
@@ -728,10 +763,10 @@ func @testRealDivWithConstDivisor(%arg0: tensor<8x2xf32>) -> tensor<8x2xf32> {
   %1 = "tf.RealDiv"(%arg0, %0) : (tensor<8x2xf32>, tensor<2xf32>) -> tensor<8x2xf32>
   return %1: tensor<8x2xf32>
 
-  // CHECK: %0 = "tf.Const"
+  // CHECK: %[[CONST:.*]] = "tf.Const"
   // CHECK-SAME: value = dense<[5.000000e-01, 2.500000e-01]
-  // CHECK: %1 = "tf.Mul"(%arg0, %0)
-  // CHECK: return %1
+  // CHECK: %[[MUL:.*]] = "tf.Mul"(%arg0, %[[CONST]])
+  // CHECK: return %[[MUL]]
 }
 
 // CHECK-LABEL: testTruncateDivWithSqrtDivisor
@@ -780,9 +815,9 @@ func @nonIdentityTranspose(%arg0: tensor<2x3x4x5x6xf32>) -> tensor<2x3x4x6x5xf32
   %1 = "tf.Transpose"(%arg0, %0) : (tensor<2x3x4x5x6xf32>, tensor<5xi32>) -> tensor<2x3x4x6x5xf32>
 
   return %1 : tensor<2x3x4x6x5xf32>
-  // CHECK: %0 = "tf.Const"() {value = dense<[0, 1, 2, 4, 3]> : tensor<5xi32>} : () -> tensor<5xi32>
-  // CHECK: %1 = "tf.Transpose"(%arg0, %0) : (tensor<2x3x4x5x6xf32>, tensor<5xi32>) -> tensor<2x3x4x6x5xf32>
-  // CHECK: return %1
+  // CHECK: %[[CONST:.*]] = "tf.Const"() {value = dense<[0, 1, 2, 4, 3]> : tensor<5xi32>} : () -> tensor<5xi32>
+  // CHECK: %[[TRANS:.*]] = "tf.Transpose"(%arg0, %[[CONST]]) : (tensor<2x3x4x5x6xf32>, tensor<5xi32>) -> tensor<2x3x4x6x5xf32>
+  // CHECK: return %[[TRANS]]
 }
 
 // CHECK-LABEL: @cancellableTranspose
@@ -815,7 +850,12 @@ func @nonCancellableTranspose(%arg0: tensor<1x4x4x8xf32>) -> tensor<4x1x4x8xf32>
   %3 = "tf.Transpose"(%2, %1) : (tensor<1x8x4x4xf32>, tensor<4xi32>) -> tensor<4x1x4x8xf32>
 
   return %3 : tensor<4x1x4x8xf32>
-  // CHECK: return %3
+
+  // CHECK-DAG: %[[CONST1:.*]] = "tf.Const"() {value = dense<[0, 3, 1, 2]> : tensor<4xi32>}
+  // CHECK-DAG: %[[CONST2:.*]] = "tf.Const"() {value = dense<[2, 0, 3, 1]> : tensor<4xi32>}
+  // CHECK: %[[TRANS1:.*]] = "tf.Transpose"(%arg0, %[[CONST1]]) : (tensor<1x4x4x8xf32>, tensor<4xi32>) -> tensor<1x8x4x4xf32>
+  // CHECK: %[[TRANS2:.*]] = "tf.Transpose"(%[[TRANS1]], %[[CONST2]]) : (tensor<1x8x4x4xf32>, tensor<4xi32>) -> tensor<4x1x4x8xf32>
+  // CHECK: return %[[TRANS2]]
 }
 
 // CHECK-LABEL: func @addN
@@ -853,7 +893,7 @@ func @ToBool_0DScalarFloat(%arg0: tensor<f32>) -> tensor<i1> {
 // CHECK-LABEL: func @ToBool_0DScalarString
 func @ToBool_0DScalarString(%arg0: tensor<!tf.string>) -> tensor<i1> {
   // CHECK: [[EmptyStr:%.*]] = "tf.Const"() {value = dense<""> : tensor<!tf.string>} : () -> tensor<!tf.string>
-  // CHECK: [[NE:%.*]] = "tf.NotEqual"(%arg0, [[EmptyStr]]) {incompatible_shape_error = false} : (tensor<!tf.string>, tensor<!tf.string>) -> tensor<i1>
+  // CHECK: [[NE:%.*]] = "tf.NotEqual"(%arg0, [[EmptyStr]]) {incompatible_shape_error = true} : (tensor<!tf.string>, tensor<!tf.string>) -> tensor<i1>
   // CHECK: return [[NE]] : tensor<i1>
   %0 = "tf.ToBool"(%arg0) : (tensor<!tf.string>) -> tensor<i1>
   return %0 : tensor<i1>
@@ -1703,3 +1743,49 @@ func @testConvertQuantizeAndDequantizeV2ToQuantizeAndDequantizeV4(%arg0 : tensor
   // CHECK: %[[QUANT:.*]] = "tf.QuantizeAndDequantizeV4"(%arg0, %arg1, %arg2) {axis = -1 : i64, narrow_range = false, num_bits = 8 : i64, range_given = false, round_mode = "HALF_TO_EVEN", signed_input = true} : (tensor<?x?xf32>, tensor<f32>, tensor<f32>) -> tensor<?x?xf32>
   // CHECK: return %[[QUANT]] : tensor<?x?xf32>
 }
+
+// CHECK-LABEL: testHashTableAndInitializeTableToV2
+func @testHashTableAndInitializeTableToV2(%arg0: tensor<!tf.string>) {
+  // CHECK: [[handle:%.*]] = "tf.HashTableV2"()
+  // CHECK-SAME: container = ""
+  // CHECK-SAME: key_dtype = !tf.string
+  // CHECK-SAME: shared_name = "table"
+  // CHECK-SAME: value_dtype = i32
+  // CHECK-SAME: () -> tensor<!tf.resource>
+  %handle = "tf.HashTable"() {container = "", device = "", shared_name = "table", key_dtype = !tf.string, value_dtype = i32} : () -> tensor<*x!tf.stringref>
+
+  // CHECK: "tf.InitializeTableFromTextFileV2"([[handle]]
+  "tf.InitializeTableFromTextFile"(%handle, %arg0) {device = "", key_index=1, value_index=1, delimiter="\t"} : (tensor<*x!tf.stringref>, tensor<!tf.string>) -> ()
+  return
+}
+
+// CHECK-LABEL: @testHashTableAndLookupTableSizeToV2
+func @testHashTableAndLookupTableSizeToV2() -> tensor<i64> {
+  // CHECK: [[handle:%.*]] = "tf.HashTableV2"()
+  // CHECK-SAME: container = ""
+  // CHECK-SAME: key_dtype = !tf.string
+  // CHECK-SAME: shared_name = "table"
+  // CHECK-SAME: value_dtype = i32
+  // CHECK-SAME: () -> tensor<!tf.resource>
+  %handle = "tf.HashTable"() {container = "", device = "", shared_name = "table", key_dtype = !tf.string, value_dtype = i32} : () -> tensor<*x!tf.stringref>
+
+  // CHECK: "tf.LookupTableSizeV2"([[handle]]
+  %0 = "tf.LookupTableSize"(%handle) {} : (tensor<*x!tf.stringref>) -> tensor<i64>
+  return %0 : tensor<i64>
+}
+
+// CHECK-LABEL: @testHashTableAndLookupTableFindToV2
+func @testHashTableAndLookupTableFindToV2(%arg0: tensor<!tf.string>, %arg1: tensor<i32>) -> tensor<i32> {
+  // CHECK: [[handle:%.*]] = "tf.HashTableV2"()
+  // CHECK-SAME: container = ""
+  // CHECK-SAME: key_dtype = !tf.string
+  // CHECK-SAME: shared_name = "table"
+  // CHECK-SAME: value_dtype = i32
+  // CHECK-SAME: () -> tensor<!tf.resource>
+  %handle = "tf.HashTable"() {container = "", device = "", shared_name = "table", key_dtype = !tf.string, value_dtype = i32} : () -> tensor<*x!tf.stringref>
+
+  // CHECK: "tf.LookupTableFindV2"([[handle]]
+  %0 = "tf.LookupTableFind"(%handle, %arg0, %arg1) {} : (tensor<*x!tf.stringref>, tensor<!tf.string>, tensor<i32>) -> tensor<i32>
+  return %0 : tensor<i32>
+}
+

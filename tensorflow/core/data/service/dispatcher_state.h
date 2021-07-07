@@ -15,14 +15,21 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_DISPATCHER_STATE_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_DISPATCHER_STATE_H_
 
+#include <memory>
 #include <queue>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/data_service.h"
 #include "tensorflow/core/data/service/journal.h"
 #include "tensorflow/core/data/service/journal.pb.h"
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 namespace data {
@@ -99,10 +106,13 @@ class DispatcherState {
   };
 
   struct DistributedEpochState {
-    // The current repetition.
-    int64 repetition = 0;
-    // Number of splits produced so far by the current split provider.
-    int64 split_provider_index = 0;
+    explicit DistributedEpochState(int64 num_split_providers)
+        : repetitions(num_split_providers), indices(num_split_providers) {}
+
+    // The current repetition for each split provider.
+    std::vector<int64> repetitions;
+    // Number of splits produced so far by each split provider.
+    std::vector<int64> indices;
   };
 
   struct Task;
@@ -124,6 +134,7 @@ class DispatcherState {
   // A job for processing a dataset.
   struct Job {
     explicit Job(int64 job_id, int64 dataset_id, ProcessingMode processing_mode,
+                 int64 num_split_providers,
                  absl::optional<NamedJobKey> named_job_key,
                  absl::optional<int64> num_consumers, const std::string& job_type)
         : job_id(job_id),
@@ -133,11 +144,19 @@ class DispatcherState {
           num_consumers(num_consumers),
           job_type(job_type){
       if (processing_mode == ProcessingMode::DISTRIBUTED_EPOCH) {
-        distributed_epoch_state = DistributedEpochState();
+        distributed_epoch_state = DistributedEpochState(num_split_providers);
       }
     }
 
     bool IsRoundRobin() const { return num_consumers.has_value(); }
+
+    std::string DebugString() const {
+      if (named_job_key.has_value()) {
+        return absl::StrCat(named_job_key.value().name, "_",
+                            named_job_key.value().index);
+      }
+      return absl::StrCat(job_id);
+    }
 
     const int64 job_id;
     const int64 dataset_id;
@@ -149,6 +168,8 @@ class DispatcherState {
     int64 num_clients = 0;
     int64 last_client_released_micros = -1;
     bool finished = false;
+    // Indicates whether the job was garbage collected.
+    bool garbage_collected = false;
     // EASL
     const std::string job_type;
   };
@@ -228,6 +249,7 @@ class DispatcherState {
   void ProduceSplit(const ProduceSplitUpdate& produce_split);
   void AcquireJobClient(const AcquireJobClientUpdate& acquire_job_client);
   void ReleaseJobClient(const ReleaseJobClientUpdate& release_job_client);
+  void GarbageCollectJob(const GarbageCollectJobUpdate& garbage_collect_job);
   void RemoveTask(const RemoveTaskUpdate& remove_task);
   void CreatePendingTask(const CreatePendingTaskUpdate& create_pending_task);
   void ClientHeartbeat(const ClientHeartbeatUpdate& client_heartbeat);

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "mlir/Transforms/Bufferize.h"  // from @llvm-project
 
+#include "mlir/Dialect/Linalg/IR/LinalgOps.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
@@ -76,14 +77,14 @@ class BufferizeConstantOp : public OpConversionPattern<ConstantOp> {
   }
 };
 
-class BufferizeDimOp : public OpConversionPattern<memref::DimOp> {
+class BufferizeDimOp : public OpConversionPattern<tensor::DimOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
   LogicalResult matchAndRewrite(
-      memref::DimOp op, ArrayRef<Value> operands,
+      tensor::DimOp op, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const override {
-    memref::DimOp::Adaptor adaptor(operands);
-    rewriter.replaceOpWithNewOp<memref::DimOp>(op, adaptor.memrefOrTensor(),
+    tensor::DimOp::Adaptor adaptor(operands);
+    rewriter.replaceOpWithNewOp<memref::DimOp>(op, adaptor.source(),
                                                adaptor.index());
     return success();
   }
@@ -408,15 +409,15 @@ class BufferizeRankOp : public OpConversionPattern<RankOp> {
     return success();
   }
 };
+
 }  // namespace
 
 void populateExtraStdBufferizePattern(MLIRContext *context,
                                       BufferizeTypeConverter *converter,
                                       RewritePatternSet *patterns) {
-  patterns
-      ->insert<BufferizeConstantOp, BufferizeDimOp,
-               BufferizeAndConvertMinimumBroadcastShapesOp, BufferizeRankOp>(
-          *converter, context);
+  patterns->insert<BufferizeAndConvertMinimumBroadcastShapesOp,
+                   BufferizeConstantOp, BufferizeDimOp, BufferizeRankOp>(
+      *converter, context);
 }
 
 }  // namespace transforms

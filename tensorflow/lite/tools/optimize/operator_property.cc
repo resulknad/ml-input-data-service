@@ -263,7 +263,6 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant) {
         property.quantizable = false;
         break;
       }
-      // TODO(jianlijianli): extend LSTM op spec to include input, bias etc.
       // LSTM needs 5 intermediate tensors. This agrees with the fully quantized
       // kernels in lstm_eval.cc
       if (op_variant.use_layer_norm && op_variant.use_projection &&
@@ -910,6 +909,12 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant) {
       property.outputs = {{0, {}}};
       property.restrict_same_input_output_scale = true;
       property.version = 3;
+      break;
+    case BuiltinOperator_SCATTER_ND:
+      property.inputs = {{1, {}}};
+      property.outputs = {{0, {}}};
+      property.restrict_same_input_output_scale = true;
+      property.version = 1;
       break;
     case BuiltinOperator_SELECT:
       property.inputs = {{1, {}}, {2, {}}};

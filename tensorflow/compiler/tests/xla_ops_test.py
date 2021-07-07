@@ -155,7 +155,8 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
             padding=((2, 1),),
             lhs_dilation=(1,),
             rhs_dilation=(2,),
-            dimension_numbers=dnums)
+            dimension_numbers=dnums,
+            precision_config=precision_config)
 
       self._assertOpOutputMatchesExpected(
           conv_1d_fn,
@@ -164,6 +165,43 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
               np.array([[[-2, -3]]], dtype=dtype),
           ),
           expected=np.array([[[-9, -12, -21, -26, -10]]], dtype=dtype))
+
+  def testConvPreferredElementType(self):
+    dtype = np.float16
+    preferred_element_type = np.float32
+
+    def conv_1d_fn(lhs, rhs):
+      dnums = xla_data_pb2.ConvolutionDimensionNumbers()
+      num_spatial_dims = 1
+      dnums.input_batch_dimension = 0
+      dnums.input_feature_dimension = 1
+      dnums.output_batch_dimension = 0
+      dnums.output_feature_dimension = 1
+      dnums.kernel_output_feature_dimension = 0
+      dnums.kernel_input_feature_dimension = 1
+      dnums.input_spatial_dimensions.extend(range(2, 2 + num_spatial_dims))
+      dnums.kernel_spatial_dimensions.extend(range(2, 2 + num_spatial_dims))
+      dnums.output_spatial_dimensions.extend(range(2, 2 + num_spatial_dims))
+      precision_config = None
+      return xla.conv(
+          lhs,
+          rhs,
+          window_strides=(1,),
+          padding=((2, 1),),
+          lhs_dilation=(1,),
+          rhs_dilation=(2,),
+          dimension_numbers=dnums,
+          precision_config=precision_config,
+          preferred_element_type=preferred_element_type)
+
+    self._assertOpOutputMatchesExpected(
+        conv_1d_fn,
+        args=(
+            np.array([[[3, 4, 5, 6]]], dtype=dtype),
+            np.array([[[-2, -3]]], dtype=dtype),
+        ),
+        expected=np.array([[[-9, -12, -21, -26, -10]]],
+                          dtype=preferred_element_type))
 
   @parameterized.parameters(*PRECISION_VALUES)
   def testDotGeneral(self, precision):
@@ -298,6 +336,14 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
         padding_interior=[1, 2])
 
     self.assertEqual(c.shape, tensor_shape.TensorShape([6, 3]))
+
+    c = xla.pad(
+        array_ops.placeholder(np.float32, shape=(None, 2)),
+        padding_value=7,
+        padding_low=[0, 1],
+        padding_high=[0, 2],
+        padding_interior=[0, 4])
+    self.assertEqual(c.shape.as_list(), [None, 9])
 
     # 0-sized input dimension and interior padding
     c = xla.pad(
@@ -572,6 +618,19 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
 
 class XlaOpsShapeInferenceTest(xla_test.XLATestCase, parameterized.TestCase):
 
+  def testDotShapeInference(self):
+    a = array_ops.placeholder(np.float32, shape=(1, 2, 3, 4))
+    b = array_ops.placeholder(np.float32, shape=(4, 5, 2, 6))
+
+    dim_nums = xla_data_pb2.DotDimensionNumbers()
+    dim_nums.lhs_contracting_dimensions.append(1)
+    dim_nums.rhs_contracting_dimensions.append(2)
+    dim_nums.lhs_batch_dimensions.append(3)
+    dim_nums.rhs_batch_dimensions.append(0)
+
+    c = xla.dot_general(a, b, dim_nums)
+    self.assertEqual(c.shape, tensor_shape.TensorShape([4, 1, 3, 5, 6]))
+
   def testDotDifferentNumberOfContractingDimensions(self):
     a = array_ops.placeholder(np.float32, shape=(4, 4, 4, 4))
     b = array_ops.placeholder(np.float32, shape=(4, 4, 4, 4))
@@ -595,8 +654,7 @@ class XlaOpsShapeInferenceTest(xla_test.XLATestCase, parameterized.TestCase):
     dim_nums.rhs_contracting_dimensions.append(3)
 
     with self.assertRaisesRegex(ValueError,
-                                'Contracting dimension sizes do not match. '
-                                'Got: 2 and 4'):
+                                'Dimensions must be equal, but are 2 and 4'):
       xla.dot_general(a, b, dim_nums)
 
   def testDotDifferentNumberOfBatchDimensions(self):
@@ -624,22 +682,67 @@ class XlaOpsShapeInferenceTest(xla_test.XLATestCase, parameterized.TestCase):
     dim_nums.rhs_batch_dimensions.append(0)
 
     with self.assertRaisesRegex(ValueError,
-                                'Batch dimension sizes do not match. '
-                                'Got: 2 and 4'):
+                                'Dimensions must be equal, but are 2 and 4'):
       xla.dot_general(a, b, dim_nums)
 
-  def testDotShapeInference(self):
-    a = array_ops.placeholder(np.float32, shape=(1, 2, 3, 4))
-    b = array_ops.placeholder(np.float32, shape=(4, 3, 2, 1))
+  def testDotUnknownNonContractingDimension(self):
+    a = array_ops.placeholder(np.float32, shape=(None, 16))
+    b = array_ops.placeholder(np.float32, shape=(16, 2))
 
     dim_nums = xla_data_pb2.DotDimensionNumbers()
     dim_nums.lhs_contracting_dimensions.append(1)
-    dim_nums.rhs_contracting_dimensions.append(2)
-    dim_nums.lhs_batch_dimensions.append(3)
+    dim_nums.rhs_contracting_dimensions.append(0)
+
+    c = xla.dot_general(a, b, dim_nums)
+    self.assertEqual(c.shape.as_list(), [None, 2])
+
+  def testDotUnknownContractingDimension(self):
+    a = array_ops.placeholder(np.float32, shape=(3, None))
+    b = array_ops.placeholder(np.float32, shape=(None, 2))
+
+    dim_nums = xla_data_pb2.DotDimensionNumbers()
+    dim_nums.lhs_contracting_dimensions.append(1)
+    dim_nums.rhs_contracting_dimensions.append(0)
+
+    c = xla.dot_general(a, b, dim_nums)
+    self.assertEqual(c.shape.as_list(), [3, 2])
+
+  def testDotUnknownAndKnownContractingDimension(self):
+    a = array_ops.placeholder(np.float32, shape=(3, 4))
+    b = array_ops.placeholder(np.float32, shape=(None, 2))
+
+    dim_nums = xla_data_pb2.DotDimensionNumbers()
+    dim_nums.lhs_contracting_dimensions.append(1)
+    dim_nums.rhs_contracting_dimensions.append(0)
+
+    c = xla.dot_general(a, b, dim_nums)
+    self.assertEqual(c.shape.as_list(), [3, 2])
+
+  def testDotUnknownBatchDimension(self):
+    a = array_ops.placeholder(np.float32, shape=(None, 3, 4))
+    b = array_ops.placeholder(np.float32, shape=(None, 4))
+
+    dim_nums = xla_data_pb2.DotDimensionNumbers()
+    dim_nums.lhs_contracting_dimensions.append(2)
+    dim_nums.rhs_contracting_dimensions.append(1)
+    dim_nums.lhs_batch_dimensions.append(0)
     dim_nums.rhs_batch_dimensions.append(0)
 
     c = xla.dot_general(a, b, dim_nums)
-    self.assertEqual(c.shape, tensor_shape.TensorShape([4, 1, 3, 3, 1]))
+    self.assertEqual(c.shape.as_list(), [None, 3])
+
+  def testDotUnknownAndKnownBatchDimension(self):
+    a = array_ops.placeholder(np.float32, shape=(2, 3, 4))
+    b = array_ops.placeholder(np.float32, shape=(None, 4))
+
+    dim_nums = xla_data_pb2.DotDimensionNumbers()
+    dim_nums.lhs_contracting_dimensions.append(2)
+    dim_nums.rhs_contracting_dimensions.append(1)
+    dim_nums.lhs_batch_dimensions.append(0)
+    dim_nums.rhs_batch_dimensions.append(0)
+
+    c = xla.dot_general(a, b, dim_nums)
+    self.assertEqual(c.shape.as_list(), [2, 3])
 
 
 if __name__ == '__main__':

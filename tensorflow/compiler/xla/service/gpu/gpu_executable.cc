@@ -50,6 +50,16 @@ namespace {
 
 using ::tensorflow::profiler::ScopedAnnotation;
 
+bool NeedsAsyncCommsStream(Thunk& thunk) {
+  switch (thunk.kind()) {
+    case Thunk::Kind::kNcclAllReduceStart:
+    case Thunk::Kind::kNcclAllReduceDone:
+      return true;
+    default:
+      return false;
+  }
+}
+
 }  // namespace
 
 // Implementation note: HLO profiling is always enabled for GPU executables,
@@ -98,26 +108,21 @@ Status GpuExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
   stream_executor::PlatformKind platform_kind =
       main_stream->parent()->platform_kind();
   if (platform_kind == stream_executor::PlatformKind::kROCm) {
-    int stream_isa_version;
-    main_stream->parent()->GetDeviceDescription().rocm_amdgpu_isa_version(
-        &stream_isa_version);
-    int gpu_exec_isa_version =
-        absl::get<std::pair<int, std::string>>(gpu_version_).first;
-    TF_RET_CHECK(stream_isa_version == gpu_exec_isa_version)
-        << "AMDGPU GCN ISA version mismatch; expected {" << gpu_exec_isa_version
-        << ", but was " << stream_isa_version;
+    std::string stream_arch = main_stream->parent()
+                                  ->GetDeviceDescription()
+                                  .rocm_amdgpu_gcn_arch_name();
+    std::string gpu_exec_arch = absl::get<std::string>(gpu_version_);
+    TF_RET_CHECK(stream_arch == gpu_exec_arch)
+        << "AMDGPU GCN ISA version mismatch; expected {" << gpu_exec_arch
+        << ", but was " << stream_arch;
   } else if (platform_kind == stream_executor::PlatformKind::kCuda) {
-    std::pair<int, int> stream_compute_compatibility;
-    main_stream->parent()->GetDeviceDescription().cuda_compute_capability(
-        &stream_compute_compatibility.first,
-        &stream_compute_compatibility.second);
-    GpuVersion nvidia_compute_compatibility = stream_compute_compatibility;
-    TF_RET_CHECK(nvidia_compute_compatibility == gpu_version_)
+    GpuVersion cc = main_stream->GetCudaComputeCapability();
+    TF_RET_CHECK(absl::get<se::CudaComputeCapability>(cc) ==
+                 absl::get<se::CudaComputeCapability>(gpu_version_))
         << "Compute capability mismatch; expected {"
-        << absl::get<std::pair<int, int>>(gpu_version_).first << ", "
-        << absl::get<std::pair<int, int>>(gpu_version_).second << "}, but was {"
-        << stream_compute_compatibility.first << ", "
-        << stream_compute_compatibility.second << "}";
+        << absl::get<se::CudaComputeCapability>(gpu_version_).ToString()
+        << "}, but was {" << absl::get<se::CudaComputeCapability>(cc).ToString()
+        << "}";
   } else {
     return InternalError("Unknown platform: %d", platform_kind);
   }
@@ -137,6 +142,9 @@ Status GpuExecutable::ExecuteThunks(
 
   se::Stream* main_stream = run_options->stream();
   se::StreamExecutor* executor = main_stream->parent();
+
+  StatusOr<StreamPool::Ptr> async_comms_stream =
+      run_options->BorrowStream(executor->device_ordinal());
 
   bool do_profile = hlo_execution_profile != nullptr;
   if (do_profile) {
@@ -163,29 +171,35 @@ Status GpuExecutable::ExecuteThunks(
       [&] { return absl::StrCat(module_name_, ":XLA GPU module"); },
       tensorflow::profiler::TraceMeLevel::kInfo);
 
-  std::map<const Thunk*, std::unique_ptr<se::Event>> thunk_to_finish_event;
+  absl::flat_hash_map<const Thunk*, std::unique_ptr<se::Event>>
+      thunk_to_finish_event;
   std::vector<std::function<void()>> deferred_host_callbacks;
-  for (Thunk* thunk : thunk_schedule_->TotalOrder()) {
+  for (const std::unique_ptr<Thunk>& thunk : thunk_schedule_->TotalOrder()) {
     // Annotate execution of this op if tracing was enabled when we started
     // running this module.  If tracing is enabled *while* we're running the
     // module, we won't get any data, but that's probably an OK trade-off.
     ScopedAnnotation annotation([&] { return thunk->profile_annotation(); });
 
-    int32 stream_no = thunk_schedule_->StreamNumberForThunk(thunk);
+    int32 stream_no = thunk_schedule_->StreamNumberForThunk(thunk.get());
     se::Stream* stream =
         (stream_no == 0 ? main_stream : sub_streams[stream_no - 1].get());
 
-    for (const Thunk* dependency : thunk_schedule_->DependsOn(thunk)) {
+    for (const Thunk* dependency : thunk_schedule_->DependsOn(thunk.get())) {
       stream->ThenWaitFor(FindOrDie(thunk_to_finish_event, dependency).get());
     }
 
     VLOG(2) << "Executing the thunk for " << thunk->profile_annotation()
             << " on stream " << stream_no;
+
+    TF_RET_CHECK(async_comms_stream.ok() || !NeedsAsyncCommsStream(*thunk))
+        << "`run_options` must have a stream borrower for async thunks.";
+
     const GpuExecutableRunOptions* gpu_options =
         run_options->run_options().gpu_executable_run_options();
     Thunk::ExecuteParams thunk_params{
         &buffer_allocations,
         stream,
+        async_comms_stream.ok() ? async_comms_stream->get() : nullptr,
         run_options->run_options().run_id(),
         &profiler,
         run_options->run_options().device_assignment(),
@@ -197,11 +211,11 @@ Status GpuExecutable::ExecuteThunks(
             ? &gpu_options->nccl_unique_id_callback()
             : nullptr};
     TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(thunk_params));
-    if (thunk_schedule_->Depended(thunk)) {
+    if (thunk_schedule_->Depended(thunk.get())) {
       auto finish_event = absl::make_unique<se::Event>(main_stream->parent());
       finish_event->Init();
       stream->ThenRecordEvent(finish_event.get());
-      thunk_to_finish_event[thunk] = std::move(finish_event);
+      thunk_to_finish_event[thunk.get()] = std::move(finish_event);
     }
   }
 
@@ -446,6 +460,9 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
 
   const bool is_entire_tuple_contents_aliased = [&] {
     for (auto& p : result.MutableResult()->buffers().leaves()) {
+      if (!output_info_.contains(p.first)) {
+        continue;
+      }
       const OutputInfo& output_info = output_info_.at(p.first);
       if (!output_info.alias_config.has_value()) {
         return false;
@@ -547,7 +564,7 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
     buffers_in_result.insert(result_buffer);
   }
 
-  for (Thunk* thunk : thunk_schedule_->TotalOrder()) {
+  for (const std::unique_ptr<Thunk>& thunk : thunk_schedule_->TotalOrder()) {
     TF_RETURN_IF_ERROR(thunk->Initialize(*this, executor));
   }
   TF_RETURN_IF_ERROR(ExecuteThunks(run_options, buffer_allocations,

@@ -554,7 +554,7 @@ for pdt in [
 ]:
   if pdt not in _NP_TO_TF:
     _NP_TO_TF[pdt] = next(
-        _NP_TO_TF[dt] for dt in _NP_TO_TF if dt == pdt().dtype)
+        _NP_TO_TF[dt] for dt in _NP_TO_TF if dt == pdt().dtype)  # pylint: disable=no-value-for-parameter
 
 TF_VALUE_DTYPES = set(_NP_TO_TF.values())
 
@@ -686,7 +686,7 @@ def as_dtype(type_value):
     type_value: A value that can be converted to a `tf.DType` object. This may
       currently be a `tf.DType` object, a [`DataType`
       enum](https://www.tensorflow.org/code/tensorflow/core/framework/types.proto),
-        a string type name, or a `numpy.dtype`.
+        a string type name, or a [`numpy.dtype`](https://numpy.org/doc/stable/reference/generated/numpy.dtype.html).
 
   Returns:
     A `DType` corresponding to `type_value`.

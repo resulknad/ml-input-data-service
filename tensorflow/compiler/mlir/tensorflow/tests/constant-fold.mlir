@@ -459,10 +459,10 @@ func @DontRemoveTrivialMul(%arg0: tensor<1x6x8x1xf32>) -> tensor<1x6x8x1xf32> {
   // CHECK: return %[[RESULT]] : tensor<1x6x8x1xf32>
 }
 
-// Do not fold if total result size is large (>256 KB) and more than 2 times
-// the size of operands.
+// Do not fold if the op doesn't follow the constant folding policy. It doesn't
+// fold if the  total result size is large (>256 KB) and more than 2 times the
+// size of operands.
 
-// LINT.IfChange(folding-policy-test)
 // CHECK-LABEL: DontFoldTile
 func @DontFoldTile() -> (tensor<8x10000xi32>) {
   %const_10000 = "tf.Const"() {value = dense<10000> : tensor<i32>} : () -> tensor<i32>
@@ -478,7 +478,19 @@ func @DontFoldTile() -> (tensor<8x10000xi32>) {
   // CHECK: return [[TILE]]
   return %3 : tensor<8x10000xi32>
 }
-// LINT.ThenChange(../transforms/constant_fold.cc:folding-policy)
+
+// Verifies that very large splat constants are not materialized as Tensors for
+// constant folding.
+// CHECK-LABEL: @giant_tensor_input
+func @giant_tensor_input() -> (tensor<*xf32>) {
+  %input = "tf.Const"() {value = dense<1.000000e+00> : tensor<1024x1024x1024x1024xf32>} : () -> tensor<1024x1024x1024x1024xf32>
+  %zero = "tf.Const"() {value = dense<0> : tensor<4xi32>} : () -> tensor<4xi32>
+  %one = "tf.Const"() {value = dense<1> : tensor<4xi32>} : () -> tensor<4xi32>
+  // CHECK: tf.StridedSlice
+  %0 = "tf.StridedSlice"(%input, %zero, %one, %one) {begin_mask = 15 : i64, device = "", ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 0 : i64} : (tensor<1024x1024x1024x1024xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) -> tensor<*xf32>
+
+  return %0 : tensor<*xf32>
+}
 
 func @fold_conv() -> tensor<1x520x520x1xf32> {
   %0 = "tf.Const"() {value = dense<0.111111112> : tensor<3x3x1x1xf32>} : () -> tensor<3x3x1x1xf32>
@@ -648,4 +660,40 @@ func @yieldOp(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<i1>) -> (ten
       "tf.Yield"(%arg1) : (tensor<f32>) -> ()
     }) { is_stateless = true}: (tensor<i1>) -> tensor<f32>
   return %0 : tensor<f32>
+}
+
+// CHECK-LABEL: @range_int
+func @range_int() -> tensor<?xi32> {
+  %cst = constant dense<0> : tensor<i32>
+  %cst_1 = constant dense<4> : tensor<i32>
+  %cst_2 = constant dense<1> : tensor<i32>
+
+  // CHECK: %[[CST:.*]] = "tf.Const"() {value = dense<[0, 1, 2, 3]> : tensor<4xi32>} : () -> tensor<?xi32>
+  // CHECK: return %[[CST]]
+  %0 = "tf.Range"(%cst, %cst_1, %cst_2) : (tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<?xi32>
+  return %0 : tensor<?xi32>
+}
+
+// CHECK-LABEL: @range_uint
+func @range_uint() -> tensor<?xui32> {
+  %cst = constant dense<0> : tensor<ui32>
+  %cst_1 = constant dense<4> : tensor<ui32>
+  %cst_2 = constant dense<1> : tensor<ui32>
+
+  // CHECK: %[[CST:.*]] = "tf.Const"() {value = dense<[0, 1, 2, 3]> : tensor<4xui32>} : () -> tensor<?xui32>
+  // CHECK: return %[[CST]]
+  %0 = "tf.Range"(%cst, %cst_1, %cst_2) : (tensor<ui32>, tensor<ui32>, tensor<ui32>) -> tensor<?xui32>
+  return %0 : tensor<?xui32>
+}
+
+// CHECK-LABEL: @range_float
+func @range_float() -> tensor<?xf32> {
+  %cst = constant dense<0.0> : tensor<f32>
+  %cst_1 = constant dense<4.0> : tensor<f32>
+  %cst_2 = constant dense<1.0> : tensor<f32>
+
+  // CHECK: %[[CST:.*]] = "tf.Const"() {value = dense<[0.000000e+00, 1.000000e+00, 2.000000e+00, 3.000000e+00]> : tensor<4xf32>} : () -> tensor<?xf32>
+  // CHECK: return %[[CST]]
+  %0 = "tf.Range"(%cst, %cst_1, %cst_2) : (tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<?xf32>
+  return %0 : tensor<?xf32>
 }

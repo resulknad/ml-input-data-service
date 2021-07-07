@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "llvm/ADT/ArrayRef.h"
 #include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/map_lmhlo_to_scalar_op.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/GPU/GPUDialect.h"
@@ -72,7 +73,7 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
 
     // Require all inputs to have the same shape.
     int64_t reduce_dim_size = 0;
-    for (auto input : reduce_op.operands()) {
+    for (auto input : reduce_op.inputs()) {
       auto shaped_type = input.getType().dyn_cast<ShapedType>();
       if (!shaped_type || !shaped_type.hasStaticShape()) {
         return failure();
@@ -133,7 +134,7 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
       auto accumulator = rewriter.create<memref::SubViewOp>(
           loc, resType, output, offset, size, stride);
       llvm::SmallVector<Value, 4> indexings;
-      auto input_buffer = *reduce_op.operands().begin();
+      Value input_buffer = reduce_op.inputs().front();
       auto input_type_rank =
           input_buffer.getType().cast<MemRefType>().getRank();
 
@@ -172,7 +173,7 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
 };
 
 struct LhloLegalizeToGpuPass
-    : public PassWrapper<LhloLegalizeToGpuPass, FunctionPass> {
+    : public LhloLegalizeToGpuPassBase<LhloLegalizeToGpuPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<AffineDialect, gpu::GPUDialect, linalg::LinalgDialect,
                     memref::MemRefDialect, scf::SCFDialect>();

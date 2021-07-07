@@ -95,11 +95,14 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
     return context_id;
   }
 
-  EagerContext(const SessionOptions& opts,
-               ContextDevicePlacementPolicy default_device_placement_policy,
-               bool async, /*const*/ DeviceMgr* device_mgr,
-               bool device_mgr_owned, /*const*/ Rendezvous* rendezvous,
-               DistributedFunctionLibraryRuntime* cluster_flr = nullptr);
+  EagerContext(
+      const SessionOptions& opts,
+      ContextDevicePlacementPolicy default_device_placement_policy, bool async,
+      /*const*/ DeviceMgr* device_mgr, bool device_mgr_owned,
+      /*const*/ Rendezvous* rendezvous,
+      DistributedFunctionLibraryRuntime* cluster_flr = nullptr,
+      CollectiveExecutorMgrInterface* collective_executor_mgr = nullptr,
+      bool run_eager_op_as_function = false);
 
   void Release() override { Unref(); }
 
@@ -142,6 +145,8 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   Status RegisterFunction(AbstractFunction* f) override;
 
   bool UsesTFRT() override;
+
+  bool RunEagerOpAsFunction() const;
 
   void ListDevices(std::vector<DeviceAttributes>* devices) override;
 
@@ -273,6 +278,12 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
 
   Rendezvous* GetRendezvous() const { return rendezvous_; }
 
+  void ResetGlobalRendezvousForFunction() override {
+    mutex_lock l(global_rendezvous_mu_);
+    global_rendezvous_for_functions_ =
+        core::RefCountPtr<Rendezvous>(CreateRendezvous(-1));
+  }
+
   // Returns a function which maps from step_id to rendezvous. This closure
   // respects the value of `SetReuseRendezvousForFunctions` at the time the
   // closure was created, which allows the setting to be toggled around async op
@@ -349,6 +360,8 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   uint64 GetContextId() const;
   uint64 GetContextViewId() const;
   void IncrementContextViewId();
+
+  Status EnableCollectiveOps(const ServerDef& server_def) override;
 
   // TODO(nareshmodi): Encapsulate remote state into a separate
   // class/struct.
@@ -734,6 +747,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   // Function that will be invoked in destructor to deallocate resources related
   // to this context.
   std::function<void()> resource_deallocator_ = nullptr;
+  bool run_eager_op_as_function_;
 };
 
 inline EagerContext* ContextFromInterface(ImmediateExecutionContext* context) {

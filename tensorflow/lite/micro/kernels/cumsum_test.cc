@@ -32,11 +32,11 @@ struct CumSumTestParams {
   int32_t axis = std::numeric_limits<int32_t>::max();
 };
 
-void ExecuteCumSumTest(const CumSumTestParams& test_params,
-                       TfLiteTensor* tensors, int tensors_count) {
-  constexpr int kInputArrayData[] = {2, 0, 1};
+void ExecuteCumSumTest(CumSumTestParams& test_params, TfLiteTensor* tensors,
+                       int tensors_count) {
+  int kInputArrayData[] = {2, 0, 1};
   TfLiteIntArray* inputs_array = IntArrayFromInts(kInputArrayData);
-  constexpr int kOutputArrayData[] = {1, 2};
+  int kOutputArrayData[] = {1, 2};
   TfLiteIntArray* outputs_array = IntArrayFromInts(kOutputArrayData);
 
   TfLiteCumsumParams params;
@@ -52,14 +52,14 @@ void ExecuteCumSumTest(const CumSumTestParams& test_params,
 }
 
 template <typename T>
-void TestCumSum(const CumSumTestParams& test_params, const int* input_dims_data,
-                const T* input_data, const int* expected_dims,
-                const T* expected_data, T* output_data) {
+void TestCumSum(CumSumTestParams& test_params, int* input_dims_data,
+                const T* input_data, int* expected_dims, const T* expected_data,
+                T* output_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInts(expected_dims);
   const int output_count = ElementCount(*output_dims);
 
-  constexpr int axis_dims_data[] = {1, 1};
+  int axis_dims_data[] = {1, 1};
   TfLiteIntArray* axis_dims = IntArrayFromInts(axis_dims_data);
   const int32_t axis_data[] = {test_params.axis};
 
@@ -77,6 +77,59 @@ void TestCumSum(const CumSumTestParams& test_params, const int* input_dims_data,
   }
 }
 
+// min/max are used to compute scale, zero-point, compare tolerance
+template <typename T, int kOutputSize>
+struct TestQuantParams {
+  float data_min;              // input and output data minimum value
+  float data_max;              // input and output data maximum value
+  T input_data[kOutputSize];   // quantized input storage
+  T output_data[kOutputSize];  // quantized output storage
+};
+
+// for quantized int, the error shouldn't exceed step
+template <typename T>
+float GetTolerance(float min, float max) {
+  float kQuantizedStep =
+      2.0f * (max - min) /
+      (std::numeric_limits<T>::max() - std::numeric_limits<T>::min());
+  return kQuantizedStep;
+}
+
+template <typename T, int kOutputSize>
+void TestCumSumQuantized(CumSumTestParams& test_params,
+                         TestQuantParams<T, kOutputSize>* params,
+                         int* input_dims_data, const float* input_data,
+                         int* expected_dims, const float* expected_data,
+                         float* output_data) {
+  TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
+  TfLiteIntArray* output_dims = IntArrayFromInts(expected_dims);
+
+  int axis_dims_data[] = {1, 1};
+  TfLiteIntArray* axis_dims = IntArrayFromInts(axis_dims_data);
+  const int32_t axis_data[] = {test_params.axis};
+
+  const float scale = ScaleFromMinMax<T>(params->data_min, params->data_max);
+  const int zero_point =
+      ZeroPointFromMinMax<T>(params->data_min, params->data_max);
+
+  TfLiteTensor tensors[] = {
+      CreateQuantizedTensor(input_data, params->input_data, input_dims, scale,
+                            zero_point),
+      CreateTensor(axis_data, axis_dims),
+      CreateQuantizedTensor(params->output_data, output_dims, scale,
+                            zero_point),
+  };
+
+  constexpr int tensors_count = std::extent<decltype(tensors)>::value;
+  ExecuteCumSumTest(test_params, tensors, tensors_count);
+
+  Dequantize(params->output_data, kOutputSize, scale, zero_point, output_data);
+  const float kTolerance = GetTolerance<T>(params->data_min, params->data_max);
+  for (int i = 0; i < kOutputSize; i++) {
+    TF_LITE_MICRO_EXPECT_NEAR(expected_data[i], output_data[i], kTolerance);
+  }
+}
+
 }  // namespace
 }  // namespace testing
 }  // namespace tflite
@@ -84,7 +137,7 @@ void TestCumSum(const CumSumTestParams& test_params, const int* input_dims_data,
 TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(CumSumOpTestSimpleTest) {
-  constexpr int kDims[] = {2, 2, 4};
+  int kDims[] = {2, 2, 4};
   constexpr float kInput[] = {1, 2, 3, 4, 5, 6, 7, 8};
   constexpr float kExpect[] = {1, 3, 6, 10, 5, 11, 18, 26};
 
@@ -99,7 +152,7 @@ TF_LITE_MICRO_TEST(CumSumOpTestSimpleTest) {
 }
 
 TF_LITE_MICRO_TEST(CumSumOpTestSimpleAxis0Test) {
-  constexpr int kDims[] = {2, 2, 4};
+  int kDims[] = {2, 2, 4};
   constexpr float kInput[] = {1, 2, 3, 4, 5, 6, 7, 8};
   constexpr float kExpect[] = {1, 2, 3, 4, 6, 8, 10, 12};
 
@@ -114,7 +167,7 @@ TF_LITE_MICRO_TEST(CumSumOpTestSimpleAxis0Test) {
 }
 
 TF_LITE_MICRO_TEST(CumSumOpTestSimple1DTest) {
-  constexpr int kDims[] = {1, 8};
+  int kDims[] = {1, 8};
   constexpr float kInput[] = {1, 2, 3, 4, 5, 6, 7, 8};
   constexpr float kExpect[] = {1, 3, 6, 10, 15, 21, 28, 36};
 
@@ -129,7 +182,7 @@ TF_LITE_MICRO_TEST(CumSumOpTestSimple1DTest) {
 }
 
 TF_LITE_MICRO_TEST(CumSumOpTestSimpleReverseTest) {
-  constexpr int kDims[] = {2, 2, 4};
+  int kDims[] = {2, 2, 4};
   constexpr float kInput[] = {1, 2, 3, 4, 5, 6, 7, 8};
   constexpr float kExpect[] = {10, 9, 7, 4, 26, 21, 15, 8};
 
@@ -145,7 +198,7 @@ TF_LITE_MICRO_TEST(CumSumOpTestSimpleReverseTest) {
 }
 
 TF_LITE_MICRO_TEST(CumSumOpTestSimpleExclusiveTest) {
-  constexpr int kDims[] = {2, 2, 4};
+  int kDims[] = {2, 2, 4};
   constexpr float kInput[] = {1, 2, 3, 4, 5, 6, 7, 8};
   constexpr float kExpect[] = {0, 1, 3, 6, 0, 5, 11, 18};
 
@@ -161,7 +214,7 @@ TF_LITE_MICRO_TEST(CumSumOpTestSimpleExclusiveTest) {
 }
 
 TF_LITE_MICRO_TEST(CumSumOpTestSimpleReverseExclusiveTest) {
-  constexpr int kDims[] = {2, 2, 4};
+  int kDims[] = {2, 2, 4};
   constexpr float kInput[] = {1, 2, 3, 4, 5, 6, 7, 8};
   constexpr float kExpect[] = {9, 7, 4, 0, 21, 15, 8, 0};
 
@@ -177,4 +230,121 @@ TF_LITE_MICRO_TEST(CumSumOpTestSimpleReverseExclusiveTest) {
                               output_data);
 }
 
+TF_LITE_MICRO_TEST(CumSumOpTestSimpleTestInt8) {
+  int kDims[] = {2, 2, 4};
+  constexpr float kInput[] = {1, 2, 3, 4, 5, 6, 7, 8};
+  constexpr float kExpect[] = {1, 3, 6, 10, 5, 11, 18, 26};
+
+  constexpr int kOutputCount = std::extent<decltype(kExpect)>::value;
+  float output_data[kOutputCount];
+
+  tflite::testing::CumSumTestParams test_params;
+  test_params.axis = 1;
+
+  tflite::testing::TestQuantParams<int8_t, kOutputCount> params = {};
+  params.data_min = -26.0f;
+  params.data_max = 26.0f;
+
+  tflite::testing::TestCumSumQuantized<int8_t, kOutputCount>(
+      test_params, &params, kDims, kInput, kDims, kExpect, output_data);
+}
+
+TF_LITE_MICRO_TEST(CumSumOpTestSimpleAxis0TestInt8) {
+  int kDims[] = {2, 2, 4};
+  constexpr float kInput[] = {1, 2, 3, 4, 5, 6, 7, 8};
+  constexpr float kExpect[] = {1, 2, 3, 4, 6, 8, 10, 12};
+
+  constexpr int kOutputCount = std::extent<decltype(kExpect)>::value;
+  float output_data[kOutputCount];
+
+  tflite::testing::CumSumTestParams test_params;
+  test_params.axis = 0;
+
+  tflite::testing::TestQuantParams<int8_t, kOutputCount> params = {};
+  params.data_min = -12.0f;
+  params.data_max = 12.0f;
+
+  tflite::testing::TestCumSumQuantized<int8_t, kOutputCount>(
+      test_params, &params, kDims, kInput, kDims, kExpect, output_data);
+}
+
+TF_LITE_MICRO_TEST(CumSumOpTestSimple1DTestInt8) {
+  int kDims[] = {1, 8};
+  constexpr float kInput[] = {1, 2, 3, 4, 5, 6, 7, 8};
+  constexpr float kExpect[] = {1, 3, 6, 10, 15, 21, 28, 36};
+
+  constexpr int kOutputCount = std::extent<decltype(kExpect)>::value;
+  float output_data[kOutputCount];
+
+  tflite::testing::CumSumTestParams test_params;
+  test_params.axis = 0;
+
+  tflite::testing::TestQuantParams<int8_t, kOutputCount> params = {};
+  params.data_min = -36.0f;
+  params.data_max = 36.0f;
+
+  tflite::testing::TestCumSumQuantized<int8_t, kOutputCount>(
+      test_params, &params, kDims, kInput, kDims, kExpect, output_data);
+}
+
+TF_LITE_MICRO_TEST(CumSumOpTestSimpleReverseTestInt8) {
+  int kDims[] = {2, 2, 4};
+  constexpr float kInput[] = {1, 2, 3, 4, 5, 6, 7, 8};
+  constexpr float kExpect[] = {10, 9, 7, 4, 26, 21, 15, 8};
+
+  constexpr int kOutputCount = std::extent<decltype(kExpect)>::value;
+  float output_data[kOutputCount];
+
+  tflite::testing::CumSumTestParams test_params;
+  test_params.axis = 1;
+  test_params.reverse = true;
+
+  tflite::testing::TestQuantParams<int8_t, kOutputCount> params = {};
+  params.data_min = -26.0f;
+  params.data_max = 26.0f;
+
+  tflite::testing::TestCumSumQuantized<int8_t, kOutputCount>(
+      test_params, &params, kDims, kInput, kDims, kExpect, output_data);
+}
+
+TF_LITE_MICRO_TEST(CumSumOpTestSimpleExclusiveTestInt8) {
+  int kDims[] = {2, 2, 4};
+  constexpr float kInput[] = {1, 2, 3, 4, 5, 6, 7, 8};
+  constexpr float kExpect[] = {0, 1, 3, 6, 0, 5, 11, 18};
+
+  constexpr int kOutputCount = std::extent<decltype(kExpect)>::value;
+  float output_data[kOutputCount];
+
+  tflite::testing::CumSumTestParams test_params;
+  test_params.axis = 1;
+  test_params.exclusive = true;
+
+  tflite::testing::TestQuantParams<int8_t, kOutputCount> params = {};
+  params.data_min = -18.0f;
+  params.data_max = 18.0f;
+
+  tflite::testing::TestCumSumQuantized<int8_t, kOutputCount>(
+      test_params, &params, kDims, kInput, kDims, kExpect, output_data);
+}
+
+TF_LITE_MICRO_TEST(CumSumOpTestSimpleReverseExclusiveTestInt8) {
+  int kDims[] = {2, 2, 4};
+  constexpr float kInput[] = {1, 2, 3, 4, 5, 6, 7, 8};
+  constexpr float kExpect[] = {9, 7, 4, 0, 21, 15, 8, 0};
+
+  constexpr int kOutputCount = std::extent<decltype(kExpect)>::value;
+  float output_data[kOutputCount];
+
+  tflite::testing::CumSumTestParams test_params;
+  test_params.axis = -1;
+  test_params.exclusive = true;
+  test_params.reverse = true;
+
+  tflite::testing::TestQuantParams<int8_t, kOutputCount> params = {};
+  params.data_min = -21.0f;
+  params.data_max = 21.0f;
+
+  tflite::testing::TestCumSumQuantized<int8_t, kOutputCount>(
+      test_params, &params, kDims, kInput, kDims, kExpect, output_data);
+}
 TF_LITE_MICRO_TESTS_END

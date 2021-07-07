@@ -374,6 +374,60 @@ class DefFunctionTest(xla_test.XLATestCase):
 
       self.assertAllGreater(g(array_ops.zeros([7])), 0.)
 
+  def testNestedWhileLoopWithUnmodifiedCarriedShape(self):
+    with ops.device('device:{}:0'.format(self.device)):
+      signature = [tensor_spec.TensorSpec(shape=[None], dtype=dtypes.float32)]
+
+      @def_function.function(input_signature=signature, jit_compile=True)
+      def g(x):
+
+        def inner(z, shp):
+          return z + random_ops.random_normal(shp)**2, shp
+
+        def outer(y, shp):
+          y, shp = control_flow_ops.while_loop_v2(
+              lambda *_: True, inner, (y, shp), maximum_iterations=3)
+          y, shp = array_ops.identity_n([y, shp])
+          return control_flow_ops.while_loop_v2(
+              lambda *_: True, inner, (y, shp), maximum_iterations=5)
+
+        shp = array_ops.shape(x, name='x_shp')
+        return control_flow_ops.while_loop_v2(
+            lambda *_: True, outer, (x, shp), maximum_iterations=4)[0]
+
+      self.assertAllGreater(g(array_ops.zeros([7])), 0.)
+
+  def testNestedWhileLoopWithUnmodifiedCarriedShapeSlice(self):
+    with ops.device('device:{}:0'.format(self.device)):
+      signature = [
+          tensor_spec.TensorSpec(shape=[None, None], dtype=dtypes.float32)
+      ]
+
+      @def_function.function(input_signature=signature, jit_compile=True)
+      def g(x):
+
+        def inner(z, shp):
+          return z + random_ops.random_normal(shp)**2, shp
+
+        def outer(y, shp):
+          y, shp = control_flow_ops.while_loop_v2(
+              lambda *_: True, inner, (y, shp), maximum_iterations=3)
+          return control_flow_ops.while_loop_v2(
+              lambda *_: True, inner, (y, shp), maximum_iterations=4)
+
+        shp = array_ops.shape(x, name='x_shp')
+        x = control_flow_ops.while_loop_v2(
+            lambda *_: True, outer, (x, shp), maximum_iterations=5)[0]
+
+        shp2 = array_ops.shape(x, name='x_shp_after')[1:]
+        w = control_flow_ops.while_loop_v2(
+            lambda *_: True,
+            outer, (array_ops.zeros_like(x[0]), shp2),
+            maximum_iterations=6)[0]
+        return x + w
+
+      self.assertAllGreater(g(array_ops.zeros([7, 13])), 0.)
+
   def testMethodCompilation(self):
 
     with ops.device('device:{}:0'.format(self.device)):
@@ -598,6 +652,17 @@ class DefFunctionTest(xla_test.XLATestCase):
 
   def testUpdateVariable(self):
     with ops.device('device:{}:0'.format(self.device)):
+      v = variables.Variable([0.0, 0.0])
+
+      @def_function.function(jit_compile=True)
+      def f():
+        v.assign([3.1, 2.3])
+
+      f()
+      self.assertAllClose(v, [3.1, 2.3])
+
+  def testUpdateVariableMemoryUsage(self):
+    with ops.device('device:{}:0'.format(self.device)):
 
       on_gpu = 'gpu' in self.device.lower()
       v = variables.Variable([3.1, 3.2])
@@ -609,11 +674,11 @@ class DefFunctionTest(xla_test.XLATestCase):
       arg1 = random_ops.random_normal([2])
       arg2 = random_ops.random_normal([2])
 
-      initial_usage = context.context().get_total_memory_usage(
-          v.device) if on_gpu else 0
+      initial_usage = context.context().get_memory_info(
+          v.device)['current'] if on_gpu else 0
       update_var(arg1, arg2)
-      final_usage = context.context().get_total_memory_usage(
-          v.device) if on_gpu else 0
+      final_usage = context.context().get_memory_info(
+          v.device)['current'] if on_gpu else 0
       self.assertEqual(initial_usage, final_usage)
 
   @test_util.disable_mlir_bridge('TODO(b/162381930): MLIR bridge renames '
@@ -662,13 +727,13 @@ class DefFunctionTest(xla_test.XLATestCase):
       b = random_ops.random_normal([10, 10])
 
       on_gpu = 'gpu' in self.device.lower()
-      initial_usage = context.context().get_total_memory_usage(
-          b.backing_device) if on_gpu else 0
+      initial_usage = context.context().get_memory_info(
+          b.backing_device)['current'] if on_gpu else 0
 
       f(a, b)
 
-      final_usage = context.context().get_total_memory_usage(
-          b.backing_device) if on_gpu else 0
+      final_usage = context.context().get_memory_info(
+          b.backing_device)['current'] if on_gpu else 0
       self.assertEqual(initial_usage, final_usage)
 
   def testGetCompilerIrConstants(self):
@@ -800,6 +865,19 @@ class DefFunctionTest(xla_test.XLATestCase):
         hlo = fn.experimental_get_compiler_ir(inputs)(
             stage=stage, device_name=f'/device:{self.device}:0')
         self.assertIsInstance(hlo, bytes)
+
+  def testDotOptimizedHlo(self):
+    with ops.device('device:{}:0'.format(self.device)):
+
+      a = random_ops.random_normal([100, 100])
+      b = random_ops.random_normal([100, 100])
+
+      @def_function.function(jit_compile=True)
+      def f(a, b):
+        return math_ops.matmul(a, b)
+
+      self.assertRegex(f.experimental_get_compiler_ir(a, b)('optimized_hlo'),
+                       '(dot)|(convolution)')
 
   def testConstantOnWrongDevice(self):
     with ops.device('device:{}:0'.format(self.device)):
@@ -1011,6 +1089,24 @@ class DefFunctionTest(xla_test.XLATestCase):
 
         v = variables.Variable([[2.]])
         self.assertAllClose(f(v), constant_op.constant([[0.5]]))
+
+  @test_util.disable_mlir_bridge('TODO(b/190444466): MLIR bridge seems to '
+                                 'ignore resource assignments')
+  def testErrMsgAssignWrongShape(self):
+    with ops.device('device:{}:0'.format(self.device)):
+
+      v = variables.Variable([3.1, 3.2])
+
+      @def_function.function(jit_compile=True)
+      def f(samples):
+        v.assign(array_ops.zeros(samples))  # assignment
+
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  '@ .+def_function_xla_jit_test.py'):
+        f(constant_op.constant(6))
+
+      with self.assertRaisesRegex(errors.InvalidArgumentError, 'assignment'):
+        f(constant_op.constant(6))
 
 
 if __name__ == '__main__':

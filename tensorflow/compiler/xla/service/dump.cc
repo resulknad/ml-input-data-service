@@ -16,12 +16,15 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/dump.h"
 
 #include "absl/strings/ascii.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_proto_util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/lib/io/zlib_compression_options.h"
+#include "tensorflow/core/lib/io/zlib_outputbuffer.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/path.h"
@@ -47,7 +50,9 @@ struct CanonicalDebugOptions {
         dump_snapshots(opts.xla_dump_hlo_snapshots()),
         dump_include_timestamp(opts.xla_dump_include_timestamp()),
         dump_max_hlo_modules(opts.xla_dump_max_hlo_modules()),
-        dump_module_metadata(opts.xla_dump_module_metadata()) {
+        dump_module_metadata(opts.xla_dump_module_metadata()),
+        dump_compress_protos(opts.xla_dump_compress_protos()),
+        dump_hlo_metadata(!opts.xla_dump_disable_metadata()) {
     // This constructor examines the values in `opts` and turns on other flags
     // based on what we think is the user's intent.  To reduce confusion about
     // what was a user-specified value versus an extrapolated value, within this
@@ -146,11 +151,29 @@ struct CanonicalDebugOptions {
   bool dump_include_timestamp;
   int64 dump_max_hlo_modules;
   bool dump_module_metadata;
+  bool dump_compress_protos;
+  bool dump_hlo_metadata;
 };
+
+Status WriteStringToFile(tensorflow::Env* env, const string& fname,
+                         const tensorflow::StringPiece& data, bool compressed) {
+  if (!compressed) {
+    return tensorflow::WriteStringToFile(env, fname, data);
+  }
+  std::unique_ptr<tensorflow::WritableFile> file;
+  TF_RETURN_IF_ERROR(env->NewWritableFile(fname, &file));
+  auto gz_opts = tensorflow::io::ZlibCompressionOptions::GZIP();
+  tensorflow::io::ZlibOutputBuffer gz_file(file.get(),
+                                           gz_opts.input_buffer_size,
+                                           gz_opts.output_buffer_size, gz_opts);
+  TF_RETURN_IF_ERROR(gz_file.Init());
+  TF_RETURN_IF_ERROR(gz_file.Append(data));
+  return gz_file.Close();
+}
 
 absl::optional<std::string> DumpToFileInDirImpl(
     string_view filename, string_view contents,
-    const CanonicalDebugOptions& opts) {
+    const CanonicalDebugOptions& opts, bool compress = false) {
   if (opts.dumping_to_stdout()) {
     LOG(ERROR) << "Refusing to write " << filename
                << " to stdout.  Pass --xla_dump_to=<path> to write to a file.";
@@ -181,23 +204,35 @@ absl::optional<std::string> DumpToFileInDirImpl(
   // Make sure we are not going to dump more modules than the user has asked.
   if (opts.dump_max_hlo_modules > 0) {
     std::vector<string> matches;
-    auto pattern = tensorflow::io::JoinPath(dir, "*module_*.0000.*");
+    auto pattern = tensorflow::io::JoinPath(dir, "*module_*.*");
     auto status = env->GetMatchingPaths(pattern, &matches);
     if (!status.ok()) {
       LOG(ERROR) << "Could not get matching paths for pattern " << pattern
                  << ": " << status;
     }
-    if (matches.size() > opts.dump_max_hlo_modules) {
-      LOG(ERROR) << "Have already dumped " << matches.size()
-                 << " modules, more than the limit of "
-                 << opts.dump_max_hlo_modules;
-      return absl::nullopt;
+    static const LazyRE2 module_id_regex = {R"(.*module_(\d+)\..*)"};
+    absl::flat_hash_set<int64> dumped_module_ids;
+    for (const string& match : matches) {
+      int64 dumped_module_id;
+      if (RE2::FullMatch(match, *module_id_regex, &dumped_module_id)) {
+        dumped_module_ids.insert(dumped_module_id);
+      }
+    }
+    if (dumped_module_ids.size() >= opts.dump_max_hlo_modules) {
+      int64 module_id;
+      if (RE2::FullMatch(filename, *module_id_regex, &module_id) &&
+          !dumped_module_ids.contains(module_id)) {
+        LOG(ERROR) << "Have already dumped " << dumped_module_ids.size()
+                   << " modules, more than the limit of "
+                   << opts.dump_max_hlo_modules;
+        return absl::nullopt;
+      }
     }
   }
 
   string file_path =
       tensorflow::io::JoinPath(dir, SanitizeFileName(string(filename)));
-  auto status = tensorflow::WriteStringToFile(env, file_path, contents);
+  auto status = WriteStringToFile(env, file_path, contents, compress);
   if (!status.ok()) {
     LOG(ERROR) << "Could not write XLA debug data to " << file_path << ": "
                << status;
@@ -232,10 +267,11 @@ std::vector<std::string> DumpHloModuleImpl(const HloModule& module,
   std::vector<absl::optional<std::string>> file_paths;
 
   if (opts.dump_as_text) {
+    HloPrintOptions print_options;
+    print_options.set_print_backend_config(true);
+    print_options.set_print_metadata(opts.dump_hlo_metadata);
     file_paths.push_back(DumpToFileInDirOrStdoutImpl(
-        StrCat(filename, ".txt"),
-        module.ToString(HloPrintOptions().set_print_backend_config(true)),
-        opts));
+        StrCat(filename, ".txt"), module.ToString(print_options), opts));
     if (buffer_assn) {
       file_paths.push_back(DumpToFileInDirOrStdoutImpl(
           StrCat(filename, "-buffer-assignment.txt"),
@@ -252,8 +288,9 @@ std::vector<std::string> DumpHloModuleImpl(const HloModule& module,
     if (!tensorflow::SerializeToStringDeterministic(module_proto, &pb)) {
       pb = "Failed to serialize HLO module proto.";
     }
-    file_paths.push_back(
-        DumpToFileInDirImpl(StrCat(filename, ".hlo.pb"), pb, opts));
+    file_paths.push_back(DumpToFileInDirImpl(
+        StrCat(filename, opts.dump_compress_protos ? ".hlo.pb.gz" : ".hlo.pb"),
+        pb, opts, opts.dump_compress_protos));
   }
 
   auto render_graph = [&](RenderedGraphFormat format) {
@@ -377,15 +414,27 @@ string TimestampFor(const HloModule& module) {
   return std::to_string(timestamp_emplace.first->second);
 }
 
-static string FilenameFor(int unique_id, string_view prefix,
-                          string_view suffix) {
-  return StrFormat("%s%smodule_%04d.%s", prefix, prefix.empty() ? "" : ".",
-                   unique_id, suffix);
+static string FilenameFor(int unique_id, string_view module_name,
+                          string_view prefix, string_view suffix) {
+  string filename;
+  if (!prefix.empty()) {
+    absl::StrAppend(&filename, prefix, ".");
+  }
+  absl::StrAppendFormat(&filename, "module_%04d", unique_id);
+  if (!module_name.empty()) {
+    absl::StrAppend(&filename, ".", module_name);
+  }
+  absl::StrAppend(&filename, ".", suffix);
+  // Skip the module name if the resulting length is too long.
+  if (!module_name.empty() && filename.size() > 255) {
+    return FilenameFor(unique_id, "", prefix, suffix);
+  }
+  return filename;
 }
 
 string FilenameFor(const HloModule& module, string_view prefix,
                    string_view suffix) {
-  return FilenameFor(module.unique_id(), prefix, suffix);
+  return FilenameFor(module.unique_id(), module.name(), prefix, suffix);
 }
 
 void DumpToFileInDir(const HloModule& module, string_view file_prefix,
@@ -402,10 +451,11 @@ void DumpToFileInDirOrStdout(const HloModule& module, string_view file_prefix,
 }
 
 void DumpToFileInDirOrStdout(const DebugOptions& debug_options, int unique_id,
-                             string_view file_prefix, string_view file_suffix,
-                             string_view contents) {
-  DumpToFileInDirOrStdoutImpl(FilenameFor(unique_id, file_prefix, file_suffix),
-                              contents, CanonicalDebugOptions(debug_options));
+                             string_view module_name, string_view file_prefix,
+                             string_view file_suffix, string_view contents) {
+  DumpToFileInDirOrStdoutImpl(
+      FilenameFor(unique_id, module_name, file_prefix, file_suffix), contents,
+      CanonicalDebugOptions(debug_options));
 }
 
 void DumpExecutionOptions(const ExecutionOptions& execution_options,

@@ -1,5 +1,5 @@
-// RUN: kernel-gen-opt %s --func-bufferize --final-bufferize | FileCheck %s --check-prefixes=CHECK,ALLOC
-// RUN: kernel-gen-opt %s --func-bufferize --final-bufferize --promote-buffers-to-stack | FileCheck %s  --check-prefixes=CHECK,ALLOCA
+// RUN: kernel-gen-opt %s --computeop-and-func-bufferize --final-bufferize | FileCheck %s --check-prefixes=CHECK,ALLOC
+// RUN: kernel-gen-opt %s --computeop-and-func-bufferize --final-bufferize --promote-buffers-to-stack | FileCheck %s  --check-prefixes=CHECK,ALLOCA
 
 
 // CHECK-LABEL: @tensor.extract
@@ -50,7 +50,7 @@ func @tensor.generate(%arg : tensor<*xf32>) -> index {
   %size = rank %arg : tensor<*xf32>
   %tfe = tensor.generate %size {
   ^bb0(%i : index):
-    %elem = memref.dim %arg, %i : tensor<*xf32>
+    %elem = tensor.dim %arg, %i : tensor<*xf32>
     tensor.yield %elem : index
   } : tensor<?xindex>
   %c0 = constant 0 : index
@@ -241,4 +241,20 @@ func @minimum_broadcast_shapes(%lhs: tensor<?xindex>, %rhs: tensor<?xindex>) -> 
       tensor<?xindex>, tensor<?xindex> -> tensor<?xindex>, tensor<?xindex>
   // CHECK-NEXT: return %[[FINAL_RESULT_LHS]], %[[FINAL_RESULT_RHS]] : memref<?xindex>, memref<?xindex>
   return %0, %1 : tensor<?xindex>, tensor<?xindex>
+}
+
+// CHECK-LABEL: @tensor_reshape
+// CHECK-SAME: (%[[T:.*]]: memref<1x2x2xf32>)
+func @tensor_reshape(%t : tensor<1x2x2xf32>) -> tensor<4xf32> {
+  // CHECK: linalg.collapse_shape %[[T]] {{.*}} : memref<1x2x2xf32> into memref<4xf32>
+  %result = linalg.tensor_collapse_shape %t [[0, 1, 2]] : tensor<1x2x2xf32> into tensor<4xf32>
+  return %result : tensor<4xf32>
+}
+
+// CHECK-LABEL: @slice
+// CHECK-SAME: (%[[T:.*]]: memref<3xi32>)
+func @slice(%t : tensor<3xi32>) -> tensor<1xi32> {
+  // CHECK: memref.subview %[[T]][0] [1] [1] : memref<3xi32> to memref<1xi32>
+  %result = tensor.extract_slice %t[0] [1] [1] : tensor<3xi32> to tensor<1xi32>
+  return %result : tensor<1xi32>
 }

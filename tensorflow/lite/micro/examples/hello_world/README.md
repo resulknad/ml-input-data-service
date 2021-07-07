@@ -22,6 +22,7 @@ of the device.
 -   [Deploy to Himax WE1 EVB](#deploy-to-himax-we1-evb)
 -   [Deploy to SparkFun Edge](#deploy-to-sparkfun-edge)
 -   [Deploy to STM32F746](#deploy-to-STM32F746)
+-   [Deploy to Sony Spresense](#deploy-to-sony-spresense)
 -   [Run the tests on a development machine](#run-the-tests-on-a-development-machine)
 -   [Train your own model](#train-your-own-model)
 
@@ -454,28 +455,27 @@ Before we begin, you'll need the following:
 
 - STM32F7 discovery kit board
 - Mini-USB cable
-- ARM Mbed CLI ([installation instructions](https://os.mbed.com/docs/mbed-os/v5.12/tools/installation-and-setup.html). Check it out for MacOS Catalina - [mbed-cli is broken on MacOS Catalina #930](https://github.com/ARMmbed/mbed-cli/issues/930#issuecomment-660550734))
-- Python 2.7 and pip
+- ARM Mbed CLI ([installation instructions](https://os.mbed.com/docs/mbed-os/v6.9/quick-start/build-with-mbed-cli.html). Check it out for MacOS Catalina - [mbed-cli is broken on MacOS Catalina #930](https://github.com/ARMmbed/mbed-cli/issues/930#issuecomment-660550734))
+- Python 3 and pip3
 
 Since Mbed requires a special folder structure for projects, we'll first run a
 command to generate a subfolder containing the required source files in this
 structure:
 
 ```
-make -f tensorflow/lite/micro/tools/make/Makefile TARGET=mbed TAGS="CMSIS disco_f746ng" generate_hello_world_mbed_project
+make -f tensorflow/lite/micro/tools/make/Makefile TARGET=disco_f746ng OPTIMIZED_KERNEL_DIR=cmsis_nn generate_hello_world_mbed_project
 ```
 
 This will result in the creation of a new folder:
 
 ```
-tensorflow/lite/micro/tools/make/gen/mbed_cortex-m4/prj/hello_world/mbed
+tensorflow/lite/micro/tools/make/gen/disco_f746ng_cortex-m4_default/prj/hello_world/mbed
 ```
 
 This folder contains all of the example's dependencies structured in the correct
 way for Mbed to be able to build it.
 
-Change into the directory and run the following commands, making sure you are
-using Python 2.7.15.
+Change into the directory and run the following commands.
 
 First, tell Mbed that the current directory is the root of an Mbed project:
 
@@ -489,16 +489,24 @@ Next, tell Mbed to download the dependencies and prepare to build:
 mbed deploy
 ```
 
-By default, Mbed will build the project using C++98. However, TensorFlow Lite
-requires C++11. Run the following Python snippet to modify the Mbed
+Older versions of Mbed will build the project using C++98. However, TensorFlow Lite
+requires C++11. If needed, run the following Python snippet to modify the Mbed
 configuration files so that it uses C++11:
 
 ```
 python -c 'import fileinput, glob;
 for filename in glob.glob("mbed-os/tools/profiles/*.json"):
   for line in fileinput.input(filename, inplace=True):
-    print line.replace("\"-std=gnu++98\"","\"-std=c++11\", \"-fpermissive\"")'
+    print(line.replace("\"-std=gnu++98\"","\"-std=c++11\", \"-fpermissive\""))'
 
+```
+
+Note: Mbed has a dependency to an old version of arm_math.h and cmsis_gcc.h (adapted from the general [CMSIS-NN MBED example](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/kernels/cmsis_nn#example-2---mbed)). Therefore you need to copy the newer version as follows:
+```bash
+cp tensorflow/lite/micro/tools/make/downloads/cmsis/CMSIS/DSP/Include/\
+arm_math.h mbed-os/cmsis/TARGET_CORTEX_M/arm_math.h
+cp tensorflow/lite/micro/tools/make/downloads/cmsis/CMSIS/Core/Include/\
+cmsis_gcc.h mbed-os/cmsis/TARGET_CORTEX_M/cmsis_gcc.h
 ```
 
 Finally, run the following command to compile:
@@ -549,6 +557,88 @@ x_value: 1.1843798*2^2, y_value: -1.9542645*2^-1
 
 To stop viewing the debug output with `screen`, hit `Ctrl+A`, immediately
 followed by the `K` key, then hit the `Y` key.
+
+## Deploy to Sony Spresense
+
+The following instructions will help you to build and deploy this example to
+[Sony Spresense](https://developer.sony.com/develop/spresense/)
+board.
+
+![Spresense Products](images/spresense_product_boards.png)
+
+### Initial Setup
+
+To build and execute this example on the Spresense, The Spresense SDK build system is required.
+Follow the instructions on the  
+[Spresense SDK Getting Started Guide:EN](https://developer.sony.com/develop/spresense/docs/sdk_set_up_en.html)  
+[Spresense SDK Getting Started Guide:JA](https://developer.sony.com/develop/spresense/docs/sdk_set_up_ja.html)  
+[Spresense SDK Getting Started Guide:CN](https://developer.sony.com/develop/spresense/docs/sdk_set_up_zh.html)  
+to get and install all required tools for work with Sony Spresense.
+
+And after setup the build system, download
+[Spresense repository](https://github.com/sonydevworld/spresense).
+
+```
+git clone --recursive https://github.com/sonydevworld/spresense.git
+```
+
+You can also see
+[TensoFlow Tutorials](https://developer.sony.com/develop/spresense/docs/sdk_tutorials_en.html#_tensorflow_tutorials)
+on Spresense developer document site for this example.
+
+### Configure Spresense for this example
+
+The Spresense SDK uses Kconfig mechanism for configuration of software
+components. So at first, you need to configure it for this example. Spresense
+SDK provides some default configurations, and there is a default config to build
+this Hello World example.
+
+1.  Go to sdk/ directory in the repository.
+
+    ```
+    cd spresense/sdk
+    ```
+
+2.  Execute config.py to configure for this example.
+
+    ```
+    ./tools/config.py examples/tf_example_helloworld
+    ```
+
+This command creates .config file in spesense/nuttx directory.
+
+### Build and Flash the binary into Spresense Main board
+
+After configured, execute make and then flash built image.
+
+1.  Execute "make" command in the same directory you configured.
+
+    ```
+    make
+    ```
+
+2.  Flash built image into Spresense main board. If the build is successful, a
+    file named nuttx.spk will be created in the current directory, and flash it
+    into Spresense Main board. Make sure USB cable is connected between the
+    board and your PC. The USB will be recognized as USB/serial device like
+    /dev/ttyUSB0 in your PC. In this explanation, we will assume that the device
+    is recognized as /dev/ttyUSB0.
+
+    ```
+    ./tools/flash.sh -c /dev/ttyUSB0 nuttx.spk
+    ```
+
+### How to run
+
+To run the example, connect to the device with a terminal soft like "minicom".
+Then you can see a "nsh>" prompt on it. (If you can't see the prompt, try to
+press enter.)
+
+1.  Execute tf_example command on the prompt.
+
+    ```
+    nsh> tf_example
+    ```
 
 ## Run the tests on a development machine
 

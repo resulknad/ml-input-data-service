@@ -31,13 +31,13 @@ namespace tf_framework {
 // * adds tf_framework::OpKernelContextType argument to the function
 // * std.alloc becomes tf_framework.alloc_raw
 // * std.dealloc becomes tf_framework.dealloc_raw
-std::unique_ptr<OperationPass<ModuleOp>>
-CreateEmbedTFFrameworkFunctionAndAllocPass();
+// * std.assert becomes tf_framework.assert
+std::unique_ptr<OperationPass<ModuleOp>> CreateEmbedTFFrameworkPass();
 
-// Pass to convert std.assert operations to calls to tf_framework.report_error
-// and create the required control flow to abort the function on failed
-// execution.
-std::unique_ptr<OperationPass<ModuleOp>> CreateEmbedTFFrameworkAssertPass();
+// Pass to convert tf_framework.assert operations to calls to
+// tf_framework.report_error and create the required control flow to abort the
+// function on failed execution.
+std::unique_ptr<OperationPass<ModuleOp>> CreateRewriteTFFrameworkAssert();
 
 }  // namespace tf_framework
 
@@ -61,6 +61,9 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateComputeOpAndFuncBufferizePass();
 // Pass to tranform computations on values to their corresponding parts on
 // buffers.
 std::unique_ptr<OperationPass<ModuleOp>> CreateFinalBufferizePass();
+
+// Pass to replace unsigned types with signless integers.
+std::unique_ptr<OperationPass<ModuleOp>> CreateConvertToSignlessPass();
 
 // Pass to convert scf::ParallelOp to scf::ForOp.
 std::unique_ptr<FunctionPass> CreateParallelLoopsToSequential();
@@ -98,6 +101,12 @@ CreateGpuKernelToRocdlPass();
 
 // Pass to simplify shape ops.
 std::unique_ptr<FunctionPass> CreateShapeSimplification();
+
+// Pass to create vectorized code for CPU.
+std::unique_ptr<FunctionPass> CreateVectorizationPass();
+
+// Pass to remove unneeded code generated in VectorizationPass.
+std::unique_ptr<FunctionPass> CreateVectorizationCleanupPass();
 
 }  // namespace transforms
 

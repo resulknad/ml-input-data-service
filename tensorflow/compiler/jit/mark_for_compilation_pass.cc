@@ -61,7 +61,6 @@ namespace {
 using DeadnessPredicate = DeadnessAnalysis::DeadnessPredicate;
 using jit::DeviceId;
 using jit::DeviceSet;
-using xla::StatusOr;
 
 // The clusters we create here are eventually lowered into an
 // _XlaCompile/_XlaRun pair with a TF executor "fallback" that uses the
@@ -1697,9 +1696,15 @@ Status MarkForCompilation(
   // So fix up the source and sink edges before calling into deadness analysis.
   FixupSourceAndSinkEdges(graph);
 
-  // See explanation on `kXlaAlreadyClustered`.
   for (Node* n : graph->nodes()) {
+    // See explanation on `kXlaAlreadyClustered`.
     if (n->attrs().Find(kXlaAlreadyClustered)) {
+      return Status::OK();
+    }
+    // Skip the pass if we found TPUExecute ops in the graph, which indicates
+    // the graph is produced by TPU TF-XLA bridge and doesn't require auto
+    // clustering.
+    if (n->type_string() == "TPUExecute") {
       return Status::OK();
     }
   }
@@ -1787,9 +1792,9 @@ absl::flat_hash_map<string, std::vector<string>>* GetAllowlistTable() {
             "LeakyReluGrad", "Elu", "EluGrad", "Selu", "SeluGrad", "Select",
             "SelectV2", "Transpose", "ConjugateTranspose",
             "_UnaryOpsComposition", "CollectiveReduceV2",
-            // The following 4 operations are converted to identity
+            // The following 5 operations are converted to identity
             "PlaceholderWithDefault", "PreventGradient", "StopGradient",
-            "Snapshot"}},
+            "Snapshot", "_EagerConst"}},
           // clang-format off
     {"RED",
      {"All", "Any", "Min", "Max", "Mean", "Prod", "Sum"}},
@@ -1840,6 +1845,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
                                      "AvgPoolGrad",
                                      "BatchMatMul",
                                      "BatchMatMulV2",
+                                     "BatchMatMulV3",
                                      "BatchToSpace",
                                      "BatchToSpaceND",
                                      "BesselI0e",
@@ -1869,6 +1875,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
                                      "Dequantize",
                                      "Diag",
                                      "DynamicStitch",
+                                     "DynamicPartition",
                                      "Einsum",
                                      "EmptyTensorList",
                                      "EnsureShape",
@@ -2073,6 +2080,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
                                      "XlaRecv",
                                      "XlaReduce",
                                      "XlaReduceWindow",
+                                     "XlaRemoveDynamicDimensionSize",
                                      "XlaReplicaId",
                                      "XlaScatter",
                                      "XlaSelectAndScatter",

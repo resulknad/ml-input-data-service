@@ -111,7 +111,7 @@ bool NcclCollectiveConfig::IsDegenerate(int64_t replica_count,
 
 Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
 #if XLA_ENABLE_XCCL
-  VLOG(1) << absl::StreamFormat("Starting %s.", ThunkKindToString(kind()));
+  VLOG(1) << absl::StreamFormat("Starting %s.", Thunk::KindToString(kind()));
   auto op_profiler =
       params.profiler->MakeScopedInstructionProfiler(profile_index());
 
@@ -185,6 +185,9 @@ bool IsTypeSupportedByNccl(PrimitiveType element_type) {
     case F16:
     case F32:
     case F64:
+#if defined(__CUDA_BF16_TYPES_EXIST__)
+    case BF16:
+#endif
       return true;
     default:
       return false;
