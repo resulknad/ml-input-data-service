@@ -1143,7 +1143,7 @@ tf_kernel_library(
     srcs = ["user_ops/forty_two_op.cc"],
     hdrs = ["user_ops/forty_two_op.h"],
     deps = [
-        ":name_utils",
+        "//tensorflow/core/data:name_utils",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

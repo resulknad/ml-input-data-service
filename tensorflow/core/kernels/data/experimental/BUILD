@@ -810,7 +810,7 @@ tf_kernel_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/framework:op_requires",
-        "//tensorflow/core/kernels/data:name_utils",
+        "//tensorflow/core/data:name_utils",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -828,7 +828,7 @@ tf_kernel_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/framework:op_requires",
-        "//tensorflow/core/kernels/data:name_utils",
+        "//tensorflow/core/data:name_utils",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -840,7 +840,7 @@ cc_library(
     deps = [
         ":arrow_reader",  # simonsom
         ":arrow_writer",
-        ":snapshot_util",
+        "//tensorflow/core/data:snapshot_utils",
     ],
 )
 
@@ -859,7 +859,7 @@ cc_library(
     ],
     deps = [
         ":arrow_util",
-        ":snapshot_util",
+        "//tensorflow/core/data:snapshot_utils",
         "@arrow",
     ],
 )
@@ -877,7 +877,7 @@ cc_library(
     ],
     deps = [
         ":arrow_util",
-        ":snapshot_util",
+        "//tensorflow/core/data:snapshot_utils",
         "@arrow",
     ],
 )
@@ -887,7 +887,7 @@ cc_library(
     srcs = ["easl_service/arrow/arrow_util.cc"],
     hdrs = ["easl_service/arrow/arrow_util.h"],
     deps = [
-        ":snapshot_util",
+        "//tensorflow/core/data:snapshot_utils",
         "@arrow",
     ],
 )
