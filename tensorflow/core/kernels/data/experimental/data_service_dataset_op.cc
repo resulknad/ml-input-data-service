@@ -776,6 +776,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           mutex_lock l(mu_);
           num_running_worker_threads_--;
           outstanding_requests_--;
+          VLOG(0) << "One worker thread done. outstanding_requests_:"
+                  << outstanding_requests_;
           get_next_cv_.notify_all();
         };
         worker_threads_.push_back(ctx->StartThread(
@@ -783,6 +785,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
               RunWorkerThread(std::move(done));
             }));
       }
+      VLOG(0) << "UpdateWorkerThreads done. Outstanding requests: "
+      << outstanding_requests_;
     }
 
     void AdvanceTaskIndex() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
