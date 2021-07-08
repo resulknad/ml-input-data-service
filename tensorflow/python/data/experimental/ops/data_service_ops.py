@@ -215,7 +215,7 @@ class _DataServiceDatasetV1(dataset_ops.DatasetV1Adapter):
                protocol, data_transfer_protocol, job_name, consumer_index,
                num_consumers, max_outstanding_requests,
                max_request_pipelining_per_worker,
-               task_refresh_interval_hint_ms, target_worker):
+               task_refresh_interval_hint_ms, target_workers):
 
     self._wrapped = _DataServiceDatasetV2(
         dataset_id=dataset_id,
