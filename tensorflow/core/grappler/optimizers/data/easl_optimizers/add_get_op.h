@@ -30,9 +30,6 @@ class AddGetOp : public TFDataOptimizerBase {
                                  GraphDef* output,
                                  OptimizationStats* stats) override;
 
-  void Feedback(Cluster* cluster, const GrapplerItem& item,
-                const GraphDef& optimize_output, double result) override;
-
  private:
   NodeDef CreateGetOpNode(MutableGraphView* graph, NodeDef* input);
 

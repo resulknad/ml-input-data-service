@@ -20,6 +20,8 @@ limitations under the License.
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/data_service.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/env.h"
+
 
 namespace tensorflow {
 namespace data {

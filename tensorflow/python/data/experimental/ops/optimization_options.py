@@ -140,7 +140,7 @@ class OptimizationOptions(options.OptionsBase):
       docstring="Whether to fuse shuffle and repeat transformations. If None, "
       "defaults to True.")
 
-"""
+  """
   append_forty_two = options.create_option(
       name="append_forty_two",
       ty=bool,
@@ -161,7 +161,7 @@ class OptimizationOptions(options.OptionsBase):
       docstring="Wether to append the custom add_get_op after the "
       "ModelDatasetOp node."
   )
-"""
+  """
 
   def _to_proto(self):
     pb = dataset_options_pb2.OptimizationOptions()

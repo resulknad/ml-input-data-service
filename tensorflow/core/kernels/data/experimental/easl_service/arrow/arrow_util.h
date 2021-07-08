@@ -7,7 +7,7 @@
 
 // dependencies ----------------------------------------------
 #include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/core/kernels/data/experimental/snapshot_util.h"
+#include "tensorflow/core/data/snapshot_utils.h"
 #include "arrow/api.h"
 #include "arrow/ipc/api.h"
 #include "arrow/util/io_util.h"

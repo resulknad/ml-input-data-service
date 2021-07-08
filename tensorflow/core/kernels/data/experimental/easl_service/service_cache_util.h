@@ -2,7 +2,7 @@
 #define TENSORFLOW_CORE_KERNELS_DATA_EXPERIMENTAL_EASL_SERVICE_SERVICE_CACHE_UTIL_
 
 
-#include "tensorflow/core/kernels/data/experimental/snapshot_util.h"
+#include "tensorflow/core/data/snapshot_utils.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/threadpool.h"
 

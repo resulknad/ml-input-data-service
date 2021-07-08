@@ -157,11 +157,6 @@ Status AddGetOp::OptimizeAndCollectStats(Cluster* cluster,
   return ApplyOptimization(graph, sink_node, output);
 }
 
-void AddGetOp::Feedback(Cluster* cluster, const GrapplerItem& item,
-                              const GraphDef& optimize_output,
-                              double result) {
-  // no-op
-}
 
 REGISTER_GRAPH_OPTIMIZER_AS(AddGetOp, "add_get_op");
 

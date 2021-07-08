@@ -117,12 +117,6 @@ Status AppendFortyTwo::OptimizeAndCollectStats(Cluster* cluster,
   return Status::OK();
 }
 
-void AppendFortyTwo::Feedback(Cluster* cluster, const GrapplerItem& item,
-                              const GraphDef& optimize_output,
-                              double result) {
-  // no-op
-}
-
 REGISTER_GRAPH_OPTIMIZER_AS(AppendFortyTwo, "append_forty_two");
 
 }  // namespace easl

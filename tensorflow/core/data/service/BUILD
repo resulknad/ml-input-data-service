@@ -762,8 +762,10 @@ cc_library(
     ],
     deps = [
         ":common_proto_cc",
+        ":dispatcher_proto_cc",
         ":data_service",
         "//tensorflow/core:lib",
+        "//tensorflow/core/platform:env",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
     ],

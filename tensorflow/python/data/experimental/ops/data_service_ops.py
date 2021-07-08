@@ -187,20 +187,20 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
             compat_kwargs["target_workers"] = target_workers
 
         super(_DataServiceDatasetV2, self).__init__(variant_tensor)
-    variant_tensor = gen_experimental_dataset_ops.data_service_dataset_v2(
-        dataset_id=self._dataset_id,
-        processing_mode=self._processing_mode,
-        address=self._address,
-        protocol=self._protocol,
-        job_name=self._job_name,
-        consumer_index=self._consumer_index,
-        num_consumers=self._num_consumers,
-        max_outstanding_requests=self._max_outstanding_requests,
-        max_request_pipelining_per_task=self._max_request_pipelining_per_worker,
-        task_refresh_interval_hint_ms=task_refresh_interval_hint_ms,
-        iteration_counter=gen_experimental_dataset_ops.dummy_iteration_counter(),
-        **compat_kwargs,
-        **self._flat_structure)
+        variant_tensor = gen_experimental_dataset_ops.data_service_dataset_v2(
+            dataset_id=self._dataset_id,
+            processing_mode=self._processing_mode,
+            address=self._address,
+            protocol=self._protocol,
+            job_name=self._job_name,
+            consumer_index=self._consumer_index,
+            num_consumers=self._num_consumers,
+            max_outstanding_requests=self._max_outstanding_requests,
+            max_request_pipelining_per_task=self._max_request_pipelining_per_worker,
+            task_refresh_interval_hint_ms=task_refresh_interval_hint_ms,
+            iteration_counter=gen_experimental_dataset_ops.dummy_iteration_counter(),
+            **compat_kwargs,
+            **self._flat_structure)
 
     @property
     def element_spec(self):

@@ -43,7 +43,7 @@ message NamedJobKeyDef {
   int64 index = 2;
 }
 
-// Next tag: 9
+// Next tag: 10
 message CreateJobUpdate {
   reserved 5, 6;
   int64 job_id = 1;
@@ -58,7 +58,7 @@ message CreateJobUpdate {
     int64 num_consumers = 7;
   }
   // EASL
-  string job_type = 8; // i.e read, write, cache
+  string job_type = 13; // i.e read, write, cache
 }
 
 // Next tag: 5
