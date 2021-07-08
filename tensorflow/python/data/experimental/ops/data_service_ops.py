@@ -186,7 +186,6 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
         if compat.forward_compatible(2021, 7, 12) or target_workers != "AUTO":
             compat_kwargs["target_workers"] = target_workers
 
-        super(_DataServiceDatasetV2, self).__init__(variant_tensor)
         variant_tensor = gen_experimental_dataset_ops.data_service_dataset_v2(
             dataset_id=self._dataset_id,
             processing_mode=self._processing_mode,
@@ -201,6 +200,8 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
             iteration_counter=gen_experimental_dataset_ops.dummy_iteration_counter(),
             **compat_kwargs,
             **self._flat_structure)
+
+        super(_DataServiceDatasetV2, self).__init__(variant_tensor)
 
     @property
     def element_spec(self):
