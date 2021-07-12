@@ -221,7 +221,7 @@ Status DataServiceDispatcherImpl::RestoreSplitProviders(
   const std::vector<int64>& indices =
       job.distributed_epoch_state.value().indices;
   std::vector<std::unique_ptr<SplitProvider>> split_providers;
-  TF_RETURN_IF_ERROR(MakeSplitProviders(job.dataset_id, split_providers));
+  TF_RETURN_IF_ERROR(MakeSplitProviders(job.dataset_id, job.job_type, split_providers));
   for (int provider_index = 0; provider_index < indices.size();
        ++provider_index) {
     int index = indices[provider_index];
@@ -408,10 +408,11 @@ Status DataServiceDispatcherImpl::GetDatasetDef(
   TF_RETURN_IF_ERROR(state_.DatasetFromId(request->dataset_id(), dataset));
 
   // TODO (damien-aymon) The request should have the dataset key instead of the dataset_id.
-  std::shared_ptr<const DatasetDef> dataset_def;
-  TF_RETURN_IF_ERROR(GetDatasetDef(*dataset, dataset_def));
-  *response->mutable_dataset_def() = *dataset_def;
-  return Status::OK();
+  return errors::PermissionDenied("EASL - dispatcher_impl.cc:411: Should not enter here for now...");
+//  std::shared_ptr<const DatasetDef> dataset_def;
+//  TF_RETURN_IF_ERROR(GetDatasetDef(*dataset, dataset_def));
+//  *response->mutable_dataset_def() = *dataset_def;
+//  return Status::OK();
 }
 
 Status DataServiceDispatcherImpl::GetSplit(const GetSplitRequest* request,
@@ -460,12 +461,13 @@ Status DataServiceDispatcherImpl::GetSplit(const GetSplitRequest* request,
 
 Status DataServiceDispatcherImpl::MakeSplitProviders(
     int64 dataset_id,
+    const std::string& job_type,
     std::vector<std::unique_ptr<SplitProvider>>& split_providers)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   std::shared_ptr<const Dataset> dataset;
   TF_RETURN_IF_ERROR(state_.DatasetFromId(dataset_id, dataset));
   std::shared_ptr<const DatasetDef> dataset_def;
-  TF_RETURN_IF_ERROR(GetDatasetDef(*dataset, dataset_def));
+  TF_RETURN_IF_ERROR(GetDatasetDef(*dataset, job_type, dataset_def));
   standalone::Dataset::Params params;
   std::unique_ptr<standalone::Dataset> standalone_dataset;
   TF_RETURN_IF_ERROR(standalone::Dataset::FromGraph(
@@ -696,12 +698,6 @@ Status DataServiceDispatcherImpl::CreateJob(
           absl::StrCat("ProcessingMode ", processing_mode, " not recognized"));
   }
   int64 job_id = state_.NextAvailableJobId();
-  int64 num_split_providers = 0;
-  if (processing_mode == ProcessingMode::DISTRIBUTED_EPOCH) {
-    TF_RETURN_IF_ERROR(
-        MakeSplitProviders(dataset_id, split_providers_[job_id]));
-    num_split_providers = split_providers_[job_id].size();
-  }
 
   // EASL - Caching decision: should the job compute, write or read from cache?
   std::string job_type;
@@ -722,6 +718,14 @@ Status DataServiceDispatcherImpl::CreateJob(
     dataset->dataset_id, dataset->fingerprint, job_type);
   TF_RETURN_IF_ERROR(metadata_store_.CreateJob(job_id, dataset->dataset_id,
                               dataset->fingerprint, dataset_key));
+
+
+  int64 num_split_providers = 0;
+  if (processing_mode == ProcessingMode::DISTRIBUTED_EPOCH) {
+    TF_RETURN_IF_ERROR(
+        MakeSplitProviders(dataset_id, job_type, split_providers_[job_id]));
+    num_split_providers = split_providers_[job_id].size();
+  }
 
   Update update;
   CreateJobUpdate* create_job = update.mutable_create_job();
@@ -1169,24 +1173,25 @@ void DataServiceDispatcherImpl::LogDumpsThread() {
   }
 }
 
-
+/* EASL - never used
 Status DataServiceDispatcherImpl::GetDatasetDef(
     int64 dataset_id, std::shared_ptr<const DatasetDef>& dataset_def)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   std::shared_ptr<const Dataset> dataset;
   TF_RETURN_IF_ERROR(state_.DatasetFromId(dataset_id, dataset));
   return GetDatasetDef(*dataset, dataset_def);
-}
+}*/
 
 Status DataServiceDispatcherImpl::GetDatasetDef(
-    const Dataset& dataset, std::shared_ptr<const DatasetDef>& dataset_def)
+    const Dataset& dataset,
+    const std::string& job_type,
+    std::shared_ptr<const DatasetDef>& dataset_def)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  std::string key = DatasetKey(dataset.dataset_id, dataset.fingerprint);
-  // TODO (damien-aymon) update this function to take into account the worker
-  //  and task_id from which the request is from in order to serve the
-  //  correct version of the dataset.
-  return errors::PermissionDenied("Should not enter here for now...");
-  //return dataset_store_->Get(key, dataset_def);
+  std::string key = service::easl::cache_utils::DatasetKey(
+      dataset.dataset_id, dataset.fingerprint, job_type);
+
+  //return errors::PermissionDenied("Should not enter here for now...");
+  return dataset_store_->Get(key, dataset_def);
 }
 
 }  // namespace data
