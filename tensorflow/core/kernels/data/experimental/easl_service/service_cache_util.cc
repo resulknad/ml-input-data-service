@@ -326,7 +326,7 @@ void MultiThreadedAsyncReader::Consume(string* s, bool* end_of_sequence) {
   mutex_lock l(mu_);
   if (split_provider_ == nullptr) { 
     if (file_names_.empty()) {
-      *s = ""
+      *s = "";
       *end_of_sequence = true;
     } else {
       *s = file_names_.front();
