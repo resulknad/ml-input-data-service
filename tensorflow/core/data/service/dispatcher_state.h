@@ -225,7 +225,8 @@ class DispatcherState {
   // Returns a list of all jobs.
   std::vector<std::shared_ptr<const Job>> ListJobs();
   // Returns a list of jobs assigned to particular worker.
-  std::vector<std::shared_ptr<const Job>> ListJobsForWorker(const absl::string_view worker_address);
+  std::vector<std::shared_ptr<const Job>> ListJobsForWorker(
+    const absl::string_view worker_address);
   // Gets a job by id. Returns NOT_FOUND if there is no such job.
   Status JobFromId(int64 id, std::shared_ptr<const Job>& job) const;
   // Gets a named job by key. Returns NOT_FOUND if there is no such job.
