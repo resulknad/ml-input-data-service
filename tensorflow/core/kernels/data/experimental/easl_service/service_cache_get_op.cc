@@ -3,10 +3,7 @@
 #include "absl/memory/memory.h"
 #include "tensorflow/core/kernels/data/split_utils.h"
 #include "tensorflow/core/framework/types.h"
-<<<<<<< HEAD
 #include "tensorflow/core/data/name_utils.h"
-=======
->>>>>>> c7f2373c7fe... Added support for  training in ServiceCacheGetOp.
 #include "tensorflow/core/kernels/data/experimental/easl_service/service_cache_util.h"
 #include "tensorflow/core/kernels/data/name_utils.h"
 #include "tensorflow/core/platform/tstring.h"
