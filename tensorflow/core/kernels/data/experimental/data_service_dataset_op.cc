@@ -457,7 +457,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       bool end_of_sequence TF_GUARDED_BY(&Iterator::mu_) = false;
 
       // EASL - we use this to allow for multiple requests per task.
-      int64 num_outstanding_requests TF_GUARDED_BY(&Iterator::mu_) = 0;
+      //int64 num_outstanding_requests TF_GUARDED_BY(&Iterator::mu_) = 0;
     };
 
     struct Result {
@@ -776,8 +776,6 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           mutex_lock l(mu_);
           num_running_worker_threads_--;
           outstanding_requests_--;
-          VLOG(0) << "One worker thread done. outstanding_requests_:"
-                  << outstanding_requests_;
           get_next_cv_.notify_all();
         };
         worker_threads_.push_back(ctx->StartThread(
@@ -785,8 +783,6 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
               RunWorkerThread(std::move(done));
             }));
       }
-      VLOG(0) << "UpdateWorkerThreads done. Outstanding requests: "
-      << outstanding_requests_;
     }
 
     void AdvanceTaskIndex() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
@@ -813,15 +809,15 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           return nullptr;
         }
         // EASL - request pipelining: change skipping condition.
-        //if (current_round_ < task->info.starting_round() || task->in_use ||
-        if(current_round_ < task->info.starting_round() ||
-            task->num_outstanding_requests >= max_request_pipelining_per_task_ ||
+        if (current_round_ < task->info.starting_round() || task->in_use ||
+        //if(current_round_ < task->info.starting_round() ||
+            //task->num_outstanding_requests >= max_request_pipelining_per_task_ ||
             task->end_of_sequence || task->removed) {
           VLOG(3) << "Skipping task " << next_task_index_
                   << ". starting round: " << task->info.starting_round()
                   << ". current round: " << current_round_
                   << ". task->in_use: " << task->in_use
-                  << ". task->num_outstanding_requests: " << task->num_outstanding_requests
+                  //<< ". task->num_outstanding_requests: " << task->num_outstanding_requests
                   << ". end_of_sequence: " << task->end_of_sequence
                   << ". task->removed: " << task->removed;
           AdvanceTaskIndex();
@@ -847,7 +843,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           mutex_lock l(mu_);
           if (task_to_process) {
             task_to_process->in_use = false; // Only holds for round_robin.
-            task_to_process->num_outstanding_requests--;
+            //task_to_process->num_outstanding_requests--;
             task_to_process = nullptr;
             worker_thread_cv_.notify_one();
           }
@@ -875,7 +871,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           //DCHECK(task_to_process != nullptr);
           DCHECK(task_to_process); // (damien-aymon) This will never segfault..
           task_to_process->in_use = true;
-          task_to_process->num_outstanding_requests++;
+          //task_to_process->num_outstanding_requests++;
           VLOG(3) << "Processing task " << task_to_process->info.task_id();
         }
         int64 deadline_micros = kint64max;
@@ -893,7 +889,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           VLOG(1) << "Failed to get element from worker "
                   << task_to_process->info.worker_address() << ": " << s;
           task_to_process->in_use = false; // only holds for round robin
-          task_to_process->num_outstanding_requests--;
+          //task_to_process->num_outstanding_requests--;
           status_ = Status(s.code(),
                            absl::StrCat("Failed to get element from worker ",
                                         task_to_process->info.worker_address(),
