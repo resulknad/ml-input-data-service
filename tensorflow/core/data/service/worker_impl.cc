@@ -424,9 +424,16 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
     for (const auto& task : tasks_) {
       current_tasks.push_back(task.first);
 
+      bool task_initialized = false;
+      { // Check if task is initialized.
+        mutex_lock l(task.second->mu);
+        if(task.second->initialized){
+          task_initialized = true;
+        }
+      }
+
       // Get the metrics
-      mutex_lock l(task.second->mu);
-      if (task.second->initialized) {
+      if (task_initialized) {
         VLOG(3) << "Getting metrics in heartbeat";
         auto metrics = task.second->task_runner->GetMetrics();
         if (metrics) {
