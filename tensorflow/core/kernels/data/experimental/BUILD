@@ -881,7 +881,6 @@ cc_library(
     deps = [
         ":arrow_util",
         "//tensorflow/core/data:snapshot_utils",
-        ":snapshot_util",
         "//tensorflow/core/data:split_utils", # Required for build
         "@arrow",
     ],

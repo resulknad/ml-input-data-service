@@ -1,11 +1,11 @@
 #include "tensorflow/core/kernels/data/experimental/easl_service/service_cache_get_op.h"
 
 #include "absl/memory/memory.h"
-#include "tensorflow/core/kernels/data/split_utils.h"
+#include "tensorflow/core/data/split_utils.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/kernels/data/experimental/easl_service/service_cache_util.h"
-#include "tensorflow/core/kernels/data/name_utils.h"
+#include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/platform/tstring.h"
 
 
@@ -47,7 +47,7 @@ class ServiceCacheGetOp::Dataset : public DatasetBase {
     return Status::OK();
   }
 
-  Status MakeSplitProvider(std::unique_ptr<SplitProvider>* split_provider) 
+  Status MakeSplitProviders(std::vector<std::unique_ptr<SplitProvider>>* result) 
     const override;
 
  protected:
@@ -194,15 +194,12 @@ Status ServiceCacheGetOp::Dataset::AsGraphDefInternal(
       output);
 }
 
-Status ServiceCacheGetOp::Dataset::MakeSplitProvider(
-  std::unique_ptr<SplitProvider>* split_provider) const {
+Status ServiceCacheGetOp::Dataset::MakeSplitProviders(
+  std::vector<std::unique_ptr<SplitProvider>>* split_providers) const {
   std::vector<string> files;
-  TF_CHECK_OK(env_->GetMatchingPaths(io::JoinPath(path_, "*\\.easl"), 
-    &files));
-  *split_provider = absl::make_unique<IndexSplitProvider>(files.size());
-
-  // TODO(DanGraur): These constants need to be replaced by runtime values
-  // *split_provider = absl::make_unique<ShardingSplitProvider>(1, 0, base); // base is unique_ptr<IndexSplitProvider>(files.size());
+  TF_CHECK_OK(env_->GetMatchingPaths(io::JoinPath(path_, "*\\.easl"), &files));
+  split_providers->push_back(
+    absl::make_unique<IndexSplitProvider>(files.size()));
   return Status::OK();
 }
 
@@ -221,8 +218,8 @@ Status ServiceCacheGetOp::Dataset::Iterator::Initialize(
 
   // If we're in distributed epoch mode we should have a split provider
   std::shared_ptr<SplitProvider> split_provider_ = nullptr;
-  if (ctx->split_provider() != nullptr) {
-    split_provider_ = ctx->split_provider();
+  if (!ctx->split_providers().empty()) {
+    split_provider_ = ctx->split_providers()[0];
   }
 
   for(auto dt: dataset()->output_dtypes_){
