@@ -255,9 +255,11 @@ Reader::Reader(Env *env, std::shared_ptr<SplitProvider> split_provider,
 Status Reader::Initialize() {
 
   if(reader_version_ == 0) { // 0 -> arrow
+    VLOG(3) << "(Reader) Making use of the Arrow version of the reader";
     async_reader_ = std::make_unique<arrow_async_reader::ArrowAsyncReader>(
       env_, target_dir_, output_dtypes_, output_shapes_, reader_count_);
   } else {
+    VLOG(3) << "(Reader) Making use of the non-Arrow version of the reader";
     async_reader_ = std::make_unique<MultiThreadedAsyncReader>(
       env_, split_provider_, target_dir_, output_dtypes_, output_shapes_, 
       reader_count_);
@@ -325,6 +327,7 @@ Status MultiThreadedAsyncReader::Initialize() {
 void MultiThreadedAsyncReader::Consume(string* s, bool* end_of_sequence) {
   mutex_lock l(mu_);
   if (split_provider_ == nullptr) { 
+    VLOG(3) << "(Consume) In vanilla consume";
     if (file_names_.empty()) {
       *s = "";
       *end_of_sequence = true;
@@ -336,12 +339,15 @@ void MultiThreadedAsyncReader::Consume(string* s, bool* end_of_sequence) {
   } else {
     // We should be running in distributed epoch mode
     Tensor split;
+    VLOG(3) << "(Consume) In split_provider consume";
+    // Void function --> can't use TF_RETURN_IF_ERROR
     split_provider_->GetNext(&split, end_of_sequence);
-    if (!end_of_sequence) {
-      int64 file_idx = split.scalar<int64>()();
-      *s = file_names_[file_idx];
-    } else {
+    if (*end_of_sequence) {
       *s = ""; 
+    } else {
+      int64 file_idx = split.scalar<int64>()();
+      VLOG(3) << "(Consume) Got index " << file_idx << " which is file " << s;
+      *s = file_names_[file_idx];
     }
   }
 }
@@ -397,7 +403,8 @@ Status MultiThreadedAsyncReader::ReaderThread(Env *env, uint64 writer_id, int64 
                                     version, output_types, &reader);
 
 
-      VLOG(3) << "(Reader_" << writer_id << ") Starting to read file " << file_path;
+      VLOG(3) << "(Reader_" << writer_id << ") Starting to read file " 
+              << file_path;
       int64 count = 0;
       bool eof = false;
       while (!eof) {
@@ -414,8 +421,8 @@ Status MultiThreadedAsyncReader::ReaderThread(Env *env, uint64 writer_id, int64 
           Add(tensors);
         }
       }
-      VLOG(3) << "(Reader_" << writer_id << ") Finished reading file " << file_path
-      << " with " << count << " elements.";
+      VLOG(3) << "(Reader_" << writer_id << ") Finished reading file " 
+              << file_path << " with " << count << " elements.";
     }
   }
 

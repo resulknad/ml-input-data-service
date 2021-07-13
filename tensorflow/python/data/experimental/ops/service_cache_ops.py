@@ -79,7 +79,7 @@ class _ServiceCacheGetDataset(dataset_ops.DatasetSource):
 @tf_export("data.experimental.serviceCacheGetDataset")
 def service_cache_get(
   path,
-  cache_format=1,
+  cache_format=2,
   cache_compression=1,
   parallelism=8,
   element_spec=tensor_spec.TensorSpec(shape=(),dtype=dtypes.int32)):

@@ -88,7 +88,7 @@ class Writer {
          const DataTypeVector& output_dtypes,
          const std::vector<PartialTensorShape>& output_shapes,
          const int writer_count = 8,
-         const int writer_version = 0);
+         const int writer_version = 2);
 
   Status Write(const std::vector<Tensor>& tensors);
 
@@ -175,7 +175,7 @@ public:
            const DataTypeVector& output_dtypes,
            const std::vector<PartialTensorShape>& output_shapes,
            const int reader_count = 8,
-           const int reader_version = 0);
+           const int reader_version = 2);
 
     Status Initialize();
 
