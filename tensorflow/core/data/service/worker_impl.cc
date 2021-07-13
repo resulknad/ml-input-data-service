@@ -389,7 +389,8 @@ Status DataServiceWorkerImpl::SendTaskUpdates() TF_LOCKS_EXCLUDED(mu_) {
 void DataServiceWorkerImpl::HeartbeatThread() TF_LOCKS_EXCLUDED(mu_) {
   while (true) {
     int64 next_heartbeat_micros =
-        Env::Default()->NowMicros() + (500 * 1000); // Heartbeat every 0.5 sec.
+        Env::Default()->NowMicros() + (config_.heartbeat_interval_ms() * 1000);
+        // (500 * 1000); // Heartbeat every 0.5 sec.
     {
       mutex_lock l(mu_);
       while (!cancelled_ &&
@@ -423,7 +424,7 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
     for (const auto& task : tasks_) {
       current_tasks.push_back(task.first);
-      /*
+
       bool task_initialized = false;
       { // Check if task is initialized.
         mutex_lock l(task.second->mu);
@@ -441,7 +442,7 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
         }
       } else {
         VLOG(0) << "Not getting metrics in heartbeat";
-      }*/
+      }
     }
   }
   std::vector<TaskDef> new_tasks;
