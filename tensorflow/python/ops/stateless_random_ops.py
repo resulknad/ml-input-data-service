@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+import sys
 import logging
 
 logging.basicConfig(filename='check.log',level=logging.INFO,
@@ -29,6 +30,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import gen_stateless_random_ops
 from tensorflow.python.ops import gen_stateless_random_ops_v2
 from tensorflow.python.ops import math_ops
@@ -264,13 +266,14 @@ def deterministic_random_uniform(shape,
     maxval = 1
   seed=ops.get_default_graph().seed
   # Logging information
-  logging.info('Op seed is {}'.format(seed))
-
+  #logging.info('Op seed is {}'.format(seed))
+  logging_ops.print_v2('Op seed before split is',seed,output_stream=sys.stdout)
   # updating the split of the seed
 
   ops.get_default_graph().seed = split(seed,num=1)[0,:]
+  
   logging.info('Op seed after split is {}'.format(ops.get_default_graph().seed))
-
+  logging_ops.print_v2('Op seed after split is',ops.get_default_graph().seed,output_stream=sys.stdout)
   with ops.name_scope(name, "stateless_random_uniform",
                       [shape,seed, minval, maxval]) as name:
     shape = tensor_util.shape_tensor(shape)

@@ -4103,7 +4103,9 @@ class DeterministicStructuredFunctionWrapper(object):
       #outer_graph_seed = self._seed
       self._function.graph.seed = self._seed
       logging.info('Before seed is {}'.format(self._seed))
+      #.print_v2('Before seed is',self._seed,output_stream=sys.stdout)
       logging.info('Setter seed is {}'.format(self._function.graph.seed))
+      #logging_ops.print_v2('Setter seed is',self._function.graph.seed,output_stream=sys.stdout)
       # if outer_graph_seed and self._function.graph.seed == outer_graph_seed:
       #   if self._function.graph._seed_used:
       #     warnings.warn(
