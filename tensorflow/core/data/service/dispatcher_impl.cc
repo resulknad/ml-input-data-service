@@ -335,6 +335,7 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
         // Ignore metrics if job has already been removed from metadata store.
         // Otherwise return status error.
         if(!errors::IsNotFound(s)){ return s; }
+        VLOG(0) << "EASL - Received metrics for old job";
       } else {
         for (int j = 0; j < task.nodes_size(); ++j) {
         auto metrics = task.mutable_nodes(j)->mutable_metrics();

@@ -387,6 +387,7 @@ Status DataServiceWorkerImpl::SendTaskUpdates() TF_LOCKS_EXCLUDED(mu_) {
 }
 
 void DataServiceWorkerImpl::HeartbeatThread() TF_LOCKS_EXCLUDED(mu_) {
+  VLOG(0) << "Heartbeat interval set to: " << config_.heartbeat_interval_ms() << " msec.";
   while (true) {
     int64 next_heartbeat_micros =
         Env::Default()->NowMicros() + (config_.heartbeat_interval_ms() * 1000);
@@ -420,7 +421,7 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
   std::vector<int64> current_tasks;
   absl::flat_hash_map<int64, model::Model::ModelMetrics> tasks_metrics;
   {
-    VLOG(1) << "(DataServiceWorkerImpl::Heartbeat) Starting heartbeat" << std::flush;
+    VLOG(0) << "(DataServiceWorkerImpl::Heartbeat) Starting heartbeat" << std::flush;
     mutex_lock l(mu_);
     for (const auto& task : tasks_) {
       current_tasks.push_back(task.first);
