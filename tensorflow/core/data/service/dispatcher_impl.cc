@@ -784,8 +784,9 @@ Status DataServiceDispatcherImpl::CreateTasksForJob(
   // Find the next available workers and assign them to this job.
   // By default, start by using a single worker for initial metric collection run. 
   // TODO(easl): Implement policy to decide the number of workers for a job.
-  int num_workers = 1;
-  std::vector<std::shared_ptr<Worker>> workers = state_.ReserveWorkers(num_workers, job->job_id);
+  int num_workers = 0; // 0 -> This will mean we reserve all available workers  
+  std::vector<std::shared_ptr<Worker>> workers = state_.ReserveWorkers(
+    job->job_id, num_workers);
   tasks.clear();
   tasks.reserve(workers.size());
   for (auto& worker : workers) {

@@ -329,10 +329,11 @@ DispatcherState::ListAvailableWorkers() const {
 
 std::vector<std::shared_ptr<DispatcherState::Worker>>
 DispatcherState::ReserveWorkers(
-    int64 num_workers, int64 job_id) {
+    int64 job_id, int64 num_workers) {
   // TODO(aklimovic): wait instead of fail if insufficient workers available
   // or return up to how many are currently available
   DCHECK(num_workers <= avail_workers_.size()); 
+  num_workers = num_workers <= 0 ? avail_workers_.size() : num_workers;
   std::vector<std::shared_ptr<Worker>> workers;
   workers.reserve(num_workers);
   for (auto it = avail_workers_.begin(); it != avail_workers_.end(); ) {
