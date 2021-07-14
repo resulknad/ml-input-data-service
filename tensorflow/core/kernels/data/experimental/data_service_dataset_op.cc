@@ -243,6 +243,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         : DatasetIterator<Dataset>(params),
           iterator_index_(iterator_index),
           max_outstanding_requests_(params.dataset->max_outstanding_requests_) {
+      max_request_pipelining_per_task_ = 8;
     }
 
     ~Iterator() override {
@@ -322,6 +323,18 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         if (!status_.ok()) {
           VLOG(3) << "Returning from GetNext with error " << status_;
           return status_;
+        }
+        if(job_finished_){
+          VLOG(0) << "Job Finished in GetNext. results_.size():" << results_.size()
+                  << " results_.front().ready:"
+                  << (!results_.empty() && results_.front().ready)
+                  << " job_finished_:" << job_finished_
+                  << " num_running_worker_threads_:"
+                  << num_running_worker_threads_
+                  << " outstanding_requests_:"
+                  << outstanding_requests_
+                  << " time_milisec:"
+                  << Env::Default()->NowMicros() / EnvTime::kMillisToMicros;
         }
         if (results_.empty()) {
           *end_of_sequence = true;
@@ -406,6 +419,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       bool in_use TF_GUARDED_BY(&Iterator::mu_) = false;
       // Indicates whether the worker has returned end_of_sequence for the task.
       bool end_of_sequence TF_GUARDED_BY(&Iterator::mu_) = false;
+
+      // EASL - we use this to allow for multiple requests per task.
+      int64 num_outstanding_requests TF_GUARDED_BY(&Iterator::mu_) = 0;
     };
 
     struct Result {
@@ -529,6 +545,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       if (!job_finished) {
         return;
       }
+      VLOG(0) << "Got job finished from client heartbeat response.";
       job_finished_ = true;
       get_next_cv_.notify_all();
       worker_thread_cv_.notify_all();
@@ -541,7 +558,11 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
                                         dataset()->protocol_,
                                         dataset()->data_transfer_protocol_));
       tasks_.push_back(std::make_shared<Task>(task_info, std::move(worker)));
-      worker_thread_cv_.notify_one();
+      //worker_thread_cv_.notify_one();
+      // EASL - notify kMaxParallelCallsPerTask threads to pipeline requests
+      for(int i=0; i++; i<max_request_pipelining_per_task_){
+        worker_thread_cv_.notify_one();
+      }
       if (StrictRoundRobin()) {
         VLOG(1) << "Consumer " << dataset()->consumer_index_.value()
                 << " adding task " << task_info.task_id()
@@ -697,12 +718,15 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
                   << round_robin_round_limit_.value_or(-1);
           return nullptr;
         }
-        if (current_round_ < task->info.starting_round() || task->in_use ||
+        //if (current_round_ < task->info.starting_round() || task->in_use ||
+        if(current_round_ < task->info.starting_round() ||
+            task->num_outstanding_requests >= max_request_pipelining_per_task_ ||
             task->end_of_sequence || task->removed) {
           VLOG(3) << "Skipping task " << next_task_index_
                   << ". starting round: " << task->info.starting_round()
                   << ". current round: " << current_round_
                   << ". task->in_use: " << task->in_use
+                  << ". task->num_outstanding_requests: " << task->num_outstanding_requests
                   << ". end_of_sequence: " << task->end_of_sequence
                   << ". task->removed: " << task->removed;
           AdvanceTaskIndex();
@@ -720,7 +744,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         done();
         VLOG(1) << "Worker thread exiting";
       });
-      VLOG(1) << "Starting worker thread";
+      VLOG(0) << "Starting worker thread";
       std::shared_ptr<Task> task_to_process;
       while (true) {
         Result* result;
@@ -728,6 +752,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           mutex_lock l(mu_);
           if (task_to_process) {
             task_to_process->in_use = false;
+            task_to_process->num_outstanding_requests--;
             task_to_process = nullptr;
             worker_thread_cv_.notify_one();
           }
@@ -752,8 +777,10 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             results_.emplace();
             result = &results_.back();
           }
-          DCHECK(task_to_process != nullptr);
+          //DCHECK(task_to_process != nullptr);
+          DCHECK(task_to_process);
           task_to_process->in_use = true;
+          task_to_process->num_outstanding_requests++;
           VLOG(3) << "Processing task " << task_to_process->info.task_id();
         }
         int64 deadline_micros = kint64max;
@@ -771,6 +798,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           VLOG(1) << "Failed to get element from worker "
                   << task_to_process->info.worker_address() << ": " << s;
           task_to_process->in_use = false;
+          task_to_process->num_outstanding_requests--;
           status_ = Status(s.code(),
                            absl::StrCat("Failed to get element from worker ",
                                         task_to_process->info.worker_address(),
@@ -951,6 +979,11 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     // at the same time. This count includes both in-progress requests for
     // elements as well as completed requests which haven't yet been produced.
     int64 max_outstanding_requests_ TF_GUARDED_BY(mu_);
+
+    // EASL
+    // max_request_pipelining_per_task_ controls the max number of parallel
+    // requests can be sent to a single task.
+    int64 max_request_pipelining_per_task_ TF_GUARDED_BY(mu_);
 
     // The number of threads in `worker_threads_` which are still running.
     int64 num_running_worker_threads_ TF_GUARDED_BY(mu_) = 0;
