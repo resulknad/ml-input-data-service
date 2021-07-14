@@ -500,6 +500,8 @@ def deterministic_random_crop(value, size, name=None):
     A cropped tensor of the same rank as `value` and shape `size`.
   """
   seed=ops.get_default_graph().seed
+  ops.get_default_graph().seed = stateless_random_ops.split(seed,num=1)[0,:]
+
   with ops.name_scope(name, "random_crop", [value, size]) as name:
     value = ops.convert_to_tensor(value, name="value")
     size = ops.convert_to_tensor(size, dtype=dtypes.int32, name="size")

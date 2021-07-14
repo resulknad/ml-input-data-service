@@ -4041,6 +4041,8 @@ def deterministic_sample_distorted_bounding_box(image_size,
     Provide as input to `tf.image.draw_bounding_boxes`.
   """
   seed=ops.get_default_graph().seed
+
+  ops.get_default_graph().seed = stateless_random_ops.split(seed,num=1)[0,:]
   with ops.name_scope(name, 'stateless_sample_distorted_bounding_box'):
     return gen_image_ops.stateless_sample_distorted_bounding_box(
         image_size=image_size,

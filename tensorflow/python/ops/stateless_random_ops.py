@@ -267,13 +267,13 @@ def deterministic_random_uniform(shape,
   seed=ops.get_default_graph().seed
   # Logging information
   #logging.info('Op seed is {}'.format(seed))
-  logging_ops.print_v2('Op seed before split is',seed,output_stream=sys.stdout)
+  #logging_ops.print_v2('Op seed before split is',seed,output_stream=sys.stdout)
   # updating the split of the seed
 
   ops.get_default_graph().seed = split(seed,num=1)[0,:]
   
   logging.info('Op seed after split is {}'.format(ops.get_default_graph().seed))
-  logging_ops.print_v2('Op seed after split is',ops.get_default_graph().seed,output_stream=sys.stdout)
+  #logging_ops.print_v2('Op seed after split is',ops.get_default_graph().seed,output_stream=sys.stdout)
   with ops.name_scope(name, "stateless_random_uniform",
                       [shape,seed, minval, maxval]) as name:
     shape = tensor_util.shape_tensor(shape)
@@ -421,6 +421,10 @@ def deterministic_random_binomial(shape,
 
   """
   seed=ops.get_default_graph().seed
+
+  ops.get_default_graph().seed = split(seed,num=1)[0,:]
+
+
   with ops.name_scope(name, "stateless_random_binomial",
                       [shape, seed, counts, probs]) as name:
     shape = tensor_util.shape_tensor(shape)
@@ -616,6 +620,8 @@ def deterministic_random_gamma(shape,
 
   """
   seed = ops.get_default_graph().seed
+
+  ops.get_default_graph().seed = split(seed,num=1)[0,:]
   with ops.name_scope(name, "stateless_random_gamma",
                       [shape, seed, alpha, beta]) as name:
     shape = tensor_util.shape_tensor(shape)
@@ -750,6 +756,8 @@ def deterministic_random_poisson(shape,
 
   """
   seed=ops.get_default_graph().seed
+
+  ops.get_default_graph().seed = split(seed,num=1)[0,:]
   with ops.name_scope(name, "stateless_random_poisson",
                       [shape, seed, lam]) as name:
     shape = tensor_util.shape_tensor(shape)
@@ -834,6 +842,8 @@ def deterministic_random_normal(shape,
     A tensor of the specified shape filled with random normal values.
   """
   seed = ops.get_default_graph().seed
+
+  ops.get_default_graph().seed = split(seed,num=1)[0,:]
   with ops.name_scope(name, "stateless_random_normal",
                       [shape, seed, mean, stddev]) as name:
     shape = tensor_util.shape_tensor(shape)
@@ -1029,6 +1039,8 @@ def deterministic_multinomial(logits,
     The drawn samples of shape `[batch_size, num_samples]`.
   """
   seed=ops.get_default_graph().seed
+
+  ops.get_default_graph().seed = split(seed,num=1)[0,:]
   with ops.name_scope(name, "stateless_multinomial", [logits, seed]):
     return stateless_multinomial_categorical_impl(logits, num_samples,
                                                   output_dtype, seed)
@@ -1112,6 +1124,8 @@ def deterministic_categorical(logits,
     The drawn samples of shape `[batch_size, num_samples]`.
   """
   seed=ops.get_default_graph().seed
+
+  ops.get_default_graph().seed = split(seed,num=1)[0,:]
   with ops.name_scope(name, "stateless_categorical", [logits, seed]):
     return stateless_multinomial_categorical_impl(logits, num_samples, dtype,
                                                   seed)
@@ -1249,6 +1263,8 @@ def deterministic_parameterized_truncated_normal(shape,
     A tensor of the specified shape filled with random truncated normal values.
   """
   seed=ops.get_default_graph().seed
+
+  ops.get_default_graph().seed = split(seed,num=1)[0,:]
   with ops.name_scope(name, "stateless_parameterized_truncated_normal",
                       [shape, means, stddevs, minvals, maxvals]) as name:
     shape_tensor = tensor_util.shape_tensor(shape)

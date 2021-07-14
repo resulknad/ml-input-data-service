@@ -1970,7 +1970,7 @@ name=None))
         if deterministic is not None and not DEBUG_MODE:
           warnings.warn("The `deterministic` argument has no effect unless the "
                         "`num_parallel_calls` argument is specified.")
-        return DeterministicMapDataset(self, map_func, preserve_cardinality=True)
+        return DeterministicMapDataset(self, map_func,preserve_cardinality=True)
       else:
         return DeterministicParallelMapDataset(
             self,
@@ -1983,7 +1983,7 @@ name=None))
         if deterministic is not None and not DEBUG_MODE:
           warnings.warn("The `deterministic` argument has no effect unless the "
                         "`num_parallel_calls` argument is specified.")
-        return MapDataset(self, map_func, preserve_cardinality=True)
+        return MapDataset(self, map_func,preserve_cardinality=True)
       else:
         return ParallelMapDataset(
             self,
@@ -3983,9 +3983,9 @@ class DeterministicStructuredFunctionWrapper(object):
       ops.get_default_graph().seed = self._seed
       if not _should_unpack(nested_args):
         nested_args = (nested_args,)
-        logging.info('nested args Value is _should_unpack {}'.format(nested_args))
+        #logging.info('nested args Value is _should_unpack {}'.format(nested_args))
       ret = autograph.tf_convert(self._func, ag_ctx)(*nested_args)
-      logging.info('ret without _should_pack {}'.format(ret))
+      #logging.info('ret without _should_pack {}'.format(ret))
       if _should_pack(ret):
         ret = tuple(ret)
         logging.info('ret with _should_pack{}'.format(ret))
@@ -4062,7 +4062,8 @@ class DeterministicStructuredFunctionWrapper(object):
       def wrapped_fn(*args):  # pylint: disable=missing-docstring
         ret = wrapper_helper(*args)
         ret = structure.to_tensor_list(self._output_structure, ret)
-        logging.info('Output structure to tensor list {}'.format(ret))
+        #updates:
+        #logging.info('Output structure to tensor list {}'.format(ret))
         return [ops.convert_to_tensor(t) for t in ret]
 
       return wrapped_fn.get_concrete_function
@@ -4102,9 +4103,9 @@ class DeterministicStructuredFunctionWrapper(object):
       ops.get_default_graph().seed = self._seed
       #outer_graph_seed = self._seed
       self._function.graph.seed = self._seed
-      logging.info('Before seed is {}'.format(self._seed))
+      #logging.info('Before seed is {}'.format(self._seed))
       #.print_v2('Before seed is',self._seed,output_stream=sys.stdout)
-      logging.info('Setter seed is {}'.format(self._function.graph.seed))
+      #logging.info('Setter seed is {}'.format(self._function.graph.seed))
       #logging_ops.print_v2('Setter seed is',self._function.graph.seed,output_stream=sys.stdout)
       # if outer_graph_seed and self._function.graph.seed == outer_graph_seed:
       #   if self._function.graph._seed_used:
