@@ -1296,4 +1296,13 @@ REGISTER_OP("ServiceCacheGetDataset")
         .SetDoNotOptimize()
         .SetShapeFn(shape_inference::ScalarShape);
 
+
+REGISTER_OP("MarkerDataset")
+        .Input("input_dataset: variant")
+        .Output("handle: variant")
+        .Attr("marker_type: string")
+        .Attr("output_types: list(type) >= 1")
+        .Attr("output_shapes: list(shape) >= 1")
+        .SetShapeFn(shape_inference::ScalarShape);
+
 }  // namespace tensorflow
