@@ -29,6 +29,8 @@ constexpr char kOutputTypes[] = "output_types";
 // constexpr char kTargetNode[] = "ModelDataset";
 constexpr char kTargetNode[] = "MarkerDataset";
 constexpr char kSourceCache[] = "source_cache";
+constexpr char kMarkerType[] = "marker_type";
+
 
 
 } // namespace
@@ -89,8 +91,9 @@ Status AddPutOpAtMarker::ApplyOptimization(MutableGraphView &graph, NodeDef *sin
   VLOG(1) << "In AddPutOpAtMarker optimizer";
 
   // Define a filtering function which identifies target node
-  auto is_target_node = [](const NodeDef* node) -> bool {
-    return node->op() == kTargetNode && node->attr().at("marker_type").placeholder() == kSourceCache
+  std::string marker_type = config_.parameter_map().at(kMarkerType).placeholder();
+  auto is_target_node = [marker_type](const NodeDef* node) -> bool {
+    return node->op() == kTargetNode && node->attr().at(kMarkerType).placeholder() == marker_type;
   };
 
   // Find the first target op by applying BFS
