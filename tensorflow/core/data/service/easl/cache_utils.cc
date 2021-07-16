@@ -27,7 +27,7 @@ Status DoBFS(NodeDef* sink_node, GraphDef& graph_def, string prefix) {
   std::queue<NodeDef*> bfs_queue;
   bfs_queue.push(sink_node);
 
-  VLOG(1) << "(" << prefix << ") BFS @ current_node: "
+  VLOG(0) << "(" << prefix << ") BFS @ current_node: "
           << "Root --> " << sink_node->op();
 
   while (!bfs_queue.empty()) {
@@ -43,7 +43,7 @@ Status DoBFS(NodeDef* sink_node, GraphDef& graph_def, string prefix) {
         NodeDef* neighbor_node = graph_def.mutable_node(idx);
         bfs_queue.push(neighbor_node);
 
-        VLOG(1) << "(" << prefix << ") BFS @ current_node: "
+        VLOG(0) << "(" << prefix << ") BFS @ current_node: "
                 << SummarizeNodeDef(*current_node) << " --> "
                 << SummarizeNodeDef(*neighbor_node);
       }
@@ -460,7 +460,7 @@ Status AddGetOperatorAtMarker(
   (*sink->mutable_attr())["T"].set_type(DT_VARIANT);
 
   // Do BFS
-  //DoBFS(sink, *graph_def, "AddGetOperator");
+  DoBFS(sink, *graph_def, "AddGetOperator");
 
   // Create the MuttableGraphView
   tensorflow::grappler::MutableGraphView graph(graph_def);

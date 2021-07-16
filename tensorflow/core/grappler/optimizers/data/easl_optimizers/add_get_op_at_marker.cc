@@ -89,10 +89,17 @@ Status AddGetOpAtMarker::ApplyOptimization(MutableGraphView &graph, NodeDef *sin
   auto is_target_node = [marker_type](const NodeDef* node) -> bool {
     VLOG(0) << "node: " << node->op();
     if (node->op() == kTargetNode){
+      VLOG(0) << "searching type: " << marker_type;
       VLOG(0) << "marker_type " << node->attr().at(kMarkerType).placeholder();
+      for (auto & pair : node->attr()){
+        VLOG(0) << "attr_name " << pair.first;
+        if (pair.first == "marker_type"){
+          VLOG(0) << "found " << pair.second.placeholder();
+        }
+      }
     }
 
-    return node->op() == kTargetNode && node->attr().at(kMarkerType).placeholder() == marker_type;
+    return node->op() == kTargetNode ;//&& node->attr().at(kMarkerType).placeholder() == marker_type;
   };
 
   // Find the first target op by applying BFS
