@@ -71,6 +71,7 @@ NodeDef AddGetOp::CreateGetOpNode(MutableGraphView* graph, NodeDef* input) {
     // VLOG(1) << "(CreateGetOpNode) Copying over the attribute: " << key;
     graph_utils::CopyAttribute(key, *input, &get_op_node);
   }*/
+  VLOG(0) << "after copying attribures";
 
   return get_op_node;
 }
@@ -138,7 +139,7 @@ Status AddGetOp::ApplyOptimization(MutableGraphView &graph, NodeDef *sink_node,
   // Add the node to the graph
   graph.AddNode(std::move(get_op_node));
 
-
+  /*
   // Remove the input nodes and all its children in the graph.
   absl::flat_hash_set<std::string> inputs_visited;
   std::queue<NodeDef*> inputs_bfs_queue;
@@ -160,7 +161,7 @@ Status AddGetOp::ApplyOptimization(MutableGraphView &graph, NodeDef *sink_node,
     }
   }
   graph.DeleteNodes(inputs_visited);
-
+*/
 
   return Status::OK();
 }

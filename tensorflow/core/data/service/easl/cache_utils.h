@@ -61,19 +61,21 @@ Status AddGetOperator(const DatasetDef& dataset,
                       const experimental::DispatcherConfig& dispatcher_config,
                       DatasetDef& updated_dataset);
 
-Status AddPutOperatorAtMarker(
-    const DatasetDef& dataset,
-    const uint64 fingerprint,
-    const std::string marker_type,
-    const experimental::DispatcherConfig& dispatcher_config,
-    DatasetDef& updated_dataset);
-
 Status AddGetOperatorAtMarker(
     const DatasetDef& dataset,
     const uint64 fingerprint,
-    const std::string marker_type,
+    const std::string& marker_type,
     const experimental::DispatcherConfig& dispatcher_config,
     DatasetDef& updated_dataset);
+
+Status AddPutOperatorAtMarker(
+    const DatasetDef& dataset,
+    const uint64 fingerprint,
+    const std::string& marker_type,
+    const experimental::DispatcherConfig& dispatcher_config,
+    DatasetDef& updated_dataset);
+
+
 
 
 } // namespace cache_utils

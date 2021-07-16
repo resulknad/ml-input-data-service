@@ -380,6 +380,13 @@ Status DataServiceDispatcherImpl::WorkerUpdate(
 
         VLOG(0) << "Dataset with fingerprint " << dataset->fingerprint
                 << "has been added to cache.";
+      } else if(job->job_type == "PUT_SOURCE" && job->finished){
+        std::shared_ptr<const Dataset> dataset;
+        TF_RETURN_IF_ERROR(state_.DatasetFromId(task->job->dataset_id, dataset));
+        cache_state_.SetDatasetSourceCached(dataset->fingerprint);
+
+        VLOG(0) << "Dataset with fingerprint " << dataset->fingerprint
+                << "has been added to source cache.";
       }
       // Update metadata store directly, quicker than waiting for the GCOldJobs to run.
       if(job->finished){
