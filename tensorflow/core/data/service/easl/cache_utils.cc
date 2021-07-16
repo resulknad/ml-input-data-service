@@ -13,6 +13,8 @@
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/data/service/easl/cache_model.h"
+#include "tensorflow/core/grappler/optimizers/data/easl_optimizers/add_put_op_at_marker.h"
+#include "tensorflow/core/grappler/optimizers/data/easl_optimizers/add_get_op_at_marker.h"
 
 namespace tensorflow {
 namespace data {
@@ -55,8 +57,16 @@ std::string DatasetPutKey(const int64 id, const uint64 fingerprint) {
   return absl::StrCat("id_", id, "_fp_", fingerprint, "_put");
 }
 
+std::string DatasetPutSourceKey(const int64 id, const uint64 fingerprint) {
+  return absl::StrCat("id_", id, "_fp_", fingerprint, "_put_source");
+}
+
 std::string DatasetGetKey(const int64 id, const uint64 fingerprint) {
   return absl::StrCat("id_", id, "_fp_", fingerprint, "_get");
+}
+
+std::string DatasetGetSourceKey(const int64 id, const uint64 fingerprint) {
+  return absl::StrCat("id_", id, "_fp_", fingerprint, "_get_source");
 }
 
 std::string DatasetKey(
@@ -67,6 +77,10 @@ std::string DatasetKey(
     return DatasetGetKey(id, fingerprint);
   } else if (job_type=="PUT"){
     return DatasetPutKey(id, fingerprint);
+  } else if (job_type=="GET_SOURCE") {
+    return DatasetGetSourceKey(id, fingerprint);
+  } else if (job_type=="PUT_SOURCE") {
+    return DatasetPutSourceKey(id, fingerprint);
   }
   return "";
 }
@@ -123,6 +137,13 @@ Status DetermineJobType(const experimental::DispatcherConfig& dispatcher_config,
       job_type = "GET";
     } else {
       job_type = "PUT";
+    }
+    return Status::OK();
+  } else if(dispatcher_config.cache_policy()==4) {
+    if (cache_state.IsDatasetSourceCached(fingerprint)) {
+      job_type = "GET_SOURCE";
+    } else {
+      job_type = "PUT_SOURCE";
     }
     return Status::OK();
   }
@@ -237,14 +258,14 @@ Status AddPutOperator(const DatasetDef& dataset,
   (*sink->mutable_attr())["T"].set_type(DT_VARIANT);
 
   // Do BFS
-  DoBFS(sink, *graph_def, "AddPutOperator");
+  // DoBFS(sink, *graph_def, "AddPutOperator");
 
   // Create the MuttableGraphView
   tensorflow::grappler::MutableGraphView graph(graph_def);
   optimizer.ApplyOptimization(graph, sink, graph_def);
 
   // Do BFS
-  DoBFS(sink, *graph_def, "AfterAddPutOperator");
+  //DoBFS(sink, *graph_def, "AfterAddPutOperator");
 
   // Disconnect the 'Sink' node
   // sink->mutable_input()->Clear();
@@ -303,18 +324,152 @@ Status AddGetOperator(const DatasetDef& dataset,
   (*sink->mutable_attr())["T"].set_type(DT_VARIANT);
 
   // Do BFS
-  DoBFS(sink, *graph_def, "AddGetOperator");
+  //DoBFS(sink, *graph_def, "AddGetOperator");
 
   // Create the MuttableGraphView
   tensorflow::grappler::MutableGraphView graph(graph_def);
   optimizer.ApplyOptimization(graph, sink, graph_def);
 
   // Do BFS
-  DoBFS(sink, *graph_def, "AfterAddGetOperator");
+  //DoBFS(sink, *graph_def, "AfterAddGetOperator");
 
   // Disconnect the 'Sink' node
   // sink->mutable_input()->Clear();
   VLOG(1) << "(AddGetOperator) At the end of the method";
+
+  return Status::OK();
+}
+
+
+Status AddPutOperatorAtMarker(const DatasetDef& dataset,
+                              const uint64 fingerprint,
+                              const std::string& marker_type,
+                              const experimental::DispatcherConfig& dispatcher_config,
+                              DatasetDef& updated_dataset) {
+  // Copy over the original dataset
+  updated_dataset = dataset;
+
+  // Initialize the optimizer
+  tensorflow::grappler::easl::AddPutOpAtMarker optimizer;
+  // Transfer arguments from dispatcher config to optimizer config.
+  tensorflow::RewriterConfig_CustomGraphOptimizer config;
+
+  // TODO - set path where to store graph.
+  (*(config.mutable_parameter_map()))["path"].set_placeholder(
+      absl::StrCat(dispatcher_config.cache_path(), "/", fingerprint));
+  (*(config.mutable_parameter_map()))["cache_format"].set_i(
+      dispatcher_config.cache_format());
+  (*(config.mutable_parameter_map()))["cache_compression"].set_i(
+      dispatcher_config.cache_compression());
+  (*(config.mutable_parameter_map()))["cache_ops_parallelism"].set_i(
+      dispatcher_config.cache_ops_parallelism());
+  (*(config.mutable_parameter_map()))["marker_type"].set_placeholder(
+      marker_type);
+
+  optimizer.Init(&config);
+
+  // Get the graph def and wrap it in a GrapplerItem
+  GraphDef* graph_def = updated_dataset.mutable_graph();
+  std::string output_node;
+
+  // Find the output node; the one before '_Retval'
+  for (const auto& node : graph_def->node()) {
+    if (node.op() == "_Retval") {
+      output_node = node.input(0);
+    }
+  }
+
+  // Create a 'Sink' node and attatch it to the real output
+  NodeDef* sink = graph_def->mutable_node()->Add();
+  tensorflow::grappler::graph_utils::SetUniqueGraphNodeName("Sink", graph_def,
+                                                            sink);
+  sink->set_op("Identity");
+  sink->add_input(output_node);
+  (*sink->mutable_attr())["T"].set_type(DT_VARIANT);
+
+  // Do BFS for debugging
+  // DoBFS(sink, *graph_def, "AddPutOperator");
+
+  // Create the MuttableGraphView
+  tensorflow::grappler::MutableGraphView graph(graph_def);
+  optimizer.ApplyOptimization(graph, sink, graph_def);
+
+  // Do BFS
+  //DoBFS(sink, *graph_def, "AfterAddPutOperator");
+
+  // Disconnect the 'Sink' node
+  // sink->mutable_input()->Clear();
+  VLOG(1) << "(AddPutOperatorAtMarker) At the end of the method";
+
+  return Status::OK();
+}
+
+
+Status AddGetOperatorAtMarker(
+    const DatasetDef& dataset,
+    const uint64 fingerprint,
+    const std::string marker_type,
+    const experimental::DispatcherConfig& dispatcher_config,
+    DatasetDef& updated_dataset){
+  // TODO remove this.
+  //updated_dataset = dataset;
+  //return Status::OK();
+
+  VLOG(1) << "(AddGetOperator) At the start of the method";
+  // Copy over the original dataset
+  updated_dataset = dataset;
+
+  // Initialize the optimizer
+  tensorflow::grappler::easl::AddGetOpAtMarker optimizer;
+  // Transfer arguments from dispatcher config to optimizer config.
+  tensorflow::RewriterConfig_CustomGraphOptimizer config;
+
+  // TODO - set path where to store graph.
+  (*(config.mutable_parameter_map()))["path"].set_placeholder(
+      absl::StrCat(dispatcher_config.cache_path(), "/", fingerprint));
+  (*(config.mutable_parameter_map()))["cache_format"].set_i(
+      dispatcher_config.cache_format());
+  (*(config.mutable_parameter_map()))["cache_compression"].set_i(
+      dispatcher_config.cache_compression());
+  (*(config.mutable_parameter_map()))["cache_ops_parallelism"].set_i(
+      dispatcher_config.cache_ops_parallelism());
+  (*(config.mutable_parameter_map()))["marker_type"].set_placeholder(
+      marker_type);
+
+  optimizer.Init(&config);
+
+  // Get the graph def and wrap it in a GrapplerItem
+  GraphDef* graph_def = updated_dataset.mutable_graph();
+  std::string output_node;
+
+  // Find the output node; the one before '_Retval'
+  for (const auto& node : graph_def->node()) {
+    if (node.op() == "_Retval") {
+      output_node = node.input(0);
+    }
+  }
+
+  // Create a 'Sink' node and attatch it to the real output
+  NodeDef* sink = graph_def->mutable_node()->Add();
+  tensorflow::grappler::graph_utils::SetUniqueGraphNodeName("Sink", graph_def,
+                                                            sink);
+  sink->set_op("Identity");
+  sink->add_input(output_node);
+  (*sink->mutable_attr())["T"].set_type(DT_VARIANT);
+
+  // Do BFS
+  //DoBFS(sink, *graph_def, "AddGetOperator");
+
+  // Create the MuttableGraphView
+  tensorflow::grappler::MutableGraphView graph(graph_def);
+  optimizer.ApplyOptimization(graph, sink, graph_def);
+
+  // Do BFS
+  //DoBFS(sink, *graph_def, "AfterAddGetOperator");
+
+  // Disconnect the 'Sink' node
+  // sink->mutable_input()->Clear();
+  VLOG(1) << "(AddGetOperatorAtMarker) At the end of the method";
 
   return Status::OK();
 }

@@ -122,7 +122,8 @@ Status AddGetOpAtMarker::ApplyOptimization(MutableGraphView &graph, NodeDef *sin
 
   // We return if we found no target op
   if (!target) {
-    VLOG(1) << "Could not find target " << kTargetNode;
+    VLOG(0) << "Could not find target node " << kTargetNode
+    << " with marker_type " << marker_type;
     return Status::OK();
   }
 

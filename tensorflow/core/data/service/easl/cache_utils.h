@@ -18,8 +18,10 @@ namespace easl{
 namespace cache_utils {
 
 std::string DatasetPutKey(const int64 id, const uint64 fingerprint);
+std::string DatasetPutSourceKey(const int64 id, const uint64 fingerprint);
 
 std::string DatasetGetKey(const int64 id, const uint64 fingerprint);
+std::string DatasetGetSourceKey(const int64 id, const uint64 fingerprint);
 
 std::string DatasetKey(const int64 id, const uint64 fingerprint, const std::string& job_type);
 
@@ -58,6 +60,20 @@ Status AddGetOperator(const DatasetDef& dataset,
                       const uint64 fingerprint,
                       const experimental::DispatcherConfig& dispatcher_config,
                       DatasetDef& updated_dataset);
+
+Status AddPutOperatorAtMarker(
+    const DatasetDef& dataset,
+    const uint64 fingerprint,
+    const std::string marker_type,
+    const experimental::DispatcherConfig& dispatcher_config,
+    DatasetDef& updated_dataset);
+
+Status AddGetOperatorAtMarker(
+    const DatasetDef& dataset,
+    const uint64 fingerprint,
+    const std::string marker_type,
+    const experimental::DispatcherConfig& dispatcher_config,
+    DatasetDef& updated_dataset);
 
 
 } // namespace cache_utils
