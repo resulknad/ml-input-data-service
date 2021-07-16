@@ -801,7 +801,9 @@ cc_library(
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
         "//tensorflow/core/grappler/optimizers/data:add_put_op",
-        "//tensorflow/core/grappler/optimizers/data:add_get_op"
+        "//tensorflow/core/grappler/optimizers/data:add_get_op",
+        "//tensorflow/core/grappler/optimizers/data:add_put_op_at_marker",
+        "//tensorflow/core/grappler/optimizers/data:add_get_op_at_marker",
     ],
 )
 

@@ -25,7 +25,7 @@ class MarkerOp : public UnaryDatasetOpKernel {
 
  private:
   class Dataset;
-  tstring marker_type_
+  tstring marker_type_;
 
 };
 

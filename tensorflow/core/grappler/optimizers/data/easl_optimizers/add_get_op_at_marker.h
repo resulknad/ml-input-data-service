@@ -7,6 +7,8 @@
 
 
 #include "tensorflow/core/grappler/optimizers/data/optimizer_base.h"
+#include "tensorflow/core/grappler/mutable_graph_view.h"
+
 
 namespace tensorflow {
 namespace grappler {

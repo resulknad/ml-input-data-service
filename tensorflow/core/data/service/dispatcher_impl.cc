@@ -553,6 +553,7 @@ Status DataServiceDispatcherImpl::RegisterDataset(uint64 fingerprint,
   TF_RETURN_IF_ERROR(dataset_store_->Put(
       service::easl::cache_utils::DatasetPutSourceKey(dataset_id, fingerprint),
       put_source_dataset));
+      
   DatasetDef get_source_dataset;
   TF_RETURN_IF_ERROR(
       service::easl::cache_utils::AddGetOperatorAtMarker(
