@@ -1,3 +1,5 @@
+#include <random>
+
 #include "tensorflow/core/kernels/data/experimental/easl_service/service_cache_util.h"
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/protobuf/service_cache.pb.h"
@@ -10,12 +12,19 @@ namespace data {
 namespace easl{
 namespace service_cache_util {
 
+namespace {
+  // Define the max file size as 30 MB
+  const int64 kMaxFileSize = 30 * 1e6; 
+}
+
 namespace { // anonymous namespace => declared functions only visible within this file
 static constexpr const char *const kCacheLocation = "";
 
-std::string GetFileName(const std::string& shard_directory,
-                                uint64 file_id, uint64 split_id = 0) {
-  return io::JoinPath(shard_directory, strings::Printf("%08llu.easl",
+std::string GetFileName(const std::string& shard_directory, uint64 writer_id, 
+                        uint64 file_id, std::string prefix_hash) {
+  return io::JoinPath(shard_directory, strings::Printf("%s_%02llu_%08llu.easl",
+                      prefix_hash.c_str(), 
+                      static_cast<unsigned long long>(writer_id),
                       static_cast<unsigned long long>(file_id)));
 }
 
@@ -100,7 +109,17 @@ Status Writer::WriteMetadataFile(
 // MultiThreadedAsyncWriter
 // -----------------------------------------------------------------------------
 
-MultiThreadedAsyncWriter::MultiThreadedAsyncWriter(const int writer_count) : writer_count_(writer_count) {}
+MultiThreadedAsyncWriter::MultiThreadedAsyncWriter(const int writer_count) : 
+  writer_count_(writer_count), prefix_hash_(GeneratePrefixHash()) {}
+
+std::string MultiThreadedAsyncWriter::GeneratePrefixHash() {
+  std::string str("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij"
+  "klmnopqrstuvwxyz");
+  std::random_device rd;
+  std::mt19937 generator(rd());
+  std::shuffle(str.begin(), str.end(), generator);
+  return str.substr(0, 8);
+}
 
 void MultiThreadedAsyncWriter::Initialize(Env *env, int64 file_index, const std::string &shard_directory,
         uint64 checkpoint_id, const std::string &compression, int64 version,
@@ -133,7 +152,8 @@ void MultiThreadedAsyncWriter::Write(const std::vector<Tensor>& tensors) {
     first_row_info_set_ = true;
   }
   mutex_lock l(mu_);
-  VLOG(3) << "****************** Reader Queue Size: " << deque_.size() << "  of max:  " << producer_threshold_ / bytes_per_row_;
+  VLOG(3) << "****************** Reader Queue Size: " << deque_.size() 
+          << "  of max:  " << producer_threshold_ / bytes_per_row_;
   mu_.Await(Condition(this,
             &MultiThreadedAsyncWriter::ProducerSpaceAvailable));
 
@@ -171,17 +191,20 @@ Status MultiThreadedAsyncWriter::WriterThread(Env* env,
                                  uint64 writer_id,
                                  const std::string& compression, int64 version,
                                  DataTypeVector output_types) {
-
   // TODO (damien-aymon) Push this to the specific writers, so that we can make
   // the async writer more general (e.g. different file system, gs://, etc...)
+  uint64 file_size = 0;
+  uint64 file_index = 0;
   TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(shard_directory));
-  VLOG(3) << "(Writer_" << writer_id << ") Created Dir ";
+  VLOG(3) << "(Writer_" << writer_id << ") Created Directory " 
+          << shard_directory;
 
   std::unique_ptr<snapshot_util::Writer> writer;
 
   TF_RETURN_IF_ERROR(snapshot_util::Writer::Create(
-          env, GetFileName(shard_directory, writer_id),
-          compression, version, std::move(output_types), &writer));
+          env, GetFileName(shard_directory, writer_id, file_index, 
+          prefix_hash_), compression, version, std::move(output_types), 
+          &writer));
 
   int count = 0;
   VLOG(3) << "(Writer_" << writer_id << ") Starting to write ";
@@ -200,6 +223,19 @@ Status MultiThreadedAsyncWriter::WriterThread(Env* env,
     }
 
     TF_RETURN_IF_ERROR(writer->WriteTensors(be.value));
+    
+    // If the current file exceeded size limits, close it and open another
+    file_size += bytes_per_row_;
+    if (file_size > kMaxFileSize) {
+      writer->Close();
+      VLOG(3) << "(Writer_" << writer_id << ") Closed file with "
+                << file_size << " bytes written.";
+      TF_RETURN_IF_ERROR(snapshot_util::Writer::Create(
+          env, GetFileName(shard_directory, writer_id, ++file_index, 
+          prefix_hash_), compression, version, std::move(output_types), 
+          &writer));
+      count = file_size = 0;
+    }
   }
   return Status::OK();
 }
@@ -208,19 +244,25 @@ Status MultiThreadedAsyncWriter::WriterThread(Env* env,
 // Reader
 // -----------------------------------------------------------------------------
 
-Reader::Reader(Env *env, const std::string &target_dir, const DataTypeVector& output_dtypes,
-        const std::vector<PartialTensorShape>& output_shapes, const int reader_count, const int reader_version)
-        : target_dir_(target_dir), env_(env), output_dtypes_(output_dtypes), reader_count_(reader_count),
-        reader_version_(reader_version){}
+Reader::Reader(Env *env, std::shared_ptr<SplitProvider> split_provider,
+  const std::string &target_dir, const DataTypeVector& output_dtypes,
+  const std::vector<PartialTensorShape>& output_shapes, const int reader_count, 
+  const int reader_version) 
+  : target_dir_(target_dir), split_provider_(split_provider), env_(env), 
+    output_dtypes_(output_dtypes), reader_count_(reader_count), 
+    reader_version_(reader_version) {}
 
 Status Reader::Initialize() {
 
   if(reader_version_ == 0) { // 0 -> arrow
-    async_reader_ = std::make_unique<arrow_async_reader::ArrowAsyncReader>(env_, target_dir_, output_dtypes_,
-                                                               output_shapes_, reader_count_);
+    VLOG(3) << "(Reader) Making use of the Arrow version of the reader";
+    async_reader_ = std::make_unique<arrow_async_reader::ArrowAsyncReader>(
+      env_, target_dir_, output_dtypes_, output_shapes_, reader_count_);
   } else {
-    async_reader_ = std::make_unique<MultiThreadedAsyncReader>(env_, target_dir_, output_dtypes_,
-                                                               output_shapes_, reader_count_);
+    VLOG(3) << "(Reader) Making use of the non-Arrow version of the reader";
+    async_reader_ = std::make_unique<MultiThreadedAsyncReader>(
+      env_, split_provider_, target_dir_, output_dtypes_, output_shapes_, 
+      reader_count_);
   }
 
   return async_reader_->Initialize();
@@ -235,17 +277,20 @@ Status Reader::Read(std::vector<Tensor>* &read_tensors, bool* end_of_sequence) {
 // MultiThreadedAsyncReader (Base Class for ArrowAsyncReader)
 // -----------------------------------------------------------------------------
 
+MultiThreadedAsyncReader::MultiThreadedAsyncReader(Env *env,
+  const std::string &target_dir, const DataTypeVector &output_dtypes,
+  const std::vector<PartialTensorShape> &output_shapes, const int reader_count)
+    : env_(env), split_provider_(nullptr), output_dtypes_(output_dtypes), 
+    output_shapes_(output_shapes), target_dir_(target_dir), 
+    reader_count_(reader_count), tensors_(), num_readers_done_(0) {}
 
-
-MultiThreadedAsyncReader::MultiThreadedAsyncReader(Env *env, const std::string &target_dir,
-                                                   const DataTypeVector &output_dtypes,
-                                                   const std::vector<PartialTensorShape> &output_shapes,
-                                                   const int reader_count)
-    : env_(env), output_dtypes_(output_dtypes), output_shapes_(output_shapes),
-    target_dir_(target_dir), reader_count_(reader_count), tensors_() {
-  this->num_readers_done_ = 0;
-  // TODO (damien-aymon) add constant for writer version.
-}
+MultiThreadedAsyncReader::MultiThreadedAsyncReader(Env *env, 
+  std::shared_ptr<SplitProvider> split_provider,
+  const std::string &target_dir, const DataTypeVector &output_dtypes,
+  const std::vector<PartialTensorShape> &output_shapes, const int reader_count)
+    : env_(env), split_provider_(split_provider), output_dtypes_(output_dtypes), 
+    output_shapes_(output_shapes), target_dir_(target_dir), 
+    reader_count_(reader_count), tensors_(), num_readers_done_(0) {}
 
 Status MultiThreadedAsyncReader::Initialize() {
   // Don't use metadata file at the moment...
@@ -272,7 +317,6 @@ Status MultiThreadedAsyncReader::Initialize() {
   for (int i = 0; i < reader_count_; ++i) {
     thread_pool_->Schedule(
       [this, i] {
-        // ReaderThread(env_, i, cache_file_version_, output_dtypes_);
         ReaderThread(env_, i, kWriterVersion, output_dtypes_, output_shapes_);
         }
     );
@@ -282,13 +326,29 @@ Status MultiThreadedAsyncReader::Initialize() {
 
 void MultiThreadedAsyncReader::Consume(string* s, bool* end_of_sequence) {
   mutex_lock l(mu_);
-  if (file_names_.empty()) {
-    *s = ""; 
-    *end_of_sequence = true;
+  if (split_provider_ == nullptr) { 
+    VLOG(3) << "(Consume) In vanilla consume";
+    if (file_names_.empty()) {
+      *s = "";
+      *end_of_sequence = true;
+    } else {
+      *s = file_names_.front();
+      file_names_.pop_front();
+      *end_of_sequence = false;
+    }
   } else {
-    *s = file_names_.front();
-    file_names_.pop_front();
-    *end_of_sequence = false;
+    // We should be running in distributed epoch mode
+    Tensor split;
+    VLOG(3) << "(Consume) In split_provider consume";
+    // Void function --> can't use TF_RETURN_IF_ERROR
+    split_provider_->GetNext(&split, end_of_sequence);
+    if (*end_of_sequence) {
+      *s = ""; 
+    } else {
+      int64 file_idx = split.scalar<int64>()();
+      VLOG(3) << "(Consume) Got index " << file_idx << " which is file " << s;
+      *s = file_names_[file_idx];
+    }
   }
 }
 
@@ -308,8 +368,13 @@ void MultiThreadedAsyncReader::Add(std::vector<Tensor>& tensors) {
     VLOG(3) << "EASL - set bytes per tensor: " << bytes_per_tensor_;
     first_row_info_set_ = true;
   }
-  VLOG(3) << "****************** Reader Queue Size: " << tensors_.size() << "  of max:  " << producer_threshold_ / bytes_per_tensor_;
-  mu_add_.Await(Condition(this, &MultiThreadedAsyncReader::ProducerSpaceAvailable));
+  VLOG(3) << "****************** Reader Queue Size: " 
+          << tensors_.size() << "  of max:  " 
+          << producer_threshold_ / bytes_per_tensor_;
+  
+  mu_add_.Await(Condition(this, 
+    &MultiThreadedAsyncReader::ProducerSpaceAvailable));
+  
   for (const auto& t : tensors)
     tensors_.push_back(t);
 
@@ -338,11 +403,11 @@ Status MultiThreadedAsyncReader::ReaderThread(Env *env, uint64 writer_id, int64 
                                     version, output_types, &reader);
 
 
-      VLOG(3) << "(Reader_" << writer_id << ") Starting to read file " << file_path;
+      VLOG(3) << "(Reader_" << writer_id << ") Starting to read file " 
+              << file_path;
       int64 count = 0;
       bool eof = false;
       while (!eof) {
-        std::string t_str = "Reading Tensors:";
         std::vector<Tensor> tensors;
         Status s = reader->ReadTensors(&tensors);
         if (errors::IsOutOfRange(s)) {
@@ -356,8 +421,8 @@ Status MultiThreadedAsyncReader::ReaderThread(Env *env, uint64 writer_id, int64 
           Add(tensors);
         }
       }
-      VLOG(3) << "(Reader_" << writer_id << ") Finished reading file " << file_path
-      << " with " << count << " elements.";
+      VLOG(3) << "(Reader_" << writer_id << ") Finished reading file " 
+              << file_path << " with " << count << " elements.";
     }
   }
 

@@ -174,6 +174,7 @@ class DataServiceDispatcherImpl {
   // `split_providers`.
   Status MakeSplitProviders(
       int64 dataset_id,
+      const std::string& job_type,
       std::vector<std::unique_ptr<SplitProvider>>& split_providers)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Registers a dataset with the given fingerprint, storing the new dataset's
@@ -282,12 +283,14 @@ class DataServiceDispatcherImpl {
 
   // Gets a `DatasetDef` from `dataset_store_` for the given dataset id, and
   // stores it in `dataset_def`.
-  Status GetDatasetDef(int64 dataset_id,
-                       std::shared_ptr<const DatasetDef>& dataset_def)
-      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  // EASL - never used.
+  //Status GetDatasetDef(int64 dataset_id,
+  //                     std::shared_ptr<const DatasetDef>& dataset_def)
+  //    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Gets a `DatasetDef` from `dataset_store_` for the given dataset, and
   // stores it in `dataset_def`.
   Status GetDatasetDef(const DispatcherState::Dataset& dataset,
+                       const std::string& job_type,
                        std::shared_ptr<const DatasetDef>& dataset_def)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
@@ -327,21 +330,6 @@ class DataServiceDispatcherImpl {
   std::unique_ptr<Thread> job_gc_thread_;
   condition_variable log_dumps_thread_cv_;
   std::unique_ptr<Thread> log_dumps_thread_;
-  std::unique_ptr<Thread> cachew_thread_;
-
-  // Cachew decision data: bytes to 
-  std::vector<std::tuple<double, double>> read_times_ = {
-    {4, 0.001468},
-    {64, 0.021496},
-    {512, 0.175405},
-    {1024, 0.355569},
-    {10000, 3.396340},
-    {100000, 31.818158},
-    {1000000, 349.849086},
-    {10000000, 1221.657678},
-    {100000000, 1117.086616},
-    {500000000, 1072.647283}
-  };
 
   TF_DISALLOW_COPY_AND_ASSIGN(DataServiceDispatcherImpl);
 };

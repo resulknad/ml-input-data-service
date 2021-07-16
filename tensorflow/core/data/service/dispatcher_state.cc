@@ -93,10 +93,15 @@ void DispatcherState::RegisterWorker(
     const RegisterWorkerUpdate& register_worker) {
   std::string address = register_worker.worker_address();
   DCHECK(!workers_.contains(address));
+  DCHECK(!avail_workers_.contains(address));
   workers_[address] =
+      std::make_shared<Worker>(address, register_worker.transfer_address());
+  avail_workers_[address] =
       std::make_shared<Worker>(address, register_worker.transfer_address());
   tasks_by_worker_[address] =
       absl::flat_hash_map<int64, std::shared_ptr<Task>>();
+  jobs_by_worker_[address] =
+      absl::flat_hash_map<int64, std::shared_ptr<Job>>();
 }
 
 void DispatcherState::CreateJob(const CreateJobUpdate& create_job) {
@@ -257,6 +262,15 @@ void DispatcherState::FinishTask(const FinishTaskUpdate& finish_task) {
   }
   VLOG(3) << "Job " << task->job->job_id << " finished: " << all_finished;
   jobs_[task->job->job_id]->finished = all_finished;
+  // When a job completes, mark its workers as available
+  if (all_finished) {
+    for (auto& worker : workers_by_job_[task->job->job_id]) {
+      VLOG(3) << "Releasing worker at address " << worker->address;
+      avail_workers_[worker->address] = worker;
+      jobs_by_worker_[worker->address].erase(task->job->job_id);
+    }
+    workers_by_job_[task->job->job_id].clear();
+  }
 }
 
 int64 DispatcherState::NextAvailableDatasetId() const {
@@ -303,12 +317,65 @@ DispatcherState::ListWorkers() const {
   return workers;
 }
 
+std::vector<std::shared_ptr<const DispatcherState::Worker>>
+DispatcherState::ListAvailableWorkers() const {
+  std::vector<std::shared_ptr<const Worker>> workers;
+  workers.reserve(avail_workers_.size());
+  for (const auto& it : avail_workers_) {
+    workers.push_back(it.second);
+  }
+  return workers;
+}
+
+std::vector<std::shared_ptr<DispatcherState::Worker>>
+DispatcherState::ReserveWorkers(
+    int64 job_id, int64 num_workers) {
+  // TODO(aklimovic): wait instead of fail if insufficient workers available
+  // or return up to how many are currently available
+  DCHECK(num_workers <= avail_workers_.size()); 
+  num_workers = num_workers <= 0 ? avail_workers_.size() : num_workers;
+  std::vector<std::shared_ptr<Worker>> workers;
+  workers.reserve(num_workers);
+  for (auto it = avail_workers_.begin(); it != avail_workers_.end(); ) {
+    num_workers--;
+    workers.push_back(it->second);
+    VLOG(3) << "Assigning worker at address " << it->second->address
+            << " to job " << job_id;
+    workers_by_job_[job_id].push_back(it->second);
+    jobs_by_worker_[it->second->address][job_id] = jobs_[job_id];
+    avail_workers_.erase(it++);
+    if (num_workers == 0)
+      break;
+  }
+  VLOG(3) << "Number of workers for job " << job_id << " is: "
+          << workers_by_job_[job_id].size();
+  return workers;
+}
+
 std::vector<std::shared_ptr<const DispatcherState::Job>>
 DispatcherState::ListJobs() {
   std::vector<std::shared_ptr<const DispatcherState::Job>> jobs;
   jobs.reserve(jobs_.size());
   for (const auto& it : jobs_) {
     jobs.push_back(it.second);
+  }
+  return jobs;
+}
+
+std::vector<std::shared_ptr<const DispatcherState::Job>>
+DispatcherState::ListJobsForWorker(const absl::string_view worker_address) {
+  std::vector<std::shared_ptr<const DispatcherState::Job>> jobs;
+  auto it = jobs_by_worker_.find(worker_address);
+  if (it == jobs_by_worker_.end()) {
+    VLOG(4) << "Worker at address " << worker_address
+            << " is not yet assigned to any jobs.";
+  }
+
+  const absl::flat_hash_map<int64, std::shared_ptr<Job>>& worker_jobs =
+      it->second;
+  jobs.reserve(worker_jobs.size());
+  for (const auto& job : worker_jobs) {
+    jobs.push_back(job.second);
   }
   return jobs;
 }

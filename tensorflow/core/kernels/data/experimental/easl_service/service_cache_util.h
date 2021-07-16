@@ -3,6 +3,7 @@
 
 
 #include "tensorflow/core/data/snapshot_utils.h"
+#include "tensorflow/core/data/split_utils.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/threadpool.h"
 
@@ -43,6 +44,9 @@ class MultiThreadedAsyncWriter {
   // waiting for the writer to be closed.
   void SignalEOF() TF_LOCKS_EXCLUDED(mu_);
 
+ private:
+  std::string GeneratePrefixHash();
+
  protected:
   void Consume(snapshot_util::ElementOrEOF* be) TF_LOCKS_EXCLUDED(mu_);
   bool ElementAvailable() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
@@ -66,6 +70,8 @@ class MultiThreadedAsyncWriter {
   // destroyed first before the thread finishes, potentially causing the
   // thread to access invalid memory.
   const int writer_count_;
+  // We define a prefix to ensure no name collisions occur
+  const std::string prefix_hash_;
   std::unique_ptr<thread::ThreadPool> thread_pool_;
 };
 
@@ -82,7 +88,7 @@ class Writer {
          const DataTypeVector& output_dtypes,
          const std::vector<PartialTensorShape>& output_shapes,
          const int writer_count = 8,
-         const int writer_version = 0);
+         const int writer_version = 2);
 
   Status Write(const std::vector<Tensor>& tensors);
 
@@ -109,6 +115,13 @@ class Writer {
 class MultiThreadedAsyncReader {
  public:
   MultiThreadedAsyncReader(Env *env,
+                           const std::string &target_dir,
+                           const DataTypeVector &output_dtypes,
+                           const std::vector<PartialTensorShape> &output_shapes,
+                           int reader_count = 8);
+
+  MultiThreadedAsyncReader(Env *env,
+                           std::shared_ptr<SplitProvider> split_provider,
                            const std::string &target_dir,
                            const DataTypeVector &output_dtypes,
                            const std::vector<PartialTensorShape> &output_shapes,
@@ -150,17 +163,19 @@ class MultiThreadedAsyncReader {
   std::deque<string> file_names_ TF_GUARDED_BY(mu_);
   std::deque<Tensor> tensors_ TF_GUARDED_BY(mu_add_);
   std::unique_ptr<thread::ThreadPool> thread_pool_;
+  std::shared_ptr<SplitProvider> split_provider_;
 };
 
 
 class Reader {
 public:
     Reader(Env *env,
+           std::shared_ptr<SplitProvider> split_provider,
            const std::string &target_dir,
            const DataTypeVector& output_dtypes,
            const std::vector<PartialTensorShape>& output_shapes,
            const int reader_count = 8,
-           const int reader_version = 0);
+           const int reader_version = 2);
 
     Status Initialize();
 
@@ -171,6 +186,7 @@ private:
     const int reader_count_;
     const std::string target_dir_;
     const DataTypeVector output_dtypes_;
+    std::shared_ptr<SplitProvider> split_provider_;
     const std::vector<PartialTensorShape> output_shapes_;
     std::unique_ptr<MultiThreadedAsyncReader> async_reader_;
 };

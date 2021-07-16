@@ -1,10 +1,12 @@
 #include "tensorflow/core/kernels/data/experimental/easl_service/service_cache_get_op.h"
 
-#include "tensorflow/core/platform/tstring.h"
 #include "absl/memory/memory.h"
+#include "tensorflow/core/data/split_utils.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/kernels/data/experimental/easl_service/service_cache_util.h"
+#include "tensorflow/core/data/name_utils.h"
+#include "tensorflow/core/platform/tstring.h"
 
 
 namespace tensorflow {
@@ -41,6 +43,13 @@ class ServiceCacheGetOp::Dataset : public DatasetBase {
 
   Status CheckExternalState() const override;
 
+  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+    return Status::OK();
+  }
+
+  Status MakeSplitProviders(std::vector<std::unique_ptr<SplitProvider>>* result) 
+    const override;
+
  protected:
 
   Status AsGraphDefInternal(SerializationContext* ctx,
@@ -56,6 +65,7 @@ class ServiceCacheGetOp::Dataset : public DatasetBase {
   const int32 cache_format_;
   const int32 cache_compression_;
   const int32 parallelism_;
+  Env* env_;
 
 };
 
@@ -77,7 +87,8 @@ class ServiceCacheGetOp::Dataset::Iterator : public DatasetIterator<Dataset> {
 
  private:
   mutex mu_;
-  std::unique_ptr<tensorflow::data::easl::service_cache_util::Reader> reader_
+  std::shared_ptr<SplitProvider> split_provider_;
+  std::unique_ptr<tensorflow::data::easl::service_cache_util::Reader> reader_;
   TF_GUARDED_BY(mu_);
 };
 
@@ -132,13 +143,14 @@ ServiceCacheGetOp::Dataset::Dataset(
     output_shapes_(output_shapes),
     cache_format_(cache_format),
     cache_compression_(cache_compression),
-    parallelism_(parallelism){}
+    parallelism_(parallelism),
+    env_(ctx->env()) {}
 
 ServiceCacheGetOp::Dataset::~Dataset() {}
 
 std::unique_ptr<IteratorBase>
 ServiceCacheGetOp::Dataset::MakeIteratorInternal(const string& prefix) const {
-  VLOG(0) << "EASL - prefix to get op: " << prefix;
+  VLOG(3) << "EASL - prefix to get op: " << prefix;
   return absl::make_unique<Iterator>(
       Iterator::Params{this, absl::StrCat(prefix, "::ServiceCacheGet")});
 }
@@ -183,6 +195,16 @@ Status ServiceCacheGetOp::Dataset::AsGraphDefInternal(
       output);
 }
 
+Status ServiceCacheGetOp::Dataset::MakeSplitProviders(
+  std::vector<std::unique_ptr<SplitProvider>>* split_providers) const {
+  std::vector<string> files;
+  TF_CHECK_OK(env_->GetMatchingPaths(io::JoinPath(path_, "*\\.easl"), &files));
+  VLOG(3) << "(ServiceCacheGetOp) Creating the split provider with size " 
+          << files.size();
+  split_providers->push_back(
+    absl::make_unique<IndexSplitProvider>(files.size()));
+  return Status::OK();
+}
 
 // -----------------------------------------------------------------------------
 // Iterator
@@ -193,17 +215,25 @@ ServiceCacheGetOp::Dataset::Iterator::Iterator(const Params& params)
 
 Status ServiceCacheGetOp::Dataset::Iterator::Initialize(
     IteratorContext* ctx) {
-  VLOG(0) << "EASL - Initializing ServiceCacheGet iterator";
-  VLOG(0) << "EASL - File format: " << dataset()->cache_format_;
-  VLOG(0) << "EASL - Compression format: " << dataset()->cache_compression_;
+  VLOG(3) << "EASL - Initializing ServiceCacheGet iterator";
+  VLOG(3) << "EASL - File format: " << dataset()->cache_format_;
+  VLOG(3) << "EASL - Compression format: " << dataset()->cache_compression_;
+
+  // If we're in distributed epoch mode we should have a split provider
+  std::shared_ptr<SplitProvider> split_provider_ = nullptr;
+  if (!ctx->split_providers().empty()) {
+    TF_ASSIGN_OR_RETURN(split_provider_,
+                        GetSingleSplitProvider(ctx, dataset()));
+  }
 
   for(auto dt: dataset()->output_dtypes_){
-    VLOG(0) << DataTypeString(dt);
+    VLOG(3) << DataTypeString(dt);
   }
   reader_ =
       std::make_unique<tensorflow::data::easl::service_cache_util::Reader>(
-          ctx->env(), dataset()->path_, dataset()->output_dtypes_,
-          dataset()->output_shapes_, dataset()->parallelism_, dataset()->cache_format_);
+          ctx->env(), split_provider_, dataset()->path_, 
+          dataset()->output_dtypes_, dataset()->output_shapes_, 
+          dataset()->parallelism_, dataset()->cache_format_);
 
   return reader_->Initialize();
 }
