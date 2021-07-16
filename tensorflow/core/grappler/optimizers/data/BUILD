@@ -18,6 +18,7 @@ cc_library(
     deps = [
         ":add_get_op",
         ":add_put_op",
+        ":add_put_op_at_marker",
         ":append_forty_two",
         ":autotune_buffer_sizes",
         ":batch_parallelization",
@@ -863,6 +864,29 @@ cc_library(
     name = "add_get_op",
     srcs = ["easl_optimizers/add_get_op.cc"],
     hdrs = ["easl_optimizers/add_get_op.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":graph_utils",
+        ":optimizer_base",
+        "//tensorflow/core/grappler:mutable_graph_view",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+        "//tensorflow/core:lib_internal",
+    ] + tf_protos_all(),
+    alwayslink = 1,
+)
+
+
+cc_library(
+    name = "add_put_op_at_marker",
+    srcs = ["easl_optimizers/add_put_op_at_marker.cc"],
+    hdrs = ["easl_optimizers/add_put_op_at_marker.h"],
     visibility = ["//visibility:public"],
     deps = [
         ":graph_utils",
