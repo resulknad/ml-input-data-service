@@ -170,6 +170,13 @@ cc_library(
     name = "libc_handle",
     srcs = ["libc_handle.cc"],
     hdrs = ["libc_handle.h"],
+    linkopts = select({
+        # We use dlopen on Android.
+        clean_dep("//tensorflow:android"): [
+            "-ldl",
+        ],
+        "//conditions:default": [],
+    }),
     deps = [":decode_jpeg_status"],
 )
 
@@ -233,6 +240,9 @@ cc_library(
     name = "libjpeg_decoder_test_helper",
     testonly = 1,
     hdrs = ["libjpeg_decoder_test_helper.h"],
+    linkopts = [
+        "-lm",  # We included <cmath> in the source.
+    ],
     deps = [
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
@@ -512,6 +522,7 @@ cc_library(
     srcs = ["set_big_core_affinity.cc"],
     hdrs = ["set_big_core_affinity.h"],
     deps = [":big_little_affinity"],
+    alwayslink = True,
 )
 
 #

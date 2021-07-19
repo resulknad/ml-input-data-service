@@ -76,6 +76,8 @@ DEFINE_SUBSET_FROM(int16);
 DEFINE_SUBSET_FROM(int32);
 DEFINE_SUBSET_FROM(int64);
 DEFINE_SUBSET_FROM(double);
+// The cast from float to double is still needed for resize_bilinear_op.cc
+DEFINE(double, float);
 DEFINE_ALL_FROM(std::complex<double>);
 
 #undef DEFINE_SUBSET_FROM
@@ -128,13 +130,15 @@ DEFINE_ALL_TO_FLOAT(std::complex<float>);
 
 // The subset of types which are currently not supported yet with the MLIR
 // generated kernels. The cast from Eigen::half is still needed for
-// depthwise_conv_grad_op.cc
+// depthwise_conv_grad_op.cc. The cast from float to float is still needed for
+// resize_bilinear_op.cc.
 #define DEFINE_SUBSET_TO_FLOAT(out_type) \
   DEFINE(out_type, uint8);               \
   DEFINE(out_type, uint16);              \
   DEFINE(out_type, uint32);              \
   DEFINE(out_type, uint64);              \
   DEFINE(out_type, Eigen::half);         \
+  DEFINE(out_type, float);               \
   DEFINE(out_type, std::complex<float>)
 
 // The subset of types which are currently not supported yet with the MLIR

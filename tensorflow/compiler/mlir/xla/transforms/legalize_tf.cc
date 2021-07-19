@@ -1507,9 +1507,9 @@ class ConvertConvOp : public OpRewritePattern<OpTy> {
         pad_low = get_int(explicit_paddings[2 * dim]);
         pad_high = get_int(explicit_paddings[2 * dim + 1]);
       } else {
-        tensorflow::int64 output_size;
-        tensorflow::int64 pad_low_int64;
-        tensorflow::int64 pad_high_int64;
+        int64_t output_size;
+        int64_t pad_low_int64;
+        int64_t pad_high_int64;
         tensorflow::Status status = tensorflow::GetWindowedOutputSizeVerboseV2(
             input_ty.getDimSize(dim), filter_ty.getDimSize(i), dilation, stride,
             padding, &output_size, &pad_low_int64, &pad_high_int64);
@@ -6624,21 +6624,7 @@ class ConvertShapeOp : public OpRewritePattern<TF::ShapeOp> {
         RankedTensorType::get(result_ty.getShape(), rewriter.getIndexType());
     auto shape_op =
         rewriter.create<shape::ShapeOfOp>(op.getLoc(), index_tensor, input);
-
-    // Index cast is not defined on tensors, so we use a tensor.generate to have
-    // it work on scalars.
-    rewriter.replaceOpWithNewOp<tensor::GenerateOp>(
-        op, result_ty,
-        result_ty.hasStaticShape()
-            ? ValueRange{}
-            : ValueRange{rewriter.create<RankOp>(op.getLoc(), input)},
-        [&](OpBuilder &b, Location loc, ValueRange args) {
-          Value dim = args.front();
-          Value extent = b.create<tensor::ExtractOp>(loc, shape_op, dim);
-          Value casted =
-              b.create<IndexCastOp>(loc, extent, result_ty.getElementType());
-          b.create<tensor::YieldOp>(loc, casted);
-        });
+    rewriter.replaceOpWithNewOp<IndexCastOp>(op, shape_op, result_ty);
     return success();
   }
 };

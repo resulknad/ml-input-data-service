@@ -86,8 +86,11 @@ limitations under the License.
 #if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 // If MLIR kernels are enabled, we don't need the specialized cast from float to
 // double or from Eigen::half to double. We still need the specialized cast from
-// Eigen::half to float, because it is used in depthwise_conv_grad_op.cc.
+// Eigen::half to float, because it is used in depthwise_conv_grad_op.cc. We
+// still need the specialized cast from float to double because it is used in
+// resize_bilinear_op.cc.
 #define CAST_FUNCTORS_SUBSET(devname)                                 \
+  SPECIALIZE_CAST(devname, float, double)                             \
   SPECIALIZE_CAST(devname, float, std::complex<double>)               \
   SPECIALIZE_CAST(devname, std::complex<float>, std::complex<double>) \
   SPECIALIZE_CAST(devname, std::complex<float>, double)               \

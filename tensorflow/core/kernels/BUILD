@@ -40,6 +40,9 @@ load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 load("//tensorflow:tensorflow.bzl", "if_nccl")
 
 # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_disable_ptxas_warning_flags")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 
 # buildifier: disable=same-origin-load
@@ -950,6 +953,9 @@ cc_library(
         "eigen_convolution_helpers.h",
     ],
     compatible_with = get_compatible_with_portable(),
+    defines = [
+        "EIGEN_ALTIVEC_USE_CUSTOM_PACK=0",
+    ],
 )
 
 # OpKernel libraries ----------------------------------------------------------
@@ -1180,6 +1186,7 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "quantize_and_dequantize_op",
+    gpu_copts = tf_disable_ptxas_warning_flags(),
     prefix = "quantize_and_dequantize_op",
     deps = ARRAY_DEPS + [":cwise_op"],
 )
@@ -1268,6 +1275,7 @@ tf_kernel_library(
         "tile_functor_cpu_variant.cc",
     ],
     hdrs = ["tile_functor.h"],
+    gpu_copts = tf_disable_ptxas_warning_flags(),
     gpu_srcs = [
         "tile_functor.h",
         "tile_functor_gpu.h",
@@ -4001,8 +4009,7 @@ cc_library(
     ],
 )
 
-NN_DEPS = [
-    ":conv_2d",
+NN_DEPS = if_cuda_or_rocm([":conv_2d"]) + [
     ":eigen_contraction_kernel",
     ":ops_util",
     "//tensorflow/core:framework",
@@ -4095,6 +4102,21 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "softplus_op",
+    copts = if_mlir_generated_gpu_kernels_enabled(
+        ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED"],
+    ),
+    # *.cu.cc sources are compiled with gpu_copts instead of copts.
+    gpu_copts = if_mlir_generated_gpu_kernels_enabled(
+        ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED"],
+    ),
+    prefix = "softplus_op",
+    deps = NN_DEPS + [
+        "//tensorflow/core/kernels/mlir_generated:softplus_op",
+    ],
+)
+
+tf_kernel_library(
+    name = "softsign_op",
     copts = if_mlir_generated_experimental_kernels_enabled(
         ["-DMLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED"],
     ) + if_mlir_generated_gpu_kernels_enabled(
@@ -4106,16 +4128,10 @@ tf_kernel_library(
     ) + if_mlir_generated_gpu_kernels_enabled(
         ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED"],
     ),
-    prefix = "softplus_op",
-    deps = NN_DEPS + [
-        "//tensorflow/core/kernels/mlir_generated:softplus_op",
-    ],
-)
-
-tf_kernel_library(
-    name = "softsign_op",
     prefix = "softsign_op",
-    deps = NN_DEPS,
+    deps = NN_DEPS + [
+        "//tensorflow/core/kernels/mlir_generated:softsign_op",
+    ],
 )
 
 tf_kernel_library(
@@ -4148,6 +4164,7 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "xent_op",
+    gpu_copts = tf_disable_ptxas_warning_flags(),
     prefix = "xent_op",
     deps = NN_DEPS,
 )
@@ -4305,6 +4322,7 @@ tf_kernel_library(
     name = "fake_quant_ops",
     srcs = ["fake_quant_ops.cc"],
     hdrs = ["fake_quant_ops_functor.h"],
+    gpu_copts = tf_disable_ptxas_warning_flags(),
     gpu_srcs = [
         "fake_quant_ops_gpu.cu.cc",
         "fake_quant_ops_functor.h",
@@ -4807,6 +4825,7 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "sparse_xent_op",
+    gpu_copts = tf_disable_ptxas_warning_flags(),
     prefix = "sparse_xent_op",
     deps = SPARSE_DEPS + [
         "//third_party/eigen3",
