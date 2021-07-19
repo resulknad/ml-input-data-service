@@ -1303,6 +1303,7 @@ REGISTER_OP("MarkerDataset")
         .Attr("marker_type: string")
         .Attr("output_types: list(type) >= 1")
         .Attr("output_shapes: list(shape) >= 1")
+        .SetDoNotOptimize()
         .SetShapeFn(shape_inference::ScalarShape);
 
 }  // namespace tensorflow
