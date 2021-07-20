@@ -88,7 +88,7 @@ NodeDef AddPutOpAtMarker::CreatePutOpNode(MutableGraphView* graph, NodeDef* inpu
 
 Status AddPutOpAtMarker::ApplyOptimization(MutableGraphView &graph, NodeDef *sink_node,
                                    GraphDef *output) {
-  VLOG(1) << "In AddPutOpAtMarker optimizer";
+  VLOG(0) << "In AddPutOpAtMarker optimizer";
 
   // Define a filtering function which identifies target node
   std::string marker_type = config_.parameter_map().at(kMarkerType).placeholder();
