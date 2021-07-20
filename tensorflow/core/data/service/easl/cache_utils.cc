@@ -460,7 +460,7 @@ Status AddGetOperatorAtMarker(
   (*sink->mutable_attr())["T"].set_type(DT_VARIANT);
 
   // Do BFS
-  DoBFS(sink, *graph_def, "AddGetOperator");
+  //DoBFS(sink, *graph_def, "AddGetOperator");
 
   // Create the MuttableGraphView
   tensorflow::grappler::MutableGraphView graph(graph_def);

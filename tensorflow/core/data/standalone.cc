@@ -71,7 +71,7 @@ model::Model::ModelMetrics Iterator::GetMetrics() {
     VLOG(4) << "EASL - Standalone iterator GetMetrics, model found";
     return model->CollectMetrics();
   } else {
-    VLOG(4) << "EASL - Standalone iterator GetMetrics, model not yet created.";
+    VLOG(0) << "EASL - Standalone iterator GetMetrics, no model found here.";
     return nullptr;
   }
 }
