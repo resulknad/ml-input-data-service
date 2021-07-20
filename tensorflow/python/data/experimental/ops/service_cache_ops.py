@@ -113,7 +113,7 @@ def service_cache_put(marker_type="source_cache"):
     def _apply_fn(dataset):
         """Actual dataset transformation."""
         project_func = None
-        dataset = _Marker(
+        dataset = _MarkerDataset(
             input_dataset=dataset,
             marker_type=marker_type)
 

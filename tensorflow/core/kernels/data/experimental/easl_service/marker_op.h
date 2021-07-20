@@ -15,7 +15,7 @@ namespace easl{
 class MarkerOp : public UnaryDatasetOpKernel {
  public:
   static constexpr const char* const kDatasetType = "MarkerDataset";
-  static constexpr const char* const kMarkerNodeType = "marker_node_type";
+  static constexpr const char* const kMarkerNodeType = "marker_type";
 
   explicit MarkerOp(OpKernelConstruction* ctx);
 

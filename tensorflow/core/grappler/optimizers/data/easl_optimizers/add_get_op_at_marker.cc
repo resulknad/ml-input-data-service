@@ -87,7 +87,19 @@ Status AddGetOpAtMarker::ApplyOptimization(MutableGraphView &graph, NodeDef *sin
   // Define a filtering function which identifies target node
   std::string marker_type = config_.parameter_map().at(kMarkerType).placeholder();
   auto is_target_node = [marker_type](const NodeDef* node) -> bool {
-    return node->op() == kTargetNode && node->attr().at(kMarkerType).placeholder() == marker_type;
+    VLOG(0) << "node: " << node->op();
+    if (node->op() == kTargetNode){
+      VLOG(0) << "searching type: " << marker_type;
+      VLOG(0) << "marker_type " << node->attr().at(kMarkerType).s();
+      for (auto & pair : node->attr()){
+        VLOG(0) << "attr_name " << pair.first;
+        if (pair.first == "marker_type"){
+          VLOG(0) << "found " << pair.second.s();
+        }
+      }
+    }
+
+    return node->op() == kTargetNode ;//&& node->attr().at(kMarkerType).s() == marker_type; // TODO use s() instead of placeholder...
   };
 
   // Find the first target op by applying BFS
@@ -145,7 +157,7 @@ Status AddGetOpAtMarker::ApplyOptimization(MutableGraphView &graph, NodeDef *sin
   // Add the node to the graph
   graph.AddNode(std::move(get_op_node));
 
-
+  /*
   // Remove the input nodes and all its children in the graph.
   absl::flat_hash_set<std::string> inputs_visited;
   std::queue<NodeDef*> inputs_bfs_queue;
@@ -167,7 +179,7 @@ Status AddGetOpAtMarker::ApplyOptimization(MutableGraphView &graph, NodeDef *sin
     }
   }
   graph.DeleteNodes(inputs_visited);
-
+  */
 
   return Status::OK();
 }

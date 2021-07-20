@@ -145,7 +145,7 @@ Status MarkerOp::Dataset::AsGraphDefInternal(
 
 
 namespace {
-REGISTER_KERNEL_BUILDER(Name("MarkerOpDataset").Device(DEVICE_CPU),
+REGISTER_KERNEL_BUILDER(Name("MarkerDataset").Device(DEVICE_CPU),
                         MarkerOp);
 }  // namespace
 

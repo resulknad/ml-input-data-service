@@ -27,7 +27,7 @@ Status DoBFS(NodeDef* sink_node, GraphDef& graph_def, string prefix) {
   std::queue<NodeDef*> bfs_queue;
   bfs_queue.push(sink_node);
 
-  VLOG(1) << "(" << prefix << ") BFS @ current_node: "
+  VLOG(0) << "(" << prefix << ") BFS @ current_node: "
           << "Root --> " << sink_node->op();
 
   while (!bfs_queue.empty()) {
@@ -43,7 +43,7 @@ Status DoBFS(NodeDef* sink_node, GraphDef& graph_def, string prefix) {
         NodeDef* neighbor_node = graph_def.mutable_node(idx);
         bfs_queue.push(neighbor_node);
 
-        VLOG(1) << "(" << prefix << ") BFS @ current_node: "
+        VLOG(0) << "(" << prefix << ") BFS @ current_node: "
                 << SummarizeNodeDef(*current_node) << " --> "
                 << SummarizeNodeDef(*neighbor_node);
       }
@@ -346,6 +346,8 @@ Status AddPutOperatorAtMarker(const DatasetDef& dataset,
                               const std::string& marker_type,
                               const experimental::DispatcherConfig& dispatcher_config,
                               DatasetDef& updated_dataset) {
+  VLOG(0) << "(AddPutOperatorAtMarker) At the beginning of the method";
+
   // Copy over the original dataset
   updated_dataset = dataset;
 
@@ -399,7 +401,7 @@ Status AddPutOperatorAtMarker(const DatasetDef& dataset,
 
   // Disconnect the 'Sink' node
   // sink->mutable_input()->Clear();
-  VLOG(1) << "(AddPutOperatorAtMarker) At the end of the method";
+  VLOG(0) << "(AddPutOperatorAtMarker) At the end of the method";
 
   return Status::OK();
 }
@@ -408,14 +410,14 @@ Status AddPutOperatorAtMarker(const DatasetDef& dataset,
 Status AddGetOperatorAtMarker(
     const DatasetDef& dataset,
     const uint64 fingerprint,
-    const std::string marker_type,
+    const std::string& marker_type,
     const experimental::DispatcherConfig& dispatcher_config,
     DatasetDef& updated_dataset){
   // TODO remove this.
   //updated_dataset = dataset;
   //return Status::OK();
 
-  VLOG(1) << "(AddGetOperator) At the start of the method";
+  VLOG(0) << "(AddGetOperator) At the start of the method";
   // Copy over the original dataset
   updated_dataset = dataset;
 
@@ -458,7 +460,7 @@ Status AddGetOperatorAtMarker(
   (*sink->mutable_attr())["T"].set_type(DT_VARIANT);
 
   // Do BFS
-  //DoBFS(sink, *graph_def, "AddGetOperator");
+  DoBFS(sink, *graph_def, "AddGetOperator");
 
   // Create the MuttableGraphView
   tensorflow::grappler::MutableGraphView graph(graph_def);
@@ -469,7 +471,7 @@ Status AddGetOperatorAtMarker(
 
   // Disconnect the 'Sink' node
   // sink->mutable_input()->Clear();
-  VLOG(1) << "(AddGetOperatorAtMarker) At the end of the method";
+  VLOG(0) << "(AddGetOperatorAtMarker) At the end of the method";
 
   return Status::OK();
 }
