@@ -25,7 +25,8 @@ namespace {
   constexpr char kOutputShapes[] = "output_shapes";
   constexpr char kOutputTypes[] = "output_types";
   // constexpr char kTargetNode[] = "ModelDataset";
-  constexpr char kTargetNode[] = "ParallelMapDatasetV2";
+  //constexpr char kTargetNode[] = "ParallelMapDatasetV2";
+  constexpr char kTargetNode[] = "MarkerDataset";
   constexpr int kTargetInputSize = 2;
 
 
