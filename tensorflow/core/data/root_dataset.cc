@@ -100,6 +100,7 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
   ~Iterator() override { cancellation_manager_->StartCancel(); }
 
   Status Initialize(IteratorContext* ctx) override {
+    ctx->set_model(model_);
     return dataset()->input_->MakeIterator(IteratorContext(CreateParams(ctx)),
                                            this, prefix(), &input_impl_);
   }
