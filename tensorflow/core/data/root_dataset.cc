@@ -78,6 +78,7 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
   explicit Iterator(const Params& params)
       : DatasetIterator<RootDataset>(params) {
     if (dataset()->params_.autotune) {
+      VLOG(0) << "EASL - creating model...";
       model_ = std::make_shared<model::Model>();
     }
     if (dataset()->params_.max_intra_op_parallelism >= 0) {
@@ -105,7 +106,9 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
 
   Status GetNextInternal(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
                          bool* end_of_sequence) override {
+    VLOG(0) << "EASL - getNext";
     if (dataset()->params_.autotune) {
+      VLOG(0) << "EASL - model thread should have started...";
       TF_RETURN_IF_ERROR(EnsureModelThreadStarted(ctx));
     }
     return input_impl_->GetNext(IteratorContext(CreateParams(ctx)), out_tensors,
@@ -224,6 +227,8 @@ RootDataset::~RootDataset() { input_->Unref(); }
 
 std::unique_ptr<IteratorBase> RootDataset::MakeIteratorInternal(
     const string& prefix) const {
+  VLOG(0) << "EASL - making iterator for rootdataset";
+
   return absl::make_unique<Iterator>(
       Iterator::Params{this, name_utils::IteratorPrefix(kDatasetType, prefix)});
 }
