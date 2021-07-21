@@ -1666,16 +1666,7 @@ Model::ModelMetrics Model::CollectMetrics() {
       queue.push_back(output_);
       output_->TotalProcessingTime(&node_times);
       final_times = Node::NodeValues(node_times);
-      VLOG(0) << "node0 " << output_->long_name();
-      std::shared_ptr<Node> a_node = output_->inputs().front();
-      VLOG(0) << "node1 " << a_node->long_name();
-      a_node = a_node->inputs().front();
-      VLOG(0) << "node2 " << a_node->long_name();
-      a_node = a_node->inputs().front();
-      VLOG(0) << "node3 " << a_node->long_name();
-
       last_node_name = output_->inputs().front()->inputs().front()->long_name();
-        //inputs().front()->long_name();
     }
   }
 
