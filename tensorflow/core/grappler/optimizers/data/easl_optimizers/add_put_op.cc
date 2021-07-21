@@ -91,7 +91,6 @@ Status AddPutOp::ApplyOptimization(MutableGraphView &graph, NodeDef *sink_node,
 
   // Define a filtering function which identifies target node
   auto is_target_node = [](const NodeDef* node) -> bool {
-    // TODO revert...
     return node->op() == kTargetNode && node->input_size() == kTargetInputSize;
   };
 

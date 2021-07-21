@@ -234,14 +234,11 @@ Status ServiceCachePutOp::Dataset::Iterator::GetNextInternal(
   TF_RETURN_IF_ERROR(input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
   
   if(*end_of_sequence){
-    VLOG(0) << "end of sequence";
     if(writer_ != nullptr){
-      VLOG(0) << "EASL - closing service cache put writer...";
       // (damien-aymon) will block until the underlying asyncWriter is done.
       writer_->Close();
       writer_.reset();
     }
-    VLOG(0) << "EASL - done closing service cache put writer, returning";
     return Status::OK();
   }
   std::vector<Tensor> tensors = *out_tensors;
