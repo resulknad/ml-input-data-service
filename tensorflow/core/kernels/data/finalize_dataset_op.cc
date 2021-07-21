@@ -48,6 +48,7 @@ void GetModelDatasetParams(const Options& options,
 
 void MakeDatasetHelper(OpKernelContext* ctx, bool has_captured_ref,
                        DatasetBase* input, DatasetBase** output) {
+  VLOG(0) << "EASL - going through the MakeDatasetHelper function";
   *output = input;
   input->Ref();
   const Options& options = input->options();
