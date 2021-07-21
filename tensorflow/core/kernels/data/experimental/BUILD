@@ -846,6 +846,24 @@ cc_library(
     ],
 )
 
+
+tf_kernel_library(
+    name = "marker_op",
+    srcs = ["easl_service/marker_op.cc"],
+    hdrs = ["easl_service/marker_op.h"],
+    deps = [
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/framework:op_requires",
+        "//tensorflow/core/data:name_utils",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
 # --- simonsom ---
 
 cc_library(
@@ -927,6 +945,7 @@ tf_kernel_library(
         ":ignore_errors_dataset_op",
         ":io_ops",
         ":map_and_batch_dataset_op",
+        ":marker_op",
         ":matching_files_dataset_op",
         ":non_serializable_dataset_op",
         ":lookup_ops",

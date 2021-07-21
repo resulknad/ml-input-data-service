@@ -1,5 +1,10 @@
-#include <queue>
+//
+// Created by aymond on 16.07.21.
+//
 
+#include "tensorflow/core/grappler/optimizers/data/easl_optimizers/add_put_op_at_marker.h"
+
+#include <queue>
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -8,7 +13,6 @@
 #include "tensorflow/core/grappler/mutable_graph_view.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/optimizers/custom_graph_optimizer_registry.h"
-#include "tensorflow/core/grappler/optimizers/data/easl_optimizers/add_put_op.h"
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -18,37 +22,36 @@ namespace grappler {
 namespace easl {
 
 namespace {
-  // Define constants here
-  //constexpr char kCacheLocation[] = "./outputs/";
-  //constexpr int8 kParallelism = 8;
-  constexpr char kPutOpDataset[] = "ServiceCachePutDataset";
-  constexpr char kOutputShapes[] = "output_shapes";
-  constexpr char kOutputTypes[] = "output_types";
-  // constexpr char kTargetNode[] = "ModelDataset";
-  constexpr char kTargetNode[] = "ParallelMapDatasetV2";
-  //constexpr char kTargetNode[] = "MarkerDataset";
-  constexpr int kTargetInputSize = 2;
+// Define constants here
+constexpr char kPutOpDataset[] = "ServiceCachePutDataset";
+constexpr char kOutputShapes[] = "output_shapes";
+constexpr char kOutputTypes[] = "output_types";
+// constexpr char kTargetNode[] = "ModelDataset";
+constexpr char kTargetNode[] = "MarkerDataset";
+constexpr char kSourceCache[] = "source_cache";
+constexpr char kMarkerType[] = "marker_type";
+
 
 
 } // namespace
 
-NodeDef AddPutOp::CreatePutOpNode(MutableGraphView* graph, NodeDef* input) {
+NodeDef AddPutOpAtMarker::CreatePutOpNode(MutableGraphView* graph, NodeDef* input) {
   NodeDef put_op_node;
 
   // Give a unique name to the op
   graph_utils::SetUniqueGraphNodeName("put_op_dataset",
-  graph->graph(), &put_op_node);
+                                      graph->graph(), &put_op_node);
 
   // Set the node's operation and inputs.
   put_op_node.set_op(kPutOpDataset);
   put_op_node.add_input(input->name());
 
   NodeDef* location_node = graph_utils::AddScalarConstNode<StringPiece>(
-    config_.parameter_map().at("path").placeholder(), graph);
+      config_.parameter_map().at("path").placeholder(), graph);
   put_op_node.add_input(location_node->name());
 
   NodeDef* cache_format_node = graph_utils::AddScalarConstNode<int32>(
-    config_.parameter_map().at("cache_format").i(), graph);
+      config_.parameter_map().at("cache_format").i(), graph);
   put_op_node.add_input(cache_format_node->name());
 
   NodeDef* cache_compression = graph_utils::AddScalarConstNode<int32>(
@@ -56,7 +59,7 @@ NodeDef AddPutOp::CreatePutOpNode(MutableGraphView* graph, NodeDef* input) {
   put_op_node.add_input(cache_compression->name());
 
   NodeDef* parallelism_node = graph_utils::AddScalarConstNode<int32>(
-    config_.parameter_map().at("cache_ops_parallelism").i(), graph);
+      config_.parameter_map().at("cache_ops_parallelism").i(), graph);
   put_op_node.add_input(parallelism_node->name());
 
   // Copy over the relevant attributes from root of the prefix
@@ -65,10 +68,10 @@ NodeDef AddPutOp::CreatePutOpNode(MutableGraphView* graph, NodeDef* input) {
   graph_utils::CopyAttribute(kOutputShapes, *input, &put_op_node);
   auto it = input->attr().find(kOutputTypes);
   if (it != input->attr().end()){
-  (*put_op_node.mutable_attr())[kOutputTypes] = it->second;
+    (*put_op_node.mutable_attr())[kOutputTypes] = it->second;
   } else {
-  it = input->attr().find("Toutput_types");
-  (*put_op_node.mutable_attr())[kOutputTypes] = it->second;
+    it = input->attr().find("Toutput_types");
+    (*put_op_node.mutable_attr())[kOutputTypes] = it->second;
   }
 
   /*
@@ -78,20 +81,19 @@ NodeDef AddPutOp::CreatePutOpNode(MutableGraphView* graph, NodeDef* input) {
         graph_utils::CopyAttribute(key, *input, &put_op_node);
 
         *to_node->mutable_attr())[attribute_name] = from.attr().at(attribute_name);*/
-  VLOG(0) << "after copying attribures";
-
-
+  VLOG(3) << "after copying attribures";
 
   return put_op_node;
 }
 
-Status AddPutOp::ApplyOptimization(MutableGraphView &graph, NodeDef *sink_node,
+Status AddPutOpAtMarker::ApplyOptimization(MutableGraphView &graph, NodeDef *sink_node,
                                    GraphDef *output) {
-  VLOG(1) << "In AddPutOp optimizer";
+  VLOG(0) << "In AddPutOpAtMarker optimizer";
 
   // Define a filtering function which identifies target node
-  auto is_target_node = [](const NodeDef* node) -> bool {
-    return node->op() == kTargetNode && node->input_size() == kTargetInputSize;
+  std::string marker_type = config_.parameter_map().at(kMarkerType).placeholder();
+  auto is_target_node = [marker_type](const NodeDef* node) -> bool {
+    return node->op() == kTargetNode && node->attr().at(kMarkerType).s() == marker_type;
   };
 
   // Find the first target op by applying BFS
@@ -118,8 +120,8 @@ Status AddPutOp::ApplyOptimization(MutableGraphView &graph, NodeDef *sink_node,
     // Iterate throught the neighbors
     for (int i = 0; i < current_node->input_size(); ++i) {
       if (!visited.contains(current_node->input(i))) {
-        int idx = graph_utils::FindGraphNodeWithName(current_node->input(i), 
-            *output);
+        int idx = graph_utils::FindGraphNodeWithName(current_node->input(i),
+                                                     *output);
         NodeDef* neighbor_node = output->mutable_node(idx);
         bfs_queue.push(neighbor_node);
       }
@@ -128,7 +130,8 @@ Status AddPutOp::ApplyOptimization(MutableGraphView &graph, NodeDef *sink_node,
 
   // We return if we found no target op
   if (!target) {
-    VLOG(1) << "Could not find target " << kTargetNode;
+    VLOG(0) << "Could not find target node " << kTargetNode
+            << " with marker_type " << marker_type;
     return Status::OK();
   }
 
@@ -137,7 +140,7 @@ Status AddPutOp::ApplyOptimization(MutableGraphView &graph, NodeDef *sink_node,
   if(!target_input){
     return errors::Unknown("The target has no inputs.");
   }
-  
+
   // Create the put_op_node op node, then add it to the graph
   NodeDef put_op_node = CreatePutOpNode(&graph, target_input);
 
@@ -151,7 +154,7 @@ Status AddPutOp::ApplyOptimization(MutableGraphView &graph, NodeDef *sink_node,
   return Status::OK();
 }
 
-Status AddPutOp::OptimizeAndCollectStats(Cluster* cluster,
+Status AddPutOpAtMarker::OptimizeAndCollectStats(Cluster* cluster,
                                          const GrapplerItem& item,
                                          GraphDef* output,
                                          OptimizationStats* stats) {
@@ -168,7 +171,7 @@ Status AddPutOp::OptimizeAndCollectStats(Cluster* cluster,
 }
 
 
-REGISTER_GRAPH_OPTIMIZER_AS(AddPutOp, "add_put_op");
+REGISTER_GRAPH_OPTIMIZER_AS(AddPutOpAtMarker, "add_put_op_at_marker");
 
 }  // namespace easl
 }  // namespace grappler

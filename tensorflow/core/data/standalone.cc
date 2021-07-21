@@ -66,12 +66,13 @@ Status Iterator::GetNext(std::vector<Tensor>* outputs, bool* end_of_input) {
 
 model::Model::ModelMetrics Iterator::GetMetrics() {
   auto model = ctx_.get()->model();
+  //auto model = 
 
   if(model != nullptr){
     VLOG(4) << "EASL - Standalone iterator GetMetrics, model found";
     return model->CollectMetrics();
   } else {
-    VLOG(4) << "EASL - Standalone iterator GetMetrics, model not yet created.";
+    VLOG(0) << "EASL - Standalone iterator GetMetrics, no model found here.";
     return nullptr;
   }
 }

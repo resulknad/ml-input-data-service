@@ -59,6 +59,10 @@ class CacheState {
 
   void SetDatasetCached(const uint64 fingerprint);
 
+  bool IsDatasetSourceCached( const uint64 fingerprint) const;
+
+  void SetDatasetSourceCached(const uint64 fingerprint);
+
 
   // Returns an error if the jo is not found.
   Status GetCachingJobId(const uint64 fingerprint,
@@ -70,10 +74,17 @@ class CacheState {
                            const int64 job_id);
 
  private:
+  // For materialized dataset caching
   // keyed by fingerprint
   absl::flat_hash_map<uint64, bool> is_cached_;
   // keyed by fingerprint -> job_id
   absl::flat_hash_map<uint64, int64> fingerprint_to_caching_job_;
+
+  // For source data caching
+  // keyed by fingerprint
+  absl::flat_hash_map<uint64, bool> is_source_cached_;
+  // keyed by fingerprint -> job_id
+  absl::flat_hash_map<uint64, int64> fingerprint_to_source_caching_job_;
 
 };
 

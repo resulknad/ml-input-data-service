@@ -200,7 +200,7 @@ ServiceCachePutOp::Dataset::Iterator::Iterator(const Params& params)
 
 Status ServiceCachePutOp::Dataset::Iterator::Initialize(
     IteratorContext* ctx) {
-  VLOG(3) << "EASL - Initializing ServiceCachePutOp iterator";
+  VLOG(0) << "EASL - Initializing ServiceCachePutOp iterator";
   VLOG(3) << "EASL - File format: " << dataset()->cache_format_;
   VLOG(3) << "EASL - parallelism format: " << dataset()->parallelism_;
   // TODO (damien-aymon) compression and file format are available as fields of dataset().
@@ -239,7 +239,6 @@ Status ServiceCachePutOp::Dataset::Iterator::GetNextInternal(
       writer_->Close();
       writer_.reset();
     }
-    
     return Status::OK();
   }
   std::vector<Tensor> tensors = *out_tensors;

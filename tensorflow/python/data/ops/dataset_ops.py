@@ -383,6 +383,8 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
 
   def _apply_debug_options(self):
     if DEBUG_MODE:
+      print("EASL -----------------------------------------------------")
+      print("We are in debug mode, autotune will be disabled")
       # Disable autotuning and static optimizations that could introduce
       # parallelism or asynchrony.
       options = Options()
