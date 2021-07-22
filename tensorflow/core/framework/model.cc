@@ -1701,8 +1701,7 @@ Model::ModelMetrics Model::CollectMetrics() {
       queue.push_back(output_);
       output_->TotalProcessingTime(&node_times);
       final_times = Node::NodeValues(node_times);
-      last_node_name = output_->inputs().front()->inputs().front()->
-        inputs().front()->long_name();
+      last_node_name = output_->inputs().front()->inputs().front()->long_name();
     }
   }
 

@@ -142,6 +142,7 @@ class ModelDatasetOp::Dataset : public DatasetBase {
     Status Initialize(IteratorContext* ctx) override {
       IteratorContext::Params params(ctx);
       params.model = model_;
+      VLOG(0) << "initialize(), setting model in parent context";
       ctx->set_model(model_);
       return dataset()->input_->MakeIterator(IteratorContext(CreateParams(ctx)),
                                              this, prefix(), &input_impl_);

@@ -615,7 +615,9 @@ Status DatasetBase::MakeIterator(
     IteratorContext* ctx, const IteratorBase* parent,
     const string& output_prefix,
     std::unique_ptr<IteratorBase>* iterator) const {
-  if (type_string() == "OptionsDataset" || type_string() == "FinalizeDataset") {
+  if (type_string() == "OptionsDataset" ||
+      type_string() == "FinalizeDataset" ||
+      type_string() == "MarkerDataset") { // "EASL added this one, we skip making an iterator for this one.
     std::vector<const DatasetBase*> inputs;
     Status s = InputDatasets(&inputs);
     return inputs[0]->MakeIterator(ctx, parent, output_prefix, iterator);
