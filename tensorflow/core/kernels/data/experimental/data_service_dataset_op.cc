@@ -350,7 +350,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           return status_;
         }
         if(job_finished_){
-          VLOG(0) << "Job Finished in GetNext. results_.size():" << results_.size()
+          VLOG(3) << "Job Finished in GetNext. results_.size():" << results_.size()
                   << " results_.front().ready:"
                   << (!results_.empty() && results_.front().ready)
                   << " job_finished_:" << job_finished_
@@ -363,7 +363,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         }
         if (results_.empty()) {
           *end_of_sequence = true;
-          VLOG(0) << "Returning from GetNext with end_of_sequence";
+          VLOG(3) << "Returning from GetNext with end_of_sequence";
           return Status::OK();
         }
         skip = results_.front().skip;
@@ -583,7 +583,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       if (!job_finished) {
         return;
       }
-      VLOG(0) << "Got job finished from client heartbeat response.";
+      VLOG(3) << "Got job finished from client heartbeat response.";
       job_finished_ = true;
       get_next_cv_.notify_all();
       worker_thread_cv_.notify_all();
@@ -617,7 +617,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       ClientHeartbeatRequest req;
 
       if(num_elements_ == 0){
-        VLOG(0) << "EASL - client heartbeat: still no elements processed.";
+        VLOG(3) << "EASL - client heartbeat: still no elements processed.";
       }
 
 
@@ -650,7 +650,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           << " selfProcessingTime():"
           << get_next_processing_time;
       } else {
-        VLOG(0) << "There is no model in the data_service_dataset_op...";
+        VLOG(3) << "There is no model in the data_service_dataset_op...";
       }
       // We use our own implementation for inter-arrival times.
       {
@@ -835,7 +835,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         done();
         VLOG(1) << "Worker thread exiting";
       });
-      VLOG(0) << "Starting worker thread";
+      VLOG(1) << "Starting worker thread";
       std::shared_ptr<Task> task_to_process;
       while (true) {
         Result* result;
