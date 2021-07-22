@@ -216,9 +216,9 @@ Status MultiThreadedAsyncWriter::WriterThread(Env* env,
     VLOG(3) << "(Writer_" << writer_id << ") Read - "
       << be.end_of_sequence << " - Total: " << ++count;
     if (be.end_of_sequence) {
-      VLOG(0) << "(Writer_" << writer_id << ") closing...";
+      VLOG(3) << "(Writer_" << writer_id << ") closing...";
       writer->Close();
-      VLOG(0) << "(Writer_" << writer_id << ") Closed w/ total read "
+      VLOG(3) << "(Writer_" << writer_id << ") Closed w/ total read "
                 << count;
       break;
     }
