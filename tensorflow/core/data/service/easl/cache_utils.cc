@@ -263,7 +263,9 @@ Status DetermineElasticity(
   for(std::pair<int64, std::shared_ptr<ModelMetrics::Metrics>> e : 
     model_metrics->metrics_) {
     std::shared_ptr<ModelMetrics::Metrics> client_metrics = e.second;
-    client_throughput += 1.0 / client_metrics->inter_arrival_time_ms();
+    client_throughput += 1000.0 / client_metrics->inter_arrival_time_ms();
+    VLOG(0) << "(DetermineElasticity) Client inter arrival time " 
+            << client_metrics->inter_arrival_time_ms();
   }
   VLOG(0) << "(DetermineElasticity) Total client throughput demand " 
           << client_throughput;
@@ -277,7 +279,7 @@ Status DetermineElasticity(
     for(std::pair<std::string, std::shared_ptr<NodeMetrics::Metrics>> e : 
       last_tf_node_metrics->metrics_) {
       std::shared_ptr<NodeMetrics::Metrics> worker_metrics = e.second;
-      avg_worker_throughput += 1.0 / worker_metrics->in_prefix_time_ms();
+      avg_worker_throughput += 1000.0 / worker_metrics->in_prefix_time_ms();
     }
     avg_worker_throughput /= num_workers;
     VLOG(0) << "(DetermineElasticity) Average worker throughput "
@@ -324,7 +326,7 @@ Status DetermineElasticity(
 
     // Infer the worker count for the cache GET use case
     worker_count = ceil(client_throughput * (cache_read_time_per_row_ms 
-      + tf_nodes_overhead_ms));
+      + tf_nodes_overhead_ms) / 1000.0);
   }
   VLOG(0) << "(DetermineElasticity) Inferred workers " << worker_count;
   
