@@ -343,6 +343,10 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
             // (*metrics)[kComputationTime], 
             (*metrics)[kInNodeTime], (*metrics)[kInPrefixTime]);
 
+          VLOG(0) << "(Dispatcher::WorkerHeartbeat) Metrics for node " 
+                  << task.mutable_nodes(j)->name();
+          node_metrics.log_metrics();
+
           TF_RETURN_IF_ERROR(metadata_store_.UpdateInputPipelineMetrics(job_id, 
             task.mutable_nodes(j)->name(), request->worker_address(), 
             node_metrics));
@@ -767,13 +771,12 @@ Status DataServiceDispatcherImpl::CreateJob(
   service::easl::cache_utils::DetermineJobType(
       config_, cache_state_, metadata_store_, dataset_fingerprint,
       compute_dataset_key, job_id, job_type);
+  VLOG(0) << "EASL - Caching decision for dataset_key " 
+            << compute_dataset_key << ": " << job_type;
 
   // Infer the worker count for  this job and job type
-  TF_RETURN_IF_ERROR(service::easl::cache_utils::DetermineElasticity(job_type, config_, 
-      metadata_store_, compute_dataset_key, worker_count));
-
-  VLOG(0) << "EASL - Caching decision for dataset_key " 
-          << compute_dataset_key << ": " << job_type;
+  TF_RETURN_IF_ERROR(service::easl::cache_utils::DetermineElasticity(job_type, 
+      config_, metadata_store_, compute_dataset_key, worker_count)); 
   VLOG(0) << "EASL - Scalability decision for dataset_key "
           << compute_dataset_key << ": " << worker_count;
 

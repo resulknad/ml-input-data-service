@@ -89,6 +89,15 @@ class NodeMetrics {
         double in_node_time_ms()     { return in_node_time_ms_; }
         double in_prefix_time_ms()   { return in_prefix_time_ms_; }
 
+        void log_metrics() {
+          VLOG(0) << "(MetadataStore::NodeMetrics) Metrics:\n"
+                  << " > bytes_consumed = " << bytes_consumed_ << "\n"
+                  << " > bytes_produced = " << bytes_produced_ << "\n"
+                  << " > num_elements = " << num_elements_ << "\n"
+                  << " > in_node_time = " << in_node_time_ms_ << "\n"
+                  << " > in_prefix_time = " << in_prefix_time_ms_;
+        }
+
       private:
         int64 bytes_consumed_;
         int64 bytes_produced_;

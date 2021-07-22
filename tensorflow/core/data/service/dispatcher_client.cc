@@ -76,6 +76,9 @@ Status DataServiceDispatcherClient::WorkerHeartbeat(
         task_metrics.second->begin()->second.last_tf_node_name());
 
     for (auto& node_metrics : *task_metrics.second) {
+      VLOG(0) << "Metrics for " << node_metrics.first;
+      node_metrics.second.log_metrics();
+
       WorkerHeartbeatRequest::Task::Node* node = task->add_nodes();
       node->set_name(node_metrics.first);
 

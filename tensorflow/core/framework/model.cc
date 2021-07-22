@@ -1695,7 +1695,7 @@ Model::ModelMetrics Model::CollectMetrics() {
   Node::NodeValues node_times;
   Node::NodeValues final_times;
 
-  VLOG(4) << "EASL - Trying to collect metrics";
+  VLOG(0) << "EASL - Trying to collect metrics";
 
   FlushMetrics();
   {
@@ -1704,12 +1704,19 @@ Model::ModelMetrics Model::CollectMetrics() {
       queue.push_back(output_);
       output_->TotalProcessingTime(&node_times);
       final_times = Node::NodeValues(node_times);
+<<<<<<< HEAD
       last_node_name = output_->inputs().front()->inputs().front()->long_name();
       last_tf_node_name = output_->long_name();
+=======
+      last_tf_node_name = output_->inputs().front()->long_name();
+      last_node_name = output_->inputs().front()->inputs().front()->
+        inputs().front()->long_name(); 
+>>>>>>> Added a few logging messages.
     }
   }
 
-  VLOG(4) << "last node name " << last_node_name;
+  VLOG(0) << "(CollectMetrics) Last node name " << last_node_name;
+  VLOG(0) << "(CollectMetrics) Last TF node name " << last_tf_node_name;
 
   while (!queue.empty()) {
     auto node = queue.front();
@@ -1748,7 +1755,7 @@ Model::ModelMetrics Model::CollectMetrics() {
       EnvTime::kMillisToNanos);
   }
 
-  VLOG(4) << "EASL - Done collecting metrics, returning";
+  VLOG(0) << "EASL - Done collecting metrics, returning";
 
 
   // Debug code below

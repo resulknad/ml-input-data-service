@@ -239,13 +239,15 @@ Status DetermineElasticity(
   // Pipeline stats: last TF node metrics
   VLOG(0) << "(DetermineElasticity) Before the GetLastTFNodeMetricsByDatasetKey";
   std::shared_ptr<NodeMetrics> last_tf_node_metrics;
-  
-  (
-    metadata_store.GetLastTFNodeMetricsByDatasetKey(
-      dataset_key, last_tf_node_metrics));
-  VLOG(0) << "(DetermineElasticity) After the GetLastTFNodeMetricsByDatasetKey";
+  s = metadata_store.GetLastTFNodeMetricsByDatasetKey(
+    dataset_key, last_tf_node_metrics);
+  if (!s.ok()) {
+    VLOG(0) << "(DetermineElasticity) Failed to get the last TF node metrics";
+    return s;
+  }
+  VLOG(0) << "(DetermineElasticity) After the GetLastTFNodeMetricsByDatasetKey " << last_tf_node_metrics;
   size_t num_workers = (last_tf_node_metrics->metrics_).size();
-  VLOG(0) << "(DetermineElasticity) After the GetLastTFNodeMetricsByDatasetKey size get";
+  VLOG(0) << "(DetermineElasticity) After the GetLastTFNodeMetricsByDatasetKey size get " << num_workers;
   DCHECK(num_workers > 0);
   VLOG(0) << "(DetermineElasticity) After the GetLastTFNodeMetricsByDatasetKey size check";
 
