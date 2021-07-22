@@ -132,6 +132,7 @@ Status DetermineJobType(const experimental::DispatcherConfig& dispatcher_config,
   if(dispatcher_config.cache_policy()==2){
     job_type = "COMPUTE";
     return Status::OK();
+  // Caching -------------------------------------------------------------------
   } else if(dispatcher_config.cache_policy()==3){
     if(cache_state.IsDatasetCached(fingerprint)){
       job_type = "GET";
@@ -139,13 +140,27 @@ Status DetermineJobType(const experimental::DispatcherConfig& dispatcher_config,
       job_type = "PUT";
     }
     return Status::OK();
-  } else if(dispatcher_config.cache_policy()==4) {
-    if (cache_state.IsDatasetSourceCached(fingerprint)) {
-      job_type = "GET_SOURCE";
-    } else {
-      job_type = "PUT_SOURCE";
-    }
+  } else if (dispatcher_config.cache_policy() == 30) {
+    job_type = "PUT";
     return Status::OK();
+  } else if (dispatcher_config.cache_policy() == 31) {
+    job_type = "GET";
+    return Status::OK();
+  // Source Caching --------------------------------------------------------------
+  } else if(dispatcher_config.cache_policy()==4) {
+      if (cache_state.IsDatasetSourceCached(fingerprint)) {
+        job_type = "GET_SOURCE";
+      } else {
+        job_type = "PUT_SOURCE";
+      }
+      return Status::OK();
+  } else if (dispatcher_config.cache_policy() == 40) {
+    job_type = "PUT_SOURCE";
+    return Status::OK();
+  } else if (dispatcher_config.cache_policy() == 41) {
+    job_type = "GET_SOURCE";
+    return
+  Status::OK();
   }
   // ---------------------------------------------------------------------------
 
