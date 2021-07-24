@@ -674,7 +674,7 @@ class Node {
 
       // Method which logs the metrics of this object
       void log_metrics() const {
-        VLOG(0) << "(MetricDump) Metrics:\n"
+        VLOG(3) << "(MetricDump) Metrics:\n"
                 << " > bytes_consumed = " << bytes_consumed_ << "\n"
                 << " > bytes_produced = " << bytes_produced_ << "\n"
                 << " > num_elements = " << num_elements_ << "\n"

@@ -343,7 +343,7 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
             // (*metrics)[kComputationTime], 
             (*metrics)[kInNodeTime], (*metrics)[kInPrefixTime]);
 
-          VLOG(0) << "(Dispatcher::WorkerHeartbeat) Metrics for node " 
+          VLOG(3) << "(Dispatcher::WorkerHeartbeat) Metrics for node " 
                   << task.mutable_nodes(j)->name();
           node_metrics.log_metrics();
 

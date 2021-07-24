@@ -90,7 +90,7 @@ class NodeMetrics {
         double in_prefix_time_ms()   { return in_prefix_time_ms_; }
 
         void log_metrics() {
-          VLOG(0) << "(MetadataStore::NodeMetrics) Metrics:\n"
+          VLOG(3) << "(MetadataStore::NodeMetrics) Metrics:\n"
                   << " > bytes_consumed = " << bytes_consumed_ << "\n"
                   << " > bytes_produced = " << bytes_produced_ << "\n"
                   << " > num_elements = " << num_elements_ << "\n"
