@@ -324,6 +324,10 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         inter_arrival_times_.push_back(start_us - last_get_next_end_us_);
       }
 
+      VLOG(0) << "(Thread " << std::this_thread::get_id() 
+              << ") The inter_arrival_time is " 
+              << inter_arrival_times_.back(); 
+
       bool skip = true;
       while (skip) {
         while ((results_.empty() || !results_.front().ready) && !Finished() &&
@@ -620,7 +624,6 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         VLOG(3) << "EASL - client heartbeat: still no elements processed.";
       }
 
-
       // EASL - gather stats for dispatcher
       double get_next_processing_time = 0.0;
       double avg_get_next_inter_arrival_time = 0.0;
@@ -641,6 +644,34 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         VLOG(0) << " EASL - Dataservice client heartbeat element "
                    "counter: " <<
                 tf_data_num_elements_counter->value();*/
+
+        // Do a BFS of the client-side graph
+        auto output = model->output();  
+        if (output) {
+          std::deque<std::shared_ptr<tensorflow::data::model::Node>> queue;
+          queue.push_back(output);
+
+          VLOG(0) << "(Heartbeat) Starting BFS";
+          while(!queue.empty()) {
+            auto node = queue.front();
+            queue.pop_front();
+
+            for (auto input : node->inputs()) {
+              queue.push_back(input);
+            }
+      
+            VLOG(0) << "(Heartbeat) We're at current node "
+                    << node->long_name() << " with wait time " 
+                    << node->pause_time() << " ms";
+
+            // if (node->output()) {
+            //   VLOG(0) << "Output of node " << node->long_name() << " --> "
+            //           << node->output()->long_name() << " with wait time "
+            //           << node->output()->pause_time() / EnvTime::kMillisToNanos << " ms"; 
+            // }
+          }
+          VLOG(0) << "(Heartbeat) Ending BFS";
+        }
 
         get_next_processing_time = node_->SelfProcessingTime();
         VLOG(3) << "num_elements:"
@@ -665,8 +696,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       // Fill up the metadata fields in the heartbeat request
       req.set_avg_get_next_processing_time(get_next_processing_time / 
         EnvTime::kMillisToNanos);
-      req.set_avg_inter_arrival_time(avg_get_next_inter_arrival_time / 
-        EnvTime::kMillisToMicros);
+      req.set_avg_inter_arrival_time(model->output()->pause_time());
+      // req.set_avg_inter_arrival_time(avg_get_next_inter_arrival_time / 
+      //   EnvTime::kMillisToMicros);
 
       req.set_job_client_id(job_client_id_);
       if (StrictRoundRobin()) {

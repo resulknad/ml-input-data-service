@@ -162,7 +162,9 @@ class Node {
         processing_time_(0),
         record_metrics_(true),
         metrics_(name_),
-        output_(args.output.get()) {}
+        output_(args.output.get()),
+        pause_time_ms_(-1),
+        last_end_time_ns_(-1) {}
 
   virtual ~Node() {
     // Clear the sub-nodes instead of relying on implicit shared pointer
@@ -269,6 +271,11 @@ class Node {
     return processing_time_;
   }
 
+  // Returns the time in nanoseconds in between calls to GetNext
+  int64 pause_time() const {
+    return pause_time_ms_;
+  }
+
   // Records that the node consumed the given number of bytes.
   void record_bytes_consumed(int64 num_bytes) { bytes_consumed_ += num_bytes; }
 
@@ -290,6 +297,13 @@ class Node {
   void record_start(int64 time_nanos) TF_LOCKS_EXCLUDED(mu_) {
     DCHECK_EQ(work_start_, 0);
     work_start_ = time_nanos;
+
+    // EASL - Record the pause time; use hack and don't record cached calls
+    if (last_end_time_ns_ != -1 && 
+      (time_nanos - last_end_time_ns_) / EnvTime::kMillisToNanos > 0) {
+      pause_time_ms_ = (time_nanos - last_end_time_ns_) 
+        / EnvTime::kMillisToNanos;
+    }
   }
 
   // Records that a node thread has stopped executing.
@@ -298,6 +312,8 @@ class Node {
     if (work_start_ != 0) {
       processing_time_ += time_nanos - work_start_;
       work_start_ = 0;
+      // EASL - Storing the wall clock time when the record_stop was last called
+      last_end_time_ns_ = time_nanos;
     } else {
       VLOG(1) << "Encountered a stop event without a matching start event.";
     }
@@ -574,6 +590,10 @@ class Node {
   // on thread `t`, then `n->record_stop()` must be called before another call
   // to `Node::record_start()` (for any node).
   static thread_local int64 work_start_;  // Will be initialized to zero.
+
+  // Stores the time sonce 
+  int64 pause_time_ms_; 
+  int64 last_end_time_ns_;
 
   mutable mutex mu_;
   const int64 id_;
