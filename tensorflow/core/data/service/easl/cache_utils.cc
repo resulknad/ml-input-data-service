@@ -22,6 +22,13 @@ namespace service {
 namespace easl {
 namespace cache_utils {
 
+namespace {
+  // Represents an offset which is subtracted from the non-rounded up worker count
+  // This offset tries to avoid cases where a value such as 4.02 provisions 
+  // 5 workers and not 4, as woul be ideal
+  double worker_count_alpha_ = 0.1;
+}
+
 Status DoBFS(NodeDef* sink_node, GraphDef& graph_def, string prefix) {
   absl::flat_hash_set<std::string> visited;
   std::queue<NodeDef*> bfs_queue;
@@ -286,7 +293,8 @@ Status DetermineElasticity(
             << avg_worker_throughput;
 
     // Infer the number of workers required to sustain the model
-    worker_count = ceil(client_throughput / avg_worker_throughput);
+    worker_count = std::max<int64>(ceil(client_throughput / avg_worker_throughput - 
+      worker_count_alpha_), 1);
   } else {
     VLOG(0) << "(DetermineElasticity) In GET branch."; 
 
@@ -325,8 +333,9 @@ Status DetermineElasticity(
             << tf_nodes_overhead_ms;
 
     // Infer the worker count for the cache GET use case
-    worker_count = ceil(client_throughput * (cache_read_time_per_row_ms 
-      + tf_nodes_overhead_ms) / 1000.0);
+    worker_count = std::max<int64>(ceil(client_throughput * 
+      (cache_read_time_per_row_ms + tf_nodes_overhead_ms) 
+      / 1000.0 - worker_count_alpha_), 1);
   }
   VLOG(0) << "(DetermineElasticity) Inferred workers " << worker_count;
   
