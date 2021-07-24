@@ -663,12 +663,6 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             VLOG(0) << "(Heartbeat) We're at current node "
                     << node->long_name() << " with wait time " 
                     << node->pause_time() << " ms";
-
-            // if (node->output()) {
-            //   VLOG(0) << "Output of node " << node->long_name() << " --> "
-            //           << node->output()->long_name() << " with wait time "
-            //           << node->output()->pause_time() / EnvTime::kMillisToNanos << " ms"; 
-            // }
           }
           VLOG(0) << "(Heartbeat) Ending BFS";
         }
@@ -697,6 +691,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       req.set_avg_get_next_processing_time(get_next_processing_time / 
         EnvTime::kMillisToNanos);
       req.set_avg_inter_arrival_time(model->output()->pause_time());
+      VLOG(0) << "(Heartbeat) Last node name: " << model->output()->long_name(); 
       // req.set_avg_inter_arrival_time(avg_get_next_inter_arrival_time / 
       //   EnvTime::kMillisToMicros);
 

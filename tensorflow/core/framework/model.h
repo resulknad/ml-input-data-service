@@ -297,13 +297,6 @@ class Node {
   void record_start(int64 time_nanos) TF_LOCKS_EXCLUDED(mu_) {
     DCHECK_EQ(work_start_, 0);
     work_start_ = time_nanos;
-
-    // EASL - Record the pause time; use hack and don't record cached calls
-    if (last_end_time_ns_ != -1 && 
-      (time_nanos - last_end_time_ns_) / EnvTime::kMillisToNanos > 0) {
-      pause_time_ms_ = (time_nanos - last_end_time_ns_) 
-        / EnvTime::kMillisToNanos;
-    }
   }
 
   // Records that a node thread has stopped executing.
@@ -312,10 +305,19 @@ class Node {
     if (work_start_ != 0) {
       processing_time_ += time_nanos - work_start_;
       work_start_ = 0;
-      // EASL - Storing the wall clock time when the record_stop was last called
-      last_end_time_ns_ = time_nanos;
     } else {
       VLOG(1) << "Encountered a stop event without a matching start event.";
+    }
+  }
+
+  void record_pause_start(int64 time_nanos) TF_LOCKS_EXCLUDED(mu_) {
+    last_end_time_ns_ = time_nanos;
+  }
+
+  void record_pause_end(int64 time_nanos) TF_LOCKS_EXCLUDED(mu_) {
+    if (last_end_time_ns_ != -1) {
+      pause_time_ms_ = (time_nanos - last_end_time_ns_) 
+        / EnvTime::kMillisToNanos;
     }
   }
 
