@@ -354,6 +354,9 @@ void MultiThreadedAsyncReader::Consume(string* s, bool* end_of_sequence) {
 }
 
 bool MultiThreadedAsyncReader::ProducerSpaceAvailable() {
+  VLOG(3) << "ProducerSpaceAvailable, checking: deque_.size(): "
+  << deque_.size() << " bytes_per_element_ " << bytes_per_element_
+  << "producer_threshold " << producer_threshold_;
   return (deque_.size() * bytes_per_element_) < producer_threshold_;
 }
 
