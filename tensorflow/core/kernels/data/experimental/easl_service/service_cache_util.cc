@@ -357,7 +357,11 @@ bool MultiThreadedAsyncReader::ProducerSpaceAvailable() {
   VLOG(3) << "ProducerSpaceAvailable, checking: deque_.size(): "
   << deque_.size() << " bytes_per_element_ " << bytes_per_element_
   << "producer_threshold " << producer_threshold_;
-  return (deque_.size() * bytes_per_element_) < producer_threshold_;
+  if (!first_row_info_set_){
+    return true;
+  } else {
+    return (deque_.size() * bytes_per_element_) < producer_threshold_;
+  }
 }
 
 void MultiThreadedAsyncReader::Add(std::vector<Tensor>& tensors) {
