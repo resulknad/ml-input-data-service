@@ -145,6 +145,7 @@ class MultiThreadedAsyncReader {
   void Consume(string* s, bool* end_of_sequence) TF_LOCKS_EXCLUDED(mu_);
   void Add(std::vector<Tensor>& tensors)  TF_LOCKS_EXCLUDED(mu_add_);
   void ReaderDone();
+  bool ElementAvailable();
   virtual Status ReaderThread(Env *env, uint64 writer_id, int64 version,
       DataTypeVector output_types, std::vector<PartialTensorShape> output_shapes);
 

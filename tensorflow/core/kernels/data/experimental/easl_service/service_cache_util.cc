@@ -381,8 +381,6 @@ void MultiThreadedAsyncReader::Add(std::vector<Tensor>& tensors) {
   element.value = tensors;
   element.end_of_sequence = false;
   deque_.push_back(std::move(element));
-
-  read_cv_.notify_one();
 }
 
 
@@ -390,8 +388,6 @@ void MultiThreadedAsyncReader::ReaderDone() {
   snapshot_util::ElementOrEOF element;
   element.end_of_sequence = true;
   deque_.push_back(std::move(element));
-
-  read_cv_.notify_one();
 }
 
 Status MultiThreadedAsyncReader::ReaderThread(Env *env, uint64 writer_id, int64 version,
@@ -451,10 +447,13 @@ Status MultiThreadedAsyncReader::Read(std::vector<Tensor>* &read_tensors, bool* 
 
   VLOG(3) << "(Reader) Task is getting invoked... Reading ";
   while(true){
+    mu_add_.Await(tensorflow::Condition(this,
+                                    &MultiThreadedAsyncReader::ElementAvailable));
     if(!deque_.empty()) {
       snapshot_util::ElementOrEOF& element = deque_.front();
 
       if(element.end_of_sequence){
+        VLOG(0) << "End of sequence element, checking num_readers_done_";
         num_readers_done_++;
         deque_.pop_front();
 
@@ -464,6 +463,7 @@ Status MultiThreadedAsyncReader::Read(std::vector<Tensor>* &read_tensors, bool* 
           return Status::OK();
         }
       } else {
+        VLOG(3) << "Something to read in the queue...";
         for( auto tensor : element.value ){
           read_tensors->push_back(tensor);
         }
@@ -474,9 +474,10 @@ Status MultiThreadedAsyncReader::Read(std::vector<Tensor>* &read_tensors, bool* 
     }
     // Readers are not done, waiting on data...
     VLOG(3) << "(Reader) Task could not read, waiting... ";
-    read_cv_.wait(l);
   }
 }
+
+bool MultiThreadedAsyncReader::ElementAvailable(){ return !deque_.empty(); }
 
 MultiThreadedAsyncReader::~MultiThreadedAsyncReader(){}
 
