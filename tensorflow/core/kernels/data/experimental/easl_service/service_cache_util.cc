@@ -381,8 +381,8 @@ void MultiThreadedAsyncReader::Add(std::vector<Tensor>& tensors) {
           << deque_.size() << "  of max:  "
           << producer_threshold_ / bytes_per_element_;
   
-  //mu_add_.Await(Condition(this,
-    //&MultiThreadedAsyncReader::ProducerSpaceAvailable));
+  mu_add_.Await(Condition(this,
+    &MultiThreadedAsyncReader::ProducerSpaceAvailable));
 
   VLOG(3) << "Add could write to queue";
 
@@ -398,9 +398,9 @@ void MultiThreadedAsyncReader::ReaderDone() {
   element.end_of_sequence = true;
 
   VLOG(3) << "ReaderDone trying to write to queue";
-
-  //mu_add_.Await(Condition(this,
-                          //&MultiThreadedAsyncReader::ProducerSpaceAvailable));
+  mutex_lock l(mu_add_);
+  mu_add_.Await(Condition(this,
+                          &MultiThreadedAsyncReader::ProducerSpaceAvailable));
   VLOG(3) << "ReaderDone could write to queue";
 
   deque_.push_back(std::move(element));
