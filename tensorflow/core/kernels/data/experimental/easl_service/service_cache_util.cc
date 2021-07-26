@@ -152,7 +152,7 @@ void MultiThreadedAsyncWriter::Write(const std::vector<Tensor>& tensors) {
     first_row_info_set_ = true;
   }
   mutex_lock l(mu_);
-  VLOG(3) << "****************** Reader Queue Size: " << deque_.size() 
+  VLOG(3) << "****************** Writer Queue Size: " << deque_.size()
           << "  of max:  " << producer_threshold_ / bytes_per_row_;
   mu_.Await(Condition(this,
             &MultiThreadedAsyncWriter::ProducerSpaceAvailable));
@@ -283,7 +283,7 @@ MultiThreadedAsyncReader::MultiThreadedAsyncReader(Env *env,
   const std::vector<PartialTensorShape> &output_shapes, const int reader_count)
     : env_(env), split_provider_(nullptr), output_dtypes_(output_dtypes), 
     output_shapes_(output_shapes), target_dir_(target_dir), 
-    reader_count_(reader_count), tensors_(), num_readers_done_(0) {}
+    reader_count_(reader_count), num_readers_done_(0) {}
 
 MultiThreadedAsyncReader::MultiThreadedAsyncReader(Env *env, 
   std::shared_ptr<SplitProvider> split_provider,
@@ -291,7 +291,7 @@ MultiThreadedAsyncReader::MultiThreadedAsyncReader(Env *env,
   const std::vector<PartialTensorShape> &output_shapes, const int reader_count)
     : env_(env), split_provider_(split_provider), output_dtypes_(output_dtypes), 
     output_shapes_(output_shapes), target_dir_(target_dir), 
-    reader_count_(reader_count), tensors_(), num_readers_done_(0) {}
+    reader_count_(reader_count), num_readers_done_(0) {}
 
 Status MultiThreadedAsyncReader::Initialize() {
   // Don't use metadata file at the moment...
@@ -354,30 +354,42 @@ void MultiThreadedAsyncReader::Consume(string* s, bool* end_of_sequence) {
 }
 
 bool MultiThreadedAsyncReader::ProducerSpaceAvailable() {
-  return (tensors_.size() * bytes_per_tensor_) < producer_threshold_;
+  return (deque_.size() * bytes_per_element_) < producer_threshold_;
 }
 
 void MultiThreadedAsyncReader::Add(std::vector<Tensor>& tensors) {
   VLOG(3) << "EASL - entering read - Add";
   mutex_lock l(mu_add_);
+
   if(!first_row_info_set_) {
     uint64 bytes_per_row = 0;
     for (Tensor t : tensors) {
       bytes_per_row += t.TotalBytes();
     }
-    bytes_per_tensor_ = uint64(bytes_per_row / tensors.size());  // TODO: this is an entire division, might need an update.
-    VLOG(3) << "EASL - set bytes per tensor: " << bytes_per_tensor_;
+    bytes_per_element_ = bytes_per_row;
+    VLOG(3) << "EASL - set bytes per row: " << bytes_per_element_;
     first_row_info_set_ = true;
   }
   VLOG(3) << "****************** Reader Queue Size: " 
-          << tensors_.size() << "  of max:  " 
-          << producer_threshold_ / bytes_per_tensor_;
+          << deque_.size() << "  of max:  "
+          << producer_threshold_ / bytes_per_element_;
   
   mu_add_.Await(Condition(this, 
     &MultiThreadedAsyncReader::ProducerSpaceAvailable));
-  
-  for (const auto& t : tensors)
-    tensors_.push_back(t);
+
+  snapshot_util::ElementOrEOF element;
+  element.value = tensors;
+  element.end_of_sequence = false;
+  deque_.push_back(std::move(element));
+
+  read_cv_.notify_one();
+}
+
+
+void MultiThreadedAsyncReader::ReaderDone() {
+  snapshot_util::ElementOrEOF element;
+  element.end_of_sequence = true;
+  deque_.push_back(std::move(element));
 
   read_cv_.notify_one();
 }
@@ -427,9 +439,7 @@ Status MultiThreadedAsyncReader::ReaderThread(Env *env, uint64 writer_id, int64 
     }
   }
 
-  mutex_lock l(mu_add_);
-  num_readers_done_++;
-  read_cv_.notify_one();
+  ReaderDone();
 
   VLOG(3) << "(Reader_" << writer_id << ") Finishing reading task";
   return Status::OK();
@@ -438,38 +448,34 @@ Status MultiThreadedAsyncReader::ReaderThread(Env *env, uint64 writer_id, int64 
 Status MultiThreadedAsyncReader::Read(std::vector<Tensor>* &read_tensors, bool* end_of_sequence) {
   mutex_lock l(mu_add_);
   *end_of_sequence = false;
-  int64 n = output_dtypes_.size();
 
-  VLOG(3) << "(Reader) Task is getting invoked... Reading " << n;
+  VLOG(3) << "(Reader) Task is getting invoked... Reading ";
   while(true){
-    if(!tensors_.empty()) {
-      while (n > 0) {
-        n--;
-        read_tensors->push_back(tensors_.front());
-        tensors_.pop_front();
-      }
-        //VLOG(3) << "(Reader) Task - left to read" << n;
-      return Status::OK();
-    } else {
-      if(num_readers_done_ == reader_count_){
-        *end_of_sequence = true;
-        
-        VLOG(3) << "(Reader) End of sequence reached, returning empty.";
+    if(!deque_.empty()) {
+      snapshot_util::ElementOrEOF& element = deque_.front();
+
+      if(element.end_of_sequence){
+        num_readers_done_++;
+        deque_.pop_front();
+
+        if(num_readers_done_ == reader_count_){
+          *end_of_sequence = true;
+          VLOG(3) << "(Reader) End of sequence reached, returning empty.";
+          return Status::OK();
+        }
+      } else {
+        for( auto tensor : element.value ){
+          read_tensors->push_back(tensor);
+        }
+        deque_.pop_front();
+        *end_of_sequence = false;
         return Status::OK();
       }
-      // Readers are not done, waiting on data...
-      VLOG(3) << "(Reader) Task could not read, waiting... ";
-      read_cv_.wait(l);
     }
+    // Readers are not done, waiting on data...
+    VLOG(3) << "(Reader) Task could not read, waiting... ";
+    read_cv_.wait(l);
   }
-  
-  /*
-  if (num_readers_done_ == reader_count_) {
-    *end_of_sequence = true;
-    VLOG(3) << "(Reader) End of sequence reached, returning last tensors.";
-    return Status::OK();
-  }
-  return Status::OK();*/
 }
 
 MultiThreadedAsyncReader::~MultiThreadedAsyncReader(){}

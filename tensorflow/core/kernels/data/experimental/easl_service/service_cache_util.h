@@ -144,6 +144,7 @@ class MultiThreadedAsyncReader {
   Status ReadAndParseMetadataFile();
   void Consume(string* s, bool* end_of_sequence) TF_LOCKS_EXCLUDED(mu_);
   void Add(std::vector<Tensor>& tensors)  TF_LOCKS_EXCLUDED(mu_add_);
+  void ReaderDone();
   virtual Status ReaderThread(Env *env, uint64 writer_id, int64 version,
       DataTypeVector output_types, std::vector<PartialTensorShape> output_shapes);
 
@@ -157,11 +158,11 @@ class MultiThreadedAsyncReader {
   bool ProducerSpaceAvailable() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   const uint64 producer_threshold_ = 1e9;  // allow producer queue to hold 1 GB
   bool first_row_info_set_ = false;
-  uint64 bytes_per_tensor_ = 0;
+  uint64 bytes_per_element_ = 0;
 
     //   std::unique_ptr<snapshot_util::Reader> reader_;
   std::deque<string> file_names_ TF_GUARDED_BY(mu_);
-  std::deque<Tensor> tensors_ TF_GUARDED_BY(mu_add_);
+  std::deque<snapshot_util::ElementOrEOF> deque_ TF_GUARDED_BY(mu_add_);
   std::unique_ptr<thread::ThreadPool> thread_pool_;
   std::shared_ptr<SplitProvider> split_provider_;
 };
