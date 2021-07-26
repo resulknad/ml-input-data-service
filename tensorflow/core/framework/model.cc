@@ -1688,11 +1688,14 @@ Model::ModelMetrics Model::CollectMetrics() {
     std::make_shared<absl::flat_hash_map<string, Node::MetricDump>>(); 
   std::deque<std::shared_ptr<Node>> queue;
   std::deque<std::shared_ptr<Node>> stack;
-  std::string last_node_name = "";
+  // This is the name of the last user node
+  std::string last_node_name = ""; 
+  // This is the name of the last node (after the user node) added by tf
+  std::string last_tf_node_name = "";
   Node::NodeValues node_times;
   Node::NodeValues final_times;
 
-  VLOG(4) << "EASL - Trying to collect metrics";
+  VLOG(0) << "EASL - Trying to collect metrics";
 
   FlushMetrics();
   {
@@ -1702,10 +1705,12 @@ Model::ModelMetrics Model::CollectMetrics() {
       output_->TotalProcessingTime(&node_times);
       final_times = Node::NodeValues(node_times);
       last_node_name = output_->inputs().front()->inputs().front()->long_name();
+      last_tf_node_name = output_->long_name();
     }
   }
 
-  VLOG(4) << "last node name " << last_node_name;
+  VLOG(0) << "(CollectMetrics) Last node name " << last_node_name;
+  VLOG(0) << "(CollectMetrics) Last TF node name " << last_tf_node_name;
 
   while (!queue.empty()) {
     auto node = queue.front();
@@ -1723,6 +1728,7 @@ Model::ModelMetrics Model::CollectMetrics() {
     node_metrics.set_in_node_time(node_times[node->long_name()] / 
       EnvTime::kMillisToNanos);
     node_metrics.set_last_node_name(last_node_name);
+    node_metrics.set_last_tf_node_name(last_tf_node_name);
     metrics->insert({node->long_name(), node_metrics});
   }
 
@@ -1743,7 +1749,7 @@ Model::ModelMetrics Model::CollectMetrics() {
       EnvTime::kMillisToNanos);
   }
 
-  VLOG(4) << "EASL - Done collecting metrics, returning";
+  VLOG(0) << "EASL - Done collecting metrics, returning";
 
 
   // Debug code below

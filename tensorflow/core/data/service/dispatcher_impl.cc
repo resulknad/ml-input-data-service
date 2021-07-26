@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/journal.h"
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
 #include "tensorflow/core/data/service/easl/cache_utils.h"
+#include "tensorflow/core/data/service/easl/metadata_store.h"
 #include "tensorflow/core/data/standalone.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -81,7 +82,7 @@ constexpr std::array<const char*, 8> kNodeNameSharingOps = {
 constexpr const char kBytesConsumed[] = "bytes_consumed";
 constexpr const char kBytesProduced[] = "bytes_produced";
 constexpr const char kNumElements[] = "num_elements";
-constexpr const char kComputationTime[] = "computation_time";
+// constexpr const char kComputationTime[] = "computation_time";
 constexpr const char kInNodeTime[] = "in_node_time";
 constexpr const char kInPrefixTime[] = "in_prefix_time";
 
@@ -327,22 +328,28 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
     if (s.ok()) {
       auto job_id = task_object->job->job_id;
       std::string last_node_name = task.last_node_name();
-      s = metadata_store_.UpdateLastNode(job_id, last_node_name);
+      std::string last_tf_node_name = task.last_tf_node_name();
+      s = metadata_store_.UpdateLastNodes(job_id, last_node_name, 
+        last_tf_node_name);
       if(!s.ok()){
         // Ignore metrics if job has already been removed from metadata store.
         // Otherwise return status error.
         if(!errors::IsNotFound(s)){ return s; }
       } else {
         for (int j = 0; j < task.nodes_size(); ++j) {
-        auto metrics = task.mutable_nodes(j)->mutable_metrics();
-        easl::NodeMetrics::Metrics node_metrics((*metrics)[kBytesConsumed], 
-          (*metrics)[kBytesProduced], (*metrics)[kNumElements], 
-          (*metrics)[kComputationTime], (*metrics)[kInNodeTime], 
-          (*metrics)[kInPrefixTime]);
+          auto metrics = task.mutable_nodes(j)->mutable_metrics();
+          easl::NodeMetrics::Metrics node_metrics((*metrics)[kBytesConsumed], 
+            (*metrics)[kBytesProduced], (*metrics)[kNumElements], 
+            // (*metrics)[kComputationTime], 
+            (*metrics)[kInNodeTime], (*metrics)[kInPrefixTime]);
 
-        TF_RETURN_IF_ERROR(metadata_store_.UpdateInputPipelineMetrics(job_id, 
-          task.mutable_nodes(j)->name(), request->worker_address(), 
-          node_metrics));
+          VLOG(3) << "(Dispatcher::WorkerHeartbeat) Metrics for node " 
+                  << task.mutable_nodes(j)->name();
+          node_metrics.log_metrics();
+
+          TF_RETURN_IF_ERROR(metadata_store_.UpdateInputPipelineMetrics(job_id, 
+            task.mutable_nodes(j)->name(), request->worker_address(), 
+            node_metrics));
         }
       } 
     }
@@ -754,6 +761,7 @@ Status DataServiceDispatcherImpl::CreateJob(
   int64 job_id = state_.NextAvailableJobId();
 
   // EASL - Caching decision: should the job compute, write or read from cache?
+  int64 worker_count;
   std::string job_type;
   std::shared_ptr<const Dataset> dataset;
   TF_RETURN_IF_ERROR(state_.DatasetFromId(dataset_id, dataset));
@@ -763,16 +771,20 @@ Status DataServiceDispatcherImpl::CreateJob(
   service::easl::cache_utils::DetermineJobType(
       config_, cache_state_, metadata_store_, dataset_fingerprint,
       compute_dataset_key, job_id, job_type);
+  VLOG(0) << "EASL - Caching decision for dataset_key " 
+            << compute_dataset_key << ": " << job_type;
 
-  VLOG(0) << "EASL - Caching decision for dataset_key " <<
-  compute_dataset_key << ": " << job_type;
+  // Infer the worker count for  this job and job type
+  TF_RETURN_IF_ERROR(service::easl::cache_utils::DetermineElasticity(job_type, 
+      config_, metadata_store_, compute_dataset_key, worker_count)); 
+  VLOG(0) << "EASL - Scalability decision for dataset_key "
+          << compute_dataset_key << ": " << worker_count;
 
   // EASL add job entry to metadata store
   std::string dataset_key = service::easl::cache_utils::DatasetKey(
     dataset->dataset_id, dataset->fingerprint, job_type);
   TF_RETURN_IF_ERROR(metadata_store_.CreateJob(job_id, dataset->dataset_id,
-                              dataset->fingerprint, dataset_key));
-
+                              dataset->fingerprint, dataset_key, worker_count));
 
   int64 num_split_providers = 0;
   if (processing_mode == ProcessingMode::DISTRIBUTED_EPOCH) {
@@ -803,7 +815,8 @@ Status DataServiceDispatcherImpl::CreateJob(
 
 Status DataServiceDispatcherImpl::CreateTasksForWorker(
     const std::string& worker_address) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  std::vector<std::shared_ptr<const Job>> jobs = state_.ListJobsForWorker(worker_address);
+  std::vector<std::shared_ptr<const Job>> jobs = state_.ListJobsForWorker(
+    worker_address);
   for (const auto& job : jobs) {
     if (job->finished) {
       continue;
@@ -835,12 +848,10 @@ Status DataServiceDispatcherImpl::CreateTasksForJob(
     std::shared_ptr<const Job> job,
     std::vector<std::shared_ptr<const Task>>& tasks)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  // Find the next available workers and assign them to this job.
-  // By default, start by using a single worker for initial metric collection run. 
-  // TODO(easl): Implement policy to decide the number of workers for a job.
-  int num_workers = 0; // 0 -> This will mean we reserve all available workers  
+  std::shared_ptr<easl::JobMetrics> metrics;
+  metadata_store_.GetJobMetrics(job->job_id, metrics);
   std::vector<std::shared_ptr<Worker>> workers = state_.ReserveWorkers(
-    job->job_id, num_workers);
+    job->job_id, metrics->worker_count_);
   tasks.clear();
   tasks.reserve(workers.size());
   for (auto& worker : workers) {

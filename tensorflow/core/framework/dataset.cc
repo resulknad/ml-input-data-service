@@ -803,8 +803,11 @@ Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
     auto output = node_->output();
     if (output) {
       output->record_stop(now_nanos);
-    }
+    }    
     node_->record_start(now_nanos);
+
+    // EASL - Adding call to logic which tracks time between GetNext
+    node_->record_pause_end(now_nanos);
   }
   Status s = GetNextInternal(ctx, out_tensors, end_of_sequence);
   if (TF_PREDICT_TRUE(s.ok() && !*end_of_sequence)) {
@@ -818,6 +821,8 @@ Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
     if (output) {
       output->record_start(now_nanos);
     }
+    // EASL - Adding call to logic which tracks time between GetNext
+    node_->record_pause_start(now_nanos);
   }
   if (TF_PREDICT_FALSE(errors::IsOutOfRange(s))) {
     s = errors::Internal("Iterator \"", params_.prefix,

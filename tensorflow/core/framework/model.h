@@ -162,7 +162,9 @@ class Node {
         processing_time_(0),
         record_metrics_(true),
         metrics_(name_),
-        output_(args.output.get()) {}
+        output_(args.output.get()),
+        pause_time_ms_(-1),
+        last_end_time_ns_(-1) {}
 
   virtual ~Node() {
     // Clear the sub-nodes instead of relying on implicit shared pointer
@@ -269,6 +271,11 @@ class Node {
     return processing_time_;
   }
 
+  // Returns the time in nanoseconds in between calls to GetNext
+  int64 pause_time() const {
+    return pause_time_ms_;
+  }
+
   // Records that the node consumed the given number of bytes.
   void record_bytes_consumed(int64 num_bytes) { bytes_consumed_ += num_bytes; }
 
@@ -300,6 +307,17 @@ class Node {
       work_start_ = 0;
     } else {
       VLOG(1) << "Encountered a stop event without a matching start event.";
+    }
+  }
+
+  void record_pause_start(int64 time_nanos) TF_LOCKS_EXCLUDED(mu_) {
+    last_end_time_ns_ = time_nanos;
+  }
+
+  void record_pause_end(int64 time_nanos) TF_LOCKS_EXCLUDED(mu_) {
+    if (last_end_time_ns_ != -1) {
+      pause_time_ms_ = (time_nanos - last_end_time_ns_) 
+        / EnvTime::kMillisToNanos;
     }
   }
 
@@ -575,6 +593,10 @@ class Node {
   // to `Node::record_start()` (for any node).
   static thread_local int64 work_start_;  // Will be initialized to zero.
 
+  // Stores the time sonce 
+  int64 pause_time_ms_; 
+  int64 last_end_time_ns_;
+
   mutable mutex mu_;
   const int64 id_;
   const string name_;
@@ -620,6 +642,7 @@ class Node {
     double in_node_time_;
     double in_prefix_time_;
     std::string last_node_name_; 
+    std::string last_tf_node_name_;
     
     public:
       explicit MetricDump(const Node::Metrics& metrics)
@@ -629,7 +652,8 @@ class Node {
             computation_time_(metrics.recorded_computation_time_),
             in_node_time_(0.0),
             in_prefix_time_(0.0),
-            last_node_name_("") {}
+            last_node_name_(""),
+            last_tf_node_name_("") {}
 
       const int64 bytes_consumed() const { return bytes_consumed_; }
       const int64 bytes_produced() const { return bytes_produced_; }
@@ -645,15 +669,20 @@ class Node {
       // Methods for getting and setting the last node name
       void set_last_node_name(std::string x) { last_node_name_ = x; }
       std::string last_node_name() { return last_node_name_; }
+      void set_last_tf_node_name(std::string x) { last_tf_node_name_ = x; }
+      std::string last_tf_node_name() { return last_tf_node_name_; }
 
       // Method which logs the metrics of this object
       void log_metrics() const {
-        VLOG(1) << " > bytes_consumed = " << bytes_consumed_ << "\n"
+        VLOG(3) << "(MetricDump) Metrics:\n"
+                << " > bytes_consumed = " << bytes_consumed_ << "\n"
                 << " > bytes_produced = " << bytes_produced_ << "\n"
                 << " > num_elements = " << num_elements_ << "\n"
                 << " > computation_time = " << computation_time_ << "\n"
                 << " > in_node_time = " << in_node_time_ << "\n"
-                << " > in_prefix_time = " << in_prefix_time_;
+                << " > in_prefix_time = " << in_prefix_time_ << "\n"
+                << " > last_node_name = " << last_node_name_ << "\n"
+                << " > last_tf_node_name = " << last_tf_node_name_;
       }
   };
 

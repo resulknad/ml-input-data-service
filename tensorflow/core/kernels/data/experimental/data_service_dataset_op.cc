@@ -317,13 +317,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       EnsureThreadsStarted(ctx);
 
       // EASL - metrics collection
+      ++num_elements_;
       bool hadToWait = false;
       int64 start_us = Env::Default()->NowMicros();
-      if(num_elements_++ > 0){
-        inter_arrival_times_.pop_front();
-        inter_arrival_times_.push_back(start_us - last_get_next_end_us_);
-      }
-
       bool skip = true;
       while (skip) {
         while ((results_.empty() || !results_.front().ready) && !Finished() &&
@@ -385,17 +381,15 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       }
 
       // EASL - metrics logging.
-      int64 end_us = Env::Default()->NowMicros();
-      int64 wait_us = end_us - start_us;
+      int64 wait_us = Env::Default()->NowMicros() - start_us;
       VLOG(3) << "EASL, data_service_client, GetNextInternal, "
-        << wait_us << ", " << hadToWait;
+              << wait_us << ", " << hadToWait;
 
       results_.pop();
       // TODO (damien-aymon) remove wait, was just for testing.
       // std::this_thread::sleep_for(std::chrono::seconds(1));
       worker_thread_cv_.notify_one();
 
-      last_get_next_end_us_ = Env::Default()->NowMicros();
       return Status::OK();
     }
 
@@ -620,11 +614,6 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         VLOG(3) << "EASL - client heartbeat: still no elements processed.";
       }
 
-
-      // EASL - gather stats for dispatcher
-      double get_next_processing_time = 0.0;
-      double avg_get_next_inter_arrival_time = 0.0;
-
       // We get processing time computed by the model, from the metrics counters
       auto model = ctx->model();
       if (model){
@@ -642,32 +631,28 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
                    "counter: " <<
                 tf_data_num_elements_counter->value();*/
 
-        get_next_processing_time = node_->SelfProcessingTime();
+        // Set the batch time in ms
+        if (model->output()) {
+          req.set_avg_inter_arrival_time(model->output()->pause_time());
+          VLOG(3) << "(Heartbeat) Last node name: " 
+                  << model->output()->long_name(); 
+        }
+
+        // Set the wait time for a GetNext response in ms
+        req.set_avg_get_next_processing_time(node_->SelfProcessingTime() / 
+          EnvTime::kMillisToNanos);
+
         VLOG(3) << "num_elements:"
           << node_->num_elements()
-          << " processing_time:"
+          << "\nprocessing_time:"
           << node_->processing_time()
-          << " selfProcessingTime():"
-          << get_next_processing_time;
+          << "\ninter_arrival_time:"
+          << req.avg_inter_arrival_time();
       } else {
         VLOG(3) << "There is no model in the data_service_dataset_op...";
       }
-      // We use our own implementation for inter-arrival times.
-      {
-        mutex_lock l(mu_);
-        if(num_elements_ >= min_measurement_count_){
-          for (auto t : inter_arrival_times_) {
-            avg_get_next_inter_arrival_time += t;
-          }
-          avg_get_next_inter_arrival_time /= inter_arrival_times_.size();
-        }
-      }
-      // Fill up the metadata fields in the heartbeat request
-      req.set_avg_get_next_processing_time(get_next_processing_time / 
-        EnvTime::kMillisToNanos);
-      req.set_avg_inter_arrival_time(avg_get_next_inter_arrival_time / 
-        EnvTime::kMillisToMicros);
 
+      // Fill up the metadata fields in the heartbeat request
       req.set_job_client_id(job_client_id_);
       if (StrictRoundRobin()) {
         mutex_lock l(mu_);
@@ -1121,9 +1106,6 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
     // EASL metrics collection
     int64 num_elements_ = 0;
-    int64 last_get_next_end_us_ = 0;
-    int64 min_measurement_count_ = 3;
-    std::deque<int64> inter_arrival_times_ = {0, 0, 0};
   };
 
   const int op_version_;
