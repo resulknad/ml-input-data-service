@@ -377,6 +377,8 @@ void MultiThreadedAsyncReader::Add(std::vector<Tensor>& tensors) {
   mu_add_.Await(Condition(this, 
     &MultiThreadedAsyncReader::ProducerSpaceAvailable));
 
+  VLOG(3) << "Add could write to queue";
+
   snapshot_util::ElementOrEOF element;
   element.value = tensors;
   element.end_of_sequence = false;
@@ -387,6 +389,13 @@ void MultiThreadedAsyncReader::Add(std::vector<Tensor>& tensors) {
 void MultiThreadedAsyncReader::ReaderDone() {
   snapshot_util::ElementOrEOF element;
   element.end_of_sequence = true;
+
+  VLOG(3) << "ReaderDone trying to write to queue";
+
+  mu_add_.Await(Condition(this,
+                          &MultiThreadedAsyncReader::ProducerSpaceAvailable));
+  VLOG(3) << "ReaderDone could write to queue";
+
   deque_.push_back(std::move(element));
 }
 
@@ -447,8 +456,10 @@ Status MultiThreadedAsyncReader::Read(std::vector<Tensor>* &read_tensors, bool* 
 
   VLOG(3) << "(Reader) Task is getting invoked... Reading ";
   while(true){
+    VLOG(3) << "Read - waiting on mutex condition";
     mu_add_.Await(tensorflow::Condition(this,
                                     &MultiThreadedAsyncReader::ElementAvailable));
+    VLOG(3) << "Read - can now get an element from queue";
     if(!deque_.empty()) {
       snapshot_util::ElementOrEOF& element = deque_.front();
 
@@ -468,7 +479,6 @@ Status MultiThreadedAsyncReader::Read(std::vector<Tensor>* &read_tensors, bool* 
           read_tensors->push_back(tensor);
         }
         deque_.pop_front();
-        *end_of_sequence = false;
         return Status::OK();
       }
     }
