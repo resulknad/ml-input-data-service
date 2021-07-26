@@ -291,7 +291,7 @@ MultiThreadedAsyncReader::MultiThreadedAsyncReader(Env *env,
   const std::vector<PartialTensorShape> &output_shapes, const int reader_count)
     : env_(env), split_provider_(split_provider), output_dtypes_(output_dtypes), 
     output_shapes_(output_shapes), target_dir_(target_dir), 
-    reader_count_(reader_count), num_readers_done_(0) {}
+    reader_count_(reader_count), num_readers_done_(0), end_of_sequence_(false) {}
 
 Status MultiThreadedAsyncReader::Initialize() {
   // Don't use metadata file at the moment...
@@ -459,7 +459,10 @@ Status MultiThreadedAsyncReader::ReaderThread(Env *env, uint64 writer_id, int64 
 
 Status MultiThreadedAsyncReader::Read(std::vector<Tensor>* &read_tensors, bool* end_of_sequence) {
   mutex_lock l(mu_add_);
-  *end_of_sequence = false;
+  if(end_of_sequence_){
+    *end_of_sequence = true;
+    return Status::OK();
+  }
 
   VLOG(3) << "(Reader) Task is getting invoked... Reading ";
   while(true){
@@ -476,6 +479,7 @@ Status MultiThreadedAsyncReader::Read(std::vector<Tensor>* &read_tensors, bool* 
         deque_.pop_front();
 
         if(num_readers_done_ == reader_count_){
+          end_of_sequence_ = true;
           *end_of_sequence = true;
           VLOG(3) << "(Reader) End of sequence reached, returning empty.";
           return Status::OK();
@@ -486,6 +490,7 @@ Status MultiThreadedAsyncReader::Read(std::vector<Tensor>* &read_tensors, bool* 
           read_tensors->push_back(tensor);
         }
         deque_.pop_front();
+        *end_of_sequence = false;
         return Status::OK();
       }
     }

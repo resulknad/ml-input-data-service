@@ -164,6 +164,7 @@ class MultiThreadedAsyncReader {
     //   std::unique_ptr<snapshot_util::Reader> reader_;
   std::deque<string> file_names_ TF_GUARDED_BY(mu_);
   std::deque<snapshot_util::ElementOrEOF> deque_ TF_GUARDED_BY(mu_add_);
+  bool end_of_sequence_ TF_GUARDED_BY(mu_add_);
   std::unique_ptr<thread::ThreadPool> thread_pool_;
   std::shared_ptr<SplitProvider> split_provider_;
 };
