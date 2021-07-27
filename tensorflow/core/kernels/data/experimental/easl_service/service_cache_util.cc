@@ -258,7 +258,7 @@ Status Reader::Initialize() {
   if(reader_version_ == 0) { // 0 -> arrow
     VLOG(3) << "(Reader) Making use of the Arrow version of the reader";
     async_reader_ = std::make_unique<arrow_async_reader::ArrowAsyncReader>(
-      env_, target_dir_, output_dtypes_, output_shapes_, reader_count_);
+      env_, split_provider_, target_dir_, output_dtypes_, output_shapes_, reader_count_);
   } else {
     VLOG(3) << "(Reader) Making use of the non-Arrow version of the reader";
     async_reader_ = std::make_unique<MultiThreadedAsyncReader>(

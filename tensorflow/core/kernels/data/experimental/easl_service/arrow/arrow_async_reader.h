@@ -22,6 +22,7 @@ using ArrowUtil::ArrowMetadata;
 class ArrowAsyncReader : public MultiThreadedAsyncReader {
 public:
     ArrowAsyncReader(Env *env,
+                     std::shared_ptr<SplitProvider> split_provider,
                      const std::string &target_dir,
                      const DataTypeVector &output_dtypes,
                      const std::vector<PartialTensorShape> &output_shapes,
