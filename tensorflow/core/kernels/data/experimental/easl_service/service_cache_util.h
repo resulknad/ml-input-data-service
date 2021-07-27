@@ -114,11 +114,11 @@ class Writer {
 
 class MultiThreadedAsyncReader {
  public:
-  MultiThreadedAsyncReader(Env *env,
+  /*MultiThreadedAsyncReader(Env *env,
                            const std::string &target_dir,
                            const DataTypeVector &output_dtypes,
                            const std::vector<PartialTensorShape> &output_shapes,
-                           int reader_count = 8);
+                           int reader_count = 8);*/
 
   MultiThreadedAsyncReader(Env *env,
                            std::shared_ptr<SplitProvider> split_provider,

@@ -278,12 +278,12 @@ Status Reader::Read(std::vector<Tensor>* &read_tensors, bool* end_of_sequence) {
 // MultiThreadedAsyncReader (Base Class for ArrowAsyncReader)
 // -----------------------------------------------------------------------------
 
-MultiThreadedAsyncReader::MultiThreadedAsyncReader(Env *env,
+/*MultiThreadedAsyncReader::MultiThreadedAsyncReader(Env *env,
   const std::string &target_dir, const DataTypeVector &output_dtypes,
   const std::vector<PartialTensorShape> &output_shapes, const int reader_count)
     : env_(env), split_provider_(nullptr), output_dtypes_(output_dtypes), 
     output_shapes_(output_shapes), target_dir_(target_dir), 
-    reader_count_(reader_count), num_readers_done_(0) {}
+    reader_count_(reader_count), num_readers_done_(0) {}*/
 
 MultiThreadedAsyncReader::MultiThreadedAsyncReader(Env *env, 
   std::shared_ptr<SplitProvider> split_provider,
@@ -296,18 +296,27 @@ MultiThreadedAsyncReader::MultiThreadedAsyncReader(Env *env,
 Status MultiThreadedAsyncReader::Initialize() {
   // Don't use metadata file at the moment...
   // TF_RETURN_IF_ERROR(ReadAndParseMetadataFile());
-  
+  if (split_provider_ == nullptr){
+    return errors::FailedPrecondition(
+        "EASL - The split_provider is null, cannot initialize the reader");
+  }
+
   // Find all the files of this dataset
   std::vector<string> files;
-  TF_CHECK_OK(env_->GetMatchingPaths(io::JoinPath(target_dir_, "*\\.easl"), 
+  TF_CHECK_OK(env_->GetMatchingPaths(io::JoinPath(target_dir_, "*\\.easl"),
       &files));
   file_count_ = files.size();
 
-  { 
+  {
     mutex_lock l(mu_);
     for (const auto& f : files) {
       file_names_.push_back(f);
     }
+  }
+
+  VLOG(3) << "file_names_ :";
+  for(auto file: file_names_){
+    VLOG(3) << file;
   }
 
   // Spawn the threadpool, and start reading from the files
@@ -327,29 +336,18 @@ Status MultiThreadedAsyncReader::Initialize() {
 
 void MultiThreadedAsyncReader::Consume(string* s, bool* end_of_sequence) {
   mutex_lock l(mu_);
-  if (split_provider_ == nullptr) { 
-    VLOG(3) << "(Consume) In vanilla consume";
-    if (file_names_.empty()) {
-      *s = "";
-      *end_of_sequence = true;
-    } else {
-      *s = file_names_.front();
-      file_names_.pop_front();
-      *end_of_sequence = false;
-    }
+
+  // We should be running in distributed epoch mode
+  Tensor split;
+  VLOG(3) << "(Consume) In split_provider consume";
+  // Void function --> can't use TF_RETURN_IF_ERROR
+  split_provider_->GetNext(&split, end_of_sequence);
+  if (*end_of_sequence) {
+    *s = "";
   } else {
-    // We should be running in distributed epoch mode
-    Tensor split;
-    VLOG(3) << "(Consume) In split_provider consume";
-    // Void function --> can't use TF_RETURN_IF_ERROR
-    split_provider_->GetNext(&split, end_of_sequence);
-    if (*end_of_sequence) {
-      *s = ""; 
-    } else {
-      int64 file_idx = split.scalar<int64>()();
-      VLOG(3) << "(Consume) Got index " << file_idx << " which is file " << s;
-      *s = file_names_[file_idx];
-    }
+    int64 file_idx = split.scalar<int64>()();
+    VLOG(3) << "(Consume) Got index " << file_idx << " which is file " << s;
+    *s = file_names_[file_idx];
   }
 }
 
