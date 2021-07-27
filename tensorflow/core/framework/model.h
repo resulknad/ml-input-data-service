@@ -163,7 +163,6 @@ class Node {
         record_metrics_(true),
         metrics_(name_),
         output_(args.output.get()),
-        pause_time_ms_(-1),
         last_end_time_ns_(-1) {}
 
   virtual ~Node() {
@@ -271,9 +270,17 @@ class Node {
     return processing_time_;
   }
 
-  // Returns the time in nanoseconds in between calls to GetNext
-  int64 pause_time() const {
-    return pause_time_ms_;
+  // Returns the time in milliseconds in between calls to GetNext
+  int64 pause_time() const TF_LOCKS_EXCLUDED(mu_pause_time_) {
+    int64 pause_time_ms = 0;
+    {
+      mutex_lock l(mu_pause_time_);
+      for (const int64 t : pause_times_ms_) {
+        pause_time_ms += t;
+      }
+      pause_time_ms /= pause_times_ms_.size();
+    }
+    return pause_time_ms;
   }
 
   // Records that the node consumed the given number of bytes.
@@ -310,14 +317,17 @@ class Node {
     }
   }
 
-  void record_pause_start(int64 time_nanos) TF_LOCKS_EXCLUDED(mu_) {
+  void record_pause_start(int64 time_nanos) TF_LOCKS_EXCLUDED(mu_pause_time_) {
+    mutex_lock l(mu_pause_time_);
     last_end_time_ns_ = time_nanos;
   }
 
-  void record_pause_end(int64 time_nanos) TF_LOCKS_EXCLUDED(mu_) {
+  void record_pause_end(int64 time_nanos) TF_LOCKS_EXCLUDED(mu_pause_time_) {
+    mutex_lock l(mu_pause_time_);
     if (last_end_time_ns_ != -1) {
-      pause_time_ms_ = (time_nanos - last_end_time_ns_) 
-        / EnvTime::kMillisToNanos;
+      pause_times_ms_.push_back((time_nanos - last_end_time_ns_) 
+        / EnvTime::kMillisToNanos);
+      pause_times_ms_.pop_front();
     }
   }
 
@@ -593,9 +603,11 @@ class Node {
   // to `Node::record_start()` (for any node).
   static thread_local int64 work_start_;  // Will be initialized to zero.
 
-  // Stores the time sonce 
-  int64 pause_time_ms_; 
+  // Stores the time sonce
+  mutable mutex mu_pause_time_;  
   int64 last_end_time_ns_;
+  std::deque<int64> pause_times_ms_ = {0, 0, 0, 0, 0};
+
 
   mutable mutex mu_;
   const int64 id_;
