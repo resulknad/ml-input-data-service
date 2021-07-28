@@ -1,4 +1,5 @@
 #include <random>
+#include <algorithm>
 
 #include "tensorflow/core/kernels/data/experimental/easl_service/service_cache_util.h"
 #include "tensorflow/core/platform/stringprintf.h"
@@ -306,6 +307,8 @@ Status MultiThreadedAsyncReader::Initialize() {
   TF_CHECK_OK(env_->GetMatchingPaths(io::JoinPath(target_dir_, "*\\.easl"),
       &files));
   file_count_ = files.size();
+
+  std::sort(files.begin(), files.end());
 
   {
     mutex_lock l(mu_);
