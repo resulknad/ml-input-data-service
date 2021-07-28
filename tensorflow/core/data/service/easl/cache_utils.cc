@@ -506,9 +506,9 @@ Status AddPutOperatorAtMarker(const DatasetDef& dataset,
   // Set correct path
   std::string cache_path;
   if(marker_type == "source_cache"){
-    cache_path = absl::StrCat(dispatcher_config.cache_path(), "/source/", fingerprint)
+    cache_path = absl::StrCat(dispatcher_config.cache_path(), "/source/", fingerprint);
   } else {
-    absl::StrCat(dispatcher_config.cache_path(), "/materialized/", fingerprint)
+    absl::StrCat(dispatcher_config.cache_path(), "/materialized/", fingerprint);
   }
 
   // TODO - set path where to store graph.
@@ -583,9 +583,9 @@ Status AddGetOperatorAtMarker(
   // Set correct path
   std::string cache_path;
   if(marker_type == "source_cache"){
-    cache_path = absl::StrCat(dispatcher_config.cache_path(), "/source/", fingerprint)
+    cache_path = absl::StrCat(dispatcher_config.cache_path(), "/source/", fingerprint);
   } else {
-    absl::StrCat(dispatcher_config.cache_path(), "/materialized/", fingerprint)
+    absl::StrCat(dispatcher_config.cache_path(), "/materialized/", fingerprint);
   }
 
   // TODO - set path where to store graph.
