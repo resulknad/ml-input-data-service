@@ -367,6 +367,12 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           results_.pop();
           worker_thread_cv_.notify_one();
         }
+
+        // EASL - handle reordering of requests
+        if(results_.front().end_of_sequence && (!Finished() || results_.size() != 0)){
+          skip = true;
+          VLOG(0) << "Handling reordering of requests";
+        }
       }
       auto& result = results_.front();
       *end_of_sequence = result.end_of_sequence;
@@ -449,6 +455,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       bool in_use TF_GUARDED_BY(&Iterator::mu_) = false;
       // Indicates whether the worker has returned end_of_sequence for the task.
       bool end_of_sequence TF_GUARDED_BY(&Iterator::mu_) = false;
+
+      //
+      bool all_threads_done
 
       // EASL - we use this to allow for multiple requests per task.
       int64 num_outstanding_requests TF_GUARDED_BY(&Iterator::mu_) = 0;
