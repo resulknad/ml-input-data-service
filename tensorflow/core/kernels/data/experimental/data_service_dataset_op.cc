@@ -712,12 +712,18 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           if (task->end_of_sequence) {
             finished_tasks_--;
           }
-          tasks_.erase(tasks_.begin() + index);
-          if (index < next_task_index_) {
-            next_task_index_--;
-          }
-          if (!tasks_.empty() && next_task_index_ >= tasks_.size()) {
-            AdvanceTaskIndex();
+
+          // EASL - only remove task if end_of_sequence was actually reached.
+          if (task->end_of_sequence || task->removed){
+            tasks_.erase(tasks_.begin() + index);
+            if (index < next_task_index_) {
+              next_task_index_--;
+            }
+            if (!tasks_.empty() && next_task_index_ >= tasks_.size()) {
+              AdvanceTaskIndex();
+            }
+          } else {
+            VLOG(0) << "Avoided removing task which is not done..";
           }
         }
       }
@@ -837,7 +843,11 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             if (cancelled_ || job_finished_ ||
                 (dataset()->target_workers_ == TargetWorkers::LOCAL &&
                  LocalTasksFinished())) {
-              return;
+              // Only return if all current tasks reached end_of_sequence.
+              if(finished_tasks_ >= tasks_.size()){
+                return;
+              }
+              VLOG(0) << "EASL - job_finished but not all tasks done yet";
             }
             if (ElementSpaceAvailable()) {
               task_to_process = GetTaskToProcess();
