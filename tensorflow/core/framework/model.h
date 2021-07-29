@@ -163,7 +163,8 @@ class Node {
         record_metrics_(true),
         metrics_(name_),
         output_(args.output.get()),
-        last_end_time_ns_(-1) {}
+        last_end_time_ns_(-1),
+        activity_start_ns_(-1) {}
 
   virtual ~Node() {
     // Clear the sub-nodes instead of relying on implicit shared pointer
@@ -268,6 +269,21 @@ class Node {
   // Returns the aggregate processing time.
   int64 processing_time() const TF_LOCKS_EXCLUDED(mu_) {
     return processing_time_;
+  }
+
+  // Records the UNIX time when this node's GetNext was called for 
+  // the first time in ns
+  void record_activity_start(int64 time_nanos) {
+    if (activity_start_ns_ == -1) {
+      activity_start_ns_ = time_nanos;
+    }
+  }
+
+  // Gets the UNIX time in ms when the GetNext of this node was called for 
+  // the first time in ms; if called before first GetNext it should be 
+  // a negative number
+  int64 activity_start_ms() const {
+    return activity_start_ns_ / EnvTime::kMillisToNanos; 
   }
 
   // Returns the time in milliseconds in between calls to GetNext
@@ -603,6 +619,8 @@ class Node {
   // to `Node::record_start()` (for any node).
   static thread_local int64 work_start_;  // Will be initialized to zero.
 
+  // Indicates the time the node had its GetNext called for the first time
+  int64 activity_start_ns_; 
   // Stores the time sonce
   mutable mutex mu_pause_time_;  
   int64 last_end_time_ns_;

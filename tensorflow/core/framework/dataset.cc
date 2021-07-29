@@ -616,8 +616,7 @@ Status DatasetBase::MakeIterator(
     const string& output_prefix,
     std::unique_ptr<IteratorBase>* iterator) const {
   if (type_string() == "OptionsDataset" ||
-      type_string() == "FinalizeDataset" ||
-      type_string() == "MarkerDataset") { // "EASL added this one, we skip making an iterator for this one.
+      type_string() == "FinalizeDataset") { 
     std::vector<const DatasetBase*> inputs;
     Status s = InputDatasets(&inputs);
     return inputs[0]->MakeIterator(ctx, parent, output_prefix, iterator);
@@ -807,6 +806,7 @@ Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
     node_->record_start(now_nanos);
 
     // EASL - Adding call to logic which tracks time between GetNext
+    node_->record_activity_start(now_nanos);
     node_->record_pause_end(now_nanos);
   }
   Status s = GetNextInternal(ctx, out_tensors, end_of_sequence);

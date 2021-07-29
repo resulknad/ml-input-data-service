@@ -1721,7 +1721,7 @@ Model::ModelMetrics Model::CollectMetrics() {
       queue.push_back(input);
     }
 
-    VLOG(4) << "BFS: current node " << node->long_name();
+    VLOG(0) << "BFS: current node " << node->long_name();
 
     // prefix_times[node->long_name()] = node->TotalProcessingTime(nullptr);
     auto node_metrics = node->SnapshotCurrentMetrics();
