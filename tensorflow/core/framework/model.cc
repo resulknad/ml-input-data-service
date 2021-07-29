@@ -1727,8 +1727,8 @@ Model::ModelMetrics Model::CollectMetrics() {
     auto node_metrics = node->SnapshotCurrentMetrics();
     node_metrics.set_in_node_time(node_times[node->long_name()] / 
       EnvTime::kMillisToNanos);
-    node_metrics.set_last_node_name(last_node_name);
-    node_metrics.set_last_tf_node_name(last_tf_node_name);
+    node_metrics.set_last_node_name("last_node_name");
+    node_metrics.set_last_tf_node_name("last_tf_node_name");
     metrics->insert({node->long_name(), node_metrics});
   }
 

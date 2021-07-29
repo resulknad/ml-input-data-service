@@ -25,7 +25,7 @@ class MarkerOp : public UnaryDatasetOpKernel {
 
  private:
   class Dataset;
-  tstring marker_type_;
+  std::string marker_type_;
 
 };
 

@@ -407,7 +407,7 @@ Status DataServiceWorkerImpl::SendTaskUpdates() TF_LOCKS_EXCLUDED(mu_) {
 void DataServiceWorkerImpl::HeartbeatThread() TF_LOCKS_EXCLUDED(mu_) {
   while (true) {
     int64 next_heartbeat_micros =
-        Env::Default()->NowMicros() + (500 * 1000); // Heartbeat every 0.5 sec.
+        Env::Default()->NowMicros() + (config_.heartbeat_interval_ms() * 1000); // Heartbeat every 0.5 sec.
     {
       mutex_lock l(mu_);
       while (!cancelled_ &&

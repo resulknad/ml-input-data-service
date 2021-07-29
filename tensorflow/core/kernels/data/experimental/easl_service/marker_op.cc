@@ -22,7 +22,7 @@ namespace easl{
 class MarkerOp::Dataset : public DatasetBase {
  public:
   Dataset(OpKernelContext* ctx, const DatasetBase* input,
-          const tstring& marker_type);
+          const std::string& marker_type);
 
   ~Dataset() override;
 
@@ -51,7 +51,7 @@ class MarkerOp::Dataset : public DatasetBase {
   class Iterator;
 
   const DatasetBase* const input_;
-  const tstring marker_type_;
+  const std::string marker_type_;
 };
 
 class MarkerOp::Dataset::Iterator : public DatasetIterator<Dataset> {
@@ -69,11 +69,14 @@ class MarkerOp::Dataset::Iterator : public DatasetIterator<Dataset> {
 
   Status RestoreInternal(IteratorContext* ctx,
                          IteratorStateReader* reader) override;
- private:
-  mutex mu_;
-  std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
-};
 
+  std::shared_ptr<model::Node> CreateNode(IteratorContext* ctx, 
+    model::Node::Args args) const override;
+
+ private:
+  // mutex mu_;
+  std::unique_ptr<IteratorBase> input_impl_;
+};
 
 // -----------------------------------------------------------------------------
 // DatasetOp
@@ -102,7 +105,7 @@ void MarkerOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
 MarkerOp::Dataset::Dataset(
     OpKernelContext* ctx,
     const DatasetBase* input,
-    const tstring& marker_type)
+    const std::string& marker_type)
     : DatasetBase(DatasetContext(ctx)), input_(input),
       marker_type_(marker_type){
   input_->Ref();
@@ -150,6 +153,7 @@ Status MarkerOp::Dataset::AsGraphDefInternal(
   TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
 
   AttrValue marker_type;
+  // FIXME(DanGraur): Maybe marker type here is causing this issue
   b->BuildAttrValue(marker_type_, &marker_type);
 
   return b->AddDataset(
@@ -173,21 +177,30 @@ Status MarkerOp::Dataset::Iterator::Initialize(IteratorContext* ctx) {
 
 Status MarkerOp::Dataset::Iterator::SaveInternal(
     SerializationContext* ctx, IteratorStateWriter* writer) {
-  return errors::Unimplemented("Checkpointing is currently not supported.");
+  // return errors::Unimplemented("Checkpointing is currently not supported.");
+  return Status::OK();
 }
 
 Status MarkerOp::Dataset::Iterator::RestoreInternal(
     IteratorContext* ctx, IteratorStateReader* reader) {
-  return errors::Unimplemented("Checkpointing is currently not supported.");
+  // return errors::Unimplemented("Checkpointing is currently not supported.");
+  return Status::OK();
 }
 
 Status MarkerOp::Dataset::Iterator::GetNextInternal(
     IteratorContext* ctx, std::vector<Tensor>* out_tensors,
     bool* end_of_sequence) {
-  mutex_lock l(mu_);
+  // mutex_lock l(mu_);
+  VLOG(0) << "(MarkerOp::GetNextInternal) Getting the next element";
   TF_RETURN_IF_ERROR(input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
+  VLOG(0) << "(MarkerOp::GetNextInternal) Got the next element" << (*out_tensors)[0].DebugString();
 }
 
+std::shared_ptr<model::Node> 
+MarkerOp::Dataset::Iterator::CreateNode(IteratorContext* ctx, 
+  model::Node::Args args) const {
+    return model::MakeKnownRatioNode(std::move(args), 1);
+}
 
 namespace {
   REGISTER_KERNEL_BUILDER(Name("MarkerDataset").Device(DEVICE_CPU), MarkerOp);

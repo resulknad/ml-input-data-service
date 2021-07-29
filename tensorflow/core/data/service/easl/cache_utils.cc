@@ -497,6 +497,7 @@ Status AddPutOperatorAtMarker(const DatasetDef& dataset,
 
   // Copy over the original dataset
   updated_dataset = dataset;
+  return Status::OK();
 
   // Initialize the optimizer
   tensorflow::grappler::easl::AddPutOpAtMarker optimizer;
@@ -567,6 +568,7 @@ Status AddGetOperatorAtMarker(
   VLOG(0) << "(AddGetOperator) At the start of the method";
   // Copy over the original dataset
   updated_dataset = dataset;
+  return Status::OK();
 
   // Initialize the optimizer
   tensorflow::grappler::easl::AddGetOpAtMarker optimizer;
