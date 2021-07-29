@@ -193,7 +193,9 @@ Status MarkerOp::Dataset::Iterator::GetNextInternal(
   // mutex_lock l(mu_);
   VLOG(0) << "(MarkerOp::GetNextInternal) Getting the next element";
   TF_RETURN_IF_ERROR(input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
-  VLOG(0) << "(MarkerOp::GetNextInternal) Got the next element" << (*out_tensors)[0].DebugString();
+  if(!(*end_of_sequence)){
+    VLOG(0) << "(MarkerOp::GetNextInternal) Got the next element" << (*out_tensors)[0].DebugString();
+  }
 }
 
 std::shared_ptr<model::Node> 
