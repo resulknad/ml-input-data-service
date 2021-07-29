@@ -932,13 +932,10 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       } else if (get_element_result.skip) {
         task.skipped_previous_round = true;
       } else {
-        task.received_end_of_sequence = true;
-      }
-
-      // EASL - only set end_of_sequence if all requests received.
-      if(task.received_end_of_sequence && task.num_outstanding_requests <= 0){
+        if(!task.end_of_sequence){
+          finished_tasks_++;
+        }
         task.end_of_sequence = true;
-        finished_tasks_++;
       }
 
       if (enqueue_result && !result.end_of_sequence) {
