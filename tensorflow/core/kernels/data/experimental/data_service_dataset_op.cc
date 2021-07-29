@@ -811,7 +811,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         //if (current_round_ < task->info.starting_round() || task->in_use ||
         if(current_round_ < task->info.starting_round() ||
             task->num_outstanding_requests >= max_request_pipelining_per_task_ ||
-            task->end_of_sequence || task->received_end_of_sequence || task->removed) {
+            task->end_of_sequence || task->removed) {
           VLOG(3) << "Skipping task " << next_task_index_
                   << ". starting round: " << task->info.starting_round()
                   << ". current round: " << current_round_
