@@ -177,14 +177,12 @@ Status MarkerOp::Dataset::Iterator::Initialize(IteratorContext* ctx) {
 
 Status MarkerOp::Dataset::Iterator::SaveInternal(
     SerializationContext* ctx, IteratorStateWriter* writer) {
-  // return errors::Unimplemented("Checkpointing is currently not supported.");
-  return Status::OK();
+  return errors::Unimplemented("Checkpointing is currently not supported.");
 }
 
 Status MarkerOp::Dataset::Iterator::RestoreInternal(
     IteratorContext* ctx, IteratorStateReader* reader) {
-  // return errors::Unimplemented("Checkpointing is currently not supported.");
-  return Status::OK();
+  return errors::Unimplemented("Checkpointing is currently not supported.");
 }
 
 Status MarkerOp::Dataset::Iterator::GetNextInternal(
@@ -196,6 +194,8 @@ Status MarkerOp::Dataset::Iterator::GetNextInternal(
   if(!(*end_of_sequence)){
     VLOG(0) << "(MarkerOp::GetNextInternal) Got the next element" << (*out_tensors)[0].DebugString();
   }
+
+  return Status::OK();
 }
 
 std::shared_ptr<model::Node> 
