@@ -456,11 +456,10 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       // Indicates whether the worker has returned end_of_sequence for the task.
       bool end_of_sequence TF_GUARDED_BY(&Iterator::mu_) = false;
 
-      //
-      bool all_threads_done
-
       // EASL - we use this to allow for multiple requests per task.
       int64 num_outstanding_requests TF_GUARDED_BY(&Iterator::mu_) = 0;
+
+      bool received_end_of_sequence TF_GUARDED_BY(&Iterator::mu_) = false;
     };
 
     struct Result {
@@ -812,7 +811,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         //if (current_round_ < task->info.starting_round() || task->in_use ||
         if(current_round_ < task->info.starting_round() ||
             task->num_outstanding_requests >= max_request_pipelining_per_task_ ||
-            task->end_of_sequence || task->removed) {
+            task->end_of_sequence || task->received_end_of_sequence || task->removed) {
           VLOG(3) << "Skipping task " << next_task_index_
                   << ". starting round: " << task->info.starting_round()
                   << ". current round: " << current_round_
@@ -933,9 +932,15 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       } else if (get_element_result.skip) {
         task.skipped_previous_round = true;
       } else {
+        task.received_end_of_sequence = true;
+      }
+
+      // EASL - only set end_of_sequence if all requests received.
+      if(task.received_end_of_sequence && task.num_outstanding_requests <= 0){
         task.end_of_sequence = true;
         finished_tasks_++;
       }
+
       if (enqueue_result && !result.end_of_sequence) {
         results_.push(std::move(result));
       }

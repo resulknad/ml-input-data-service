@@ -93,6 +93,8 @@ FirstComeFirstServedTaskRunner::~FirstComeFirstServedTaskRunner() { Cancel(); }
 Status FirstComeFirstServedTaskRunner::GetNext(const GetElementRequest& req,
                                                GetElementResult& result) {
   TF_ASSIGN_OR_RETURN(result, buffer_.Pop());
+  // TODO (dada) remove log
+  VLOG(0) << "EASL - poped from task runner buffer";
   return Status::OK();
 }
 
