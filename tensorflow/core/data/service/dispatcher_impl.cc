@@ -85,6 +85,7 @@ constexpr const char kNumElements[] = "num_elements";
 // constexpr const char kComputationTime[] = "computation_time";
 constexpr const char kInNodeTime[] = "in_node_time";
 constexpr const char kInPrefixTime[] = "in_prefix_time";
+constexpr const char kBytesPerMs[] = "bytes_per_ms";
 
 using Dataset = DispatcherState::Dataset;
 using Worker = DispatcherState::Worker;
@@ -329,8 +330,9 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
       auto job_id = task_object->job->job_id;
       std::string last_node_name = task.last_node_name();
       std::string last_tf_node_name = task.last_tf_node_name();
-      s = metadata_store_.UpdateLastNodes(job_id, last_node_name, 
-        last_tf_node_name);
+      std::string marker_node_name = task.marker_node_name();
+      s = metadata_store_.UpdateNodeNames(job_id, last_node_name, 
+        last_tf_node_name, marker_node_name);
       if(!s.ok()){
         // Ignore metrics if job has already been removed from metadata store.
         // Otherwise return status error.
@@ -340,6 +342,7 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
           auto metrics = task.mutable_nodes(j)->mutable_metrics();
           easl::NodeMetrics::Metrics node_metrics((*metrics)[kBytesConsumed], 
             (*metrics)[kBytesProduced], (*metrics)[kNumElements], 
+            (*metrics)[kBytesPerMs],
             // (*metrics)[kComputationTime], 
             (*metrics)[kInNodeTime], (*metrics)[kInPrefixTime]);
 

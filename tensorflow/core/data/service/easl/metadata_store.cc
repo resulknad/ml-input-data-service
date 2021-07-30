@@ -70,17 +70,19 @@ NodeMetrics::Metrics::Metrics(NodeMetrics::Metrics& other)
   : bytes_consumed_(other.bytes_consumed()),
     bytes_produced_(other.bytes_produced()),
     num_elements_(other.num_elements()),
+    bytes_per_ms_(other.bytes_per_ms()),
     // computation_time_(other.computation_time()),
     in_node_time_ms_(other.in_node_time_ms()),
     in_prefix_time_ms_(other.in_prefix_time_ms()) {}
 
 NodeMetrics::Metrics::Metrics(int64 bytes_consumed, int64 bytes_produced, 
-  int64 num_elements, 
+  int64 num_elements, int64 bytes_per_ms,
   // int64 computation_time, 
   double in_node_time_ms, double in_prefix_time_ms) 
   : bytes_consumed_(bytes_consumed),
     bytes_produced_(bytes_produced),
     num_elements_(num_elements),
+    bytes_per_ms_(bytes_per_ms),
     // computation_time_(computation_time),
     in_node_time_ms_(in_node_time_ms),
     in_prefix_time_ms_(in_prefix_time_ms) {}
@@ -165,6 +167,15 @@ Status InputPipelineMetrics::GetLastTFNodeMetrics(
   return Status::OK();
 }
 
+Status InputPipelineMetrics::GetMarkerNodeMetrics(
+  std::shared_ptr<NodeMetrics>& metrics) {
+  if (maker_node_name_ == "") {
+    return errors::NotFound("Marker node was not given a name");
+  }
+  GetNodeMetrics(maker_node_name_, metrics);
+  return Status::OK();
+}
+
 Status InputPipelineMetrics::GetWorkerMetrics(string worker_address, 
   NodeMetrics::MetricsCollection& metrics) {
   for (auto& entry : metrics_) {
@@ -202,6 +213,11 @@ void InputPipelineMetrics::SetLastNodeName(std::string last_node_name) {
 std::string InputPipelineMetrics::GetLastTFNodeName() { return last_tf_node_name_; }
 void InputPipelineMetrics::SetLastTFNodeName(std::string last_tf_node_name) {
   last_tf_node_name_ = last_tf_node_name;
+}
+
+std::string InputPipelineMetrics::GetMarkerNodeName() { return maker_node_name_; }
+void InputPipelineMetrics::SetMarkerNodeName(std::string maker_node_name) {
+  maker_node_name_ = maker_node_name;
 }
 
 void InputPipelineMetrics::DumpToStream(std::stringstream& ss){
@@ -341,6 +357,16 @@ Status MetadataStore::GetLastTFNodeMetrics(int64 job_id,
   return s;
 }
 
+Status MetadataStore::GetMarkerNodeMetrics(int64 job_id, 
+  std::shared_ptr<NodeMetrics>& metrics) const {
+  std::shared_ptr<JobMetrics> job_metrics;
+  Status s = GetJobMetrics(job_id, job_metrics);
+  if (s.ok()) {
+    return job_metrics->input_pipeline_metrics_->GetMarkerNodeMetrics(metrics);
+  }
+  return s;
+}
+
 Status MetadataStore::GetLastNodeMetricsByDatasetKey(
   const std::string& dataset_key, std::shared_ptr<NodeMetrics>& metrics) const {
   std::shared_ptr<JobMetrics> job_metrics;
@@ -357,6 +383,16 @@ Status MetadataStore::GetLastTFNodeMetricsByDatasetKey(
   Status s = GetJobMetricsByDatasetKey(dataset_key, job_metrics);
   if (s.ok()) {
     return job_metrics->input_pipeline_metrics_->GetLastTFNodeMetrics(metrics);
+  }
+  return s;
+}
+
+Status MetadataStore::GetMarkerNodeMetricsByDatasetKey(
+  const std::string& dataset_key, std::shared_ptr<NodeMetrics>& metrics) const {
+  std::shared_ptr<JobMetrics> job_metrics;
+  Status s = GetJobMetricsByDatasetKey(dataset_key, job_metrics);
+  if (s.ok()) {
+    return job_metrics->input_pipeline_metrics_->GetMarkerNodeMetrics(metrics);
   }
   return s;
 }
@@ -426,13 +462,14 @@ Status MetadataStore::UpdateDatasetKeyJobMetrics(int64 job_id,
   return Status::OK();
 }
 
-Status MetadataStore::UpdateLastNodes(int64 job_id, string last_node_name, 
-  string last_tf_node_name) {
+Status MetadataStore::UpdateNodeNames(int64 job_id, string last_node_name, 
+  string last_tf_node_name, string marker_node_name) {
   std::shared_ptr<InputPipelineMetrics> pipeline_metrics;
   Status s = GetInputPipelineMetrics(job_id, pipeline_metrics);
   if (s.ok()) {
     pipeline_metrics->SetLastNodeName(last_node_name);
     pipeline_metrics->SetLastTFNodeName(last_tf_node_name);
+    pipeline_metrics->SetMarkerNodeName(marker_node_name);
   } 
   // if s != ok --> no such job exists
   return s;

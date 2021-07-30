@@ -624,7 +624,7 @@ class Node {
   // Stores the time sonce
   mutable mutex mu_pause_time_;  
   int64 last_end_time_ns_;
-  std::deque<int64> pause_times_ms_ = {0, 0, 0, 0, 0};
+  std::deque<int64> pause_times_ms_ = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};  // 10 measurements
 
 
   mutable mutex mu_;
