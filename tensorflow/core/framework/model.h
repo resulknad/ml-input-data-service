@@ -283,6 +283,10 @@ class Node {
     return pause_time_ms;
   }
 
+  int64 active_time() const TF_LOCKS_EXCLUDED(mu_) {
+    return active_time_;
+  }
+
   // Records that the node consumed the given number of bytes.
   void record_bytes_consumed(int64 num_bytes) { bytes_consumed_ += num_bytes; }
 
@@ -315,6 +319,34 @@ class Node {
     } else {
       VLOG(1) << "Encountered a stop event without a matching start event.";
     }
+  }
+
+
+  void record_active_start(int64 time_nanos){
+    // Update timestamp if there was no element in the system.
+    if(num_active_threads_++ == 0){
+      active_time_record_start_.exchange(time_nanos);
+    }
+  }
+
+  void record_active_stop(int64 time_nanos){
+    // Update active time and record start.
+
+    int64 record_start = active_time_record_start_.exchange(time_nanos);
+    num_active_threads_--;
+    if(time_nanos > record_start){
+      // Do not account for negative time if another thread has replaced
+      // active_time_record_start_ with a value smaller than our time_nanos.
+
+      active_time_ += (time_nanos - record_start);
+    } else {
+      // Since we still replaced active_time_record_start with another value for
+      // some limited time, we could still have a chance to overcount total active_time_
+
+      active_time_record_start_ = record_start;
+    }
+    // We still decide to avoid mutexes for performance reasons.
+
   }
 
   void record_pause_start(int64 time_nanos) TF_LOCKS_EXCLUDED(mu_pause_time_) {
@@ -608,6 +640,12 @@ class Node {
   int64 last_end_time_ns_;
   std::deque<int64> pause_times_ms_ = {0, 0, 0, 0, 0};
 
+  // EASL - Stores the wall-clock time during which this node is "active"
+  // i.e. there is at least one getNext call executing.
+  std::atomic<int64> active_time_;
+  std::atomic<int64> active_time_record_start_; // indicates at which point to start counting time.
+  std::atomic<int64> num_active_threads_;
+
 
   mutable mutex mu_;
   const int64 id_;
@@ -649,10 +687,11 @@ class Node {
     const int64 bytes_produced_;
     const int64 num_elements_;
     const int64 computation_time_;
-    
+
     // Indicates time in node and in prefix rooted at node 
     double in_node_time_;
     double in_prefix_time_;
+    int64 active_time_;
     std::string last_node_name_; 
     std::string last_tf_node_name_;
     
@@ -664,6 +703,7 @@ class Node {
             computation_time_(metrics.recorded_computation_time_),
             in_node_time_(0.0),
             in_prefix_time_(0.0),
+            active_time_(0),
             last_node_name_(""),
             last_tf_node_name_("") {}
 
@@ -675,8 +715,10 @@ class Node {
       // Methods for getting and setting the time metrics
       void set_in_node_time(double x) { in_node_time_ = x; }
       void set_in_prefix_time(double x) { in_prefix_time_ = x; }
+      void set_active_time(const int64& x) { active_time_ = x; }
       double in_node_time() { return in_node_time_; }
       double in_prefix_time() { return in_prefix_time_; }
+      int64 active_time() { return active_time_; }
 
       // Methods for getting and setting the last node name
       void set_last_node_name(std::string x) { last_node_name_ = x; }

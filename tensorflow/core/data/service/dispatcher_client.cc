@@ -50,6 +50,7 @@ constexpr const char kNumElements[] = "num_elements";
 // constexpr const char kComputationTime[] = "computation_time";
 constexpr const char kInNodeTime[] = "in_node_time";
 constexpr const char kInPrefixTime[] = "in_prefix_time";
+constexpr const char kActiveTime[] = "active_time";
 
 } // namespace
 
@@ -90,6 +91,7 @@ Status DataServiceDispatcherClient::WorkerHeartbeat(
       // (*metrics)[kComputationTime] = node_metrics.second.computation_time();
       (*metrics)[kInNodeTime] = node_metrics.second.in_node_time();
       (*metrics)[kInPrefixTime] = node_metrics.second.in_prefix_time();
+      (*metrics)[kActiveTime] = node_metrics.second.active_time();
     }
   }
 

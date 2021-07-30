@@ -71,7 +71,8 @@ class NodeMetrics {
         explicit Metrics(int64 bytes_consumed, int64 bytes_produced, 
                           int64 num_elements, 
                           // int64 computation_time, 
-                          double in_node_time_ms, double in_prefix_time_ms);
+                          double in_node_time_ms, double in_prefix_time_ms,
+                          double active_time);
         
         void Update(Metrics& other);
         
@@ -81,6 +82,7 @@ class NodeMetrics {
         // void set_computation_time(int64 x) { computation_time_ = x; }
         void set_in_node_time_ms(double x)    { in_node_time_ms_ = x; }
         void set_in_prefix_time_ms(double x)  { in_prefix_time_ms_ = x; }
+        void set_active_time_ms(double x) { active_time_ms_ = x; }
 
         int64 bytes_consumed()   { return bytes_consumed_; }
         int64 bytes_produced()   { return bytes_produced_; }
@@ -88,6 +90,7 @@ class NodeMetrics {
         // int64 computation_time() { return computation_time_; }
         double in_node_time_ms()     { return in_node_time_ms_; }
         double in_prefix_time_ms()   { return in_prefix_time_ms_; }
+        double active_time_ms() { return active_time_ms_; }
 
         void log_metrics() {
           VLOG(3) << "(MetadataStore::NodeMetrics) Metrics:\n"
@@ -104,7 +107,8 @@ class NodeMetrics {
         int64 num_elements_;
         // int64 computation_time_;
         double in_node_time_ms_;
-        double in_prefix_time_ms_; 
+        double in_prefix_time_ms_;
+        double active_time_ms_;
     };
 
     using MetricsCollection =
