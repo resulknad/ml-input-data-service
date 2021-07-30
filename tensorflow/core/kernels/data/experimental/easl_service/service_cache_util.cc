@@ -145,7 +145,7 @@ void MultiThreadedAsyncWriter::Initialize(Env *env, int64 file_index, const std:
 }
 
 void MultiThreadedAsyncWriter::Write(const std::vector<Tensor>& tensors) {
-  VLOG(3) << "EASL - Entering Write (Multithreaded Async Writer)";
+  VLOG(0) << "EASL - Entering Write (Multithreaded Async Writer)";
 
   mutex_lock l(mu_);
   if(!first_row_info_set_) {
@@ -155,11 +155,11 @@ void MultiThreadedAsyncWriter::Write(const std::vector<Tensor>& tensors) {
     }
     first_row_info_set_ = true;
   }
-  VLOG(3) << "****************** Writer Queue Size: " << deque_.size()
+  VLOG(0) << "****************** Writer Queue Size: " << deque_.size()
           << "  of max:  " << producer_threshold_ / bytes_per_row_;
   mu_.Await(Condition(this,
             &MultiThreadedAsyncWriter::ProducerSpaceAvailable));
-
+  VLOG(0) << "EASL - enough space in queue";
   snapshot_util::ElementOrEOF element;
   element.value = tensors;
   deque_.push_back(std::move(element));
@@ -210,7 +210,7 @@ Status MultiThreadedAsyncWriter::WriterThread(Env* env,
           &writer));
 
   int count = 0;
-  VLOG(3) << "(Writer_" << writer_id << ") Starting to write ";
+  VLOG(0) << "(Writer_" << writer_id << ") Starting to write ";
 
   while (true) {
     snapshot_util::ElementOrEOF be;
@@ -232,7 +232,7 @@ Status MultiThreadedAsyncWriter::WriterThread(Env* env,
     file_size += bytes_per_row_;
     if (file_size > kMaxFileSize) {
       writer->Close();
-      VLOG(3) << "(Writer_" << writer_id << ") Closed file with "
+      VLOG(0) << "(Writer_" << writer_id << ") Closed file with "
                 << file_size << " bytes written.";
       TF_RETURN_IF_ERROR(snapshot_util::Writer::Create(
           env, GetFileName(shard_directory, writer_id, ++file_index, 

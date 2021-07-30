@@ -242,6 +242,7 @@ Status ServiceCachePutOp::Dataset::Iterator::GetNextInternal(
     return Status::OK();
   }
   std::vector<Tensor> tensors = *out_tensors;
+  VLOG(0) << "EASL - got tensors, about to write them out.";
   return writer_->Write(tensors);
 }
 
