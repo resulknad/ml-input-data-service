@@ -210,7 +210,7 @@ Status ServiceCachePutOp::Dataset::Iterator::Initialize(
       std::make_unique<tensorflow::data::easl::service_cache_util::Writer>(
           ctx->env(), dataset()->path_, dataset()->output_dtypes(),
           dataset()->output_shapes(), dataset()->parallelism_, dataset()->cache_format_);
-  writer_->Initialize();
+  TF_RETURN_IF_ERROR(writer_->Initialize());
 
   return dataset()->input_->MakeIterator(
       ctx, this, prefix(), &input_impl_);
@@ -229,11 +229,11 @@ Status ServiceCachePutOp::Dataset::Iterator::RestoreInternal(
 Status ServiceCachePutOp::Dataset::Iterator::GetNextInternal(
     IteratorContext* ctx, std::vector<Tensor>* out_tensors,
     bool* end_of_sequence) {
-  mutex_lock l(mu_);
 
   TF_RETURN_IF_ERROR(input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
   
   if(*end_of_sequence){
+    mutex_lock l(mu_);
     if(writer_ != nullptr){
       // (damien-aymon) will block until the underlying asyncWriter is done.
       writer_->Close();

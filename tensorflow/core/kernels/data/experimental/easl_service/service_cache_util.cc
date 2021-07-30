@@ -63,6 +63,7 @@ Status Writer::Initialize(){
               //LOG(ERROR) << "MultiThreadedAsyncWriter in snapshot writer failed: " << s;
               //mutex_lock l(writer_status_mu_);
               //writer_status_ = s;
+              VLOG(0) << "EASL - MultiThreadedAsyncWriter done with status::ok()";
               return;
           });
 
@@ -145,6 +146,8 @@ void MultiThreadedAsyncWriter::Initialize(Env *env, int64 file_index, const std:
 
 void MultiThreadedAsyncWriter::Write(const std::vector<Tensor>& tensors) {
   VLOG(3) << "EASL - Entering Write (Multithreaded Async Writer)";
+
+  mutex_lock l(mu_);
   if(!first_row_info_set_) {
     for(Tensor t : tensors) {
       bytes_per_row_ += t.TotalBytes();
@@ -152,7 +155,6 @@ void MultiThreadedAsyncWriter::Write(const std::vector<Tensor>& tensors) {
     }
     first_row_info_set_ = true;
   }
-  mutex_lock l(mu_);
   VLOG(3) << "****************** Writer Queue Size: " << deque_.size()
           << "  of max:  " << producer_threshold_ / bytes_per_row_;
   mu_.Await(Condition(this,
