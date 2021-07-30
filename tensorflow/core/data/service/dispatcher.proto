@@ -15,7 +15,7 @@ message TaskProgress {
 
 // Next tag: 5
 message WorkerHeartbeatRequest {
-// Next tag: 5
+// Next tag: 6
   message Task {
     // Next tag: 3
     message Node {
@@ -26,6 +26,7 @@ message WorkerHeartbeatRequest {
     int64 id = 1;
     string last_node_name = 2;
     string last_tf_node_name = 4;
+    string marker_node_name = 5;
     repeated Node nodes = 3;
   }
 

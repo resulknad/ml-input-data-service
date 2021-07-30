@@ -266,7 +266,7 @@ class Node {
     return parameters_.at(name)->state->value;
   }
 
-  // Returns the aggregate processing time.
+  // Returns the aggregate processing time.metrics_
   int64 processing_time() const TF_LOCKS_EXCLUDED(mu_) {
     return processing_time_;
   }
@@ -280,10 +280,10 @@ class Node {
   }
 
   // Gets the UNIX time in ms when the GetNext of this node was called for 
-  // the first time in ms; if called before first GetNext it should be 
+  // the first time in ns; if called before first GetNext it should be 
   // a negative number
-  int64 activity_start_ms() const {
-    return activity_start_ns_ / EnvTime::kMillisToNanos; 
+  int64 activity_start_ns() const {
+    return activity_start_ns_; 
   }
 
   // Returns the time in milliseconds in between calls to GetNext
@@ -669,10 +669,14 @@ class Node {
     const int64 computation_time_;
     
     // Indicates time in node and in prefix rooted at node 
+    int64 bytes_per_ms_;
     double in_node_time_;
     double in_prefix_time_;
+    
+    // Indicates the names of some important nodes 
     std::string last_node_name_; 
     std::string last_tf_node_name_;
+    std::string marker_node_name_;
     
     public:
       explicit MetricDump(const Node::Metrics& metrics)
@@ -680,27 +684,37 @@ class Node {
             bytes_produced_(metrics.recorded_bytes_produced_), 
             num_elements_(metrics.recorded_num_elements_), 
             computation_time_(metrics.recorded_computation_time_),
+            bytes_per_ms_(0),
             in_node_time_(0.0),
             in_prefix_time_(0.0),
             last_node_name_(""),
-            last_tf_node_name_("") {}
+            last_tf_node_name_(""),
+            marker_node_name_("") {}
 
       const int64 bytes_consumed() const { return bytes_consumed_; }
       const int64 bytes_produced() const { return bytes_produced_; }
       const int64 num_elements() const { return num_elements_; }
       const int64 computation_time() const { return computation_time_; }
 
-      // Methods for getting and setting the time metrics
+      // Methods for getting and setting some latent metrics
+      void set_bytes_per_ms(int64 x) { bytes_per_ms_ = x; }
+      int64 bytes_per_ms() { return bytes_per_ms_; }
+
       void set_in_node_time(double x) { in_node_time_ = x; }
-      void set_in_prefix_time(double x) { in_prefix_time_ = x; }
       double in_node_time() { return in_node_time_; }
+
+      void set_in_prefix_time(double x) { in_prefix_time_ = x; }
       double in_prefix_time() { return in_prefix_time_; }
 
-      // Methods for getting and setting the last node name
+      // Methods for getting and setting node names
       void set_last_node_name(std::string x) { last_node_name_ = x; }
       std::string last_node_name() { return last_node_name_; }
+
       void set_last_tf_node_name(std::string x) { last_tf_node_name_ = x; }
       std::string last_tf_node_name() { return last_tf_node_name_; }
+
+      void set_marker_node_name(std::string x) { marker_node_name_ = x; }
+      std::string marker_node_name() { return marker_node_name_; }
 
       // Method which logs the metrics of this object
       void log_metrics() const {
@@ -711,8 +725,10 @@ class Node {
                 << " > computation_time = " << computation_time_ << "\n"
                 << " > in_node_time = " << in_node_time_ << "\n"
                 << " > in_prefix_time = " << in_prefix_time_ << "\n"
+                << " > bytes_per_ms = " << bytes_per_ms_ << "\n"
                 << " > last_node_name = " << last_node_name_ << "\n"
-                << " > last_tf_node_name = " << last_tf_node_name_;
+                << " > last_tf_node_name = " << last_tf_node_name_ << "\n"
+                << " > marker_node_name = " << marker_node_name_;
       }
   };
 

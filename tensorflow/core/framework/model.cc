@@ -1692,6 +1692,8 @@ Model::ModelMetrics Model::CollectMetrics() {
   std::string last_node_name = ""; 
   // This is the name of the last node (after the user node) added by tf
   std::string last_tf_node_name = "";
+  // This is the name of the marker node (note that it might not exist)
+  std::string marker_node_name = "";
   Node::NodeValues node_times;
   Node::NodeValues final_times;
 
@@ -1721,14 +1723,25 @@ Model::ModelMetrics Model::CollectMetrics() {
       queue.push_back(input);
     }
 
+    if (marker_node_name == "" && node->name() == "MarkerDataset") {
+      marker_node_name = node->long_name();
+    }
+
     VLOG(0) << "BFS: current node " << node->long_name();
+
+    // Try to compute the bytes_per_ms since the beginning of activity; 
+    // if activity_start_ms has not been recorded yet (< 0), then we set this 
+    // to 1, such that it does not appear as a bottleneck
+    int64 bytes_per_ms = node->activity_start_ns() > 0 ? (EnvTime::NowNanos() 
+      - node->activity_start_ns()) / EnvTime::kMillisToNanos : 1;
 
     // prefix_times[node->long_name()] = node->TotalProcessingTime(nullptr);
     auto node_metrics = node->SnapshotCurrentMetrics();
     node_metrics.set_in_node_time(node_times[node->long_name()] / 
       EnvTime::kMillisToNanos);
-    node_metrics.set_last_node_name("last_node_name");
-    node_metrics.set_last_tf_node_name("last_tf_node_name");
+    node_metrics.set_last_node_name(last_node_name);
+    node_metrics.set_last_tf_node_name(last_tf_node_name);
+    node_metrics.set_bytes_per_ms(bytes_per_ms);
     metrics->insert({node->long_name(), node_metrics});
   }
 
@@ -1743,24 +1756,14 @@ Model::ModelMetrics Model::CollectMetrics() {
     }  
   }
 
-  // Update the prefix times in the metrics data structure
+  // Update the prefix times in the metrics data structure and the marker node
   for (auto& entry : *metrics) {
     entry.second.set_in_prefix_time(final_times[entry.first] / 
       EnvTime::kMillisToNanos);
+    entry.second.set_marker_node_name(marker_node_name);
   }
 
   VLOG(0) << "EASL - Done collecting metrics, returning";
-
-
-  // Debug code below
-  // for (const auto& entry : *metrics) {
-  //   VLOG(1) << "(Model::CollectMetrics::Metrics) At node " << entry.first;
-  //   VLOG(1) << " > Node time " << node_times[entry.first];
-  //   VLOG(1) << " > Prefix time " << prefix_times[entry.first];
-  //   VLOG(1) << " > Printing logs ";
-  //   entry.second.log_metrics();
-  // }
-
   return metrics;
 }
 
