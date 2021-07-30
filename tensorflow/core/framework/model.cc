@@ -1727,13 +1727,7 @@ Model::ModelMetrics Model::CollectMetrics() {
       marker_node_name = node->long_name();
     }
 
-    VLOG(0) << "BFS: current node " << node->long_name();
-
-    // Try to compute the bytes_per_ms since the beginning of activity; 
-    // if activity_start_ms has not been recorded yet (< 0), then we set this 
-    // to 1, such that it does not appear as a bottleneck
-    int64 bytes_per_ms = node->activity_start_ns() > 0 ? (EnvTime::NowNanos() 
-      - node->activity_start_ns()) / EnvTime::kMillisToNanos : 1;
+    VLOG(0) << "BFS: current node " << node->long_name() << " short name " << node->name();
 
     // prefix_times[node->long_name()] = node->TotalProcessingTime(nullptr);
     auto node_metrics = node->SnapshotCurrentMetrics();
@@ -1741,6 +1735,22 @@ Model::ModelMetrics Model::CollectMetrics() {
       EnvTime::kMillisToNanos);
     node_metrics.set_last_node_name(last_node_name);
     node_metrics.set_last_tf_node_name(last_tf_node_name);
+
+    // Try to compute the bytes_per_ms since the beginning of activity; 
+    // if activity_start_ms has not been recorded yet (< 0), then we set this 
+    // to 1, such that it does not appear as a bottleneck
+    int64 time_now_ns = EnvTime::NowNanos();
+    int64 bytes_per_ms = node->activity_start_ns() > 0 ? 
+      node_metrics.bytes_produced() * EnvTime::kMillisToNanos 
+      / (time_now_ns - node->activity_start_ns()) : 1;
+
+    VLOG(0) << "(CollectMetrics) Printing bytes per ms computation\n"  
+            << " > activity_start_ns = " << node->activity_start_ns() << "\n"
+            << " > bytes_produced = " << node_metrics.bytes_produced() << "\n"
+            << " > time_now_ns = " << time_now_ns << "\n"
+            << " > time_activity_start_ns = " << node->activity_start_ns() << "\n"
+            << " > bytes_per_ms = " << bytes_per_ms;
+
     node_metrics.set_bytes_per_ms(bytes_per_ms);
     metrics->insert({node->long_name(), node_metrics});
   }

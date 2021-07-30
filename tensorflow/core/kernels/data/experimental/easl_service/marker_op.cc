@@ -189,7 +189,6 @@ Status MarkerOp::Dataset::Iterator::GetNextInternal(
     IteratorContext* ctx, std::vector<Tensor>* out_tensors,
     bool* end_of_sequence) {
   // mutex_lock l(mu_);
-  VLOG(0) << "(MarkerOp::GetNextInternal) Getting the next element";
   return input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
 }
 
