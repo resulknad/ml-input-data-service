@@ -163,7 +163,10 @@ class Node {
         record_metrics_(true),
         metrics_(name_),
         output_(args.output.get()),
-        last_end_time_ns_(-1) {}
+        last_end_time_ns_(-1),
+        active_time_(0),
+        active_time_record_start_(-1),
+        num_active_threads_(0){}
 
   virtual ~Node() {
     // Clear the sub-nodes instead of relying on implicit shared pointer
