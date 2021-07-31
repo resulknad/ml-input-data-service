@@ -544,14 +544,14 @@ Status AddPutOperatorAtMarker(const DatasetDef& dataset,
   (*sink->mutable_attr())["T"].set_type(DT_VARIANT);
 
   // Do BFS for debugging
-  DoBFS(sink, *graph_def, "AddPutAtMarkerOperator");
+  //DoBFS(sink, *graph_def, "AddPutAtMarkerOperator");
 
   // Create the MuttableGraphView
   tensorflow::grappler::MutableGraphView graph(graph_def);
   optimizer.ApplyOptimization(graph, sink, graph_def);
 
   // Do BFS
-  DoBFS(sink, *graph_def, "AfterAddPutAtMarkerOperator");
+  //DoBFS(sink, *graph_def, "AfterAddPutAtMarkerOperator");
 
   // Disconnect the 'Sink' node
   // sink->mutable_input()->Clear();
@@ -632,7 +632,7 @@ Status AddGetOperatorAtMarker(
 
   // Disconnect the 'Sink' node
   // sink->mutable_input()->Clear();
-  VLOG(0) << "(AddGetOperatorAtMarker) At the end of the method";
+  // VLOG(0) << "(AddGetOperatorAtMarker) At the end of the method";
 
   return Status::OK();
 }
