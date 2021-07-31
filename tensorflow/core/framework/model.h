@@ -292,6 +292,10 @@ class Node {
     return active_time_;
   }
 
+  int64 wall_clock_time() const TF_LOCKS_EXCLUDED(mu_) {
+    return wall_clock_time_;
+  }
+
   // Records that the node consumed the given number of bytes.
   void record_bytes_consumed(int64 num_bytes) { bytes_consumed_ += num_bytes; }
 
