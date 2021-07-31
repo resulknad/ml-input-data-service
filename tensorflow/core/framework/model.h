@@ -334,7 +334,8 @@ class Node {
     }
 
     // Set wall clock time start if it's -1
-    wall_clock_time_start_.compare_exchange_strong(-1, time_nanos);
+    int64 minus_one = -1;
+    wall_clock_time_start_.compare_exchange_strong(minus_one, time_nanos);
 
   }
 
