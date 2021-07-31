@@ -378,6 +378,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       *end_of_sequence = result.end_of_sequence;
       if (!*end_of_sequence) {
         out_tensors->swap(result.element);
+        VLOG(0) << "Get Next got " << result.element[0].DebugString();
         if (StrictRoundRobin()) {
           VLOG(1) << "Consumer " << dataset()->consumer_index_.value()
                   << ": Result " << get_next_index_++

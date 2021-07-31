@@ -1729,7 +1729,8 @@ Model::ModelMetrics Model::CollectMetrics() {
       EnvTime::kMillisToNanos);
     node_metrics.set_last_node_name(last_node_name);
     node_metrics.set_last_tf_node_name(last_tf_node_name);
-    node_metrics.set_active_time(node->active_time() / EnvTime::kMillisToNanos);
+    node_metrics.set_active_time((double)(node->active_time()) / EnvTime::kMillisToNanos);
+    node_metrics.set_wall_clock_time((double)(node->wall_clock_time()) / EnvTime::kMillisToNanos);
     metrics->insert({node->long_name(), node_metrics});
   }
 

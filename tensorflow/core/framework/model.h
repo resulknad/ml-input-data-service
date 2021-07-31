@@ -166,7 +166,9 @@ class Node {
         last_end_time_ns_(-1),
         active_time_(0),
         active_time_record_start_(-1),
-        num_active_threads_(0){}
+        num_active_threads_(0),
+        wall_clock_time_(0),
+        wall_clock_time_start_(-1){}
 
   virtual ~Node() {
     // Clear the sub-nodes instead of relying on implicit shared pointer
@@ -330,6 +332,10 @@ class Node {
     if(num_active_threads_++ == 0){
       active_time_record_start_.exchange(time_nanos);
     }
+
+    // Set wall clock time start if it's -1
+    wall_clock_time_start_.compare_exchange_strong(-1, time_nanos);
+
   }
 
   void record_active_stop(int64 time_nanos){
@@ -349,6 +355,9 @@ class Node {
       active_time_record_start_ = record_start;
     }
     // We still decide to avoid mutexes for performance reasons.
+
+    // Update wall clock time
+    wall_clock_time_ = time_nanos - wall_clock_time_start_;
 
   }
 
@@ -645,6 +654,8 @@ class Node {
 
   // EASL - Stores the wall-clock time during which this node is "active"
   // i.e. there is at least one getNext call executing.
+  std::atomic<int64> wall_clock_time_start_;
+  std::atomic<int64> wall_clock_time_;
   std::atomic<int64> active_time_;
   std::atomic<int64> active_time_record_start_; // indicates at which point to start counting time.
   std::atomic<int64> num_active_threads_;
@@ -695,6 +706,7 @@ class Node {
     double in_node_time_;
     double in_prefix_time_;
     int64 active_time_;
+    int64 wall_clock_time_;
     std::string last_node_name_; 
     std::string last_tf_node_name_;
     
@@ -707,6 +719,7 @@ class Node {
             in_node_time_(0.0),
             in_prefix_time_(0.0),
             active_time_(0),
+            wall_clock_time_(0),
             last_node_name_(""),
             last_tf_node_name_("") {}
 
@@ -719,9 +732,11 @@ class Node {
       void set_in_node_time(double x) { in_node_time_ = x; }
       void set_in_prefix_time(double x) { in_prefix_time_ = x; }
       void set_active_time(const int64& x) { active_time_ = x; }
+      void set_wall_clock_time(const int64& x) { wall_clock_time_ = x; }
       double in_node_time() { return in_node_time_; }
       double in_prefix_time() { return in_prefix_time_; }
       int64 active_time() { return active_time_; }
+      int64 wall_clock_time() { return wall_clock_time_; }
 
       // Methods for getting and setting the last node name
       void set_last_node_name(std::string x) { last_node_name_ = x; }

@@ -73,19 +73,22 @@ NodeMetrics::Metrics::Metrics(NodeMetrics::Metrics& other)
     // computation_time_(other.computation_time()),
     in_node_time_ms_(other.in_node_time_ms()),
     in_prefix_time_ms_(other.in_prefix_time_ms()),
-    active_time_ms_(other.active_time_ms()) {}
+    active_time_ms_(other.active_time_ms()),
+    wall_clock_time_ms_(other.wall_clock_time_ms()) {}
 
 NodeMetrics::Metrics::Metrics(int64 bytes_consumed, int64 bytes_produced, 
   int64 num_elements, 
   // int64 computation_time, 
-  double in_node_time_ms, double in_prefix_time_ms, double active_time_ms)
+  double in_node_time_ms, double in_prefix_time_ms, double active_time_ms,
+  double wall_clock_time_ms)
   : bytes_consumed_(bytes_consumed),
     bytes_produced_(bytes_produced),
     num_elements_(num_elements),
     // computation_time_(computation_time),
     in_node_time_ms_(in_node_time_ms),
     in_prefix_time_ms_(in_prefix_time_ms),
-    active_time_ms_(active_time_ms) {}
+    active_time_ms_(active_time_ms),
+    wall_clock_time_ms_(wall_clock_time_ms){}
 
 void NodeMetrics::Metrics::Update(NodeMetrics::Metrics& other) {
   bytes_consumed_ = other.bytes_consumed_;
@@ -95,6 +98,7 @@ void NodeMetrics::Metrics::Update(NodeMetrics::Metrics& other) {
   in_node_time_ms_ = other.in_node_time_ms_;
   in_prefix_time_ms_ = other.in_prefix_time_ms_;
   active_time_ms_ = other.active_time_ms_;
+  wall_clock_time_ms_ = other.wall_clock_time_ms_;
 }
 
 Status NodeMetrics::UpdateWorkerMetrics(string worker_address, 
@@ -134,7 +138,8 @@ void NodeMetrics::DumpToStream(std::stringstream &ss) {
     // ss << "\"computation_time\" : " << std::to_string(pair.second->computation_time()) << " , ";
     ss << "\"in_node_time_ms\" : " << std::to_string(pair.second->in_node_time_ms()) << " , ";
     ss << "\"in_prefix_time_ms\" : " << std::to_string(pair.second->in_prefix_time_ms()) << " , ";
-    ss << "\"active_time_ms\" : " << std::to_string(pair.second->active_time_ms()) << " }";
+    ss << "\"active_time_ms\" : " << std::to_string(pair.second->active_time_ms()) << " , ";
+    ss << "\"wall_clock_time_ms\" : " << std::to_string(pair.second->wall_clock_time_ms()) << " }";
 
     ss << std::endl;
   }
