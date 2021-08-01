@@ -22,7 +22,7 @@ namespace easl{
 class MarkerOp::Dataset : public DatasetBase {
  public:
   Dataset(OpKernelContext* ctx, const DatasetBase* input,
-          const tstring& marker_type);
+          const std::string& marker_type);
 
   ~Dataset() override;
 
@@ -48,11 +48,35 @@ class MarkerOp::Dataset : public DatasetBase {
                             Node** output) const override;
 
  private:
+  class Iterator;
 
   const DatasetBase* const input_;
-  const tstring marker_type_;
+  const std::string marker_type_;
 };
 
+class MarkerOp::Dataset::Iterator : public DatasetIterator<Dataset> {
+ public:
+  explicit Iterator(const Params& params);
+
+  Status Initialize(IteratorContext* ctx) override;
+
+  Status GetNextInternal(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+                         bool* end_of_sequence) override;
+
+ protected:
+  Status SaveInternal(SerializationContext* ctx,
+                      IteratorStateWriter* writer) override;
+
+  Status RestoreInternal(IteratorContext* ctx,
+                         IteratorStateReader* reader) override;
+
+  std::shared_ptr<model::Node> CreateNode(IteratorContext* ctx, 
+    model::Node::Args args) const override;
+
+ private:
+  // mutex mu_;
+  std::unique_ptr<IteratorBase> input_impl_;
+};
 
 // -----------------------------------------------------------------------------
 // DatasetOp
@@ -81,7 +105,7 @@ void MarkerOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
 MarkerOp::Dataset::Dataset(
     OpKernelContext* ctx,
     const DatasetBase* input,
-    const tstring& marker_type)
+    const std::string& marker_type)
     : DatasetBase(DatasetContext(ctx)), input_(input),
       marker_type_(marker_type){
   input_->Ref();
@@ -91,13 +115,9 @@ MarkerOp::Dataset::~Dataset() { input_->Unref(); }
 
 std::unique_ptr<IteratorBase>
 MarkerOp::Dataset::MakeIteratorInternal(const string& prefix) const {
-  DCHECK(false) << "OptionsDatasetOp::Dataset::MakeIteratorInternal is not "
-                   "expected to be called because it is supposed to forward "
-                   "the iterator to its input dataset(s).";
-  LOG(ERROR) << "Datasets of type " << type_string()
-             << " forwards its iterator to its input dataset. "
-                "`MakeIteratorInternal` is not implemented.";
-  return nullptr;
+  VLOG(3) << "EASL - prefix to Marker op: " << prefix;
+  return absl::make_unique<Iterator>(
+      Iterator::Params{this, name_utils::IteratorPrefix(kDatasetType, prefix)});
 }
 
 const DataTypeVector& MarkerOp::Dataset::output_dtypes() const {
@@ -133,6 +153,7 @@ Status MarkerOp::Dataset::AsGraphDefInternal(
   TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
 
   AttrValue marker_type;
+  // FIXME(DanGraur): Maybe marker type here is causing this issue
   b->BuildAttrValue(marker_type_, &marker_type);
 
   return b->AddDataset(
@@ -143,10 +164,42 @@ Status MarkerOp::Dataset::AsGraphDefInternal(
       output);
 }
 
+// -----------------------------------------------------------------------------
+// Iterator
+// -----------------------------------------------------------------------------
+
+MarkerOp::Dataset::Iterator::Iterator(const Params& params)
+    : DatasetIterator<Dataset>(params) {};
+
+Status MarkerOp::Dataset::Iterator::Initialize(IteratorContext* ctx) {
+  return dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_);
+}
+
+Status MarkerOp::Dataset::Iterator::SaveInternal(
+    SerializationContext* ctx, IteratorStateWriter* writer) {
+  return errors::Unimplemented("Checkpointing is currently not supported.");
+}
+
+Status MarkerOp::Dataset::Iterator::RestoreInternal(
+    IteratorContext* ctx, IteratorStateReader* reader) {
+  return errors::Unimplemented("Checkpointing is currently not supported.");
+}
+
+Status MarkerOp::Dataset::Iterator::GetNextInternal(
+    IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+    bool* end_of_sequence) {
+  // mutex_lock l(mu_);
+  return input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
+}
+
+std::shared_ptr<model::Node> 
+MarkerOp::Dataset::Iterator::CreateNode(IteratorContext* ctx, 
+  model::Node::Args args) const {
+    return model::MakeKnownRatioNode(std::move(args), 1);
+}
 
 namespace {
-REGISTER_KERNEL_BUILDER(Name("MarkerDataset").Device(DEVICE_CPU),
-                        MarkerOp);
+  REGISTER_KERNEL_BUILDER(Name("MarkerDataset").Device(DEVICE_CPU), MarkerOp);
 }  // namespace
 
 
