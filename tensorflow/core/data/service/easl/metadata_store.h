@@ -69,7 +69,7 @@ class NodeMetrics {
       public:
         explicit Metrics(Metrics& other);
         explicit Metrics(int64 bytes_consumed, int64 bytes_produced, 
-                          int64 num_elements, int64 bytes_per_ms,
+                          int64 num_elements, int64 bytes_per_s,
                           // int64 computation_time, 
                           double in_node_time_ms, double in_prefix_time_ms);
         
@@ -78,7 +78,7 @@ class NodeMetrics {
         void set_bytes_consumed(int64 x)   { bytes_consumed_ = x; }
         void set_bytes_produced(int64 x)   { bytes_produced_ = x; }
         void set_num_elements(int64 x)     { num_elements_ = x; }
-        void set_bytes_per_ms(int64 x)       { bytes_per_ms_ = x; }
+        void set_bytes_per_s(int64 x)       { bytes_per_s_ = x; }
         // void set_computation_time(int64 x) { computation_time_ = x; }
         void set_in_node_time_ms(double x)    { in_node_time_ms_ = x; }
         void set_in_prefix_time_ms(double x)  { in_prefix_time_ms_ = x; }
@@ -86,7 +86,7 @@ class NodeMetrics {
         int64 bytes_consumed()   { return bytes_consumed_; }
         int64 bytes_produced()   { return bytes_produced_; }
         int64 num_elements()     { return num_elements_; }
-        int64 bytes_per_ms()     { return bytes_per_ms_; }
+        int64 bytes_per_s()     { return bytes_per_s_; }
         // int64 computation_time() { return computation_time_; }
         double in_node_time_ms()     { return in_node_time_ms_; }
         double in_prefix_time_ms()   { return in_prefix_time_ms_; }
@@ -95,7 +95,7 @@ class NodeMetrics {
           VLOG(0) << "(MetadataStore::NodeMetrics) Metrics:\n"
                   << " > bytes_consumed = " << bytes_consumed_ << "\n"
                   << " > bytes_produced = " << bytes_produced_ << "\n"
-                  << " > bytes_per_ms = " << bytes_per_ms_ << "\n"
+                  << " > bytes_per_s = " << bytes_per_s_ << "\n"
                   << " > num_elements = " << num_elements_ << "\n"
                   << " > in_node_time = " << in_node_time_ms_ << "\n"
                   << " > in_prefix_time = " << in_prefix_time_ms_;
@@ -105,7 +105,7 @@ class NodeMetrics {
         int64 bytes_consumed_;
         int64 bytes_produced_;
         int64 num_elements_;
-        int64 bytes_per_ms_;
+        int64 bytes_per_s_;
         // int64 computation_time_;
         double in_node_time_ms_;
         double in_prefix_time_ms_; 

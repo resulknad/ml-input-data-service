@@ -85,7 +85,7 @@ constexpr const char kNumElements[] = "num_elements";
 // constexpr const char kComputationTime[] = "computation_time";
 constexpr const char kInNodeTime[] = "in_node_time";
 constexpr const char kInPrefixTime[] = "in_prefix_time";
-constexpr const char kBytesPerMs[] = "bytes_per_ms";
+constexpr const char kBytesPerS[] = "bytes_per_s";
 
 using Dataset = DispatcherState::Dataset;
 using Worker = DispatcherState::Worker;
@@ -350,7 +350,7 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
           auto metrics = task.mutable_nodes(j)->mutable_metrics();
           easl::NodeMetrics::Metrics node_metrics((*metrics)[kBytesConsumed], 
             (*metrics)[kBytesProduced], (*metrics)[kNumElements], 
-            (*metrics)[kBytesPerMs],
+            (*metrics)[kBytesPerS],
             // (*metrics)[kComputationTime], 
             (*metrics)[kInNodeTime], (*metrics)[kInPrefixTime]);
 

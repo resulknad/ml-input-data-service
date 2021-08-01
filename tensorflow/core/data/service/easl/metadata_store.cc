@@ -70,19 +70,19 @@ NodeMetrics::Metrics::Metrics(NodeMetrics::Metrics& other)
   : bytes_consumed_(other.bytes_consumed()),
     bytes_produced_(other.bytes_produced()),
     num_elements_(other.num_elements()),
-    bytes_per_ms_(other.bytes_per_ms()),
+    bytes_per_s_(other.bytes_per_s()),
     // computation_time_(other.computation_time()),
     in_node_time_ms_(other.in_node_time_ms()),
     in_prefix_time_ms_(other.in_prefix_time_ms()) {}
 
 NodeMetrics::Metrics::Metrics(int64 bytes_consumed, int64 bytes_produced, 
-  int64 num_elements, int64 bytes_per_ms,
+  int64 num_elements, int64 bytes_per_s,
   // int64 computation_time, 
   double in_node_time_ms, double in_prefix_time_ms) 
   : bytes_consumed_(bytes_consumed),
     bytes_produced_(bytes_produced),
     num_elements_(num_elements),
-    bytes_per_ms_(bytes_per_ms),
+    bytes_per_s_(bytes_per_s),
     // computation_time_(computation_time),
     in_node_time_ms_(in_node_time_ms),
     in_prefix_time_ms_(in_prefix_time_ms) {}
