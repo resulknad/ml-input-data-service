@@ -86,6 +86,9 @@ constexpr const char kNumElements[] = "num_elements";
 constexpr const char kInNodeTime[] = "in_node_time";
 constexpr const char kInPrefixTime[] = "in_prefix_time";
 constexpr const char kBytesPerS[] = "bytes_per_s";
+constexpr const char kActiveTime[] = "active_time";
+
+
 
 using Dataset = DispatcherState::Dataset;
 using Worker = DispatcherState::Worker;
@@ -352,7 +355,8 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
             (*metrics)[kBytesProduced], (*metrics)[kNumElements], 
             (*metrics)[kBytesPerS],
             // (*metrics)[kComputationTime], 
-            (*metrics)[kInNodeTime], (*metrics)[kInPrefixTime]);
+            (*metrics)[kInNodeTime], (*metrics)[kInPrefixTime],
+            (*metrics)[kActiveTime]);
 
           VLOG(0) << "(Dispatcher::WorkerHeartbeat) Metrics for node " 
                   << task.mutable_nodes(j)->name();

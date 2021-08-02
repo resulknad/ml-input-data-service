@@ -375,7 +375,7 @@ Status AddPutOperator(const DatasetDef& dataset,
 
   // TODO - set path where to store graph.
   (*(config.mutable_parameter_map()))["path"].set_placeholder(
-      absl::StrCat(dispatcher_config.cache_path(), "/", fingerprint));
+      absl::StrCat(dispatcher_config.cache_path(), "/materialized/", fingerprint));
   (*(config.mutable_parameter_map()))["cache_format"].set_i(
       dispatcher_config.cache_format());
   (*(config.mutable_parameter_map()))["cache_compression"].set_i(
@@ -441,7 +441,7 @@ Status AddGetOperator(const DatasetDef& dataset,
 
   // TODO - set path where to store graph.
   (*(config.mutable_parameter_map()))["path"].set_placeholder(
-      absl::StrCat(dispatcher_config.cache_path(), "/", fingerprint));
+      absl::StrCat(dispatcher_config.cache_path(), "/materialized/", fingerprint));
   (*(config.mutable_parameter_map()))["cache_format"].set_i(
       dispatcher_config.cache_format());
   (*(config.mutable_parameter_map()))["cache_compression"].set_i(
@@ -503,9 +503,16 @@ Status AddPutOperatorAtMarker(const DatasetDef& dataset,
   // Transfer arguments from dispatcher config to optimizer config.
   tensorflow::RewriterConfig_CustomGraphOptimizer config;
 
+  // Set correct path
+  std::string cache_path;
+  if(marker_type == "source_cache"){
+    cache_path = absl::StrCat(dispatcher_config.cache_path(), "/source/", fingerprint);
+  } else {
+    absl::StrCat(dispatcher_config.cache_path(), "/materialized/", fingerprint);
+  }
+
   // TODO - set path where to store graph.
-  (*(config.mutable_parameter_map()))["path"].set_placeholder(
-      absl::StrCat(dispatcher_config.cache_path(), "/", fingerprint));
+  (*(config.mutable_parameter_map()))["path"].set_placeholder(cache_path);
   (*(config.mutable_parameter_map()))["cache_format"].set_i(
       dispatcher_config.cache_format());
   (*(config.mutable_parameter_map()))["cache_compression"].set_i(
@@ -537,14 +544,14 @@ Status AddPutOperatorAtMarker(const DatasetDef& dataset,
   (*sink->mutable_attr())["T"].set_type(DT_VARIANT);
 
   // Do BFS for debugging
-  DoBFS(sink, *graph_def, "AddPutAtMarkerOperator");
+  //DoBFS(sink, *graph_def, "AddPutAtMarkerOperator");
 
   // Create the MuttableGraphView
   tensorflow::grappler::MutableGraphView graph(graph_def);
   optimizer.ApplyOptimization(graph, sink, graph_def);
 
   // Do BFS
-  DoBFS(sink, *graph_def, "AfterAddPutAtMarkerOperator");
+  //DoBFS(sink, *graph_def, "AfterAddPutAtMarkerOperator");
 
   // Disconnect the 'Sink' node
   // sink->mutable_input()->Clear();
@@ -573,9 +580,16 @@ Status AddGetOperatorAtMarker(
   // Transfer arguments from dispatcher config to optimizer config.
   tensorflow::RewriterConfig_CustomGraphOptimizer config;
 
+  // Set correct path
+  std::string cache_path;
+  if(marker_type == "source_cache"){
+    cache_path = absl::StrCat(dispatcher_config.cache_path(), "/source/", fingerprint);
+  } else {
+    absl::StrCat(dispatcher_config.cache_path(), "/materialized/", fingerprint);
+  }
+
   // TODO - set path where to store graph.
-  (*(config.mutable_parameter_map()))["path"].set_placeholder(
-      absl::StrCat(dispatcher_config.cache_path(), "/", fingerprint));
+  (*(config.mutable_parameter_map()))["path"].set_placeholder(cache_path);
   (*(config.mutable_parameter_map()))["cache_format"].set_i(
       dispatcher_config.cache_format());
   (*(config.mutable_parameter_map()))["cache_compression"].set_i(
@@ -618,7 +632,7 @@ Status AddGetOperatorAtMarker(
 
   // Disconnect the 'Sink' node
   // sink->mutable_input()->Clear();
-  VLOG(0) << "(AddGetOperatorAtMarker) At the end of the method";
+  // VLOG(0) << "(AddGetOperatorAtMarker) At the end of the method";
 
   return Status::OK();
 }

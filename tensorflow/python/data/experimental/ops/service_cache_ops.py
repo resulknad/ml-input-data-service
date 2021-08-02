@@ -111,7 +111,7 @@ class _MarkerDataset(dataset_ops.UnaryUnchangedStructureDataset):
 
 
 @tf_export("data.experimental.mark")
-def service_cache_put(marker_type="source_cache"):
+def service_cache_mark(marker_type="source_cache"):
 
     def _apply_fn(dataset):
         """Actual dataset transformation."""

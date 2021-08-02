@@ -183,6 +183,7 @@ Status DataServiceWorkerImpl::GetElementResult(
       } else {
         // Perhaps the workers hasn't gotten the task from the dispatcher yet.
         // Return Unavailable so that the client knows to continue retrying.
+        VLOG(0) << "Task not found (probably not received from dispatcher yet";
         return errors::Unavailable("Task ", request->task_id(), " not found");
       }
     }

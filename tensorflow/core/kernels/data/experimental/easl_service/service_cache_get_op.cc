@@ -219,19 +219,35 @@ Status ServiceCacheGetOp::Dataset::Iterator::Initialize(
   VLOG(3) << "EASL - File format: " << dataset()->cache_format_;
   VLOG(3) << "EASL - Compression format: " << dataset()->cache_compression_;
 
-  // If we're in distributed epoch mode we should have a split provider
-  std::shared_ptr<SplitProvider> split_provider_ = nullptr;
-  if (!ctx->split_providers().empty()) {
-    TF_ASSIGN_OR_RETURN(split_provider_,
+  // If we're in distributed epoch mode we should have a split provider,
+  // otherwise we create one.
+  std::shared_ptr<SplitProvider> split_provider = nullptr;
+  if (ctx->split_providers().empty()) {
+    // Find all the files of this dataset
+    std::vector<string> files;
+    TF_CHECK_OK(
+        ctx->env()->GetMatchingPaths(io::JoinPath(dataset()->path_, "*\\.easl"),
+            &files));
+    split_provider = std::make_shared<IndexSplitProvider>(files.size());
+    VLOG(3) << "Created index split provider with n = " << files.size();
+    VLOG(3) << "file_names_ :";
+    for(auto file: files){
+      VLOG(3) << file;
+    }
+  } else {
+    TF_ASSIGN_OR_RETURN(split_provider,
                         GetSingleSplitProvider(ctx, dataset()));
+    VLOG(3) << "Created SingleSplitProvider";
   }
 
+  /*
   for(auto dt: dataset()->output_dtypes_){
     VLOG(3) << DataTypeString(dt);
-  }
+  }*/
+
   reader_ =
       std::make_unique<tensorflow::data::easl::service_cache_util::Reader>(
-          ctx->env(), split_provider_, dataset()->path_, 
+          ctx->env(), split_provider, dataset()->path_,
           dataset()->output_dtypes_, dataset()->output_shapes_, 
           dataset()->parallelism_, dataset()->cache_format_);
 

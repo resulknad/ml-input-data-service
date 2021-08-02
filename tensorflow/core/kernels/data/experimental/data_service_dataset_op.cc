@@ -324,7 +324,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       while (skip) {
         while ((results_.empty() || !results_.front().ready) && !Finished() &&
                !cancelled_ && status_.ok()) {
-          VLOG(3) << "Blocking in GetNext. results_.size():" << results_.size()
+          VLOG(0) << "Blocking in GetNext. results_.size():" << results_.size()
                   << " results_.front().ready:"
                   << (!results_.empty() && results_.front().ready)
                   << " job_finished_:" << job_finished_
@@ -342,7 +342,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           return errors::Cancelled("Data service iterator was cancelled");
         }
         if (!status_.ok()) {
-          VLOG(3) << "Returning from GetNext with error " << status_;
+          VLOG(0) << "Returning from GetNext with error " << status_;
           return status_;
         }
         if(job_finished_){
@@ -363,6 +363,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           return Status::OK();
         }
         skip = results_.front().skip;
+        // EASL - handle reordering of requests
+        skip = skip || (results_.front().end_of_sequence && (!Finished() || results_.size() > 1));
         if (skip) {
           results_.pop();
           worker_thread_cv_.notify_one();
@@ -386,8 +388,6 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
               << wait_us << ", " << hadToWait;
 
       results_.pop();
-      // TODO (damien-aymon) remove wait, was just for testing.
-      // std::this_thread::sleep_for(std::chrono::seconds(1));
       worker_thread_cv_.notify_one();
 
       return Status::OK();
@@ -452,6 +452,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
       // EASL - we use this to allow for multiple requests per task.
       int64 num_outstanding_requests TF_GUARDED_BY(&Iterator::mu_) = 0;
+
+      bool received_end_of_sequence TF_GUARDED_BY(&Iterator::mu_) = false;
     };
 
     struct Result {
@@ -712,12 +714,18 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           if (task->end_of_sequence) {
             finished_tasks_--;
           }
-          tasks_.erase(tasks_.begin() + index);
-          if (index < next_task_index_) {
-            next_task_index_--;
-          }
-          if (!tasks_.empty() && next_task_index_ >= tasks_.size()) {
-            AdvanceTaskIndex();
+
+          // EASL - only remove task if end_of_sequence was actually reached.
+          if (task->end_of_sequence || task->removed){
+            tasks_.erase(tasks_.begin() + index);
+            if (index < next_task_index_) {
+              next_task_index_--;
+            }
+            if (!tasks_.empty() && next_task_index_ >= tasks_.size()) {
+              AdvanceTaskIndex();
+            }
+          } else {
+            VLOG(0) << "Avoided removing task which is not done..";
           }
         }
       }
@@ -798,7 +806,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         if(current_round_ < task->info.starting_round() ||
             task->num_outstanding_requests >= max_request_pipelining_per_task_ ||
             task->end_of_sequence || task->removed) {
-          VLOG(3) << "Skipping task " << next_task_index_
+          VLOG(0) << "Skipping task " << next_task_index_
                   << ". starting round: " << task->info.starting_round()
                   << ". current round: " << current_round_
                   << ". task->in_use: " << task->in_use
@@ -818,7 +826,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     void RunWorkerThread(std::function<void()> done) {
       auto cleanup = gtl::MakeCleanup([done = std::move(done)]() {
         done();
-        VLOG(1) << "Worker thread exiting";
+        VLOG(0) << "Worker thread exiting";
       });
       VLOG(1) << "Starting worker thread";
       std::shared_ptr<Task> task_to_process;
@@ -837,14 +845,21 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             if (cancelled_ || job_finished_ ||
                 (dataset()->target_workers_ == TargetWorkers::LOCAL &&
                  LocalTasksFinished())) {
-              return;
+              // Only return if all current tasks reached end_of_sequence.
+              if(finished_tasks_ >= tasks_.size()){
+                return;
+              }
+              VLOG(0) << "EASL - job_finished but not all tasks done yet";
             }
             if (ElementSpaceAvailable()) {
               task_to_process = GetTaskToProcess();
               if (task_to_process) {
                 break;
               }
+              VLOG(0) << "Space in buffer but no task";
             }
+            VLOG(0) << "Thread waiting for task or space in buffer, outstanding_requests_: "
+            << outstanding_requests_ << " results_.size(): " << results_.size();
             worker_thread_cv_.wait(l);
           }
           outstanding_requests_++;
@@ -914,9 +929,12 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       } else if (get_element_result.skip) {
         task.skipped_previous_round = true;
       } else {
+        if(!task.end_of_sequence){
+          finished_tasks_++;
+        }
         task.end_of_sequence = true;
-        finished_tasks_++;
       }
+
       if (enqueue_result && !result.end_of_sequence) {
         results_.push(std::move(result));
       }
