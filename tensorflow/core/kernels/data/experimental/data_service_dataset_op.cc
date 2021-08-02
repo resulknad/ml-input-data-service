@@ -857,7 +857,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
                 break;
               }
             }
-            VLOG(0) << "Thread waiting for task or space in buffer, outstanding_requests_: "
+            VLOG(1) << "Thread waiting for task or space in buffer, outstanding_requests_: "
             << outstanding_requests_ << " results_.size(): " << results_.size();
             worker_thread_cv_.wait(l);
           }
