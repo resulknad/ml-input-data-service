@@ -857,6 +857,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
               if (task_to_process) {
                 break;
               }
+              VLOG(0) << "No space in buffer";
             }
             VLOG(0) << "Thread waiting for task or space in buffer";
             worker_thread_cv_.wait(l);
