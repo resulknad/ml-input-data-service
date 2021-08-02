@@ -770,6 +770,7 @@ class Node {
                 << " > computation_time = " << computation_time_ << "\n"
                 << " > in_node_time = " << in_node_time_ << "\n"
                 << " > in_prefix_time = " << in_prefix_time_ << "\n"
+                << " > active_time = " << active_time_ << "\n"
                 << " > bytes_per_s = " << bytes_per_s_ << "\n"
                 << " > last_node_name = " << last_node_name_ << "\n"
                 << " > last_tf_node_name = " << last_tf_node_name_ << "\n"

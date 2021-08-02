@@ -101,7 +101,8 @@ class NodeMetrics {
                   << " > bytes_per_s = " << bytes_per_s_ << "\n"
                   << " > num_elements = " << num_elements_ << "\n"
                   << " > in_node_time = " << in_node_time_ms_ << "\n"
-                  << " > in_prefix_time = " << in_prefix_time_ms_;
+                  << " > in_prefix_time = " << in_prefix_time_ms_ << "\n"
+                  << " > active_time_ms = " << active_time_ms_;
         }
 
       private:

@@ -206,7 +206,7 @@ Status DetermineJobType(const experimental::DispatcherConfig& dispatcher_config,
     std::shared_ptr<NodeMetrics::Metrics> worker_metrics = e.second;
     // TODO average out row size here for datasets with varying row size?
     row_size += worker_metrics->bytes_produced() / worker_metrics->num_elements();
-    compute_time_per_row_ms += worker_metrics->in_prefix_time_ms();
+    compute_time_per_row_ms += worker_metrics->active_time_ms();
   }
 
   compute_time_per_row_ms = compute_time_per_row_ms / num_workers;
@@ -301,7 +301,7 @@ Status DetermineElasticity(
     for(std::pair<std::string, std::shared_ptr<NodeMetrics::Metrics>> e : 
       last_tf_node_metrics->metrics_) {
       std::shared_ptr<NodeMetrics::Metrics> worker_metrics = e.second;
-      avg_worker_throughput += 1000.0 / worker_metrics->in_prefix_time_ms();
+      avg_worker_throughput += 1000.0 / worker_metrics->active_time_ms();
     }
     avg_worker_throughput /= num_workers;
     VLOG(0) << "(DetermineElasticity) Average worker throughput "
@@ -332,8 +332,8 @@ Status DetermineElasticity(
 
       row_size += worker_metrics->bytes_produced() / 
         worker_metrics->num_elements();
-      tf_nodes_overhead_ms += worker_metrics_tf_node->in_prefix_time_ms() 
-        - worker_metrics->in_prefix_time_ms();
+      tf_nodes_overhead_ms += worker_metrics_tf_node->active_time_ms() 
+        - worker_metrics->active_time_ms();
     }
 
     row_size /= num_workers;

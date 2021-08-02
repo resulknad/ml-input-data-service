@@ -1750,10 +1750,12 @@ Model::ModelMetrics Model::CollectMetrics() {
             << " > time_now_ns = " << time_now_ns << "\n"
             << " > time_activity_start_ns = " << node->activity_start_ns() << "\n"
             << " > bytes_per_s = " << bytes_per_s << "\n"
-            << " > active_time_ns = " << ((double)(node->active_time())) / (EnvTime::kMillisToNanos * node->num_elements());
+            << " > active_time_ns = " << ((double)(node->active_time())) 
+            / (EnvTime::kMillisToNanos * node->num_elements());
 
     node_metrics.set_bytes_per_s(bytes_per_s);
-    node_metrics.set_active_time(((double)(node->active_time())) / (EnvTime::kMillisToNanos * node->num_elements()));
+    node_metrics.set_active_time(((double)(node->active_time())) 
+      / (EnvTime::kMillisToNanos * node->num_elements()));
     metrics->insert({node->long_name(), node_metrics});
   }
 
