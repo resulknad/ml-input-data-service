@@ -324,7 +324,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       while (skip) {
         while ((results_.empty() || !results_.front().ready) && !Finished() &&
                !cancelled_ && status_.ok()) {
-          VLOG(0) << "Blocking in GetNext. results_.size():" << results_.size()
+          VLOG(1) << "Blocking in GetNext. results_.size():" << results_.size()
                   << " results_.front().ready:"
                   << (!results_.empty() && results_.front().ready)
                   << " job_finished_:" << job_finished_
@@ -806,7 +806,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         if(current_round_ < task->info.starting_round() ||
             task->num_outstanding_requests >= max_request_pipelining_per_task_ ||
             task->end_of_sequence || task->removed) {
-          VLOG(0) << "Skipping task " << next_task_index_
+          VLOG(1) << "Skipping task " << next_task_index_
                   << ". starting round: " << task->info.starting_round()
                   << ". current round: " << current_round_
                   << ". task->in_use: " << task->in_use
@@ -856,7 +856,6 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
               if (task_to_process) {
                 break;
               }
-              VLOG(0) << "Space in buffer but no task";
             }
             VLOG(0) << "Thread waiting for task or space in buffer, outstanding_requests_: "
             << outstanding_requests_ << " results_.size(): " << results_.size();
@@ -1028,7 +1027,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         int64 backoff_until = std::min(
             deadline_micros,
             now_micros + ::tensorflow::ComputeBackoffMicroseconds(num_retries));
-        VLOG(1) << "Failed to get an element from worker "
+        VLOG(0) << "Failed to get an element from worker "
                 << task->info.worker_address() << ": " << s
                 << ". Will retry in " << (backoff_until - now_micros)
                 << " microseconds";
