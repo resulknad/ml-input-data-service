@@ -324,7 +324,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       while (skip) {
         while ((results_.empty() || !results_.front().ready) && !Finished() &&
                !cancelled_ && status_.ok()) {
-          VLOG(3) << "Blocking in GetNext. results_.size():" << results_.size()
+          VLOG(0) << "Blocking in GetNext. results_.size():" << results_.size()
                   << " results_.front().ready:"
                   << (!results_.empty() && results_.front().ready)
                   << " job_finished_:" << job_finished_
@@ -388,7 +388,6 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
               << wait_us << ", " << hadToWait;
 
       results_.pop();
-
       worker_thread_cv_.notify_one();
 
       return Status::OK();
