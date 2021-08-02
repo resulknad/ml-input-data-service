@@ -886,7 +886,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         }
         if (!s.ok()) {
           mutex_lock l(mu_);
-          VLOG(1) << "Failed to get element from worker "
+          VLOG(0) << "Failed to get element from worker "
                   << task_to_process->info.worker_address() << ": " << s;
           task_to_process->in_use = false; // only holds for round robin
           task_to_process->num_outstanding_requests--;
