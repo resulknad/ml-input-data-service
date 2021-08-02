@@ -134,10 +134,11 @@ Status DetermineJobType(const experimental::DispatcherConfig& dispatcher_config,
                      const int64 job_id,
                      std::string& job_type) {
   // First check if we should use a "fixed" cache policy:
-  // 2==compute 
-  // 3==full cache(put, then get from 2nd epoch)
-  // 4==source cache(put, then get from 2nd epoch) 
-  // ---------------------------------------------------------------------------
+  // 1 == EASL
+  // 2 == compute 
+  // 3 == full cache(put, then get from 2nd epoch)
+  // 4 == source cache(put, then get from 2nd epoch) 
+  // Compute -------------------------------------------------------------------
   if(dispatcher_config.cache_policy() == 2){
     job_type = "COMPUTE";
     return Status::OK();
@@ -171,8 +172,8 @@ Status DetermineJobType(const experimental::DispatcherConfig& dispatcher_config,
     return
   Status::OK();
   }
-  // ---------------------------------------------------------------------------
 
+  // ---------------------------------------------------------------------------
   // Cache policy = EASL (cache_policy==1)
   // ---------------------------------------------------------------------------
 
