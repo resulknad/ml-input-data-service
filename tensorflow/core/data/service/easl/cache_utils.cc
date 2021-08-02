@@ -134,13 +134,15 @@ Status DetermineJobType(const experimental::DispatcherConfig& dispatcher_config,
                      const int64 job_id,
                      std::string& job_type) {
   // First check if we should use a "fixed" cache policy:
-  // 2==compute, 3==cache(put, then get from 2nd epoch)
+  // 2==compute 
+  // 3==full cache(put, then get from 2nd epoch)
+  // 4==source cache(put, then get from 2nd epoch) 
   // ---------------------------------------------------------------------------
-  if(dispatcher_config.cache_policy()==2){
+  if(dispatcher_config.cache_policy() == 2){
     job_type = "COMPUTE";
     return Status::OK();
   // Caching -------------------------------------------------------------------
-  } else if(dispatcher_config.cache_policy()==3){
+  } else if(dispatcher_config.cache_policy() == 3){
     if(cache_state.IsDatasetCached(fingerprint)){
       job_type = "GET";
     } else {
@@ -153,14 +155,14 @@ Status DetermineJobType(const experimental::DispatcherConfig& dispatcher_config,
   } else if (dispatcher_config.cache_policy() == 31) {
     job_type = "GET";
     return Status::OK();
-  // Source Caching --------------------------------------------------------------
-  } else if(dispatcher_config.cache_policy()==4) {
-      if (cache_state.IsDatasetSourceCached(fingerprint)) {
-        job_type = "GET_SOURCE";
-      } else {
-        job_type = "PUT_SOURCE";
-      }
-      return Status::OK();
+  // Source Caching ------------------------------------------------------------
+  } else if(dispatcher_config.cache_policy() == 4) {
+    if (cache_state.IsDatasetSourceCached(fingerprint)) {
+      job_type = "GET_SOURCE";
+    } else {
+      job_type = "PUT_SOURCE";
+    }
+    return Status::OK();
   } else if (dispatcher_config.cache_policy() == 40) {
     job_type = "PUT_SOURCE";
     return Status::OK();
@@ -176,12 +178,20 @@ Status DetermineJobType(const experimental::DispatcherConfig& dispatcher_config,
 
   // If dataset was previously cached, assume it was faster than compute
   // and decide to read.
-  if(cache_state.IsDatasetCached(fingerprint)){
+  if (cache_state.IsDatasetCached(fingerprint)){
     job_type = "GET";
     return Status::OK();
   }
+
+  // We always prefer source caching, so if we have full caching, it means
+  // that was necessary. Thus, we check source caching after full caching.
+  if (cache_state.IsDatasetSourceCached(fingerprint)) {
+    job_type = "GET_SOURCE";
+    return Status::OK();
+  }
   std::shared_ptr<::tensorflow::data::easl::InputPipelineMetrics> job_metrics;
-  Status s = metadata_store.GetInputPipelineMetricsByDatasetKey(dataset_key, job_metrics);
+  Status s = metadata_store.GetInputPipelineMetricsByDatasetKey(dataset_key, 
+    job_metrics);
 
   // We do not yet have the metrics for this dataset
   if(errors::IsNotFound(s)){
@@ -194,7 +204,8 @@ Status DetermineJobType(const experimental::DispatcherConfig& dispatcher_config,
   // Pipeline stats
   using NodeMetrics = ::tensorflow::data::easl::NodeMetrics;
   std::shared_ptr<NodeMetrics> node_metrics;
-  TF_RETURN_IF_ERROR(metadata_store.GetLastNodeMetricsByDatasetKey(dataset_key, node_metrics));
+  TF_RETURN_IF_ERROR(metadata_store.GetLastNodeMetricsByDatasetKey(
+    dataset_key, node_metrics));
 
   uint64 row_size = 0;
   double compute_time_per_row_ms = 0;
@@ -202,32 +213,94 @@ Status DetermineJobType(const experimental::DispatcherConfig& dispatcher_config,
   size_t num_workers = (node_metrics->metrics_).size();
   DCHECK(num_workers > 0);
 
-  for(std::pair<std::string, std::shared_ptr<NodeMetrics::Metrics>> e : node_metrics->metrics_){
+  for(std::pair<std::string, std::shared_ptr<NodeMetrics::Metrics>> e : 
+    node_metrics->metrics_){
     std::shared_ptr<NodeMetrics::Metrics> worker_metrics = e.second;
     // TODO average out row size here for datasets with varying row size?
-    row_size += worker_metrics->bytes_produced() / worker_metrics->num_elements();
+    row_size += worker_metrics->bytes_produced() / 
+      worker_metrics->num_elements();
     compute_time_per_row_ms += worker_metrics->in_prefix_time_ms();
   }
 
   compute_time_per_row_ms = compute_time_per_row_ms / num_workers;
   row_size = row_size / num_workers;
+  double cache_read_time_per_row_ms = data::cache_model::GetTimePerRow(row_size);
 
-  VLOG(0) << "row size " << row_size;
-  VLOG(0) << "compute time " << compute_time_per_row_ms;
+  VLOG(0) << "(Full caching) Row size " << row_size;
+  VLOG(0) << "Compute time " << compute_time_per_row_ms;
+  VLOG(0) << "(Full caching) Inferred GlusterFS read time " 
+          << cache_read_time_per_row_ms;
 
-  // Caching model
-  double cache_read_time_per_row_ms = ::tensorflow::data::cache_model::GetTimePerRow(row_size);
+  // Get the source data caching variables
+  bool has_marker_node = false;
+  bool is_gcs_limited = false;
+  double source_cache_compute_time_per_row_ms = 0.0;
+  std::shared_ptr<data::easl::InputPipelineMetrics> input_pipeline_metrics; 
+  metadata_store.GetInputPipelineMetricsByDatasetKey(dataset_key, 
+    input_pipeline_metrics);
+  
+  if(input_pipeline_metrics->GetMarkerNodeName() != "") {
+    has_marker_node = true;
+    std::shared_ptr<data::easl::NodeMetrics> marker_node_metrics;
+    metadata_store.GetMarkerNodeMetricsByDatasetKey(dataset_key, 
+      marker_node_metrics);
+  
+    uint64 source_row_size = 0;
+    double avg_bytes_per_s = 0.0;
+    double avg_source_time_ms = 0.0;
+    for (auto& node_metrics : marker_node_metrics->metrics_) {
+      avg_bytes_per_s += node_metrics.second->bytes_per_s();
+      source_row_size += node_metrics.second->bytes_produced() / 
+        node_metrics.second->num_elements();
+      avg_source_time_ms += node_metrics.second->in_prefix_time_ms();
+    }
+    avg_bytes_per_s /= num_workers;
+    source_row_size /= num_workers;
+    avg_source_time_ms /= num_workers;
 
-  VLOG(0) << "cache time " << cache_read_time_per_row_ms;
+    // If the observed throughput is above this, then we are at the GCS limit
+    if (cache_model::GetGCSThrouhgput(0.9) <= avg_bytes_per_s) {
+      is_gcs_limited = true;
 
-  // Simplest possible caching decision:
-  if(cache_read_time_per_row_ms < compute_time_per_row_ms){
-    job_type = "PUT"; // Job should be put, otherwise cache will never fill up.
-    VLOG(0) << "dedide put";
-    cache_state.RegisterCachingJob(fingerprint, job_id);
-  } else {
-    VLOG(0) << "decide compute";
+      // We infer the potential time for an item with source caching
+      source_cache_compute_time_per_row_ms = data::cache_model::GetTimePerRow(
+        source_row_size) + compute_time_per_row_ms - avg_source_time_ms;
+    }
+
+    VLOG(0) << "(Source caching) Row size " << source_row_size << " bytes";
+    VLOG(0) << "(Source caching) Marker node bytes per second " 
+            << avg_bytes_per_s;
+    VLOG(0) << "(Source caching) In Marker node prefix " 
+            << avg_source_time_ms << " ms";
+    VLOG(0) << "(Source caching) Is GCS limited? " << is_gcs_limited 
+            << (is_gcs_limited ? " with inferred time on source caching of " 
+            + std::to_string(source_cache_compute_time_per_row_ms) 
+            + " ms per item" : "");
+  }
+
+  // We now make the caching decision: fastest option wins
+  std::vector<double> v = {has_marker_node ? source_cache_compute_time_per_row_ms 
+    : std::numeric_limits<double>::max(), cache_read_time_per_row_ms, 
+    compute_time_per_row_ms};
+  int minElementIndex = std::min_element(v.begin(), v.end()) - v.begin();
+
+  switch(minElementIndex) {
+    case 0: // This is the source cache
+    job_type = "PUT_SOURCE";
+    VLOG(0) << "Cache decision: SOURCE CACHING";
+    break;
+    case 1: // This is the full cache
+    job_type = "PUT";
+    VLOG(0) << "Cache decision: FULL CACHING";
+    break;
+    case 2: // This is the compute
     job_type = "COMPUTE";
+    VLOG(0) << "Cache decision: COMPUTE";
+    break;
+    default:
+    VLOG(0) << "Cache decision: In DEFAULT... Will throw error...";
+    return errors::Unimplemented("Caching decision defaulted to last option... "
+      "See DetermineJobType!");
   }
 
   return Status::OK();

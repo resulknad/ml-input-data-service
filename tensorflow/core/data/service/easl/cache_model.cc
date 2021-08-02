@@ -9,6 +9,7 @@ namespace data {
 namespace cache_model {
 
 #define CACHE_MODEL_TABLE_SIZE 9
+#define GCS_BYTES_PER_SECOND 153639507.7 
 
 static uint64  cache_table_row_sizes[CACHE_MODEL_TABLE_SIZE] =
     { 5000000, 10000000 , 15000000, 20000000, 25000000, 30000000, 50000000,
@@ -20,7 +21,6 @@ static double cache_table_row_times[CACHE_MODEL_TABLE_SIZE] = {
 };
 
 /*
-
 static uint64 cache_table_row_sizes[CACHE_MODEL_TABLE_SIZE] =
     {4, 64, 512, 1024, 4096, 8192, 10000, 50000, 100000, 200000, 400000, 800000,
      1000000, 1500000, 2000000, 2500000, 3000000, 3500000, 4000000, 4500000, 5000000, // 1-5MB
@@ -137,6 +137,11 @@ double GetTimePerRow(uint64 row_size) {
   VLOG(0) << "Should not end up here...";
   DCHECK(false);
 };
+
+
+double GetGCSThrouhgput(double alpha) {
+  return GCS_BYTES_PER_SECOND * alpha;
+}
 
 } // cache_model
 } // data
