@@ -901,14 +901,17 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
     Status TryGetElement(const Task& task, GetElementResult& result) {
       GetElementRequest req;
-      req.set_task_id(task.info.task_id());
-      req.set_skipped_previous_round(task.skipped_previous_round);
-      absl::optional<int64> round_index;
-      if (StrictRoundRobin()) {
-        round_index = task.round;
-        req.set_consumer_index(dataset()->consumer_index_.value());
-        req.set_round_index(task.round);
-        req.set_allow_skip(true);
+      {
+        mutex_lock l(mu_);
+        req.set_task_id(task.info.task_id());
+        req.set_skipped_previous_round(task.skipped_previous_round);
+        absl::optional<int64> round_index;
+        if (StrictRoundRobin()) {
+          round_index = task.round;
+          req.set_consumer_index(dataset()->consumer_index_.value());
+          req.set_round_index(task.round);
+          req.set_allow_skip(true);
+        }
       }
       return task.worker->GetElement(req, result);
     }
@@ -1002,6 +1005,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       for (int num_retries = 0;; ++num_retries) {
         Status s = TryGetElement(*task, get_element_result);
         if (s.ok()) break;
+        VLOG(0) << "TryGetElement returned an error " << s.ToString();
         // Retry all errors that could indicate preemption.
         if (!errors::IsUnavailable(s) && !errors::IsCancelled(s) &&
             !errors::IsAborted(s)) {
@@ -1077,7 +1081,6 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     // max_request_pipelining_per_task_ controls the max number of parallel
     // requests can be sent to a single task.
     int64 max_request_pipelining_per_task_ TF_GUARDED_BY(mu_);
-
 
     // The number of threads in `worker_threads_` which are still running.
     int64 num_running_worker_threads_ TF_GUARDED_BY(mu_) = 0;
