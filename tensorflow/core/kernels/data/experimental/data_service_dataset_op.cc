@@ -342,7 +342,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           return errors::Cancelled("Data service iterator was cancelled");
         }
         if (!status_.ok()) {
-          VLOG(3) << "Returning from GetNext with error " << status_;
+          VLOG(0) << "Returning from GetNext with error " << status_;
           return status_;
         }
         if(job_finished_){
@@ -363,15 +363,11 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           return Status::OK();
         }
         skip = results_.front().skip;
+        // EASL - handle reordering of requests
+        skip = skip || (results_.front().end_of_sequence && (!Finished() || results_.size() > 1));
         if (skip) {
           results_.pop();
           worker_thread_cv_.notify_one();
-        }
-
-        // EASL - handle reordering of requests
-        if(results_.front().end_of_sequence && (!Finished() || results_.size() != 0)){
-          skip = true;
-          VLOG(0) << "Handling reordering of requests";
         }
       }
       auto& result = results_.front();
@@ -392,8 +388,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
               << wait_us << ", " << hadToWait;
 
       results_.pop();
-      // TODO (damien-aymon) remove wait, was just for testing.
-      // std::this_thread::sleep_for(std::chrono::seconds(1));
+
       worker_thread_cv_.notify_one();
 
       return Status::OK();
@@ -812,7 +807,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         if(current_round_ < task->info.starting_round() ||
             task->num_outstanding_requests >= max_request_pipelining_per_task_ ||
             task->end_of_sequence || task->removed) {
-          VLOG(3) << "Skipping task " << next_task_index_
+          VLOG(0) << "Skipping task " << next_task_index_
                   << ". starting round: " << task->info.starting_round()
                   << ". current round: " << current_round_
                   << ". task->in_use: " << task->in_use
@@ -832,7 +827,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     void RunWorkerThread(std::function<void()> done) {
       auto cleanup = gtl::MakeCleanup([done = std::move(done)]() {
         done();
-        VLOG(1) << "Worker thread exiting";
+        VLOG(0) << "Worker thread exiting";
       });
       VLOG(1) << "Starting worker thread";
       std::shared_ptr<Task> task_to_process;
@@ -863,6 +858,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
                 break;
               }
             }
+            VLOG(0) << "Thread waiting for task or space in buffer";
             worker_thread_cv_.wait(l);
           }
           outstanding_requests_++;
