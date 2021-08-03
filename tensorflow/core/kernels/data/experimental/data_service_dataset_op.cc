@@ -913,7 +913,6 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           req.set_allow_skip(true);
         }
       }
-      VLOG(0) << "TryGetElement before call";
       return task.worker->GetElement(req, result);
     }
 
@@ -1005,7 +1004,6 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       GetElementResult get_element_result;
       for (int num_retries = 0;; ++num_retries) {
         Status s = TryGetElement(*task, get_element_result);
-        VLOG(0) << "TryGetElement returned " << s.ToString();
         if (s.ok()) break;
         // Retry all errors that could indicate preemption.
         if (!errors::IsUnavailable(s) && !errors::IsCancelled(s) &&

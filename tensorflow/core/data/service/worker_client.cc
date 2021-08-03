@@ -105,7 +105,9 @@ class GrpcDataTransferClient : public DataTransferClient {
       active_contexts_.insert(&ctx);
     }
     GetElementResponse resp;
+    VLOG(0) << "Giving out to stub...";
     grpc::Status s = stub_->GetElement(&ctx, req, &resp);
+    VLOG(0) << "received answer";
     result.end_of_sequence = resp.end_of_sequence();
     result.skip = resp.skip_task();
     switch (resp.element_case()) {
