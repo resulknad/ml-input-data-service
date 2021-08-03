@@ -104,7 +104,7 @@ class GrpcDataTransferClient : public DataTransferClient {
 
     // EASL - add deadline to grpc requests
     std::chrono::time_point<std::chrono::system_clock> deadline = std::chrono::system_clock::now() +
-        std::chrono::milliseconds(100);
+        std::chrono::seconds(10);
     ctx.set_deadline(deadline);
 
     {
