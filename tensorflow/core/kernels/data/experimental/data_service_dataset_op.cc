@@ -614,6 +614,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
       if(num_elements_ == 0){
         VLOG(3) << "EASL - client heartbeat: still no elements processed.";
+      } else {
+        VLOG(0) << "heartbeat - num_elements_: " << num_elements_;
       }
 
       // We get processing time computed by the model, from the metrics counters
