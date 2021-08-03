@@ -1009,7 +1009,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         if (s.ok()) break;
         // Retry all errors that could indicate preemption.
         if (!errors::IsUnavailable(s) && !errors::IsCancelled(s) &&
-            !errors::IsAborted(s)) {
+            !errors::IsAborted(s) && !errors::IsDeadlineExceeded(s)) {
+          // EASL - added deadline exceeded.
           return s;
         }
         {

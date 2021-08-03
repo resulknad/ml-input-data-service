@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 #include <vector>
+#include <chrono>
 
 #include "grpcpp/client_context.h"
 #include "grpcpp/create_channel.h"
@@ -100,6 +101,12 @@ class GrpcDataTransferClient : public DataTransferClient {
       }
     }
     grpc::ClientContext ctx;
+
+    // EASL - add deadline to grpc requests
+    std::chrono::time_point<std::chrono::system_clock> deadline = std::chrono::system_clock::now() +
+        std::chrono::milliseconds(100);
+    ctx.set_deadline(deadline);
+
     {
       mutex_lock l(mu_);
       active_contexts_.insert(&ctx);
