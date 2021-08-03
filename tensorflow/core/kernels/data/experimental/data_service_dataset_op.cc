@@ -1003,9 +1003,10 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
                       Result& result) TF_LOCKS_EXCLUDED(mu_) {
       GetElementResult get_element_result;
       for (int num_retries = 0;; ++num_retries) {
+        VLOG(0) << "TryGetElement before call";
         Status s = TryGetElement(*task, get_element_result);
+        VLOG(0) << "TryGetElement returned " << s.ToString();
         if (s.ok()) break;
-        VLOG(0) << "TryGetElement returned an error " << s.ToString();
         // Retry all errors that could indicate preemption.
         if (!errors::IsUnavailable(s) && !errors::IsCancelled(s) &&
             !errors::IsAborted(s)) {
