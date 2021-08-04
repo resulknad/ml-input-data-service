@@ -15,7 +15,8 @@ namespace service_cache_util {
 
 namespace {
   // Define the max file size as 30 MB
-  const int64 kMaxFileSize = 30 * 1e6; 
+  //const int64 kMaxFileSize = 30 * 1e6;
+  const int64 kMaxFileSize = 1e9; // 1GiB
 }
 
 namespace { // anonymous namespace => declared functions only visible within this file
