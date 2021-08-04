@@ -29,6 +29,7 @@ from tensorflow.python.data.experimental.ops.distribute_options import ExternalS
 from tensorflow.python.data.experimental.service import _pywrap_server_lib
 from tensorflow.python.data.experimental.service import _pywrap_utils
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.experimental.ops.service_cache_ops import service_cache_mark
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -669,9 +670,7 @@ def _register_dataset(service, dataset, compression):
     # TODO (damien-aymon) Make this cleaner
     # EASL - we set this because we look out for the first "map" operation to
     # insert our caching ops.
-    dataset = dataset.map(
-        lambda x: x,
-        num_parallel_calls=dataset_ops.AUTOTUNE)
+    dataset = dataset.apply(service_cache_mark("noop"))
 
   dataset = dataset.prefetch(dataset_ops.AUTOTUNE)
   dataset = dataset._apply_debug_options()  # pylint: disable=protected-access
