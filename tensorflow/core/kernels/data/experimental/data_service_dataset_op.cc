@@ -764,7 +764,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     void UpdateWorkerThreads(IteratorContext* ctx) TF_LOCKS_EXCLUDED(mu_) {
       mutex_lock l(mu_);
       while (num_running_worker_threads_ < max_outstanding_requests_ &&
-          !cancelled_ && status_.ok()) {
+          !cancelled_ && status_.ok() && !job_finished_) {
         VLOG(0) << "updateWorkerThread, num_running_worker_threads_: " << num_running_worker_threads_
         << " max_outstanding_requests_: " << max_outstanding_requests_;
         num_running_worker_threads_++;
