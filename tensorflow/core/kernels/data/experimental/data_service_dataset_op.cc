@@ -765,6 +765,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       mutex_lock l(mu_);
       while (num_running_worker_threads_ < max_outstanding_requests_ &&
           !cancelled_ && status_.ok()) {
+        VLOG(0) << "updateWorkerThread, num_running_worker_threads_: " << num_running_worker_threads_
+        << " max_outstanding_requests_: " << max_outstanding_requests_;
         num_running_worker_threads_++;
         outstanding_requests_++;
         auto done = [this]() {
@@ -830,7 +832,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         done();
         VLOG(0) << "Worker thread exiting";
       });
-      VLOG(1) << "Starting worker thread";
+      VLOG(0) << "Starting worker thread";
       std::shared_ptr<Task> task_to_process;
       while (true) {
         Result* result;
