@@ -8,7 +8,18 @@ namespace tensorflow {
 namespace data {
 namespace cache_model {
 
-#define CACHE_MODEL_TABLE_SIZE 34
+#define CACHE_MODEL_TABLE_SIZE 9
+
+static uint64  cache_table_row_sizes[CACHE_MODEL_TABLE_SIZE] =
+    { 5000000, 10000000 , 15000000, 20000000, 25000000, 30000000, 50000000,
+      75000000, 100000000}; // 5-100MB
+
+static double cache_table_row_times[CACHE_MODEL_TABLE_SIZE] = {
+    6.72013525, 14.023512250000001, 20.92850325, 27.214591, 33.8173755,
+    41.251718249999996, 91.6577605, 136.61998825, 184.2904355
+};
+
+/*
 
 static uint64 cache_table_row_sizes[CACHE_MODEL_TABLE_SIZE] =
     {4, 64, 512, 1024, 4096, 8192, 10000, 50000, 100000, 200000, 400000, 800000,
@@ -52,7 +63,7 @@ static double cache_table_row_times[CACHE_MODEL_TABLE_SIZE] = {
     0.030901952619399,
     0.034936749091699,
     0.037763399385101,
-};
+};*/
 
 /**
  * Performs a linear interpolation between two points.
