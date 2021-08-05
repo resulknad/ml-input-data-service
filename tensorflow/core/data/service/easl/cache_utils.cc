@@ -238,9 +238,16 @@ Status DetermineElasticity(
   const experimental::DispatcherConfig& dispatcher_config,
   const ::tensorflow::data::easl::MetadataStore& metadata_store,
   const std::string& dataset_key,
+  const int64 available_workers,
   int64& worker_count) {
   using NodeMetrics = ::tensorflow::data::easl::NodeMetrics;
   using ModelMetrics = ::tensorflow::data::easl::ModelMetrics;
+
+  // Give out max number of workers
+  if(dispatcher_config.scaling_policy() == 2){
+    worker_count = available_workers;
+    return Status::OK();
+  }
 
   // Check if we have any metrics for this dataset
   std::shared_ptr<data::easl::InputPipelineMetrics> job_metrics;
