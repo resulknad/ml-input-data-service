@@ -233,6 +233,10 @@ class Node {
 
   // Indicates whether the node has tunable parameters.
   bool has_tunable_parameters() const TF_LOCKS_EXCLUDED(mu_) {
+    // EASL - Collect all metrics in the service
+    if(name_ == "MarkerDataset"){
+      return true;
+    }
     tf_shared_lock l(mu_);
     for (const auto& pair : parameters_) {
       if (pair.second->state->tunable) return true;
