@@ -1697,7 +1697,7 @@ Model::ModelMetrics Model::CollectMetrics() {
   Node::NodeValues node_times;
   Node::NodeValues final_times;
 
-  VLOG(0) << "EASL - Trying to collect metrics";
+  VLOG(3) << "EASL - Trying to collect metrics";
 
   FlushMetrics();
   {
@@ -1711,8 +1711,8 @@ Model::ModelMetrics Model::CollectMetrics() {
     }
   }
 
-  VLOG(0) << "(CollectMetrics) Last node name " << last_node_name;
-  VLOG(0) << "(CollectMetrics) Last TF node name " << last_tf_node_name;
+  VLOG(3) << "(CollectMetrics) Last node name " << last_node_name;
+  VLOG(3) << "(CollectMetrics) Last TF node name " << last_tf_node_name;
 
   while (!queue.empty()) {
     auto node = queue.front();
@@ -1727,7 +1727,7 @@ Model::ModelMetrics Model::CollectMetrics() {
       marker_node_name = node->long_name();
     }
 
-    VLOG(0) << "BFS: current node " << node->long_name() << " short name " << node->name();
+    VLOG(3) << "BFS: current node " << node->long_name() << " short name " << node->name();
 
     // prefix_times[node->long_name()] = node->TotalProcessingTime(nullptr);
     auto node_metrics = node->SnapshotCurrentMetrics();
@@ -1744,13 +1744,13 @@ Model::ModelMetrics Model::CollectMetrics() {
       node_metrics.bytes_produced() * EnvTime::kSecondsToNanos 
       / (time_now_ns - node->activity_start_ns()) : 1;
 
-    VLOG(0) << "(CollectMetrics) Printing bytes per ms computation\n"  
-            << " > activity_start_ns = " << node->activity_start_ns() << "\n"
-            << " > bytes_produced = " << node_metrics.bytes_produced() << "\n"
-            << " > time_now_ns = " << time_now_ns << "\n"
-            << " > time_activity_start_ns = " << node->activity_start_ns() << "\n"
-            << " > bytes_per_s = " << bytes_per_s << "\n"
-            << " > active_time_ns = " << ((double)(node->active_time())) / (EnvTime::kMillisToNanos * node->num_elements());
+    // VLOG(0) << "(CollectMetrics) Printing bytes per ms computation\n"  
+    //         << " > activity_start_ns = " << node->activity_start_ns() << "\n"
+    //         << " > bytes_produced = " << node_metrics.bytes_produced() << "\n"
+    //         << " > time_now_ns = " << time_now_ns << "\n"
+    //         << " > time_activity_start_ns = " << node->activity_start_ns() << "\n"
+    //         << " > bytes_per_s = " << bytes_per_s << "\n"
+    //         << " > active_time_ns = " << ((double)(node->active_time())) / (EnvTime::kMillisToNanos * node->num_elements());
 
     node_metrics.set_bytes_per_s(bytes_per_s);
     node_metrics.set_active_time(((double)(node->active_time())) / (EnvTime::kMillisToNanos * node->num_elements()));
@@ -1775,7 +1775,7 @@ Model::ModelMetrics Model::CollectMetrics() {
     entry.second.set_marker_node_name(marker_node_name);
   }
 
-  VLOG(0) << "EASL - Done collecting metrics, returning";
+  VLOG(3) << "EASL - Done collecting metrics, returning";
   return metrics;
 }
 

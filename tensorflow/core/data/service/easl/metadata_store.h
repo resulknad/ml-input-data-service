@@ -95,7 +95,7 @@ class NodeMetrics {
         double active_time_ms() { return active_time_ms_; }
 
         void log_metrics() {
-          VLOG(0) << "(MetadataStore::NodeMetrics) Metrics:\n"
+          VLOG(3) << "(MetadataStore::NodeMetrics) Metrics:\n"
                   << " > bytes_consumed = " << bytes_consumed_ << "\n"
                   << " > bytes_produced = " << bytes_produced_ << "\n"
                   << " > bytes_per_s = " << bytes_per_s_ << "\n"

@@ -183,7 +183,7 @@ Status DataServiceWorkerImpl::GetElementResult(
       } else {
         // Perhaps the workers hasn't gotten the task from the dispatcher yet.
         // Return Unavailable so that the client knows to continue retrying.
-        VLOG(0) << "Task not found (probably not received from dispatcher yet";
+        VLOG(1) << "Task not found (probably not received from dispatcher yet";
         return errors::Unavailable("Task ", request->task_id(), " not found");
       }
     }
@@ -364,7 +364,7 @@ void DataServiceWorkerImpl::TaskCompletionThread() TF_LOCKS_EXCLUDED(mu_) {
 
     // EASL - Send heartbeat for metadata: makes sure the metrics have been sent
     // to the dispatcher at least once before the job gets deleted.
-    VLOG(0) << "EASL - calling heartbeat from taskCompletionThread";
+    VLOG(1) << "EASL - calling heartbeat from taskCompletionThread";
     Status s = Heartbeat();
     if (!s.ok()) {
       LOG(WARNING) << "Failed to send heartbeat to dispatcher: " << s;
@@ -447,14 +447,14 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
       mutex_lock l(task.second->mu);
       if (task.second->initialized) {
         VLOG(3) << "Getting metrics in heartbeat";
-        VLOG(0) << "worker heartbeat - task.outstanding_requests: " << task.second->outstanding_requests;
+        VLOG(1) << "worker heartbeat - task.outstanding_requests: " << task.second->outstanding_requests;
 
         auto metrics = task.second->task_runner->GetMetrics();
         if (metrics) {
           tasks_metrics[task.first] = metrics;
         }
       } else {
-        VLOG(0) << "Not getting metrics in heartbeat";
+        VLOG(1) << "Not getting metrics in heartbeat";
       }
     }
   }

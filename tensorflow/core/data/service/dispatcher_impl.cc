@@ -337,12 +337,12 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
       s = metadata_store_.UpdateNodeNames(job_id, last_node_name, 
         last_tf_node_name, marker_node_name);
 
-      VLOG(0) << "(WorkerHeartbeat) For job with id " 
-              << task_object->job->job_id << " we have the following relevant "
-              << "node names\n"
-              << " > last_node_name = " << last_node_name << "\n"
-              << " > last_tf_node_name = " << last_tf_node_name << "\n"
-              << " > marker_node_name = " << marker_node_name;
+      // VLOG(0) << "(WorkerHeartbeat) For job with id " 
+      //         << task_object->job->job_id << " we have the following relevant "
+      //         << "node names\n"
+      //         << " > last_node_name = " << last_node_name << "\n"
+      //         << " > last_tf_node_name = " << last_tf_node_name << "\n"
+      //         << " > marker_node_name = " << marker_node_name;
 
       if(!s.ok()){
         // Ignore metrics if job has already been removed from metadata store.
@@ -358,9 +358,9 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
             (*metrics)[kInNodeTime], (*metrics)[kInPrefixTime],
             (*metrics)[kActiveTime]);
 
-          VLOG(0) << "(Dispatcher::WorkerHeartbeat) Metrics for node " 
-                  << task.mutable_nodes(j)->name();
-          node_metrics.log_metrics();
+          // VLOG(0) << "(Dispatcher::WorkerHeartbeat) Metrics for node " 
+          //         << task.mutable_nodes(j)->name();
+          // node_metrics.log_metrics();
 
           TF_RETURN_IF_ERROR(metadata_store_.UpdateInputPipelineMetrics(job_id, 
             task.mutable_nodes(j)->name(), request->worker_address(), 
