@@ -206,7 +206,7 @@ Status DetermineJobType(const experimental::DispatcherConfig& dispatcher_config,
     std::shared_ptr<NodeMetrics::Metrics> worker_metrics = e.second;
     // TODO average out row size here for datasets with varying row size?
     row_size += worker_metrics->bytes_produced() / worker_metrics->num_elements();
-    compute_time_per_row_ms += worker_metrics->in_prefix_time_ms();
+    compute_time_per_row_ms += worker_metrics->active_time_ms();
   }
 
   compute_time_per_row_ms = compute_time_per_row_ms / num_workers;
