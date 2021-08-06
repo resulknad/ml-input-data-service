@@ -196,6 +196,7 @@ Status DetermineJobType(const experimental::DispatcherConfig& dispatcher_config,
   std::shared_ptr<NodeMetrics> node_metrics;
   TF_RETURN_IF_ERROR(metadata_store.GetLastNodeMetricsByDatasetKey(dataset_key, node_metrics));
 
+  // Compute time per output row
   uint64 row_size = 0;
   double compute_time_per_row_ms = 0;
 
