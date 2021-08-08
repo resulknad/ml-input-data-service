@@ -202,14 +202,14 @@ Status DetermineJobType(const experimental::DispatcherConfig& dispatcher_config,
     return s;
   }
 
-  size_t num_workers = (node_metrics->metrics_).size();
-  DCHECK(num_workers > 0);
-
   // Compute metrics
   using NodeMetrics = ::tensorflow::data::easl::NodeMetrics;
   std::shared_ptr<NodeMetrics> node_metrics;
   TF_RETURN_IF_ERROR(metadata_store.GetLastNodeMetricsByDatasetKey(
     dataset_key, node_metrics));
+
+  size_t num_workers = (node_metrics->metrics_).size();
+  DCHECK(num_workers > 0);
 
   uint64 compute_row_size = 0;
   uint64 compute_num_elements = 0;
