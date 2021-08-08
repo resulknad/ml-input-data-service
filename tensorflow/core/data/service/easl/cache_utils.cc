@@ -202,80 +202,87 @@ Status DetermineJobType(const experimental::DispatcherConfig& dispatcher_config,
     return s;
   }
 
-  // Pipeline stats
+  size_t num_workers = (node_metrics->metrics_).size();
+  DCHECK(num_workers > 0);
+
+  // Compute metrics
   using NodeMetrics = ::tensorflow::data::easl::NodeMetrics;
   std::shared_ptr<NodeMetrics> node_metrics;
   TF_RETURN_IF_ERROR(metadata_store.GetLastNodeMetricsByDatasetKey(
     dataset_key, node_metrics));
 
-  // Compute time per output row
-  uint64 row_size = 0;
+  uint64 compute_row_size = 0;
+  uint64 compute_num_elements = 0;
   double compute_time_per_row_ms = 0;
-
-  size_t num_workers = (node_metrics->metrics_).size();
-  DCHECK(num_workers > 0);
+  double compute_time_total_ms = 0;
 
   for(std::pair<std::string, std::shared_ptr<NodeMetrics::Metrics>> e : 
     node_metrics->metrics_){
     std::shared_ptr<NodeMetrics::Metrics> worker_metrics = e.second;
     // TODO average out row size here for datasets with varying row size?
-    row_size += worker_metrics->bytes_produced() / worker_metrics->num_elements();
+    compute_row_size += worker_metrics->bytes_produced() / worker_metrics->num_elements();
     compute_time_per_row_ms += worker_metrics->active_time_ms();
+    compute_num_elements += worker_metrics->num_elements();
   }
 
+  compute_num_elements /= num_workers;
   compute_time_per_row_ms = compute_time_per_row_ms / num_workers;
-  row_size = row_size / num_workers;
-  double cache_read_time_per_row_ms = data::cache_model::GetTimePerRow(row_size);
+  compute_time_total_ms = compute_time_per_row_ms * compute_num_elements;
+  compute_row_size = compute_row_size / num_workers;
 
-  VLOG(0) << "(Full caching) Row size " << row_size;
-  VLOG(0) << "Compute time " << compute_time_per_row_ms;
-  VLOG(0) << "(Full caching) Inferred GlusterFS read time " 
-          << cache_read_time_per_row_ms;
+  VLOG(0) << "(Full caching) Row size " << compute_row_size;
+  VLOG(0) << "Total compute time " << compute_time_total_ms;
 
-  // Get the source data caching values
+
+  // Materialized Cache Read expecations
+  double cache_read_time_per_row_ms = data::cache_model::GetTimePerRow(compute_row_size);
+  double cache_read_time_total_ms = compute_num_elements * cache_read_time_per_row_ms;
+
+
+  // IO metrics
   bool has_marker_node = false;
   bool is_gcs_limited = false;
-  double source_cache_compute_time_per_row_ms = 0.0;
+  double source_cache_compute_time_ms = 0.0;
   std::shared_ptr<data::easl::InputPipelineMetrics> input_pipeline_metrics; 
   metadata_store.GetInputPipelineMetricsByDatasetKey(dataset_key, 
     input_pipeline_metrics);
+
+
+  VLOG(0) << "(Full caching) Inferred GlusterFS read time "
+          << cache_read_time_total_ms;
   
   if(input_pipeline_metrics->GetMarkerNodeName() != "") {
+    VLOG(0) << "Found marker node name: " << input_pipeline_metrics->GetMarkerNodeName();
     has_marker_node = true;
     std::shared_ptr<data::easl::NodeMetrics> marker_node_metrics;
     metadata_store.GetMarkerNodeMetricsByDatasetKey(dataset_key, 
       marker_node_metrics);
   
-    uint64 source_row_size = 0;
-    double avg_bytes_per_s = 0.0; // Will not be used.
-    double avg_source_time_ms = 0.0; // == avg_gcs_source_time_ms.
+    uint64 io_row_size = 0;
+    uint64 io_num_elements = 0;
+    double avg_io_bytes_per_s = 0.0; // Will not be used.
+    double avg_io_time_total_ms = 0.0; // == avg_gcs_source_time_ms.
     for (auto& node_metrics : marker_node_metrics->metrics_) {
-      avg_bytes_per_s += node_metrics.second->bytes_per_s();
-      source_row_size += node_metrics.second->bytes_produced() / 
+      avg_io_bytes_per_s += node_metrics.second->bytes_per_s();
+      io_row_size += node_metrics.second->bytes_produced() /
         node_metrics.second->num_elements();
-      avg_source_time_ms += node_metrics.second->in_prefix_time_ms();
+      avg_io_time_total_ms += node_metrics.second->active_time_ms();
+      io_num_elements += node_metrics.second->num_elements();
     }
-    avg_bytes_per_s /= num_workers;
-    source_row_size /= num_workers;
-    avg_source_time_ms /= num_workers;
+    avg_io_bytes_per_s /= num_workers;
+    io_row_size /= num_workers;
+    io_num_elements /= num_workers;
+    avg_io_time_total_ms = (avg_io_time_total_ms * io_num_elements) / num_workers; // total io read time.
 
-    /**
-    // If the observed throughput is above this, then we are at the GCS limit
-    if (cache_model::GetGCSThrouhgput(0.9) <= avg_bytes_per_s) {
-      is_gcs_limited = true;
+    VLOG(0) << "Total GCS io time " << compute_time_total_ms;
+    VLOG(0) << "GCS io throughput " << avg_io_bytes_per_s;
 
-      // We infer the potential time for an item with source caching
-      source_cache_compute_time_per_row_ms = data::cache_model::GetTimePerRow(
-        source_row_size) + compute_time_per_row_ms - avg_source_time_ms;
-    }**/
-
-
-    if (compute_time_per_row_ms < avg_source_time_ms ||
-        compute_time_per_row_ms >= avg_source_time_ms && avg_bytes_per_s < cache_model::GetGCSThrouhgput(0.95)) {
+    if (compute_time_total_ms < avg_io_time_total_ms ||
+        compute_time_total_ms >= avg_io_time_total_ms && avg_io_bytes_per_s < cache_model::GetGCSThrouhgput(0.95)) {
       // 1. compute active time is less than io time => pipeline is not io bound
       // 2. compute active time is more than io time, but io throughput is not at the limit.
       // => compare directly with caching
-      if (compute_time_per_row_ms < cache_read_time_per_row_ms) {
+      if (compute_time_total_ms < cache_read_time_total_ms) {
         job_type = "COMPUTE";
       } else {
         job_type = "PUT";
@@ -284,13 +291,20 @@ Status DetermineJobType(const experimental::DispatcherConfig& dispatcher_config,
     } else {
       // pipeline is io bound, decide between source caching and caching
       double source_cache_io_time_per_row_ms = data::cache_model::GetTimePerRow(
-          source_row_size);
-      // This assumes the pipeline would not be io bound with source caching
+          io_row_size);
+      double source_cache_io_time_total_ms = source_cache_io_time_per_row_ms * io_num_elements;
+      // This assumes the pipeline would be io bound with source caching
+      // i.e. if true_compute_time_total > source_cache_io_time then source_cache_compute_time_total should be
+      // true_compute_time_total.
       // => it is optimistic about source caching, need another metric: in_node_time without accounting for parallelism..
-      double source_cache_compute_time_per_row_ms = source_cache_io_time_per_row_ms;
+      double source_cache_compute_time_total_ms = source_cache_io_time_total_ms;
           //std::max(source_cache_io_time_per_row_ms, compute_time_per_row_ms);
 
-      if (source_cache_compute_time_per_row_ms < cache_read_time_per_row_ms) {
+      VLOG(0) << "GCS is limited";
+      VLOG(0) << "Estimated source cache io time: " << source_cache_io_time_total_ms;
+      VLOG(0) << "Estimated source cache compute time: " << source_cache_compute_time_total_ms;
+
+      if (source_cache_compute_time_total_ms < cache_read_time_total_ms) {
         job_type = "PUT_SOURCE";
       } else {
         job_type = "PUT";
@@ -298,24 +312,17 @@ Status DetermineJobType(const experimental::DispatcherConfig& dispatcher_config,
       return Status::OK();
     }
 
-    VLOG(0) << "(Source caching) Row size " << source_row_size << " bytes";
-    VLOG(0) << "(Source caching) Marker node bytes per second " 
-            << avg_bytes_per_s;
-    VLOG(0) << "(Source caching) In Marker node prefix " 
-            << avg_source_time_ms << " ms";
-    VLOG(0) << "(Source caching) Is GCS limited? " << is_gcs_limited 
-            << (is_gcs_limited ? " with inferred time on source caching of " 
-            + std::to_string(source_cache_compute_time_per_row_ms) 
-            + " ms per item" : "");
-  }
-
-  if (compute_time_per_row_ms < cache_read_time_per_row_ms) {
-    job_type = "COMPUTE";
   } else {
-    job_type = "PUT";
+    VLOG(0) << "No marker node found, choosing between put or compute";
+    if (compute_time_per_row_ms < cache_read_time_per_row_ms) {
+      job_type = "COMPUTE";
+    } else {
+      job_type = "PUT";
+    }
+
+    return Status::OK();
   }
 
-  return Status::OK();
 
   /**
   // We now make the caching decision: fastest option wins
