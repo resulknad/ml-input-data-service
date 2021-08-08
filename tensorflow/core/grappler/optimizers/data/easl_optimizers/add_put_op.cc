@@ -28,6 +28,9 @@ namespace {
   constexpr char kTargetNode[] = "ParallelMapDatasetV2";
   //constexpr char kTargetNode[] = "MarkerDataset";
   constexpr int kTargetInputSize = 2;
+  constexpr char kMarkerDataset[] = "MarkerDataset";
+  constexpr char kMarkerType[] = "marker_type";
+  constexpr char kNoop[] = "noop";
 
 
 } // namespace
@@ -91,7 +94,8 @@ Status AddPutOp::ApplyOptimization(MutableGraphView &graph, NodeDef *sink_node,
 
   // Define a filtering function which identifies target node
   auto is_target_node = [](const NodeDef* node) -> bool {
-    return node->op() == kTargetNode && node->input_size() == kTargetInputSize;
+    return node->op() == kTargetNode && node->input_size() == kTargetInputSize ||
+        (node->op() == kMarkerDataset && node->attr().at(kMarkerType).s() == kNoop);
   };
 
   // Find the first target op by applying BFS
