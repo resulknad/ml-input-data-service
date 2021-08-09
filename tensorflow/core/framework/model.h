@@ -658,7 +658,7 @@ class Node {
   static thread_local int64 work_start_;  // Will be initialized to zero.
 
   // Indicates the time the node had its GetNext called for the first time
-  int64 activity_start_ns_; 
+  std::atomic<int64> activity_start_ns_;
   // Stores the time sonce
   mutable mutex mu_pause_time_;  
   int64 last_end_time_ns_;

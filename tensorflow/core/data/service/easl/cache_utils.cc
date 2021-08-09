@@ -231,7 +231,9 @@ Status DetermineJobType(const experimental::DispatcherConfig& dispatcher_config,
   compute_row_size = compute_row_size / num_workers;
 
   VLOG(0) << "(Full caching) Row size " << compute_row_size;
+  VLOG(0) << "Compute row size " << compute_row_size;
   VLOG(0) << "Total compute time " << compute_time_total_ms;
+  VLOG(0) <<
 
 
   // Materialized Cache Read expecations
