@@ -1742,7 +1742,7 @@ Model::ModelMetrics Model::CollectMetrics() {
     int64 time_now_ns = EnvTime::NowNanos();
     double bytes_per_s = 0;
     if (node->activity_start_ns() > 0) {
-      int64 delta_time_s = (time_now_ns - node->activity_start_ns()) / EnvTime::kSecondsToNanos;
+      double delta_time_s = (time_now_ns - node->activity_start_ns()) / EnvTime::kSecondsToNanos;
       bytes_per_s = node_metrics.bytes_produced() / delta_time_s;
     } else {
       bytes_per_s = 1.0;
