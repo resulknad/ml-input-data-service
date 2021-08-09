@@ -1740,9 +1740,13 @@ Model::ModelMetrics Model::CollectMetrics() {
     // if activity_start_ms has not been recorded yet (< 0), then we set this 
     // to 1, such that it does not appear as a bottleneck
     int64 time_now_ns = EnvTime::NowNanos();
-    int64 bytes_per_s = node->activity_start_ns() > 0 ? 
-      node_metrics.bytes_produced() * EnvTime::kSecondsToNanos 
-      / (time_now_ns - node->activity_start_ns()) : 1;
+    int64 bytes_per_s = 0;
+    if (node->activity_start_ns() > 0) {
+      int64 delta_time_s = (time_now_ns - node->activity_start_ns()) / EnvTime::kSecondsToNanos;
+      bytes_per_s = node_metrics.bytes_produced() / delta_time_s;
+    } else {
+      bytes_per_s = 1;
+    }
 
     // VLOG(0) << "(CollectMetrics) Printing bytes per ms computation\n"  
     //         << " > activity_start_ns = " << node->activity_start_ns() << "\n"

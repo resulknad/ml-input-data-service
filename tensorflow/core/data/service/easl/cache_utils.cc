@@ -277,7 +277,7 @@ Status DetermineJobType(const experimental::DispatcherConfig& dispatcher_config,
     VLOG(0) << "Total GCS io time " << avg_io_time_total_ms;
     VLOG(0) << "GCS io throughput " << avg_io_bytes_per_s;
 
-    if (compute_time_total_ms < avg_io_time_total_ms ||
+    if (compute_time_total_ms < 0.98 * avg_io_time_total_ms ||
         compute_time_total_ms >= avg_io_time_total_ms && avg_io_bytes_per_s < cache_model::GetGCSThrouhgput(0.95)) {
       // 1. compute active time is less than io time => pipeline is not io bound
       // 2. compute active time is more than io time, but io throughput is not at the limit.
