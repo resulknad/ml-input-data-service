@@ -301,6 +301,7 @@ Status DetermineJobType(const experimental::DispatcherConfig& dispatcher_config,
           //std::max(source_cache_io_time_per_row_ms, compute_time_per_row_ms);
 
       VLOG(0) << "GCS is limited";
+      VLOG(0) << "IO row size " << io_row_size;
       VLOG(0) << "Estimated source cache io time: " << source_cache_io_time_total_ms;
       VLOG(0) << "Estimated source cache compute time: " << source_cache_compute_time_total_ms;
 
