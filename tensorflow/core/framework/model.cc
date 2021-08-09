@@ -1723,7 +1723,7 @@ Model::ModelMetrics Model::CollectMetrics() {
       queue.push_back(input);
     }
 
-    if (marker_node_name == "" && node->name() == "MarkerDataset") {
+    if (marker_node_name == "" && node->name() == "MarkerDataset:source_cache") {
       marker_node_name = node->long_name();
     }
 

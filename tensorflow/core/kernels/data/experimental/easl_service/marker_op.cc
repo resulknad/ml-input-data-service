@@ -153,7 +153,6 @@ Status MarkerOp::Dataset::AsGraphDefInternal(
   TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
 
   AttrValue marker_type;
-  // FIXME(DanGraur): Maybe marker type here is causing this issue
   b->BuildAttrValue(marker_type_, &marker_type);
 
   return b->AddDataset(
@@ -195,7 +194,8 @@ Status MarkerOp::Dataset::Iterator::GetNextInternal(
 std::shared_ptr<model::Node> 
 MarkerOp::Dataset::Iterator::CreateNode(IteratorContext* ctx, 
   model::Node::Args args) const {
-    return model::MakeKnownRatioNode(std::move(args), 1);
+  args.name = args.name + ":" + dataset()->marker_type_;
+  return model::MakeKnownRatioNode(args, 1);
 }
 
 namespace {
