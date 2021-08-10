@@ -272,15 +272,17 @@ Status DetermineJobType(const experimental::DispatcherConfig& dispatcher_config,
     io_row_size /= num_workers;
     io_num_elements /= num_workers;
     avg_io_time_total_ms = (avg_io_time_total_ms * io_num_elements) / num_workers; // total io read time.
+    double avg_io_bytes_per_active_time_ms = io_row_size / avg_io_time_total_ms;
 
     VLOG(0) << "Total GCS io time " << avg_io_time_total_ms;
     VLOG(0) << "GCS io throughput bytes/ms" << avg_io_bytes_per_s;
     VLOG(0) << "GCS io row size " << io_row_size;
 
     if (compute_time_total_ms < 0.98 * avg_io_time_total_ms ||
-        compute_time_total_ms >= avg_io_time_total_ms && avg_io_bytes_per_s < 0.001 * cache_model::GetGCSThrouhgput(0.95)) {
+        compute_time_total_ms >= avg_io_time_total_ms && avg_io_bytes_per_active_time_ms > 524288 /*500MiB/sec*/) {
+        //avg_io_bytes_per_s < 0.001 * cache_model::GetGCSThrouhgput(0.95)) {
       // 1. compute active time is less than io time => pipeline is not io bound
-      // 2. compute active time is more than io time, but io throughput is not at the limit.
+      // 2. compute active time is more than io time, but io throughput is not at the limit. => bytes per active time is very high because always element in cache.
       // => compare directly with caching
       if (compute_time_total_ms < cache_read_time_total_ms) {
         job_type = "COMPUTE";

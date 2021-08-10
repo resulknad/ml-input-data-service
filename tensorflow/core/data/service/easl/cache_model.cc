@@ -9,7 +9,9 @@ namespace data {
 namespace cache_model {
 
 //#define GCS_BYTES_PER_SECOND 153639507.7
-#define GCS_BYTES_PER_SECOND 277813518.1 // From reading imagenet data.
+#define GCS_BYTES_PER_SECOND 153639507.7
+//#define GCS_BYTES_PER_SECOND 277813518.1 // From reading imagenet data.
+
 #define CACHE_MODEL_TABLE_SIZE 13
 
 static uint64  cache_table_row_sizes[CACHE_MODEL_TABLE_SIZE] =
