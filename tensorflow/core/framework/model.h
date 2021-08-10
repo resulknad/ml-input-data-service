@@ -281,9 +281,8 @@ class Node {
   // Records the UNIX time when this node's GetNext was called for 
   // the first time in ns
   void record_activity_start(int64 time_nanos) {
-    if (activity_start_ns_ == -1) {
-      activity_start_ns_ = time_nanos;
-    }
+    int64 expected = -1;
+    activity_start_ns_.compare_exchange_strong(expected, time_nanos);
   }
 
   // Gets the UNIX time in ms when the GetNext of this node was called for 

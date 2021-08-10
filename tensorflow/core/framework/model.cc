@@ -1742,8 +1742,12 @@ Model::ModelMetrics Model::CollectMetrics() {
     int64 time_now_ns = EnvTime::NowNanos();
     double bytes_per_s = 0;
     if (node->activity_start_ns() > 0) {
+      double delta_time_ms = (time_now_ns - node->activity_start_ns()) / EnvTime::kMillisToNanos;
       double delta_time_s = (time_now_ns - node->activity_start_ns()) / EnvTime::kSecondsToNanos;
-      bytes_per_s = node_metrics.bytes_produced() / delta_time_s;
+      bytes_per_s = node_metrics.bytes_produced() / delta_time_ms;
+      VLOG(0) << "CollectMetrics - delta_time_ms: " << delta_time_ms <<
+      ", bytes_produced: " << node_metrics.bytes_produced() <<
+      ", bytes_per_s: " << bytes_per_s << ", bytes_per_ms: " << "bytes_per_ms";
     } else {
       bytes_per_s = 1.0;
     }
@@ -1756,7 +1760,7 @@ Model::ModelMetrics Model::CollectMetrics() {
     //         << " > bytes_per_s = " << bytes_per_s << "\n"
     //         << " > active_time_ns = " << ((double)(node->active_time())) / (EnvTime::kMillisToNanos * node->num_elements());
 
-    node_metrics.set_bytes_per_s(bytes_per_s);
+    node_metrics.set_bytes_per_s(delta_time_ms);
     if (node->num_elements() == 0){ // avoid division by zero
       node_metrics.set_active_time(0.0);
     } else {

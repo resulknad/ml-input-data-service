@@ -231,7 +231,6 @@ Status DetermineJobType(const experimental::DispatcherConfig& dispatcher_config,
   compute_row_size = compute_row_size / num_workers;
 
   VLOG(0) << "(Full caching) Row size " << compute_row_size;
-  VLOG(0) << "Compute row size " << compute_row_size;
   VLOG(0) << "Total compute time " << compute_time_total_ms;
 
   // Materialized Cache Read expecations
@@ -275,10 +274,11 @@ Status DetermineJobType(const experimental::DispatcherConfig& dispatcher_config,
     avg_io_time_total_ms = (avg_io_time_total_ms * io_num_elements) / num_workers; // total io read time.
 
     VLOG(0) << "Total GCS io time " << avg_io_time_total_ms;
-    VLOG(0) << "GCS io throughput " << avg_io_bytes_per_s;
+    VLOG(0) << "GCS io throughput bytes/ms" << avg_io_bytes_per_s;
+    VLOG(0) << "GCS io row size " << io_row_size;
 
     if (compute_time_total_ms < 0.98 * avg_io_time_total_ms ||
-        compute_time_total_ms >= avg_io_time_total_ms && avg_io_bytes_per_s < cache_model::GetGCSThrouhgput(0.95)) {
+        compute_time_total_ms >= avg_io_time_total_ms && avg_io_bytes_per_s < 0.001 * cache_model::GetGCSThrouhgput(0.95)) {
       // 1. compute active time is less than io time => pipeline is not io bound
       // 2. compute active time is more than io time, but io throughput is not at the limit.
       // => compare directly with caching
