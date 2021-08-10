@@ -375,6 +375,7 @@ class Node {
   void record_pause_start(int64 time_nanos) TF_LOCKS_EXCLUDED(mu_pause_time_) {
     mutex_lock l(mu_pause_time_);
     last_end_time_ns_ = time_nanos;
+    VLOG(0) << "Record pause start, thread id " << std::this_thread::get_id();
   }
 
   void record_pause_end(int64 time_nanos) TF_LOCKS_EXCLUDED(mu_pause_time_) {
@@ -384,6 +385,8 @@ class Node {
         / EnvTime::kMillisToNanos);
       pause_times_ms_.pop_front();
     }
+    VLOG(0) << "Record pause start, thread id " << std::this_thread::get_id();
+
   }
 
   // Returns whether work is currently being recorded, i.e. whether we are
