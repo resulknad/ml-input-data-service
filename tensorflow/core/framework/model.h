@@ -234,7 +234,7 @@ class Node {
   // Indicates whether the node has tunable parameters.
   bool has_tunable_parameters() const TF_LOCKS_EXCLUDED(mu_) {
     // EASL - Collect all metrics in the service
-    if(name_ == "MarkerDataset:noop"){
+    if(name_ == "MarkerDataset:noop" || name_ == "DataServiceDataset"){
       return true;
     }
     tf_shared_lock l(mu_);
@@ -296,11 +296,11 @@ class Node {
   int64 pause_time() const TF_LOCKS_EXCLUDED(mu_pause_time_) {
     int64 pause_time_ms = 0;
     {
-      VLOG(0) << "Pause time for node " << name_;
+      //VLOG(0) << "Pause time for node " << name_;
       mutex_lock l(mu_pause_time_);
       for (const int64 t : pause_times_ms_) {
         pause_time_ms += t;
-        VLOG(0) << "pause time: " << pause_time_ms;
+        //VLOG(0) << "pause time: " << pause_time_ms;
       }
       pause_time_ms /= pause_times_ms_.size();
     }
@@ -375,9 +375,6 @@ class Node {
   void record_pause_start(int64 time_nanos) TF_LOCKS_EXCLUDED(mu_pause_time_) {
     mutex_lock l(mu_pause_time_);
     last_end_time_ns_ = time_nanos;
-    if(name_ == "RootDataset"){
-      VLOG(0) << "Record pause start, thread id " << std::this_thread::get_id();
-    }
   }
 
   void record_pause_end(int64 time_nanos) TF_LOCKS_EXCLUDED(mu_pause_time_) {
@@ -387,10 +384,6 @@ class Node {
         / EnvTime::kMillisToNanos);
       pause_times_ms_.pop_front();
     }
-    if(name_ == "RootDataset") {
-      VLOG(0) << "Record pause start, thread id " << std::this_thread::get_id();
-    }
-
   }
 
   // Returns whether work is currently being recorded, i.e. whether we are

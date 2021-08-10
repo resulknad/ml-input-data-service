@@ -260,7 +260,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     }
 
     ~Iterator() override {
-      VLOG(0) << "Destroying data service dataset iterator for job id "
+      VLOG(1) << "Destroying data service dataset iterator for job id "
               << job_client_id_;
       CancelThreads();
       if (deregister_fn_) deregister_fn_();
@@ -1019,8 +1019,6 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         {
           mutex_lock l(mu_);
           if (cancelled_) {
-            VLOG(0) << "Failed to get an element from worker "
-                    << task->info.worker_address() << ": " << s;
             return errors::Cancelled("DataServiceDataset iterator cancelled");
           }
         }
