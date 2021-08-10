@@ -234,7 +234,7 @@ class Node {
   // Indicates whether the node has tunable parameters.
   bool has_tunable_parameters() const TF_LOCKS_EXCLUDED(mu_) {
     // EASL - Collect all metrics in the service
-    if(name_ == "MarkerDataset"){
+    if(name_ == "MarkerDataset:noop" || name_ == "DataService"){
       return true;
     }
     tf_shared_lock l(mu_);
@@ -281,9 +281,8 @@ class Node {
   // Records the UNIX time when this node's GetNext was called for 
   // the first time in ns
   void record_activity_start(int64 time_nanos) {
-    if (activity_start_ns_ == -1) {
-      activity_start_ns_ = time_nanos;
-    }
+    int64 expected = -1;
+    activity_start_ns_.compare_exchange_strong(expected, time_nanos);
   }
 
   // Gets the UNIX time in ms when the GetNext of this node was called for 
@@ -297,9 +296,11 @@ class Node {
   int64 pause_time() const TF_LOCKS_EXCLUDED(mu_pause_time_) {
     int64 pause_time_ms = 0;
     {
+      //VLOG(0) << "Pause time for node " << name_;
       mutex_lock l(mu_pause_time_);
       for (const int64 t : pause_times_ms_) {
         pause_time_ms += t;
+        //VLOG(0) << "pause time: " << pause_time_ms;
       }
       pause_time_ms /= pause_times_ms_.size();
     }
@@ -658,7 +659,7 @@ class Node {
   static thread_local int64 work_start_;  // Will be initialized to zero.
 
   // Indicates the time the node had its GetNext called for the first time
-  int64 activity_start_ns_; 
+  std::atomic<int64> activity_start_ns_;
   // Stores the time sonce
   mutable mutex mu_pause_time_;  
   int64 last_end_time_ns_;
@@ -713,7 +714,7 @@ class Node {
     const int64 computation_time_;
 
     // Indicates time in node and in prefix rooted at node 
-    int64 bytes_per_s_;
+    double bytes_per_s_;
     double in_node_time_;
     double in_prefix_time_;
     double active_time_;
@@ -743,8 +744,8 @@ class Node {
       const int64 computation_time() const { return computation_time_; }
 
       // Methods for getting and setting some latent metrics
-      void set_bytes_per_s(int64 x) { bytes_per_s_ = x; }
-      int64 bytes_per_s() { return bytes_per_s_; }
+      void set_bytes_per_s(double x) { bytes_per_s_ = x; }
+      double bytes_per_s() { return bytes_per_s_; }
 
       void set_in_node_time(double x) { in_node_time_ = x; }
       double in_node_time() { return in_node_time_; }

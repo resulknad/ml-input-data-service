@@ -15,6 +15,10 @@ namespace cache_model {
 
 double GetTimePerRow(uint64 row_size);
 
+// Returns the GCS throughput (egress) in bytes per second; alpha is fraction 
+// \in [0, 1] indicating how much of the GCS throughput limit is being used  
+double GetGCSThrouhgput(double alpha);
+
 } // cache_model
 } // data
 } // tensorflow

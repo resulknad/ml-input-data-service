@@ -1723,7 +1723,7 @@ Model::ModelMetrics Model::CollectMetrics() {
       queue.push_back(input);
     }
 
-    if (marker_node_name == "" && node->name() == "MarkerDataset") {
+    if (marker_node_name == "" && node->name() == "MarkerDataset:source_cache") {
       marker_node_name = node->long_name();
     }
 
@@ -1740,9 +1740,19 @@ Model::ModelMetrics Model::CollectMetrics() {
     // if activity_start_ms has not been recorded yet (< 0), then we set this 
     // to 1, such that it does not appear as a bottleneck
     int64 time_now_ns = EnvTime::NowNanos();
-    int64 bytes_per_s = node->activity_start_ns() > 0 ? 
-      node_metrics.bytes_produced() * EnvTime::kSecondsToNanos 
-      / (time_now_ns - node->activity_start_ns()) : 1;
+    double bytes_per_s = 0;
+    double bytes_per_ms = 0;
+    if (node->activity_start_ns() > 0) {
+      double delta_time_ms = (time_now_ns - node->activity_start_ns()) / EnvTime::kMillisToNanos;
+      double delta_time_s = (time_now_ns - node->activity_start_ns()) / EnvTime::kSecondsToNanos;
+      bytes_per_s = node_metrics.bytes_produced() / delta_time_s;
+      bytes_per_ms = node_metrics.bytes_produced() / delta_time_ms;
+      /**VLOG(0) << "CollectMetrics - delta_time_ms: " << delta_time_ms <<
+      ", bytes_produced: " << node_metrics.bytes_produced() <<
+      ", bytes_per_s: " << bytes_per_s << ", bytes_per_ms: " << bytes_per_ms;**/
+    } else {
+      bytes_per_s = 1.0;
+    }
 
     // VLOG(0) << "(CollectMetrics) Printing bytes per ms computation\n"  
     //         << " > activity_start_ns = " << node->activity_start_ns() << "\n"
@@ -1752,8 +1762,12 @@ Model::ModelMetrics Model::CollectMetrics() {
     //         << " > bytes_per_s = " << bytes_per_s << "\n"
     //         << " > active_time_ns = " << ((double)(node->active_time())) / (EnvTime::kMillisToNanos * node->num_elements());
 
-    node_metrics.set_bytes_per_s(bytes_per_s);
-    node_metrics.set_active_time(((double)(node->active_time())) / (EnvTime::kMillisToNanos * node->num_elements()));
+    node_metrics.set_bytes_per_s(bytes_per_ms);
+    if (node->num_elements() == 0){ // avoid division by zero
+      node_metrics.set_active_time(0.0);
+    } else {
+      node_metrics.set_active_time(((double)(node->active_time())) / (EnvTime::kMillisToNanos * node->num_elements()));
+    }
     metrics->insert({node->long_name(), node_metrics});
   }
 
