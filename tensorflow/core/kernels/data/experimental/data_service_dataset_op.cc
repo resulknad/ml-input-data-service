@@ -638,8 +638,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         // Set the batch time in ms
         if (model->output()) {
           req.set_avg_inter_arrival_time(model->output()->pause_time());
-          VLOG(3) << "(Heartbeat) Last node name: " 
-                  << model->output()->long_name(); 
+                  << model->output()->long_name();
         }
 
         // Set the wait time for a GetNext response in ms
@@ -849,11 +848,12 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             if (cancelled_ || job_finished_ ||
                 (dataset()->target_workers_ == TargetWorkers::LOCAL &&
                  LocalTasksFinished())) {
+              return;
               // Only return if all current tasks reached end_of_sequence.
-              if(finished_tasks_ >= tasks_.size()){
+              /*if(finished_tasks_ >= tasks_.size()){
                 return;
               }
-              VLOG(0) << "EASL - job_finished but not all tasks done yet";
+              VLOG(0) << "EASL - job_finished but not all tasks done yet";*/
             }
             if (ElementSpaceAvailable()) {
               task_to_process = GetTaskToProcess();

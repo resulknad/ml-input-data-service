@@ -790,9 +790,9 @@ Status DataServiceDispatcherImpl::CreateJob(
             << compute_dataset_key << ": " << job_type;
 
   // Infer the worker count for  this job and job type
-  int64 available_workers = state_.ListAvailableWorkers().size();
+  int64 total_workers = state_.ListWorkers().size();
   TF_RETURN_IF_ERROR(service::easl::cache_utils::DetermineElasticity(job_type, 
-      config_, metadata_store_, compute_dataset_key, available_workers, worker_count));
+      config_, metadata_store_, compute_dataset_key, total_workers, worker_count));
   VLOG(0) << "EASL - Scalability decision for dataset_key "
           << compute_dataset_key << ": " << worker_count;
 

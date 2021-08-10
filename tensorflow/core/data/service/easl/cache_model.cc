@@ -8,16 +8,25 @@ namespace tensorflow {
 namespace data {
 namespace cache_model {
 
-#define CACHE_MODEL_TABLE_SIZE 4
+//#define GCS_BYTES_PER_SECOND 153639507.7
+#define GCS_BYTES_PER_SECOND 153639507.7
+//#define GCS_BYTES_PER_SECOND 277813518.1 // From reading imagenet data.
+
+#define CACHE_MODEL_TABLE_SIZE 13
 
 static uint64  cache_table_row_sizes[CACHE_MODEL_TABLE_SIZE] =
-    { 50000000, 75000000, 100000000, 200000000 }; // 5-200MB
+    { 100000, 1000000, 5000000, 10000000, 15000000, 20000000,
+      25000000, 30000000,                                    // 10-08-21
+      50000000, 75000000, 100000000, 200000000, 400000000 }; // 5-200MB
 
 static double cache_table_row_times[CACHE_MODEL_TABLE_SIZE] = {
-    75.09628599999999, 112.799945, 155.009453, 303.55101924999997 };
+    0.00376275, 0.25485525, 5.626863, 11.9417165, 13.677828250000001,
+    22.252481250000002, 26.33922275, 30.49620075, // 10-08-21
+    75.09628599999999, 112.799945, 155.009453, 306.62446275, 624.65508275 };
+
+//152.70708925, 306.62446275, 624.65508275
 
 /*
-
 static uint64 cache_table_row_sizes[CACHE_MODEL_TABLE_SIZE] =
     {4, 64, 512, 1024, 4096, 8192, 10000, 50000, 100000, 200000, 400000, 800000,
      1000000, 1500000, 2000000, 2500000, 3000000, 3500000, 4000000, 4500000, 5000000, // 1-5MB
@@ -101,7 +110,7 @@ double GetTimePerRow(uint64 row_size) {
     double min_y = cache_table_row_times[0];
     double max_y = cache_table_row_times[1];
 
-    return lin_interpolate(min_x, max_x, min_y, max_y, row_size) * 1000; // sec to milisec...
+    return lin_interpolate(min_x, max_x, min_y, max_y, row_size); // sec to milisec...
   }
 
   // 1b - row size larger than smallest available in table
@@ -114,7 +123,7 @@ double GetTimePerRow(uint64 row_size) {
     double min_y = cache_table_row_times[CACHE_MODEL_TABLE_SIZE - 2];
     double max_y = cache_table_row_times[CACHE_MODEL_TABLE_SIZE - 1];
 
-    return lin_interpolate(min_x, max_x, min_y, max_y, row_size) * 1000; // sec to milisec...
+    return lin_interpolate(min_x, max_x, min_y, max_y, row_size); // sec to milisec...
   }
 
   // 2 - Linearly walk the table to find the proper index
@@ -126,7 +135,7 @@ double GetTimePerRow(uint64 row_size) {
       double min_y = cache_table_row_times[index - 1];
       double max_y = cache_table_row_times[index];
 
-      return lin_interpolate(min_x, max_x, min_y, max_y, row_size) * 1000; // sec to milisec...
+      return lin_interpolate(min_x, max_x, min_y, max_y, row_size); // sec to milisec...
     }
     index++;
   }
@@ -134,6 +143,11 @@ double GetTimePerRow(uint64 row_size) {
   VLOG(0) << "Should not end up here...";
   DCHECK(false);
 };
+
+
+double GetGCSThrouhgput(double alpha) {
+  return GCS_BYTES_PER_SECOND * alpha;
+}
 
 } // cache_model
 } // data
