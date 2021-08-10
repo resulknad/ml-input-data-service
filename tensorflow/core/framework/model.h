@@ -296,9 +296,11 @@ class Node {
   int64 pause_time() const TF_LOCKS_EXCLUDED(mu_pause_time_) {
     int64 pause_time_ms = 0;
     {
+      VLOG(0) << "Pause time for node " << name_;
       mutex_lock l(mu_pause_time_);
       for (const int64 t : pause_times_ms_) {
         pause_time_ms += t;
+        VLOG(0) << "pause time: " << pause_time_ms;
       }
       pause_time_ms /= pause_times_ms_.size();
     }
