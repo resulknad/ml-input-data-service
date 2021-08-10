@@ -638,9 +638,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         // Set the batch time in ms
         if (model->output()) {
           req.set_avg_inter_arrival_time(model->output()->pause_time());
-          VLOG(0) << "(Heartbeat) Last node name: "
                   << model->output()->long_name();
-          VLOG(0) << "(Heartbeat) avg_inter_arrival_time_ms: " << model->output()->pause_time();
         }
 
         // Set the wait time for a GetNext response in ms
