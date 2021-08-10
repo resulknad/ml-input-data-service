@@ -1747,9 +1747,9 @@ Model::ModelMetrics Model::CollectMetrics() {
       double delta_time_s = (time_now_ns - node->activity_start_ns()) / EnvTime::kSecondsToNanos;
       bytes_per_s = node_metrics.bytes_produced() / delta_time_s;
       bytes_per_ms = node_metrics.bytes_produced() / delta_time_ms;
-      VLOG(0) << "CollectMetrics - delta_time_ms: " << delta_time_ms <<
+      /**VLOG(0) << "CollectMetrics - delta_time_ms: " << delta_time_ms <<
       ", bytes_produced: " << node_metrics.bytes_produced() <<
-      ", bytes_per_s: " << bytes_per_s << ", bytes_per_ms: " << bytes_per_ms;
+      ", bytes_per_s: " << bytes_per_s << ", bytes_per_ms: " << bytes_per_ms;**/
     } else {
       bytes_per_s = 1.0;
     }
