@@ -514,7 +514,7 @@ Status MetadataStore::AppendJobMetricsDumps(Env* env, const std::string& path) {
 }
 
 void TerminateJobMetricsAppendDumps(int64 job_id, const std::string& path){
-  std::string fname = path + "metrics_updates_job_" + std::to_string(job_id) + ".json";
+  std::string fname = path + "/metrics_updates_job_" + std::to_string(job_id) + ".json";
   std::stringstream ss;
 
   ss << " ]" << std::endl;
