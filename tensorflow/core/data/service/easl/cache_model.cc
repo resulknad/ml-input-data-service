@@ -12,15 +12,17 @@ namespace cache_model {
 #define GCS_BYTES_PER_SECOND 153639507.7
 //#define GCS_BYTES_PER_SECOND 277813518.1 // From reading imagenet data.
 
-#define CACHE_MODEL_TABLE_SIZE 13
+#define GLUSTER_BYTES_PER_MS 942386.7
+
+#define CACHE_MODEL_TABLE_SIZE 11
 
 static uint64  cache_table_row_sizes[CACHE_MODEL_TABLE_SIZE] =
-    { 100000, 1000000, 5000000, 10000000, 15000000, 20000000,
+    { 5000000, 10000000, 15000000, 20000000,
       25000000, 30000000,                                    // 10-08-21
       50000000, 75000000, 100000000, 200000000, 400000000 }; // 5-200MB
 
 static double cache_table_row_times[CACHE_MODEL_TABLE_SIZE] = {
-    0.00376275, 0.25485525, 5.626863, 11.9417165, 13.677828250000001,
+    5.626863, 11.9417165, 13.677828250000001,
     22.252481250000002, 26.33922275, 30.49620075, // 10-08-21
     75.09628599999999, 112.799945, 155.009453, 306.62446275, 624.65508275 };
 
@@ -103,14 +105,10 @@ double GetTimePerRow(uint64 row_size) {
   // 1a - row size smaller than smallest available in table
   if (row_size < cache_table_row_sizes[0]) {
     VLOG(0) << "EASL caching model:"
-               "outside of cache table range with row size " << row_size;
+               "outside of cache table range with row size " << row_size <<
+               " using 900MiB/s throughput as approximate";
 
-    uint64 min_x = cache_table_row_sizes[0];
-    uint64 max_x = cache_table_row_sizes[1];
-    double min_y = cache_table_row_times[0];
-    double max_y = cache_table_row_times[1];
-
-    return lin_interpolate(min_x, max_x, min_y, max_y, row_size); // sec to milisec...
+    return row_size / GLUSTER_BYTES_PER_MS;
   }
 
   // 1b - row size larger than smallest available in table

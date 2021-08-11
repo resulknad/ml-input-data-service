@@ -272,7 +272,7 @@ Status DetermineJobType(const experimental::DispatcherConfig& dispatcher_config,
     io_row_size /= num_workers;
     io_num_elements /= num_workers;
     avg_io_time_total_ms = (avg_io_time_total_ms * io_num_elements) / num_workers; // total io read time.
-    double avg_io_bytes_per_active_time_ms = io_row_size / avg_io_time_total_ms;
+    double avg_io_bytes_per_active_time_ms = (io_row_size * io_num_elements) / avg_io_time_total_ms;
 
     VLOG(0) << "Total GCS io time " << avg_io_time_total_ms;
     VLOG(0) << "GCS io throughput bytes/ms" << avg_io_bytes_per_s;
