@@ -234,10 +234,15 @@ Status ServiceCachePutOp::Dataset::Iterator::GetNextInternal(
   
   if(*end_of_sequence){
     mutex_lock l(mu_);
-    if(writer_ != nullptr){
+    if(writer_){
       // (damien-aymon) will block until the underlying asyncWriter is done.
       writer_->Close();
       writer_.reset();
+      if(writer_){
+        VLOG(0) << "Writer reset, writer_.bool(): " << true;
+      } else {
+        VLOG(0) << "Writer reset, writer_.bool(): " << false;
+      }
     }
     return Status::OK();
   }
