@@ -239,9 +239,12 @@ Status ServiceCachePutOp::Dataset::Iterator::GetNextInternal(
       writer_->Close();
       writer_.reset();
       if(writer_){
-        VLOG(0) << "Writer reset, writer_.bool(): " << true;
+        VLOG(0) << "Writer reset, writer_.bool(): true";
       } else {
-        VLOG(0) << "Writer reset, writer_.bool(): " << false;
+        VLOG(0) << "Writer reset, writer_.bool(): false";
+        if(writer_ != nullptr){
+          VLOG(0) << "but writer != nullptr";
+        }
       }
     }
     return Status::OK();
