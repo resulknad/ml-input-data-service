@@ -59,7 +59,7 @@ void GrpcWorkerImpl::Stop() {
     return ToGrpcStatus(impl_->method(request, response));              \
   }
 HANDLER(ProcessTask);
-//HANDLER(GetWorkerTasks);
+HANDLER(GetWorkerTasks);
 #undef HANDLER
 
   ::grpc::Status GrpcWorkerImpl::GetElement(ServerContext* context,
