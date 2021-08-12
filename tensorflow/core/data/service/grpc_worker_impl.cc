@@ -62,16 +62,16 @@ HANDLER(ProcessTask);
 //HANDLER(GetWorkerTasks);
 #undef HANDLER
 
-::grpc::Status GrpcWorkerImpl::GetElement(ServerContext* context,
-                                          const GetElementRequest* request,
-                                          GetElementResponse* response) {
-  Status s = impl_->GetElement(request, response);
-  if(!s.ok()){
-    VLOG(0) << "worker_impl GetElement returned with non-ok error status" <<
-    s;
+  ::grpc::Status GrpcWorkerImpl::GetElement(ServerContext* context,
+                                            const GetElementRequest* request,
+                                            GetElementResponse* response) {
+    Status s = impl_->GetElement(request, response);
+    if(!s.ok()){
+      VLOG(0) << "worker_impl GetElement returned with non-ok error status" <<
+      s;
+    }
+    return ToGrpcStatus(s);
   }
-  return ToGrpcStatus(s);
-}
 
 }  // namespace data
 }  // namespace tensorflow
