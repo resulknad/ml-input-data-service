@@ -72,6 +72,8 @@ message StructuredValue {
     DictValue dict_value = 53;
     // Represents Python's namedtuple.
     NamedTupleValue named_tuple_value = 54;
+    // Represents Python's OrderedDict with key type `int`
+    OrderedDictValueIntKey ordered_dict_value_int_key = 55;
   }
 }
 
@@ -92,6 +94,17 @@ message TupleValue {
 // The comment on Unicode from Value.string_value applies analogously.
 message DictValue {
   map<string, StructuredValue> fields = 1;
+}
+
+// Represents a (key, value) pair for python OrderedDict with key type `int`
+message PairValueIntKey {
+  int64 key = 1;
+  StructuredValue value = 2;
+}
+
+// Represents a Python OrderedDict with key type `int`
+message OrderedDictValueIntKey {
+  repeated PairValueIntKey values = 1;
 }
 
 // Represents a (key, value) pair.

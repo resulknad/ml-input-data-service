@@ -198,11 +198,53 @@ class _TupleCodec(object):
 StructureCoder.register_codec(_TupleCodec())
 
 
+class _OrdredDictIntKeyCodec(object):
+  """Codec for ordered dicts with integer key type."""
+
+  def can_encode(self, pyobj):
+    if not isinstance(pyobj, collections.OrderedDict):
+      return False
+
+    keys_list = list(pyobj.keys())
+    if len(keys_list) == 0:
+      return False
+
+    return isinstance(keys_list[0], int)
+
+  def do_encode(self, dict_value, encode_fn):
+    encoded_dict = struct_pb2.StructuredValue()
+    encoded_dict.ordered_dict_value_int_key.CopyFrom(struct_pb2.OrderedDictValueIntKey())
+    for key, value in dict_value.items():
+      pair = encoded_dict.ordered_dict_value_int_key.values.add()
+      pair.key = key
+      pair.value.CopyFrom(encode_fn(value))
+
+    return encoded_dict
+
+  def can_decode(self, value):
+    return value.HasField("ordered_dict_value_int_key")
+
+  def do_decode(self, value, decode_fn):
+    pairs = value.ordered_dict_value_int_key.values
+    items = [(pair.key, decode_fn(pair.value)) for pair in pairs]
+    ordered_dict = collections.OrderedDict()
+
+    for pair in pairs:
+        key = pair.key
+        value = decode_fn(pair.value)
+        ordered_dict[key] = value
+
+    return ordered_dict
+
+
+StructureCoder.register_codec(_OrdredDictIntKeyCodec())
+
+
 class _DictCodec(object):
   """Codec for dicts."""
 
   def can_encode(self, pyobj):
-    return isinstance(pyobj, dict)
+    return isinstance(pyobj, dict) and not isinstance(pyobj, collections.OrderedDict)
 
   def do_encode(self, dict_value, encode_fn):
     encoded_dict = struct_pb2.StructuredValue()
