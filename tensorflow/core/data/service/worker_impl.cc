@@ -200,7 +200,8 @@ Status DataServiceWorkerImpl::GetElementResult(
 
   if (result->end_of_sequence) {
     mutex_lock l(mu_);
-    VLOG(3) << "Reached end_of_sequence for task " << request->task_id();
+    VLOG(0) << "Reached end_of_sequence for task " << request->task_id();
+    VLOG(0) << "Outstanding tasks for this task" << task->outstanding_requests;
     pending_completed_tasks_.insert(request->task_id());
     task_completion_cv_.notify_one();
   }
