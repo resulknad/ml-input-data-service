@@ -152,7 +152,6 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
     }
 
     Status Initialize(IteratorContext* ctx) override {
-      VLOG(0) << "Shuffle - Initializing iterator";
       mutex_lock l(mu_);
       seed_generator_->GenerateSeeds(&seed_, &seed2_);
       ResetRngs();
@@ -166,7 +165,6 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
       int64 start_micros = EnvTime::NowMicros();
       int64 num_log_entries = 0;
       if (!input_impl_ && epoch_ == 0) {
-        VLOG(0) << "Shuffle - Creating first iterator";
         TF_RETURN_IF_ERROR(this->dataset()->input_->MakeIterator(
             ctx, this, this->prefix(), &input_impl_));
       }
@@ -201,7 +199,6 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
           for (const auto& provider : ctx->split_providers()) {
             TF_RETURN_IF_ERROR(provider->Reset());
           }
-          VLOG(0) << "Shuffle - making second iterator. SHOULD NOT DO THIS EASL";
           TF_RETURN_IF_ERROR(this->dataset()->input_->MakeIterator(
               ctx, this, this->prefix(), &input_impl_));
         }
