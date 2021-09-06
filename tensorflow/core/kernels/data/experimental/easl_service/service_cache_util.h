@@ -105,7 +105,7 @@ class Writer {
       const std::vector<PartialTensorShape>& output_shapes);
 
   const int writer_version_;
-  bool initialized_;
+  bool initialized_ = false;
   Env* env_;
   const int writer_count_;
   const std::string target_dir_;
