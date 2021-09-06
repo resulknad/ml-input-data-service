@@ -229,6 +229,7 @@ Status ServiceCachePutOp::Dataset::Iterator::RestoreInternal(
 Status ServiceCachePutOp::Dataset::Iterator::GetNextInternal(
     IteratorContext* ctx, std::vector<Tensor>* out_tensors,
     bool* end_of_sequence) {
+  VLOG(0) << "ServiceCachePutOp - Get next enter";
 
   TF_RETURN_IF_ERROR(input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
   
@@ -250,7 +251,7 @@ Status ServiceCachePutOp::Dataset::Iterator::GetNextInternal(
     return Status::OK();
   }
   std::vector<Tensor> tensors = *out_tensors;
-  VLOG(3) << "put get next - writing to writer...";
+  VLOG(0) << "put get next - writing to writer...";
   return writer_->Write(tensors);
 }
 
