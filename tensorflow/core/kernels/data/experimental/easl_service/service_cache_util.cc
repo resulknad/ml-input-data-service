@@ -67,7 +67,7 @@ Status Writer::Initialize(){
               VLOG(3) << "EASL - MultiThreadedAsyncWriter done with status::ok()";
               return;
           });
-
+  initialized_ = true;
   return WriteMetadataFile(env_, target_dir_, output_dtypes_, output_shapes_);
 }
 
@@ -142,7 +142,6 @@ void MultiThreadedAsyncWriter::Initialize(Env *env, int64 file_index, const std:
     );
 
   }
-  initialized_ = true;
   VLOG(3) << "(MultiThreadedAsyncWriter) Finished Starting ThreadPool";
 }
 
