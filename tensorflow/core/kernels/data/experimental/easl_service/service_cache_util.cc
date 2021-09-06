@@ -142,6 +142,7 @@ void MultiThreadedAsyncWriter::Initialize(Env *env, int64 file_index, const std:
     );
 
   }
+  initialized_ = true;
   VLOG(3) << "(MultiThreadedAsyncWriter) Finished Starting ThreadPool";
 }
 

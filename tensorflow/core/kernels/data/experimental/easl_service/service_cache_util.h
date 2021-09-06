@@ -36,6 +36,8 @@ class MultiThreadedAsyncWriter {
                   const DataTypeVector& output_types,
                   std::function<void(Status)> done);
 
+  bool Initialized() { return initialized_; }
+
   // Writes the given tensors. The method is non-blocking and returns without
   // waiting for the element to be written.
   virtual void Write(const std::vector<Tensor>& tensors) TF_LOCKS_EXCLUDED(mu_);
@@ -72,6 +74,7 @@ class MultiThreadedAsyncWriter {
   const int writer_count_;
   // We define a prefix to ensure no name collisions occur
   const std::string prefix_hash_;
+  bool initialized_;
   std::unique_ptr<thread::ThreadPool> thread_pool_;
 };
 

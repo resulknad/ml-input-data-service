@@ -210,7 +210,6 @@ Status ServiceCachePutOp::Dataset::Iterator::Initialize(
       std::make_unique<tensorflow::data::easl::service_cache_util::Writer>(
           ctx->env(), dataset()->path_, dataset()->output_dtypes(),
           dataset()->output_shapes(), dataset()->parallelism_, dataset()->cache_format_);
-  TF_RETURN_IF_ERROR(writer_->Initialize());
 
   return dataset()->input_->MakeIterator(
       ctx, this, prefix(), &input_impl_);
@@ -229,7 +228,12 @@ Status ServiceCachePutOp::Dataset::Iterator::RestoreInternal(
 Status ServiceCachePutOp::Dataset::Iterator::GetNextInternal(
     IteratorContext* ctx, std::vector<Tensor>* out_tensors,
     bool* end_of_sequence) {
-  VLOG(0) << "ServiceCachePutOp - Get next enter";
+  //VLOG(0) << "ServiceCachePutOp - Get next enter";
+
+  if(writer_ && !writer_->Initialized()){
+    TF_RETURN_IF_ERROR(writer_->Initialize());
+  }
+
 
   TF_RETURN_IF_ERROR(input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
   
@@ -251,7 +255,6 @@ Status ServiceCachePutOp::Dataset::Iterator::GetNextInternal(
     return Status::OK();
   }
   std::vector<Tensor> tensors = *out_tensors;
-  VLOG(0) << "put get next - writing to writer...";
   return writer_->Write(tensors);
 }
 
