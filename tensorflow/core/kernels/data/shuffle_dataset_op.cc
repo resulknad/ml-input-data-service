@@ -152,6 +152,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
     }
 
     Status Initialize(IteratorContext* ctx) override {
+      VLOG(0) << "Shuffle - Initializing iterator";
       mutex_lock l(mu_);
       seed_generator_->GenerateSeeds(&seed_, &seed2_);
       ResetRngs();
