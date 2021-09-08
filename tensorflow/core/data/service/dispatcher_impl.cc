@@ -899,6 +899,12 @@ Status DataServiceDispatcherImpl::CreateJob(
 
 Status DataServiceDispatcherImpl::CreateTasksForWorker(
     const std::string& worker_address) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  // EASL - reassign workers first
+  Update reassign_update;
+  reassign_update.mutable_reassign_free_workers()->set_set(true);
+  TF_RETURN_IF_ERROR(state_.Apply(reassign_update));
+
+  // Then create tasks
   std::vector<std::shared_ptr<const Job>> jobs = state_.ListJobsForWorker(
     worker_address);
   for (const auto& job : jobs) {
@@ -911,7 +917,10 @@ Status DataServiceDispatcherImpl::CreateTasksForWorker(
     }
     std::shared_ptr<const Task> task;
     TF_RETURN_IF_ERROR(CreateTask(job, worker_address, task));
+    VLOG(0) << "EASL - New task (job " << job->job_id <<
+    ") created for joining worker at address " << worker_address;
   }
+
   return Status::OK();
 }
 
