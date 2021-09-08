@@ -415,7 +415,7 @@ void DispatcherState::ReassignFreeWorkers() {
     avail_workers_.erase(it);
 
     VLOG(0) << "EASL - (ReassignFreeWorkers) Reassigned worker "
-    << it.second->address << " to job " << job->job_id;
+    << it->second->address << " to job " << job->job_id;
   }
 }
 
