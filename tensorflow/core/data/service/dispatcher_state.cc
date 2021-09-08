@@ -397,6 +397,11 @@ DispatcherState::ReserveWorkers(
 // Go through jobs linearly and reassign free workers to jobs that miss workers.
 void DispatcherState::ReassignFreeWorkers() {
   auto job_iter = jobs_.begin();
+  if(job_iter == jobs_.end()){
+    // Went through all jobs, can return
+    return;
+  }
+
   for(auto it = avail_workers_.begin(); it != avail_workers_.end(); ){
     // Get a job in need of workers
     std::shared_ptr<Job> job = job_iter->second;

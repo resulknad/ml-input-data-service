@@ -349,7 +349,7 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
     if (!errors::IsNotFound(s)) {
       return s;
     }
-    VLOG(1) << "Registering new worker at address " << worker_address;
+    VLOG(0) << "Registering new worker at address " << worker_address;
     Update update;
     update.mutable_register_worker()->set_worker_address(worker_address);
     update.mutable_register_worker()->set_transfer_address(
