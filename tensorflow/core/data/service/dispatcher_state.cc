@@ -75,6 +75,7 @@ Status DispatcherState::Apply(const Update& update) {
       break;
     case Update::kReassignFreeWorkers:
       ReassignFreeWorkers();
+      break;
     case Update::UPDATE_TYPE_NOT_SET:
       return errors::Internal("Update type not set.");
   }
