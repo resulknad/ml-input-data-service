@@ -188,8 +188,7 @@ class JobMetrics {
     JobMetrics(int64 job_id,
                int64 dataset_id,
                int64 dataset_fingerprint,
-               std::string& dataset_key,
-               int64 worker_count);
+               std::string& dataset_key);
 
     void DumpToFile(const std::string& path);
     void DumpToStream(std::stringstream& ss);
@@ -197,7 +196,6 @@ class JobMetrics {
     int64 job_id_;
     int64 dataset_id_;
     int64 dataset_fingerprint_;
-    int64 worker_count_;
     std::string dataset_key_;
     std::shared_ptr<ModelMetrics> model_metrics_;
     std::shared_ptr<InputPipelineMetrics> input_pipeline_metrics_;
@@ -213,8 +211,7 @@ class MetadataStore {
   Status CreateJob(int64 job_id,
                    int64 dataset_id,
                    int64 dataset_fingerprint,
-                   std::string& dataset_key,
-                   int64 worker_count);
+                   std::string& dataset_key);
 
   // Remove job
   Status RemoveJob(int64 job_id);

@@ -243,15 +243,13 @@ void InputPipelineMetrics::DumpToStream(std::stringstream& ss){
 JobMetrics::JobMetrics(int64 job_id,
                        int64 dataset_id,
                        int64 dataset_fingerprint,
-                       std::string& dataset_key,
-                       int64 worker_count)
+                       std::string& dataset_key)
       : job_id_(job_id),
         dataset_id_(dataset_id),
         dataset_fingerprint_(dataset_fingerprint),
         dataset_key_(dataset_key),
         model_metrics_(), 
-        input_pipeline_metrics_(),
-        worker_count_(worker_count) {
+        input_pipeline_metrics_() {
           model_metrics_ = std::make_shared<ModelMetrics>();
           input_pipeline_metrics_ = std::make_shared<InputPipelineMetrics>();
         }
@@ -288,10 +286,10 @@ MetadataStore::MetadataStore()
     dataset_key_metadata_() {}
 
 Status MetadataStore::CreateJob(int64 job_id, int64 dataset_id, 
-  int64 dataset_fingerprint, std::string& dataset_key, int64 worker_count) {
+  int64 dataset_fingerprint, std::string& dataset_key) {
   std::string ds_key = dataset_key;
   auto job_metrics = std::make_shared<JobMetrics>(
-      job_id, dataset_id, dataset_fingerprint, ds_key, worker_count);
+      job_id, dataset_id, dataset_fingerprint, ds_key);
   job_metadata_.insert_or_assign(job_id, job_metrics);
 
   return Status::OK();

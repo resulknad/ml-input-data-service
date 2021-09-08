@@ -136,13 +136,15 @@ class DispatcherState {
     explicit Job(int64 job_id, int64 dataset_id, ProcessingMode processing_mode,
                  int64 num_split_providers,
                  absl::optional<NamedJobKey> named_job_key,
-                 absl::optional<int64> num_consumers, const std::string& job_type)
+                 absl::optional<int64> num_consumers, const std::string& job_type,
+                 int64 worker_count)
         : job_id(job_id),
           dataset_id(dataset_id),
           processing_mode(processing_mode),
           named_job_key(named_job_key),
           num_consumers(num_consumers),
-          job_type(job_type){
+          job_type(job_type),
+          worker_count(worker_count){
       if (processing_mode == ProcessingMode::DISTRIBUTED_EPOCH) {
         distributed_epoch_state = DistributedEpochState(num_split_providers);
       }
@@ -172,6 +174,7 @@ class DispatcherState {
     bool garbage_collected = false;
     // EASL
     const std::string job_type;
+    const int64 worker_count;
   };
 
   struct Task {
@@ -271,6 +274,9 @@ class DispatcherState {
   void CreateTask(const CreateTaskUpdate& create_task);
   void FinishTask(const FinishTaskUpdate& finish_task);
   void SetElementSpec(const SetElementSpecUpdate& set_element_spec);
+
+  // EASL
+  void ReassignFreeWorkers();
 
   int64 next_available_dataset_id_ = 1000;
   // Registered datasets, keyed by dataset ids.

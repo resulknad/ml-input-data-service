@@ -215,6 +215,9 @@ class DataServiceDispatcherImpl {
       const absl::flat_hash_set<int64>& current_tasks,
       std::vector<std::shared_ptr<const DispatcherState::Task>>& assigned_tasks,
       WorkerHeartbeatResponse* response);
+  // EASL - Reassigns free workers to existing jobs that have less tasks than
+  // required by the elasticity policy
+  Status ReassignFreeWorkersAndCreateTasks() TF_LOCKS_EXCLUDED(mu_);
   // Acquires a job client id to read from the given job and sets
   // `job_client_id`.
   Status AcquireJobClientId(

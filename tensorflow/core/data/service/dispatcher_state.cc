@@ -73,6 +73,8 @@ Status DispatcherState::Apply(const Update& update) {
     case Update::kSetElementSpec:
       SetElementSpec(update.set_element_spec());
       break;
+    case Update::kReassignFreeWorkers:
+      ReassignFreeWorkers();
     case Update::UPDATE_TYPE_NOT_SET:
       return errors::Internal("Update type not set.");
   }
@@ -122,7 +124,8 @@ void DispatcherState::CreateJob(const CreateJobUpdate& create_job) {
   auto job = std::make_shared<Job>(job_id, create_job.dataset_id(),
                                    ProcessingMode(create_job.processing_mode()),
                                    create_job.num_split_providers(),
-                                   named_job_key, num_consumers, create_job.job_type());
+                                   named_job_key, num_consumers,
+                                   create_job.job_type(), create_job.worker_count());
   DCHECK(!jobs_.contains(job_id));
   jobs_[job_id] = job;
   tasks_by_job_[job_id] = std::vector<std::shared_ptr<Task>>();
@@ -180,6 +183,15 @@ void DispatcherState::GarbageCollectJob(
   }
   jobs_[job_id]->finished = true;
   jobs_[job_id]->garbage_collected = true;
+
+  // EASL - Update available workers.
+  for (auto& worker : workers_by_job_[job_id]) {
+    VLOG(0) << "(GarbageCollectJob) Releasing worker at address " << worker->address
+            << " for job " << job_id;
+    avail_workers_[worker->address] = worker;
+    jobs_by_worker_[worker->address].erase(job_id);
+  }
+  workers_by_job_[job_id].clear();
 }
 
 void DispatcherState::RemoveTask(const RemoveTaskUpdate& remove_task) {
@@ -378,6 +390,33 @@ DispatcherState::ReserveWorkers(
   VLOG(0) << "(ReserveWorkers) Number of workers for job " << job_id << " is: "
           << workers_by_job_[job_id].size();
   return workers;
+}
+
+
+// Go through jobs linearly and reassign free workers to jobs that miss workers.
+void DispatcherState::ReassignFreeWorkers() {
+  auto job_iter = jobs_.begin();
+  for(auto it : avail_workers_){
+    // Get a job in need of workers
+    std::shared_ptr<Job> job = job_iter->second;
+    int64 num_assigned_workers = workers_by_job_[job->job_id].size();
+    while (num_assigned_workers == job->worker_count){
+      job_iter++;
+      job = job_iter->second;
+      if(job_iter == jobs_.end()){
+        // Went through all jobs, can return
+        return;
+      }
+      num_assigned_workers = workers_by_job_[job->job_id].size();
+    }
+    // Assign one worker to the job
+    workers_by_job_[job->job_id].push_back(it.second);
+    jobs_by_worker_[it.second][job->job_id] = jobs_[job->job_id];
+    avail_workers_.erase(it);
+
+    VLOG(0) << "EASL - (ReassignFreeWorkers) Reassigned worker "
+    << it.second->address << " to job " << job->job_id;
+  }
 }
 
 std::vector<std::shared_ptr<const DispatcherState::Job>>
