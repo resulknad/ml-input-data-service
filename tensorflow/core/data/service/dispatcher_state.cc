@@ -396,7 +396,7 @@ DispatcherState::ReserveWorkers(
 // Go through jobs linearly and reassign free workers to jobs that miss workers.
 void DispatcherState::ReassignFreeWorkers() {
   auto job_iter = jobs_.begin();
-  for(auto it : avail_workers_){
+  for(auto it = avail_workers_.begin(); it != avail_workers_.end(); ){
     // Get a job in need of workers
     std::shared_ptr<Job> job = job_iter->second;
     int64 num_assigned_workers = workers_by_job_[job->job_id].size();
@@ -410,8 +410,8 @@ void DispatcherState::ReassignFreeWorkers() {
       num_assigned_workers = workers_by_job_[job->job_id].size();
     }
     // Assign one worker to the job
-    workers_by_job_[job->job_id].push_back(it.second);
-    jobs_by_worker_[it.second][job->job_id] = jobs_[job->job_id];
+    workers_by_job_[job->job_id].push_back(it->second);
+    jobs_by_worker_[it->second][job->job_id] = jobs_[job->job_id];
     avail_workers_.erase(it);
 
     VLOG(0) << "EASL - (ReassignFreeWorkers) Reassigned worker "
