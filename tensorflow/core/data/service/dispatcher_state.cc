@@ -411,7 +411,7 @@ void DispatcherState::ReassignFreeWorkers() {
     }
     // Assign one worker to the job
     workers_by_job_[job->job_id].push_back(it->second);
-    jobs_by_worker_[it->second][job->job_id] = jobs_[job->job_id];
+    jobs_by_worker_[it->second->address][job->job_id] = jobs_[job->job_id];
     avail_workers_.erase(it);
 
     VLOG(0) << "EASL - (ReassignFreeWorkers) Reassigned worker "
