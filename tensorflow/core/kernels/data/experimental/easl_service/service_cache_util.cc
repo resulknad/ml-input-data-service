@@ -430,9 +430,9 @@ Status MultiThreadedAsyncReader::ReaderThread(Env *env, uint64 writer_id, int64 
 
   while (!end_of_sequence) {
     std::string file_path;
-    VLOG(0) << "EASL - (Reader) getting file";
+    VLOG(3) << "EASL - (Reader) getting file";
     Consume(&file_path, &end_of_sequence);
-    VLOG(0) << "(Reader_" << writer_id << ") Got file " << file_path;
+    VLOG(3) << "(Reader_" << writer_id << ") Got file " << file_path;
 
     if (!end_of_sequence) {
       VLOG(3) << "(Reader_" << writer_id << ") Reading file " << file_path;
