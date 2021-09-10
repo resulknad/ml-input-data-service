@@ -144,7 +144,7 @@ class MultiThreadedAsyncReader {
   int file_count_;
   const int reader_count_;
   int8 num_readers_done_ TF_GUARDED_BY(mu_add_);
-  bool cancelled_ TF_GUARDED_BY(mu_add_);
+  bool cancelled_ = false TF_GUARDED_BY(mu_add_);
 
   Status ReadAndParseMetadataFile();
   void Consume(string* s, bool* end_of_sequence) TF_LOCKS_EXCLUDED(mu_);
