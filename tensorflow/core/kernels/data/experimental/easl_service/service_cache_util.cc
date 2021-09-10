@@ -351,8 +351,14 @@ void MultiThreadedAsyncReader::Consume(string* s, bool* end_of_sequence) {
   Tensor split;
   VLOG(3) << "(Consume) In split_provider consume";
   // Void function --> can't use TF_RETURN_IF_ERROR
-  split_provider_->GetNext(&split, end_of_sequence);
+  Status status = split_provider_->GetNext(&split, end_of_sequence);
+  if(!status.ok()){
+    VLOG(0) << "EASL - (MultiThreadedAsyncReader::Consume) split provider returned non-ok status";
+    *end_of_sequence = true;
+    *s = "";
+  }
   if (*end_of_sequence) {
+    VLOG(0) << "EASL - (MultiThreadedAsyncReader::Consume) split provider reached eos.";
     *s = "";
   } else {
     int64 file_idx = split.scalar<int64>()();
@@ -424,8 +430,9 @@ Status MultiThreadedAsyncReader::ReaderThread(Env *env, uint64 writer_id, int64 
 
   while (!end_of_sequence) {
     std::string file_path;
+    VLOG(0) << "EASL - (Reader) getting file";
     Consume(&file_path, &end_of_sequence);
-    VLOG(3) << "(Reader_" << writer_id << ") Got file " << file_path;
+    VLOG(0) << "(Reader_" << writer_id << ") Got file " << file_path;
 
     if (!end_of_sequence) {
       VLOG(3) << "(Reader_" << writer_id << ") Reading file " << file_path;
