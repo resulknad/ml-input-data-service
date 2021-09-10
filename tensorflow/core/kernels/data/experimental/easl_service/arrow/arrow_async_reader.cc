@@ -56,6 +56,13 @@ Status ArrowAsyncReader::ReaderThread(
       int64 count = 0;
       bool eof = false;
       while (!eof) {
+        {
+          mutex_lock l(mu_add_);
+          if (cancelled_) {
+            VLOG(0) << "EASLReaderThread closed for cancelled reader.";
+            return Status::OK();
+          }
+        }
         std::string t_str = "Reading Tensors:";
         std::vector<Tensor> tensors;
         Status s = arrowReader->ReadTensors(&tensors);

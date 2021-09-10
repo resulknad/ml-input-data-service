@@ -133,6 +133,8 @@ class MultiThreadedAsyncReader {
 
   Status Read(std::vector<Tensor>* &read_tensors, bool* end_of_sequence);
 
+  void Close();
+
   ~MultiThreadedAsyncReader();
 
  protected:
@@ -142,6 +144,7 @@ class MultiThreadedAsyncReader {
   int file_count_;
   const int reader_count_;
   int8 num_readers_done_ TF_GUARDED_BY(mu_add_);
+  bool cancelled_ TF_GUARDED_BY(mu_add_);
 
   Status ReadAndParseMetadataFile();
   void Consume(string* s, bool* end_of_sequence) TF_LOCKS_EXCLUDED(mu_);
@@ -158,7 +161,7 @@ class MultiThreadedAsyncReader {
   Env* env_;
 
 
-  bool ProducerSpaceAvailable() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  bool ProducerSpaceAvailable() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_add_);
   const uint64 producer_threshold_ = 1e9;  // allow producer queue to hold 1 GB
   bool first_row_info_set_ = false;
   uint64 bytes_per_element_ = 0;
@@ -167,8 +170,8 @@ class MultiThreadedAsyncReader {
   std::deque<string> file_names_ TF_GUARDED_BY(mu_);
   std::deque<snapshot_util::ElementOrEOF> deque_ TF_GUARDED_BY(mu_add_);
   bool end_of_sequence_ TF_GUARDED_BY(mu_add_);
-  std::unique_ptr<thread::ThreadPool> thread_pool_;
   std::shared_ptr<SplitProvider> split_provider_;
+  std::unique_ptr<thread::ThreadPool> thread_pool_;
 };
 
 
@@ -185,6 +188,9 @@ public:
     Status Initialize();
 
     Status Read(std::vector<Tensor>* &read_tensors, bool* end_of_sequence);
+
+    void Close();
+
 private:
     const int reader_version_;
     Env* env_;

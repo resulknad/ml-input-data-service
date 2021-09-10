@@ -277,6 +277,10 @@ Status Reader::Read(std::vector<Tensor>* &read_tensors, bool* end_of_sequence) {
   return async_reader_->Read(read_tensors, end_of_sequence);
 }
 
+void Reader::Close(){
+  async_reader_->Close();
+}
+
 
 // -----------------------------------------------------------------------------
 // MultiThreadedAsyncReader (Base Class for ArrowAsyncReader)
@@ -361,7 +365,7 @@ bool MultiThreadedAsyncReader::ProducerSpaceAvailable() {
   VLOG(3) << "ProducerSpaceAvailable, checking: deque_.size(): "
   << deque_.size() << " bytes_per_element_ " << bytes_per_element_
   << "producer_threshold " << producer_threshold_;
-  if (!first_row_info_set_){
+  if (!first_row_info_set_ || cancelled_){
     return true;
   } else {
     return (deque_.size() * bytes_per_element_) < producer_threshold_;
@@ -437,6 +441,13 @@ Status MultiThreadedAsyncReader::ReaderThread(Env *env, uint64 writer_id, int64 
       int64 count = 0;
       bool eof = false;
       while (!eof) {
+        {
+          mutex_lock l(mu_add_);
+          if (cancelled_) {
+            VLOG(0) << "EASLReaderThread closed for cancelled reader.";
+            return Status::OK();
+          }
+        }
         std::vector<Tensor> tensors;
         Status s = reader->ReadTensors(&tensors);
         if (errors::IsOutOfRange(s)) {
@@ -503,9 +514,15 @@ Status MultiThreadedAsyncReader::Read(std::vector<Tensor>* &read_tensors, bool* 
   }
 }
 
+void MultiThreadedAsyncReader::Close() {
+  mutex_lock l(mu_add_);
+  cancelled_ = true;
+}
+
 bool MultiThreadedAsyncReader::ElementAvailable(){ return !deque_.empty(); }
 
-MultiThreadedAsyncReader::~MultiThreadedAsyncReader(){}
+MultiThreadedAsyncReader::~MultiThreadedAsyncReader(){
+}
 
 Status MultiThreadedAsyncReader::ReadAndParseMetadataFile() {
   string metadata_filename = io::JoinPath(target_dir_, kMetadataFilename);

@@ -78,6 +78,8 @@ class ServiceCacheGetOp::Dataset::Iterator : public DatasetIterator<Dataset> {
   Status GetNextInternal(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
                          bool* end_of_sequence) override;
 
+  ~Iterator() override;
+
  protected:
   Status SaveInternal(SerializationContext* ctx,
                       IteratorStateWriter* writer) override;
@@ -252,6 +254,10 @@ Status ServiceCacheGetOp::Dataset::Iterator::Initialize(
           dataset()->parallelism_, dataset()->cache_format_);
 
   return reader_->Initialize();
+}
+
+ServiceCacheGetOp::Dataset::Iterator::~Iterator() {
+  reader_->Close();
 }
 
 Status ServiceCacheGetOp::Dataset::Iterator::SaveInternal(
