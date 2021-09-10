@@ -408,11 +408,11 @@ void DispatcherState::ReassignFreeWorkers() {
     int64 num_assigned_workers = workers_by_job_[job->job_id].size();
     while (job->finished || num_assigned_workers == job->worker_count){
       job_iter++;
-      job = job_iter->second;
       if(job_iter == jobs_.end()){
         // Went through all jobs, can return
         return;
       }
+      job = job_iter->second;
       num_assigned_workers = workers_by_job_[job->job_id].size();
     }
     // Assign one worker to the job
