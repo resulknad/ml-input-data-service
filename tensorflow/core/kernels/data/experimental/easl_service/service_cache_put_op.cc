@@ -64,6 +64,8 @@ class ServiceCachePutOp::Dataset::Iterator : public DatasetIterator<Dataset> {
  public:
   explicit Iterator(const Params& params);
 
+  ~Iterator();
+
   Status Initialize(IteratorContext* ctx) override;
 
   Status GetNextInternal(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
@@ -197,6 +199,13 @@ Status ServiceCachePutOp::Dataset::AsGraphDefInternal(
 
 ServiceCachePutOp::Dataset::Iterator::Iterator(const Params& params)
     : DatasetIterator<Dataset>(params) {};
+
+ServiceCachePutOp::Dataset::Iterator::~Iterator(){
+  if(writer_) {
+    // (damien-aymon) will block until the underlying asyncWriter is done.
+    writer_->Close();
+  }
+}
 
 Status ServiceCachePutOp::Dataset::Iterator::Initialize(
     IteratorContext* ctx) {
