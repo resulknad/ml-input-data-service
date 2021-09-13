@@ -149,6 +149,7 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
     num_get_next_calls_++;
   }
   auto iterator_ = captured_state->iterator();
+  VLOG(0) << "EASL - (IteratorResource::GetNext) call";
   auto status = iterator_->GetNext(IteratorContext(std::move(params)),
                                    out_tensors, end_of_sequence);
   if (collect_metrics_) {
@@ -927,6 +928,7 @@ Status IteratorGetNextOp::DoCompute(OpKernelContext* ctx) {
   std::vector<Tensor> components;
   bool end_of_sequence = false;
 
+  VLOG(0) << "EASL - (IteratorGetNextOp::DoCompute) call";
   TF_RETURN_IF_ERROR(iterator->GetNext(ctx, &components, &end_of_sequence));
   if (end_of_sequence) {
     return errors::OutOfRange("End of sequence");
