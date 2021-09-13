@@ -150,6 +150,7 @@ void MultiThreadedAsyncWriter::Write(const std::vector<Tensor>& tensors) {
 
   mutex_lock l(mu_);
   if(!first_row_info_set_) {
+    VLOG(0) << "First bytes written";
     for(Tensor t : tensors) {
       bytes_per_row_ += t.TotalBytes();
       VLOG(3) << "EASL bytes per row: " << bytes_per_row_;
