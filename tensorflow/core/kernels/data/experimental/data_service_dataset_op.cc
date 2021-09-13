@@ -637,6 +637,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
         // Set the batch time in ms
         if (model->output()) {
+          VLOG(0) << "EASL - Model output long name: " << model->output()->long_name();
           req.set_avg_inter_arrival_time(model->output()->pause_time());
         }
 

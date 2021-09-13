@@ -293,16 +293,18 @@ class Node {
   }
 
   // Returns the time in milliseconds in between calls to GetNext
-  int64 pause_time() const TF_LOCKS_EXCLUDED(mu_pause_time_) {
-    int64 pause_time_ms = 0;
+  double pause_time() const TF_LOCKS_EXCLUDED(mu_pause_time_) {
+    double pause_time_ms = 0;
     {
-      //VLOG(0) << "Pause time for node " << name_;
+      VLOG(0) << "Pause time for node " << name_;
       mutex_lock l(mu_pause_time_);
-      for (const int64 t : pause_times_ms_) {
+      for (const double t : pause_times_ms_) {
         pause_time_ms += t;
         //VLOG(0) << "pause time: " << pause_time_ms;
       }
+      VLOG(0) << "EASL - (model::pause_time()) pause_time_ms sum: " << pause_time_ms;
       pause_time_ms /= pause_times_ms_.size();
+      VLOG(0) << "EASL - (model::pause_time()) pause_time_ms sum after division: " << pause_time_ms;
     }
     return pause_time_ms;
   }
@@ -380,7 +382,7 @@ class Node {
   void record_pause_end(int64 time_nanos) TF_LOCKS_EXCLUDED(mu_pause_time_) {
     mutex_lock l(mu_pause_time_);
     if (last_end_time_ns_ != -1) {
-      pause_times_ms_.push_back((time_nanos - last_end_time_ns_) 
+      pause_times_ms_.push_back((double)(time_nanos - last_end_time_ns_)
         / EnvTime::kMillisToNanos);
       pause_times_ms_.pop_front();
     }
@@ -663,7 +665,7 @@ class Node {
   // Stores the time sonce
   mutable mutex mu_pause_time_;  
   int64 last_end_time_ns_;
-  std::deque<int64> pause_times_ms_ = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};  // 10 measurements
+  std::deque<double> pause_times_ms_ = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};  // 10 measurements
 
   // EASL - Stores the wall-clock time during which this node is "active"
   // i.e. there is at least one getNext call executing.
