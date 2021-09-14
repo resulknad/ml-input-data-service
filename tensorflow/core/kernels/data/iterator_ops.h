@@ -135,6 +135,10 @@ class IteratorResource : public ResourceBase {
   const DataTypeVector output_dtypes_;
   const std::vector<PartialTensorShape> output_shapes_;
   const bool collect_metrics_;
+
+  // EASL - Inter-arrival time metrics
+  bool first_time_ = true;
+  std::deque<double> pause_times = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
 };
 
 class IteratorHandleOp : public OpKernel {
