@@ -134,7 +134,7 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
       &deregister_fn));
   auto cleanup = gtl::MakeCleanup(std::move(deregister_fn));
   const uint64 start_time_us = ctx->env()->NowMicros();
-  if (true) { // collect_metrics_) {
+  if (collect_metrics_) {
     mutex_lock l(mu_);
     if (get_next_end_time_us_ == 0) {
       // We initialize `get_next_end_time_us_` to the start time of the first
@@ -146,28 +146,28 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
     if (num_get_next_calls_ == 0) {
       get_next_start_time_us_ = start_time_us;
     } 
-    
-    if (first_time_) {
-      first_time_ = false;
-    } else {
-      // We record the pause time
-      double temp_time_ms = (double)(ctx->env()->NowMicros() - 
-        get_next_end_time_us_) / EnvTime::kMillisToMicros;
-      pause_times.push_front(temp_time_ms);
-      pause_times.pop_back();
-
-      VLOG(0) << "(IteratorResource::GetNext) Inter-arrival time [ms]: " 
-              << temp_time_ms << " - thread id " 
-              << Env::Default()->GetCurrentThreadId();
-    }
     num_get_next_calls_++;
   }
+
+  // We try and get a new inter-arrival time measurement
+  int32 thread_id = Env::Default()->GetCurrentThreadId();
+  if (end_time_us_.contains(thread_id)) {
+    mutex_lock l(mu_);
+    pause_times_[thread_id].push_front((double)(start_time_us - 
+      end_time_us_[thread_id]) / EnvTime::kMillisToMicros);
+    pause_times_[thread_id].pop_back();
+
+    VLOG(0) << "(IteratorResource::GetNext - tid: " << thread_id 
+            << ") Inter-arrival time [ms]: "    
+            << pause_times_[thread_id][0];
+  }
+
   auto iterator_ = captured_state->iterator();
-  VLOG(0) << "EASL - (IteratorResource::GetNext) call - thread id " 
+  VLOG(3) << "EASL - (IteratorResource::GetNext) call - thread id " 
           << Env::Default()->GetCurrentThreadId();
   auto status = iterator_->GetNext(IteratorContext(std::move(params)),
                                    out_tensors, end_of_sequence);
-  if (true) { // collect_metrics_) {
+  if (collect_metrics_) {
     const uint64 end_time_us = ctx->env()->NowMicros();
     metrics::RecordTFDataGetNextDuration(safe_sub(end_time_us, start_time_us));
     metrics::RecordTFDataBytesFetched(GetTotalBytes(*out_tensors));
@@ -181,6 +181,17 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
           safe_sub(get_next_end_time_us_, get_next_start_time_us_));
     }
   }
+
+  // Update the end time for the inter-arrival time metric
+  {
+    mutex_lock l(mu_);
+    if (!end_time_us_.contains(thread_id)) {
+      // We'll use an average of 5 measurements
+      pause_times_[thread_id] = {0.0, 0.0, 0.0, 0.0, 0.0};
+    }
+    end_time_us_[thread_id] = ctx->env()->NowMicros();
+  }
+
   return status;
 }
 
@@ -943,7 +954,7 @@ Status IteratorGetNextOp::DoCompute(OpKernelContext* ctx) {
   std::vector<Tensor> components;
   bool end_of_sequence = false;
 
-  VLOG(0) << "EASL - (IteratorGetNextOp::DoCompute) call"  << " - thread id " 
+  VLOG(3) << "EASL - (IteratorGetNextOp::DoCompute) call"  << " - thread id " 
           << Env::Default()->GetCurrentThreadId();
   TF_RETURN_IF_ERROR(iterator->GetNext(ctx, &components, &end_of_sequence));
   if (end_of_sequence) {

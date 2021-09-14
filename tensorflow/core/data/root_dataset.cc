@@ -111,7 +111,7 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
     if (dataset()->params_.autotune) {
       TF_RETURN_IF_ERROR(EnsureModelThreadStarted(ctx));
     }
-    VLOG(0) << "EASL - (RootDatasetIterator::GetNext) call" << " - thread id " 
+    VLOG(3) << "EASL - (RootDatasetIterator::GetNext) call" << " - thread id " 
             << Env::Default()->GetCurrentThreadId();
     return input_impl_->GetNext(IteratorContext(CreateParams(ctx)), out_tensors,
                                 end_of_sequence);

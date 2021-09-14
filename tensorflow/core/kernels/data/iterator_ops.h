@@ -137,8 +137,8 @@ class IteratorResource : public ResourceBase {
   const bool collect_metrics_;
 
   // EASL - Inter-arrival time metrics
-  bool first_time_ = true;
-  std::deque<double> pause_times = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+  absl::flat_hash_map<int32, std::deque<double>> pause_times_;
+  absl::flat_hash_map<int32, double> end_time_us_;
 };
 
 class IteratorHandleOp : public OpKernel {
