@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/kernels/data/iterator_ops.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/errors.h"
@@ -640,6 +641,23 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           VLOG(0) << "EASL - Model output long name: " << model->output()->long_name();
           req.set_avg_inter_arrival_time(model->output()->pause_time());
         }
+
+        // EASL - temp code
+        VLOG(0) << "Attempting to retrieve the inter arrival time";
+        InterArrivalTime* inter_arrival_time_ms;
+        Status s = ctx->resource_mgr()->Lookup("inter_arrival_container", 
+          "inter_arrival_time", &inter_arrival_time_ms);
+        VLOG(0) << "After Lookup";
+        if (s.ok()) {
+          VLOG(0) << "Attempting to print the resource";
+          VLOG(0) << "(DataServiceDatasetOp::Heartbeat) Recovered time " 
+                  << inter_arrival_time_ms->inter_arrival_time_ms << " ms"; 
+          VLOG(0) << "About to unref the inter arrival time";
+          inter_arrival_time_ms->Unref();
+          VLOG(0) << "Unrefed the inter_arrival_time_ms and now we're done";
+        }
+        VLOG(0) << "After the if clause";
+        // ctx->SetStatus(s);
 
         // Set the wait time for a GetNext response in ms
         req.set_avg_get_next_processing_time(node_->SelfProcessingTime() / 

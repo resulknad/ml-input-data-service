@@ -98,7 +98,8 @@ IteratorResource::IteratorResource(
       // We do not collect iterator resource metrics for non-CPU devices. This
       // is a heuristic to avoid collecting metrics for device-side iterators
       // created by the multi-device iterator mechanism.
-      collect_metrics_(flr->device()->device_type() == DEVICE_CPU) {
+      collect_metrics_(flr->device()->device_type() == DEVICE_CPU),
+      batch_counter_(0) {
   VLOG(2) << "creating iterator resource";
 }
 
@@ -153,13 +154,46 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
   int32 thread_id = Env::Default()->GetCurrentThreadId();
   if (end_time_us_.contains(thread_id)) {
     mutex_lock l(mu_);
-    pause_times_[thread_id].push_front((double)(start_time_us - 
+    pause_times_ms_[thread_id].push_front((double)(start_time_us - 
       end_time_us_[thread_id]) / EnvTime::kMillisToMicros);
-    pause_times_[thread_id].pop_back();
+    pause_times_ms_[thread_id].pop_back();
+    ++batch_counter_;
 
     VLOG(0) << "(IteratorResource::GetNext - tid: " << thread_id 
             << ") Inter-arrival time [ms]: "    
-            << pause_times_[thread_id][0];
+            << pause_times_ms_[thread_id][0];
+
+    // If we've collected enough samples, we update
+    if (batch_counter_ % required_updates_ == 0) {
+      double inter_arrival_time_ms = 0.0;
+      uint32 total_measurements = 0;
+      for (auto& pause_time : pause_times_ms_) {
+        total_measurements += pause_time.second.size(); 
+        for (double time : pause_time.second) {
+          inter_arrival_time_ms += time;
+        }
+      }
+      inter_arrival_time_ms /= total_measurements;
+
+      // Updated the inter-arrival time in the ResourceManager
+      InterArrivalTime* arrival_time_struct;
+      Status s = ctx->resource_manager()->Lookup("inter_arrival_container", 
+        "inter_arrival_time", &arrival_time_struct);
+      if (s.ok()) {
+        VLOG(0) << "(IteratorResource::GetNext - tid: " << thread_id 
+                << ") Found the inter-arrival time [ms]: " 
+                << arrival_time_struct->inter_arrival_time_ms; 
+        arrival_time_struct->inter_arrival_time_ms = inter_arrival_time_ms;
+      } else {
+        arrival_time_struct = new InterArrivalTime;
+        arrival_time_struct->inter_arrival_time_ms = inter_arrival_time_ms;
+        ctx->SetStatus(ctx->resource_manager()->Create("inter_arrival_container", 
+          "inter_arrival_time", arrival_time_struct));
+      }
+
+      VLOG(0) << "(IteratorResource::GetNext - tid: " << thread_id 
+              << ") Updated inter-arrival time [ms]: " << inter_arrival_time_ms;    
+    }
   }
 
   auto iterator_ = captured_state->iterator();
@@ -187,7 +221,7 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
     mutex_lock l(mu_);
     if (!end_time_us_.contains(thread_id)) {
       // We'll use an average of 5 measurements
-      pause_times_[thread_id] = {0.0, 0.0, 0.0, 0.0, 0.0};
+      pause_times_ms_[thread_id] = {0.0, 0.0, 0.0, 0.0, 0.0};
     }
     end_time_us_[thread_id] = ctx->env()->NowMicros();
   }

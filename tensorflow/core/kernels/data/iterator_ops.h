@@ -30,6 +30,12 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
+struct InterArrivalTime : public ResourceBase {
+  double inter_arrival_time_ms;
+  std::string DebugString() const { return "InterArrivalTime with time " + 
+    std::to_string(inter_arrival_time_ms) + " ms"; }
+};
+
 class IteratorResource : public ResourceBase {
  public:
   IteratorResource(Env* env, const DataTypeVector& output_dtypes,
@@ -137,7 +143,9 @@ class IteratorResource : public ResourceBase {
   const bool collect_metrics_;
 
   // EASL - Inter-arrival time metrics
-  absl::flat_hash_map<int32, std::deque<double>> pause_times_;
+  const uint32 required_updates_ = 10; // Inter-arrival update frequency
+  std::atomic<uint32> batch_counter_;
+  absl::flat_hash_map<int32, std::deque<double>> pause_times_ms_;
   absl::flat_hash_map<int32, double> end_time_us_;
 };
 
