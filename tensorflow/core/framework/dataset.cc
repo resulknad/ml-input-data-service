@@ -795,10 +795,11 @@ Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
                                     bool* end_of_sequence) {
   profiler::TraceMe activity([&] { return BuildTraceMeName(); },
                              profiler::TraceMeLevel::kInfo);
-  VLOG(0) << "(DatasetBaseIterator::GetNext) Entered"; 
+  VLOG(0) << "(DatasetBaseIterator::GetNext) Entered " << ctx->inter_arrival_time_ms(); 
   DVLOG(3) << prefix() << " GetNext enter";
   auto model = ctx->model();
   if (model && model->collect_resource_usage() && node_) {
+    VLOG(0) << "(DatasetBaseIterator::GetNext) In the metric block";
     int64 now_nanos = EnvTime::NowNanos();
     auto output = node_->output();
     if (output) {
@@ -811,6 +812,7 @@ Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
     node_->record_pause_end(now_nanos);
     node_->record_active_start(now_nanos);
   }
+  VLOG(0) << "(DatasetBaseIterator::GetNext) Before GetNextInternal " << ctx->inter_arrival_time_ms(); 
   Status s = GetNextInternal(ctx, out_tensors, end_of_sequence);
   if (TF_PREDICT_TRUE(s.ok() && !*end_of_sequence)) {
     DCHECK_EQ(out_tensors->size(), dataset()->output_dtypes().size());

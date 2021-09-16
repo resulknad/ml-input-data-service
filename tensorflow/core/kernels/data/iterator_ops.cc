@@ -212,11 +212,13 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
   auto iterator_ = captured_state->iterator();
   VLOG(0) << "EASL - (IteratorResource::GetNext) call - thread id " 
           << Env::Default()->GetCurrentThreadId() << " this: " << this;
-  IteratorContext iterator_ctx(std::move(params));
-  iterator_ctx.set_inter_arrival_time_ms(100);
-  VLOG(0) << "Calling GetNext with ia_time: " << inter_arrival_time_ms_ 
-          << " ms " << iterator_ctx.inter_arrival_time_ms();
-  auto status = iterator_->GetNext(&iterator_ctx, out_tensors, end_of_sequence);
+  // IteratorContext iterator_ctx(std::move(params));
+  // iterator_ctx.set_inter_arrival_time_ms(100);
+  // VLOG(0) << "Calling GetNext with ia_time: " << inter_arrival_time_ms_ 
+  //         << " ms " << iterator_ctx.inter_arrival_time_ms();
+  // auto status = iterator_->GetNext(&iterator_ctx, out_tensors, end_of_sequence);
+  auto status = iterator_->GetNext(IteratorContext(std::move(params)),
+                                   out_tensors, end_of_sequence);
   if (collect_metrics_) {
     const uint64 end_time_us = ctx->env()->NowMicros();
     metrics::RecordTFDataGetNextDuration(safe_sub(end_time_us, start_time_us));
