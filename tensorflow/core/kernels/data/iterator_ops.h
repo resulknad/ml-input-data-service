@@ -138,6 +138,7 @@ class IteratorResource : public ResourceBase {
 
   // EASL - Inter-arrival time metrics
   const uint32 required_updates_ = 10; // Inter-arrival update frequency
+  double inter_arrival_time_ms_ = 0.0;
   std::atomic<uint32> batch_counter_;
   absl::flat_hash_map<int32, std::deque<double>> pause_times_ms_;
   absl::flat_hash_map<int32, double> end_time_us_;

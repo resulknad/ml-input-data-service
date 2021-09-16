@@ -795,6 +795,7 @@ Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
                                     bool* end_of_sequence) {
   profiler::TraceMe activity([&] { return BuildTraceMeName(); },
                              profiler::TraceMeLevel::kInfo);
+  VLOG(0) << "(DatasetBaseIterator::GetNext) Entered"; 
   DVLOG(3) << prefix() << " GetNext enter";
   auto model = ctx->model();
   if (model && model->collect_resource_usage() && node_) {

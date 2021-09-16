@@ -128,6 +128,7 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
   params.thread_factory = unbounded_thread_pool_.get_thread_factory();
   params.thread_pool = &unbounded_thread_pool_;
   params.cancellation_manager = captured_state->cancellation_manager();
+  params.inter_arrival_time_ms = 100.0;
   std::function<void()> deregister_fn;
   TF_RETURN_IF_ERROR(RegisterCancellationCallback(
       ctx->cancellation_manager(),
@@ -181,6 +182,8 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
         }
       }
       inter_arrival_time_ms /= total_measurements;
+      params.inter_arrival_time_ms = inter_arrival_time_ms_ 
+        = inter_arrival_time_ms;
 
       // Updated the inter-arrival time in the ResourceManager
       InterArrivalTime* arrival_time_struct;
@@ -209,8 +212,11 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
   auto iterator_ = captured_state->iterator();
   VLOG(0) << "EASL - (IteratorResource::GetNext) call - thread id " 
           << Env::Default()->GetCurrentThreadId() << " this: " << this;
-  auto status = iterator_->GetNext(IteratorContext(std::move(params)),
-                                   out_tensors, end_of_sequence);
+  IteratorContext iterator_ctx(std::move(params));
+  iterator_ctx.set_inter_arrival_time_ms(100);
+  VLOG(0) << "Calling GetNext with ia_time: " << inter_arrival_time_ms_ 
+          << " ms " << iterator_ctx.inter_arrival_time_ms();
+  auto status = iterator_->GetNext(&iterator_ctx, out_tensors, end_of_sequence);
   if (collect_metrics_) {
     const uint64 end_time_us = ctx->env()->NowMicros();
     metrics::RecordTFDataGetNextDuration(safe_sub(end_time_us, start_time_us));

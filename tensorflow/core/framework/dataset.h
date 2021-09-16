@@ -390,7 +390,8 @@ class IteratorContext {
           split_providers(ctx->split_providers()),
           stats_aggregator(ctx->stats_aggregator()),
           thread_factory(ctx->thread_factory()),
-          thread_pool(ctx->thread_pool()) {}
+          thread_pool(ctx->thread_pool()),
+          inter_arrival_time_ms(ctx->inter_arrival_time_ms()) {}
 
     explicit Params(OpKernelContext* ctx)
         : env(ctx->env()), flr(ctx->function_library()) {
@@ -426,6 +427,9 @@ class IteratorContext {
           },
           *ctx->runner(), std::placeholders::_1);
     }
+
+    // EASL - Variable which stores the inter_arrival_time
+    double inter_arrival_time_ms = 0.0;
 
     // The Allocator to be used to allocate the output of an iterator.
     std::function<Allocator*(AllocatorAttributes)> allocator_getter = nullptr;
@@ -504,6 +508,10 @@ class IteratorContext {
   bool is_restoring() { return params_.is_restoring; }
 
   ResourceMgr* resource_mgr() { return params_.resource_mgr; }
+
+  double inter_arrival_time_ms() { return params_.inter_arrival_time_ms; }
+
+  void set_inter_arrival_time_ms(double x) { params_.inter_arrival_time_ms = x; }
 
   const std::shared_ptr<model::Model>& model() { return params_.model; }
 
