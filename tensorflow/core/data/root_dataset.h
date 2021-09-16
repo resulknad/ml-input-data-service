@@ -18,9 +18,16 @@ limitations under the License.
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/model.pb.h"
+#include "tensorflow/core/framework/resource_mgr.h"
 
 namespace tensorflow {
 namespace data {
+
+struct InterArrivalTime : public ResourceBase {
+  double inter_arrival_time_ms;
+  std::string DebugString() const { return "InterArrivalTime with time " + 
+    std::to_string(inter_arrival_time_ms) + " ms"; }
+};
 
 // Dataset transformation responsible for internal tf.data logic such as
 // autotuning, applying threading configuration.

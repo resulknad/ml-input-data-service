@@ -108,11 +108,23 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
 
   Status GetNextInternal(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
                          bool* end_of_sequence) override {
+    VLOG(0) << "EASL - (RootDatasetIterator::GetNext) call" << " - thread id " 
+            << Env::Default()->GetCurrentThreadId() << " " << ctx->resource_mgr();
+
+    InterArrivalTime* inter_arrival_time_ms;
+    Status s = ctx->resource_mgr()->Lookup("inter_arrival_container", 
+      "inter_arrival_time", &inter_arrival_time_ms);
+    VLOG(0) << "(RootDatasetIterator::GetNextInternal) After lookup: " << s.ok();
+    if (s.ok()) {
+      VLOG(0) << "(RootDatasetIterator::GetNextInternal) Recovered time " 
+              << inter_arrival_time_ms->inter_arrival_time_ms << " ms"; 
+      inter_arrival_time_ms->Unref();
+    }
+
     if (dataset()->params_.autotune) {
       TF_RETURN_IF_ERROR(EnsureModelThreadStarted(ctx));
     }
-    VLOG(3) << "EASL - (RootDatasetIterator::GetNext) call" << " - thread id " 
-            << Env::Default()->GetCurrentThreadId();
+
     return input_impl_->GetNext(IteratorContext(CreateParams(ctx)), out_tensors,
                                 end_of_sequence);
   }

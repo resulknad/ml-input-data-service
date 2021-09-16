@@ -296,15 +296,12 @@ class Node {
   double pause_time() const TF_LOCKS_EXCLUDED(mu_pause_time_) {
     double pause_time_ms = 0;
     {
-      VLOG(0) << "Pause time for node " << name_;
       mutex_lock l(mu_pause_time_);
       for (const double t : pause_times_ms_) {
         pause_time_ms += t;
         //VLOG(0) << "pause time: " << pause_time_ms;
       }
-      VLOG(0) << "EASL - (model::pause_time()) pause_time_ms sum: " << pause_time_ms;
       pause_time_ms /= pause_times_ms_.size();
-      VLOG(0) << "EASL - (model::pause_time()) pause_time_ms sum after division: " << pause_time_ms;
     }
     return pause_time_ms;
   }

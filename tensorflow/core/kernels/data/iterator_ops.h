@@ -30,12 +30,6 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
-struct InterArrivalTime : public ResourceBase {
-  double inter_arrival_time_ms;
-  std::string DebugString() const { return "InterArrivalTime with time " + 
-    std::to_string(inter_arrival_time_ms) + " ms"; }
-};
-
 class IteratorResource : public ResourceBase {
  public:
   IteratorResource(Env* env, const DataTypeVector& output_dtypes,

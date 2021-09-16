@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/data/dataset.pb.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
+#include "tensorflow/core/data/root_dataset.h"
 #include "tensorflow/core/data/serialization_utils.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/data_service.h"
@@ -45,7 +46,6 @@ limitations under the License.
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/kernels/data/iterator_ops.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/errors.h"
@@ -643,6 +643,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         }
 
         // EASL - temp code
+        VLOG(0) << "(DataServiceDatasetOp::Heartbeat) Resource manager "
+                << ctx->resource_mgr();
         VLOG(0) << "Attempting to retrieve the inter arrival time";
         InterArrivalTime* inter_arrival_time_ms;
         Status s = ctx->resource_mgr()->Lookup("inter_arrival_container", 

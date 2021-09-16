@@ -159,17 +159,24 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
     pause_times_ms_[thread_id].pop_back();
     ++batch_counter_;
 
-    VLOG(0) << "(IteratorResource::GetNext - tid: " << thread_id 
-            << ") Inter-arrival time [ms]: "    
-            << pause_times_ms_[thread_id][0];
+    // VLOG(0) << "(IteratorResource::GetNext - tid: " << thread_id 
+    //         << ") Inter-arrival time [ms]: "    
+    //         << pause_times_ms_[thread_id][0];
 
     // If we've collected enough samples, we update
     if (batch_counter_ % required_updates_ == 0) {
       double inter_arrival_time_ms = 0.0;
       uint32 total_measurements = 0;
+
+      // VLOG(0) << "(IteratorResource::GetNext - tid: " << thread_id 
+      //         << ") Printing the threads stored:";
       for (auto& pause_time : pause_times_ms_) {
+        // VLOG(0) << " > (IteratorResource::GetNext - tid: " << thread_id 
+        //         << ") Thread stored:# " << pause_time.first;
         total_measurements += pause_time.second.size(); 
         for (double time : pause_time.second) {
+          // VLOG(0) << "\t> (IteratorResource::GetNext - tid: " << thread_id 
+          //         << ") For thread #" << pause_time.first << ": " << time;
           inter_arrival_time_ms += time;
         }
       }
@@ -180,9 +187,9 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
       Status s = ctx->resource_manager()->Lookup("inter_arrival_container", 
         "inter_arrival_time", &arrival_time_struct);
       if (s.ok()) {
-        VLOG(0) << "(IteratorResource::GetNext - tid: " << thread_id 
-                << ") Found the inter-arrival time [ms]: " 
-                << arrival_time_struct->inter_arrival_time_ms; 
+        // VLOG(0) << "(IteratorResource::GetNext - tid: " << thread_id 
+        //         << ") Found the inter-arrival time [ms]: " 
+        //         << arrival_time_struct->inter_arrival_time_ms; 
         arrival_time_struct->inter_arrival_time_ms = inter_arrival_time_ms;
       } else {
         arrival_time_struct = new InterArrivalTime;
@@ -192,13 +199,16 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
       }
 
       VLOG(0) << "(IteratorResource::GetNext - tid: " << thread_id 
-              << ") Updated inter-arrival time [ms]: " << inter_arrival_time_ms;    
+              << ") Resource manager: " << params.resource_mgr << " " 
+              << ctx->resource_manager();
+      // VLOG(0) << "(IteratorResource::GetNext - tid: " << thread_id 
+      //         << ") Updated inter-arrival time [ms]: " << inter_arrival_time_ms;    
     }
   }
 
   auto iterator_ = captured_state->iterator();
-  VLOG(3) << "EASL - (IteratorResource::GetNext) call - thread id " 
-          << Env::Default()->GetCurrentThreadId();
+  VLOG(0) << "EASL - (IteratorResource::GetNext) call - thread id " 
+          << Env::Default()->GetCurrentThreadId() << " this: " << this;
   auto status = iterator_->GetNext(IteratorContext(std::move(params)),
                                    out_tensors, end_of_sequence);
   if (collect_metrics_) {
@@ -988,8 +998,8 @@ Status IteratorGetNextOp::DoCompute(OpKernelContext* ctx) {
   std::vector<Tensor> components;
   bool end_of_sequence = false;
 
-  VLOG(3) << "EASL - (IteratorGetNextOp::DoCompute) call"  << " - thread id " 
-          << Env::Default()->GetCurrentThreadId();
+  VLOG(0) << "EASL - (IteratorGetNextOp::DoCompute) call"  << " - thread id " 
+          << Env::Default()->GetCurrentThreadId() << " this: " << this;
   TF_RETURN_IF_ERROR(iterator->GetNext(ctx, &components, &end_of_sequence));
   if (end_of_sequence) {
     return errors::OutOfRange("End of sequence");
