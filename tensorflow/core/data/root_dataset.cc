@@ -108,10 +108,16 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
 
   Status GetNextInternal(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
                          bool* end_of_sequence) override {
-    VLOG(0) << "EASL - (RootDatasetIterator::GetNext) call" << " - thread id " 
-            << Env::Default()->GetCurrentThreadId() << " " 
-            << ctx->resource_mgr() << " ia_time: " 
-            << ctx->inter_arrival_time_ms();
+    VLOG(0) << "(RootDataset::Iterator::GetNextInternal) Before GetNextInternal call:\n" 
+            << " > Thread id: " << Env::Default()->GetCurrentThreadId() << "\n"
+            << " > ctx: " << ctx << "\n"
+            << " > ctx->resource_mgr(): " << ctx->resource_mgr() << "\n";
+            << " > ctx->inter_arrival_time_ms(): " << ctx->inter_arrival_time_ms() << "\n"; 
+
+    VLOG(0) << "(RootDataset::Iterator::GetNextInternal) Printing the stack trace: " 
+            << " > " << CurrentStackTrace(); 
+
+    // VLOG(0) << "EASL - (RootDatasetIterator::GetNext) Stack trace: \n" << CurrentStackTrace();
 
     // InterArrivalTime* inter_arrival_time_ms;
     // Status s = ctx->resource_mgr()->Lookup("inter_arrival_container", 

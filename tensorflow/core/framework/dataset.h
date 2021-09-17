@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/cpu_info.h"
+#include "tensorflow/core/platform/default/stacktrace.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/tracing.h"
 
@@ -412,6 +413,8 @@ class IteratorContext {
         runner_threadpool_size = kDefaultRunnerThreadpoolSize;
       }
 
+      inter_arrival_time_ms = 25.0;
+
       // NOTE: Wrap every runner invocation in a call to Runner()->Run(), so
       // that a symbol in the tensorflow::data namespace is always on the stack
       // when executing a function inside a Dataset.
@@ -429,7 +432,7 @@ class IteratorContext {
     }
 
     // EASL - Variable which stores the inter_arrival_time
-    double inter_arrival_time_ms = 0.0;
+    double inter_arrival_time_ms = 50.0;
 
     // The Allocator to be used to allocate the output of an iterator.
     std::function<Allocator*(AllocatorAttributes)> allocator_getter = nullptr;

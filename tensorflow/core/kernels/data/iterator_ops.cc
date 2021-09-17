@@ -128,7 +128,7 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
   params.thread_factory = unbounded_thread_pool_.get_thread_factory();
   params.thread_pool = &unbounded_thread_pool_;
   params.cancellation_manager = captured_state->cancellation_manager();
-  params.inter_arrival_time_ms = 100.0;
+  params.inter_arrival_time_ms = inter_arrival_time_ms_;
   std::function<void()> deregister_fn;
   TF_RETURN_IF_ERROR(RegisterCancellationCallback(
       ctx->cancellation_manager(),
@@ -160,27 +160,19 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
     pause_times_ms_[thread_id].pop_back();
     ++batch_counter_;
 
-    // VLOG(0) << "(IteratorResource::GetNext - tid: " << thread_id 
-    //         << ") Inter-arrival time [ms]: "    
-    //         << pause_times_ms_[thread_id][0];
-
     // If we've collected enough samples, we update
     if (batch_counter_ % required_updates_ == 0) {
       double inter_arrival_time_ms = 0.0;
       uint32 total_measurements = 0;
 
-      // VLOG(0) << "(IteratorResource::GetNext - tid: " << thread_id 
-      //         << ") Printing the threads stored:";
       for (auto& pause_time : pause_times_ms_) {
-        // VLOG(0) << " > (IteratorResource::GetNext - tid: " << thread_id 
-        //         << ") Thread stored:# " << pause_time.first;
         total_measurements += pause_time.second.size(); 
         for (double time : pause_time.second) {
-          // VLOG(0) << "\t> (IteratorResource::GetNext - tid: " << thread_id 
-          //         << ") For thread #" << pause_time.first << ": " << time;
           inter_arrival_time_ms += time;
         }
       }
+
+      // Compute and update the values
       inter_arrival_time_ms /= total_measurements;
       params.inter_arrival_time_ms = inter_arrival_time_ms_ 
         = inter_arrival_time_ms;
@@ -190,9 +182,6 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
       Status s = ctx->resource_manager()->Lookup("inter_arrival_container", 
         "inter_arrival_time", &arrival_time_struct);
       if (s.ok()) {
-        // VLOG(0) << "(IteratorResource::GetNext - tid: " << thread_id 
-        //         << ") Found the inter-arrival time [ms]: " 
-        //         << arrival_time_struct->inter_arrival_time_ms; 
         arrival_time_struct->inter_arrival_time_ms = inter_arrival_time_ms;
       } else {
         arrival_time_struct = new InterArrivalTime;
@@ -200,23 +189,19 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
         ctx->SetStatus(ctx->resource_manager()->Create("inter_arrival_container", 
           "inter_arrival_time", arrival_time_struct));
       }
-
-      VLOG(0) << "(IteratorResource::GetNext - tid: " << thread_id 
-              << ") Resource manager: " << params.resource_mgr << " " 
-              << ctx->resource_manager();
-      // VLOG(0) << "(IteratorResource::GetNext - tid: " << thread_id 
-      //         << ") Updated inter-arrival time [ms]: " << inter_arrival_time_ms;    
     }
   }
 
   auto iterator_ = captured_state->iterator();
-  VLOG(0) << "EASL - (IteratorResource::GetNext) call - thread id " 
-          << Env::Default()->GetCurrentThreadId() << " this: " << this;
   // IteratorContext iterator_ctx(std::move(params));
   // iterator_ctx.set_inter_arrival_time_ms(100);
   // VLOG(0) << "Calling GetNext with ia_time: " << inter_arrival_time_ms_ 
   //         << " ms " << iterator_ctx.inter_arrival_time_ms();
   // auto status = iterator_->GetNext(&iterator_ctx, out_tensors, end_of_sequence);
+  VLOG(0) << "(IteratorResource::GetNext) Calling DatasetBaseIterator::GetNext with:\n" 
+          << " > Thread id: " << Env::Default()->GetCurrentThreadId() << "\n"
+          << " > inter_arrival_time: " << params.inter_arrival_time_ms << "\n"
+          << " > params.resource_mgr: " << params.resource_mgr << "\n";
   auto status = iterator_->GetNext(IteratorContext(std::move(params)),
                                    out_tensors, end_of_sequence);
   if (collect_metrics_) {
