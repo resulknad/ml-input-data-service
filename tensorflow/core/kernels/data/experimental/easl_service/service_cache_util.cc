@@ -399,6 +399,10 @@ void MultiThreadedAsyncReader::Add(std::vector<Tensor>& tensors) {
   mu_add_.Await(Condition(this,
     &MultiThreadedAsyncReader::ProducerSpaceAvailable));
 
+  if (cancelled_) {
+    return;
+  }
+
   VLOG(3) << "Add could write to queue";
 
   snapshot_util::ElementOrEOF element;
