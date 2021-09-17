@@ -179,14 +179,14 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
 
       // Updated the inter-arrival time in the ResourceManager
       InterArrivalTime* arrival_time_struct;
-      Status s = ctx->resource_manager()->Lookup("inter_arrival_container", 
+      Status s = params.resource_mgr->Lookup("inter_arrival_container", 
         "inter_arrival_time", &arrival_time_struct);
       if (s.ok()) {
         arrival_time_struct->inter_arrival_time_ms = inter_arrival_time_ms;
       } else {
         arrival_time_struct = new InterArrivalTime;
         arrival_time_struct->inter_arrival_time_ms = inter_arrival_time_ms;
-        ctx->SetStatus(ctx->resource_manager()->Create("inter_arrival_container", 
+        ctx->SetStatus(params.resource_mgr->Create("inter_arrival_container", 
           "inter_arrival_time", arrival_time_struct));
       }
     }

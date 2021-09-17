@@ -108,26 +108,22 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
 
   Status GetNextInternal(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
                          bool* end_of_sequence) override {
+
+    InterArrivalTime* inter_arrival_time_ms;
+    Status s = ctx->resource_mgr()->Lookup("inter_arrival_container", 
+      "inter_arrival_time", &inter_arrival_time_ms);
+
     VLOG(0) << "(RootDataset::Iterator::GetNextInternal) Before GetNextInternal call:\n" 
             << " > Thread id: " << Env::Default()->GetCurrentThreadId() << "\n"
             << " > ctx: " << ctx << "\n"
-            << " > ctx->resource_mgr(): " << ctx->resource_mgr() << "\n";
-            << " > ctx->inter_arrival_time_ms(): " << ctx->inter_arrival_time_ms() << "\n"; 
+            << " > ctx->resource_mgr(): " << ctx->resource_mgr() << "\n"
+            << " > ctx->inter_arrival_time_ms(): " << ctx->inter_arrival_time_ms() << "\n"
+            << " > Time present in resource_mgr: " << s.ok(); 
 
     VLOG(0) << "(RootDataset::Iterator::GetNextInternal) Printing the stack trace: " 
             << " > " << CurrentStackTrace(); 
 
     // VLOG(0) << "EASL - (RootDatasetIterator::GetNext) Stack trace: \n" << CurrentStackTrace();
-
-    // InterArrivalTime* inter_arrival_time_ms;
-    // Status s = ctx->resource_mgr()->Lookup("inter_arrival_container", 
-    //   "inter_arrival_time", &inter_arrival_time_ms);
-    // VLOG(0) << "(RootDatasetIterator::GetNextInternal) After lookup: " << s.ok();
-    // if (s.ok()) {
-    //   VLOG(0) << "(RootDatasetIterator::GetNextInternal) Recovered time " 
-    //           << inter_arrival_time_ms->inter_arrival_time_ms << " ms"; 
-    //   inter_arrival_time_ms->Unref();
-    // }
 
     if (dataset()->params_.autotune) {
       TF_RETURN_IF_ERROR(EnsureModelThreadStarted(ctx));

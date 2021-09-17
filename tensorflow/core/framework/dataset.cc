@@ -815,7 +815,7 @@ Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
   VLOG(0) << "(DatasetBaseIterator::GetNext) Before GetNextInternal call:\n" 
           << " > Thread id: " << Env::Default()->GetCurrentThreadId() << "\n"
           << " > ctx: " << ctx << "\n"
-          << " > ctx->resource_mgr(): " << ctx->resource_mgr() << "\n";
+          << " > ctx->resource_mgr(): " << ctx->resource_mgr() << "\n"
           << " > ctx->inter_arrival_time_ms(): " << ctx->inter_arrival_time_ms() << "\n"; 
   Status s = GetNextInternal(ctx, out_tensors, end_of_sequence);
   if (TF_PREDICT_TRUE(s.ok() && !*end_of_sequence)) {
