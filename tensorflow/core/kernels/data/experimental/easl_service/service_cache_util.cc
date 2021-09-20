@@ -78,9 +78,11 @@ Status Writer::Write(const std::vector<Tensor>& tensors){
 }
 
 Status Writer::Close(){
-  // Will call the destructor and block until done writing.
-  async_writer_->SignalEOF();
-  async_writer_.reset();
+  if(initialized_){
+    // Will call the destructor and block until done writing.
+    async_writer_->SignalEOF();
+    async_writer_.reset();
+  }
   // TODO(damien-aymon) check status in the async writer.
   return Status::OK();
 }
@@ -279,7 +281,11 @@ Status Reader::Read(std::vector<Tensor>* &read_tensors, bool* end_of_sequence) {
 }
 
 void Reader::Close(){
-  async_reader_->Close();
+  VLOG(0) << "EASL - (Reader::Close) async_reader closing (bool) " << async_reader_.operator bool();
+  if(async_reader_){
+    async_reader_->Close();
+    async_reader_.reset();
+  }
 }
 
 
@@ -372,7 +378,7 @@ bool MultiThreadedAsyncReader::ProducerSpaceAvailable() {
   VLOG(3) << "ProducerSpaceAvailable, checking: deque_.size(): "
   << deque_.size() << " bytes_per_element_ " << bytes_per_element_
   << "producer_threshold " << producer_threshold_;
-  if (!first_row_info_set_ || cancelled_){
+  if (!first_row_info_set_ || cancelled_ || end_of_sequence_){
     return true;
   } else {
     return (deque_.size() * bytes_per_element_) < producer_threshold_;
@@ -423,6 +429,7 @@ void MultiThreadedAsyncReader::ReaderDone() {
   VLOG(3) << "ReaderDone could write to queue";
 
   deque_.push_back(std::move(element));
+
 }
 
 Status MultiThreadedAsyncReader::ReaderThread(Env *env, uint64 writer_id, int64 version,
@@ -486,7 +493,7 @@ Status MultiThreadedAsyncReader::ReaderThread(Env *env, uint64 writer_id, int64 
 
 Status MultiThreadedAsyncReader::Read(std::vector<Tensor>* &read_tensors, bool* end_of_sequence) {
   mutex_lock l(mu_add_);
-  if(end_of_sequence_){
+  if(end_of_sequence_ || cancelled_){
     *end_of_sequence = true;
     return Status::OK();
   }
@@ -496,6 +503,11 @@ Status MultiThreadedAsyncReader::Read(std::vector<Tensor>* &read_tensors, bool* 
     VLOG(3) << "Read - waiting on mutex condition";
     mu_add_.Await(tensorflow::Condition(this,
                                     &MultiThreadedAsyncReader::ElementAvailable));
+
+    if(cancelled_ || end_of_sequence_){
+      VLOG(0) << "Read - function got woken up for eos/cancelled";
+      return Status::OK();
+    }
     VLOG(3) << "Read - can now get an element from queue";
     if(!deque_.empty()) {
       snapshot_util::ElementOrEOF& element = deque_.front();
@@ -531,7 +543,7 @@ void MultiThreadedAsyncReader::Close() {
   cancelled_ = true;
 }
 
-bool MultiThreadedAsyncReader::ElementAvailable(){ return !deque_.empty(); }
+bool MultiThreadedAsyncReader::ElementAvailable(){ return !deque_.empty() || end_of_sequence_ || cancelled_; }
 
 MultiThreadedAsyncReader::~MultiThreadedAsyncReader(){
 }

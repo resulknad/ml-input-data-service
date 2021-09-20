@@ -205,6 +205,7 @@ ServiceCachePutOp::Dataset::Iterator::~Iterator(){
     // (damien-aymon) will block until the underlying asyncWriter is done.
     writer_->Close();
   }
+  writer_.reset();
 }
 
 Status ServiceCachePutOp::Dataset::Iterator::Initialize(

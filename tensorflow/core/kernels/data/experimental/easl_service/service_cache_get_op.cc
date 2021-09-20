@@ -258,6 +258,7 @@ Status ServiceCacheGetOp::Dataset::Iterator::Initialize(
 
 ServiceCacheGetOp::Dataset::Iterator::~Iterator() {
   reader_->Close();
+  reader_.reset();
 }
 
 Status ServiceCacheGetOp::Dataset::Iterator::SaveInternal(
