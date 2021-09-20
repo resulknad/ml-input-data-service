@@ -101,7 +101,7 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
   Status Initialize(IteratorContext* ctx) override {
     // EASL - set model in context.
     VLOG(0) << "Setting model in root dataset iterator";
-    ctx->set_model(model_);
+    // ctx->set_model(model_);
     return dataset()->input_->MakeIterator(IteratorContext(CreateParams(ctx)),
                                            this, prefix(), &input_impl_);
   }
@@ -113,17 +113,15 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
     Status s = ctx->resource_mgr()->Lookup("inter_arrival_container", 
       "inter_arrival_time", &inter_arrival_time_ms);
 
-    VLOG(0) << "(RootDataset::Iterator::GetNextInternal) Before GetNextInternal call:\n" 
+    VLOG(0) << "(RootDataset::Iterator::GetNextInternal) In GetNextInternal call:\n" 
             << " > Thread id: " << Env::Default()->GetCurrentThreadId() << "\n"
             << " > ctx: " << ctx << "\n"
             << " > ctx->resource_mgr(): " << ctx->resource_mgr() << "\n"
             << " > ctx->inter_arrival_time_ms(): " << ctx->inter_arrival_time_ms() << "\n"
             << " > Time present in resource_mgr: " << s.ok(); 
 
-    VLOG(0) << "(RootDataset::Iterator::GetNextInternal) Printing the stack trace: " 
-            << " > " << CurrentStackTrace(); 
-
-    // VLOG(0) << "EASL - (RootDatasetIterator::GetNext) Stack trace: \n" << CurrentStackTrace();
+    VLOG(0) << "(RootDataset::Iterator::GetNextInternal) Printing the stack trace:\n" 
+            << CurrentStackTrace(); 
 
     if (dataset()->params_.autotune) {
       TF_RETURN_IF_ERROR(EnsureModelThreadStarted(ctx));

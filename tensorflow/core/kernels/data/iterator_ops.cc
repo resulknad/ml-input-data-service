@@ -323,6 +323,7 @@ Status IteratorResource::SetIteratorFromDataset(OpKernelContext* ctx,
 
   std::unique_ptr<IteratorBase> iterator;
   if (ctx->function_library()->device()->device_type() == DEVICE_CPU) {
+    VLOG(0) << "(IteratorResource::SetIteratorFromDataset) CPU Device Confirmed"; 
     DatasetBase* finalized_dataset;
     TF_RETURN_IF_ERROR(FinalizeDataset(ctx, dataset, &finalized_dataset));
     core::ScopedUnref unref(finalized_dataset);
@@ -991,8 +992,8 @@ Status IteratorGetNextOp::DoCompute(OpKernelContext* ctx) {
   std::vector<Tensor> components;
   bool end_of_sequence = false;
 
-  VLOG(0) << "EASL - (IteratorGetNextOp::DoCompute) call"  << " - thread id " 
-          << Env::Default()->GetCurrentThreadId() << " this: " << this;
+  VLOG(0) << "(IteratorGetNextOp::DoCompute) call with params:\n"
+          << " > Thread id " << Env::Default()->GetCurrentThreadId();
   TF_RETURN_IF_ERROR(iterator->GetNext(ctx, &components, &end_of_sequence));
   if (end_of_sequence) {
     return errors::OutOfRange("End of sequence");
