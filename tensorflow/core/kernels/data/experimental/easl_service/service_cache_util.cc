@@ -376,12 +376,13 @@ void MultiThreadedAsyncReader::Consume(string* s, bool* end_of_sequence) {
 
 bool MultiThreadedAsyncReader::ProducerSpaceAvailable() {
   VLOG(3) << "ProducerSpaceAvailable, checking: deque_.size(): "
-  << deque_.size() << " bytes_per_element_ " << bytes_per_element_
+  << deque_.size() << " queue size bytes " << queue_size_bytes_
+  << " bytes_per_element_ " << bytes_per_element_
   << "producer_threshold " << producer_threshold_;
-  if (!first_row_info_set_ || cancelled_ || end_of_sequence_){
+  if (cancelled_ || end_of_sequence_){
     return true;
   } else {
-    return (deque_.size() < 5);
+    return queue_size_bytes_ + bytes_per_element_ < producer_threshold_;
     //return (deque_.size() * bytes_per_element_) < producer_threshold_;
   }
 }
@@ -390,21 +391,22 @@ void MultiThreadedAsyncReader::Add(std::vector<Tensor>& tensors) {
   VLOG(3) << "EASL - entering read - Add";
   mutex_lock l(mu_add_);
 
-  if(!first_row_info_set_) {
-    uint64 bytes_per_row = 0;
-    for (Tensor t : tensors) {
-      bytes_per_row += t.TotalBytes();
-    }
-    bytes_per_element_ = bytes_per_row;
-    VLOG(3) << "EASL - set bytes per row: " << bytes_per_element_;
-    first_row_info_set_ = true;
+  uint64 element_size = 0;
+  for (Tensor t : tensors) {
+    element_size += t.TotalBytes();
   }
-  VLOG(3) << "****************** Reader Queue Size: " 
-          << deque_.size() << "  of max:  "
-          << producer_threshold_ / bytes_per_element_;
-  
+
+  if (element_size > bytes_per_element_) { // will hold true for first call since bytes_per_element_ default is 0.
+    bytes_per_element_ = element_size;
+    first_row_info_set_ = true;
+    VLOG(0) << "EASL - set bytes per row: " << bytes_per_element_;
+  }
+
   mu_add_.Await(Condition(this,
     &MultiThreadedAsyncReader::ProducerSpaceAvailable));
+
+  queue_size_bytes_ += element_size;
+
 
   if (cancelled_) {
     return;
@@ -428,6 +430,10 @@ void MultiThreadedAsyncReader::ReaderDone() {
   mu_add_.Await(Condition(this,
                           &MultiThreadedAsyncReader::ProducerSpaceAvailable));
   VLOG(3) << "ReaderDone could write to queue";
+
+  if(cancelled_){
+    return;
+  }
 
   deque_.push_back(std::move(element));
 
