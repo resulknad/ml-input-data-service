@@ -165,6 +165,7 @@ class MultiThreadedAsyncReader {
   bool ProducerSpaceAvailable() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_add_);
   const uint64 producer_threshold_ = 1e9;  // allow producer queue to hold 1 GB
   bool first_row_info_set_ = false;
+  uint64 queue_size_bytes_ = 0;
   uint64 bytes_per_element_ = 0;
 
     //   std::unique_ptr<snapshot_util::Reader> reader_;
