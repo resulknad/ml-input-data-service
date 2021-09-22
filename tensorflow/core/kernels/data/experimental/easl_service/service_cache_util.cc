@@ -381,7 +381,8 @@ bool MultiThreadedAsyncReader::ProducerSpaceAvailable() {
   if (!first_row_info_set_ || cancelled_ || end_of_sequence_){
     return true;
   } else {
-    return (deque_.size() * bytes_per_element_) < producer_threshold_;
+    return (deque_.size() < 5);
+    //return (deque_.size() * bytes_per_element_) < producer_threshold_;
   }
 }
 
