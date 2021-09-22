@@ -274,9 +274,6 @@ Status ServiceCacheGetOp::Dataset::Iterator::RestoreInternal(
 Status ServiceCacheGetOp::Dataset::Iterator::GetNextInternal(
     IteratorContext* ctx, std::vector<Tensor>* out_tensors,
     bool* end_of_sequence) {
-  mutex_lock l(mu_);
-  auto model = ctx->model();
-
   return reader_->Read(out_tensors, end_of_sequence);
 }
 
