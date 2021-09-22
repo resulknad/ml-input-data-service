@@ -532,9 +532,13 @@ Status MultiThreadedAsyncReader::Read(std::vector<Tensor>* &read_tensors, bool* 
         }
       } else {
         VLOG(3) << "Something to read in the queue...";
+        uint64 element_size = 0;
         for( auto tensor : element.value ){
           read_tensors->push_back(tensor);
+          element_size += tensor.TotalBytes();
+
         }
+        queue_size_bytes_ -= element_size;
         deque_.pop_front();
         *end_of_sequence = false;
         return Status::OK();
