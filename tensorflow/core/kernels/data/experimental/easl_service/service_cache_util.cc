@@ -68,7 +68,8 @@ Status Writer::Initialize(){
               return;
           });
   initialized_ = true;
-  return WriteMetadataFile(env_, target_dir_, output_dtypes_, output_shapes_);
+  return Status::OK();
+  //return WriteMetadataFile(env_, target_dir_, output_dtypes_, output_shapes_);
 }
 
 Status Writer::Write(const std::vector<Tensor>& tensors){
@@ -151,22 +152,25 @@ void MultiThreadedAsyncWriter::Write(const std::vector<Tensor>& tensors) {
   VLOG(3) << "EASL - Entering Write (Multithreaded Async Writer)";
 
   mutex_lock l(mu_);
-  if(!first_row_info_set_) {
-    VLOG(0) << "First bytes written";
-    for(Tensor t : tensors) {
-      bytes_per_row_ += t.TotalBytes();
-      VLOG(3) << "EASL bytes per row: " << bytes_per_row_;
-    }
-    first_row_info_set_ = true;
+
+  uint64 element_size = 0;
+  for (Tensor t : tensors) {
+    element_size += t.TotalBytes();
   }
-  VLOG(3) << "****************** Writer Queue Size: " << deque_.size()
-          << "  of max:  " << producer_threshold_ / bytes_per_row_;
+
+  if (element_size > bytes_per_row_) { // will hold true for first call since bytes_per_element_ default is 0.
+    bytes_per_row_ = element_size;
+    first_row_info_set_ = true;
+    VLOG(0) << "EASL - set bytes per row: " << bytes_per_row_;
+  }
   mu_.Await(Condition(this,
             &MultiThreadedAsyncWriter::ProducerSpaceAvailable));
   VLOG(3) << "EASL - enough space in queue";
   snapshot_util::ElementOrEOF element;
   element.value = tensors;
   deque_.push_back(std::move(element));
+  queue_size_bytes_ -= element_size;
+
 }
 
 void MultiThreadedAsyncWriter::SignalEOF() {
@@ -185,6 +189,14 @@ void MultiThreadedAsyncWriter::Consume(snapshot_util::ElementOrEOF* be) {
       &MultiThreadedAsyncWriter::ElementAvailable));
   *be = deque_.front();
   deque_.pop_front();
+
+  if(!be->end_of_sequence){
+    uint64 element_size = 0;
+    for(auto tensor : be->value){
+      element_size += tensor.TotalBytes();
+    }
+    queue_size_bytes_ -= element_size;
+  }
 }
 
 bool MultiThreadedAsyncWriter::ProducerSpaceAvailable() {
