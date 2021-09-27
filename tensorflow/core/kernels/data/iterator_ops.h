@@ -135,6 +135,9 @@ class IteratorResource : public ResourceBase {
   const DataTypeVector output_dtypes_;
   const std::vector<PartialTensorShape> output_shapes_;
   const bool collect_metrics_;
+
+    // EASL - Get the inter-arrival time
+    absl::flat_hash_map<int32, double> thread_end_times_us_;
 };
 
 class IteratorHandleOp : public OpKernel {
