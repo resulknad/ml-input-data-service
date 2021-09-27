@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/root_dataset.h"
 #include "tensorflow/core/data/serialization_utils.h"
+#include "tensorflow/core/data/service/easl/inter_arrival_time.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/metrics.h"
@@ -148,6 +149,19 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
     }
     num_get_next_calls_++;
   }
+  
+  // EASL - Get and store the inter-arrival time
+  int32 thread_id = Env::Default()->GetCurrentThreadId();
+  if (thread_end_times_us_.contains(thread_id)) {
+    mutex_lock l(mu_);
+    double inter_arrival_time_ms = (start_time_us - 
+      thread_end_times_us_[thread_id]) / EnvTime::kMillisToMicros;
+    VLOG(0) << "(IteratorResource::GetNext - Thread #" << thread_id << ") "
+            << "Inter-arrival time [ms]: " << inter_arrival_time_ms;
+    // TODO(DanGraur): Add calll to global inter-arrival time repo
+    easl::InterArrivalTimeRepo::AddInterArrivalTime(inter_arrival_time_ms);
+  }
+
   auto iterator_ = captured_state->iterator();
   auto status = iterator_->GetNext(IteratorContext(std::move(params)),
                                    out_tensors, end_of_sequence);
@@ -165,6 +179,13 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
           safe_sub(get_next_end_time_us_, get_next_start_time_us_));
     }
   }
+
+  // EASL - Record the end time
+  {
+    mutex_lock l(mu_);
+    thread_end_times_us_[thread_id] = ctx->env()->NowMicros();
+  }
+
   return status;
 }
 
