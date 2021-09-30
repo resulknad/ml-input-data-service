@@ -333,6 +333,7 @@ Status DetermineOpState(const std::string& mode_string, bool file_exists,
 struct ElementOrEOF {
   std::vector<Tensor> value;
   bool end_of_sequence = false;
+  int64 size = 0;
 };
 
 // AsyncWriter provides API for asynchronously writing dataset elements

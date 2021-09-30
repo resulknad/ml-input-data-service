@@ -168,6 +168,7 @@ void MultiThreadedAsyncWriter::Write(const std::vector<Tensor>& tensors) {
   VLOG(3) << "EASL - enough space in queue";
   snapshot_util::ElementOrEOF element;
   element.value = tensors;
+  element.size = element_size;
   deque_.push_back(std::move(element));
   queue_size_bytes_ -= element_size;
 
@@ -191,11 +192,7 @@ void MultiThreadedAsyncWriter::Consume(snapshot_util::ElementOrEOF* be) {
   deque_.pop_front();
 
   if(!be->end_of_sequence){
-    uint64 element_size = 0;
-    for(auto tensor : be->value){
-      element_size += tensor.TotalBytes();
-    }
-    queue_size_bytes_ -= element_size;
+    queue_size_bytes_ -= be->size;
   }
 }
 
@@ -245,7 +242,7 @@ Status MultiThreadedAsyncWriter::WriterThread(Env* env,
     TF_RETURN_IF_ERROR(writer->WriteTensors(be.value));
     
     // If the current file exceeded size limits, close it and open another
-    file_size += bytes_per_row_;
+    file_size += be.size;
     if (file_size > kMaxFileSize) {
       writer->Close();
       VLOG(3) << "(Writer_" << writer_id << ") Closed file with "
@@ -428,6 +425,7 @@ void MultiThreadedAsyncReader::Add(std::vector<Tensor>& tensors) {
 
   snapshot_util::ElementOrEOF element;
   element.value = tensors;
+  element.size = element_size;
   element.end_of_sequence = false;
   deque_.push_back(std::move(element));
 }
@@ -547,10 +545,8 @@ Status MultiThreadedAsyncReader::Read(std::vector<Tensor>* &read_tensors, bool* 
         uint64 element_size = 0;
         for( auto tensor : element.value ){
           read_tensors->push_back(tensor);
-          element_size += tensor.TotalBytes();
-
         }
-        queue_size_bytes_ -= element_size;
+        queue_size_bytes_ -= element.size;
         deque_.pop_front();
         *end_of_sequence = false;
         return Status::OK();
