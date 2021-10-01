@@ -33,9 +33,10 @@ class InterArrivalTimeRepo {
   }
   
   // Times to be added in ms
-  void AddInterArrivalTime(double x) TF_LOCKS_EXCLUDED(mu_) {
+  void AddInterArrivalTime(double x, int32 thread_id = 0) TF_LOCKS_EXCLUDED(mu_) {
     VLOG(0) << "(InterArrivalTimeRepo::AddInterArrivalTime) Time [ms]: " << x;
     mutex_lock l(mu_);
+    thread_ids_.insert(thread_id);
     inter_arrival_times_ms_.pop_front();
     inter_arrival_times_ms_.push_back(x);
   }
@@ -47,7 +48,8 @@ class InterArrivalTimeRepo {
     for (double val : inter_arrival_times_ms_) {
       total += val;
     }
-    return total / inter_arrival_times_ms_.size();
+    total /= inter_arrival_times_ms_.size();
+    return total * (thread_ids_.size() > 0 ? thread_ids_.size() else 1);
   }
 
  private:
@@ -57,6 +59,7 @@ class InterArrivalTimeRepo {
 
   mutex mu_;
   const int32 measurement_count_ = 20;
+  std::set<int32> thread_ids_ TF_GUARDED_BY(mu_);
   std::deque<double> inter_arrival_times_ms_ TF_GUARDED_BY(mu_); 
 };
 
