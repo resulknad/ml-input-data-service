@@ -160,7 +160,7 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
             << "Inter-arrival time [ms]: " << inter_arrival_time_ms;
     // TODO(DanGraur): Add calll to global inter-arrival time repo
     easl::InterArrivalTimeRepo::GetInstance().AddInterArrivalTime(
-      inter_arrival_time_ms);
+      inter_arrival_time_ms, thread_id);
   }
 
   auto iterator_ = captured_state->iterator();
