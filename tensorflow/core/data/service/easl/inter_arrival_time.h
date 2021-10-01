@@ -26,18 +26,23 @@ namespace easl {
 
 class InterArrivalTimeRepo {
  public:
+  // Singleton accessor
+  static InterArrivalTimeRepo& GetInstance() {
+    static InterArrivalTimeRepo singleton;
+    return singleton; 
+  }
+  
   // Times to be added in ms
-  static void AddInterArrivalTime(double x) TF_LOCKS_EXCLUDED(mu_) {
+  void AddInterArrivalTime(double x) TF_LOCKS_EXCLUDED(mu_) {
+    VLOG(0) << "(InterArrivalTimeRepo::AddInterArrivalTime) Time [ms]: " << x;
     mutex_lock l(mu_);
-    EnsureMeasurementsInitialized();
-    InterArrivalTimeRepo::inter_arrival_times_ms_.pop_front();
-    InterArrivalTimeRepo::inter_arrival_times_ms_.push_back(x);
+    inter_arrival_times_ms_.pop_front();
+    inter_arrival_times_ms_.push_back(x);
   }
   
   // Average time to be returned in ms
-  static double GetAverageInterArrivalTime() TF_LOCKS_EXCLUDED(mu_) {
+  double GetAverageInterArrivalTime() TF_LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
-    EnsureMeasurementsInitialized();
     double total = 0.0;
     for (double val : inter_arrival_times_ms_) {
       total += val;
@@ -46,15 +51,13 @@ class InterArrivalTimeRepo {
   }
 
  private:
-  static void EnsureMeasurementsInitialized() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    if (inter_arrival_times_ms_.size() == 0) {
-      inter_arrival_times_ms_ = std::deque<double>(measurement_count_, 0.0);
-    }
+  InterArrivalTimeRepo() {
+    inter_arrival_times_ms_ = std::deque<double>(measurement_count_, 0.0);
   }
 
-  static mutex mu_;
-  const static int32 measurement_count_ = 20;
-  static std::deque<double> inter_arrival_times_ms_ TF_GUARDED_BY(mu_); 
+  mutex mu_;
+  const int32 measurement_count_ = 20;
+  std::deque<double> inter_arrival_times_ms_ TF_GUARDED_BY(mu_); 
 };
 
 } // easl
