@@ -50,7 +50,8 @@ class InterArrivalTimeRepo {
 
     // We also divide by the number of threads since we assume the throughput
     // Scales linearly with the number of GPUs
-    total /= (inter_arrival_times_ms_.size() * thread_ids_.size());
+    thread_count = thread_ids_.size() > 0 ? thread_ids_.size() : 1;
+    total /= (inter_arrival_times_ms_.size() * thread_count);
     VLOG(0) << "(InterArrivalTimeRepo::GetAverageInterArrivalTime) Time [ms]: " 
             << total;
     return total;
