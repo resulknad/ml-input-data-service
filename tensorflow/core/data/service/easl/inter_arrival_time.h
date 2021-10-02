@@ -63,7 +63,7 @@ class InterArrivalTimeRepo {
   }
 
   mutex mu_;
-  const int32 measurement_count_ = 20;
+  const int32 measurement_count_ = 50;
   std::set<int32> thread_ids_ TF_GUARDED_BY(mu_);
   std::deque<double> inter_arrival_times_ms_ TF_GUARDED_BY(mu_); 
 };
