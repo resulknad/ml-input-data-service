@@ -636,16 +636,13 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
                    "counter: " <<
                 tf_data_num_elements_counter->value();*/
 
-        // Set the batch time in ms
-        if (model->output()) {
-          req.set_avg_inter_arrival_time(model->output()->pause_time());
-        }
-
         // EASL - Getting the average inter-arrival time from the repo
         double inter_arrival_time_ms = 
           easl::InterArrivalTimeRepo::GetInstance().GetAverageInterArrivalTime();
-        VLOG(0) << "Actually got the inter-arrival time: " 
+        VLOG(3) << "Actually got the inter-arrival time: " 
                 << inter_arrival_time_ms;
+        req.set_avg_inter_arrival_time(inter_arrival_time_ms);
+          
 
         // Set the wait time for a GetNext response in ms
         req.set_avg_get_next_processing_time(node_->SelfProcessingTime() / 
