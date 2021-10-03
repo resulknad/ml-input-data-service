@@ -413,7 +413,7 @@ Status DetermineElasticity(
       dataset_key, model_metrics));
   VLOG(0) << "(DetermineElasticity) After the GetModelMetricsByDatasetKey";
 
-  // Get the client throughput 
+  // Get the average client throughput 
   for(std::pair<int64, std::shared_ptr<ModelMetrics::Metrics>> e : 
     model_metrics->metrics_) {
     std::shared_ptr<ModelMetrics::Metrics> client_metrics = e.second;
@@ -421,6 +421,8 @@ Status DetermineElasticity(
     VLOG(0) << "(DetermineElasticity) Client inter arrival time " 
             << client_metrics->inter_arrival_time_ms();
   }
+  // Multiply the average throughput by the nr of clients to get the real throughput
+  client_throughput *= model_metrics->metrics_.size();
   VLOG(0) << "(DetermineElasticity) Total client throughput demand " 
           << client_throughput;
 
