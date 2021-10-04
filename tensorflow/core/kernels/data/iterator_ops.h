@@ -137,7 +137,7 @@ class IteratorResource : public ResourceBase {
   const bool collect_metrics_;
 
     // EASL - Get the inter-arrival time
-    absl::flat_hash_map<int32, double> thread_end_times_us_;
+    absl::flat_hash_map<int32, uint64> thread_end_times_us_;
 };
 
 class IteratorHandleOp : public OpKernel {

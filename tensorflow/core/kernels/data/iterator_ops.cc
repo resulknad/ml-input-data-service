@@ -154,7 +154,7 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
   int32 thread_id = Env::Default()->GetCurrentThreadId();
   if (thread_end_times_us_.contains(thread_id)) {
     mutex_lock l(mu_);
-    double inter_arrival_time_ms = (start_time_us - 
+    uint64 inter_arrival_time_ms = (start_time_us - 
       thread_end_times_us_[thread_id]) / EnvTime::kMillisToMicros;
     VLOG(3) << "(IteratorResource::GetNext - Thread #" << thread_id << ") "
             << "Inter-arrival time [ms]: " << inter_arrival_time_ms;
