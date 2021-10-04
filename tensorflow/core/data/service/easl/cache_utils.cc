@@ -26,7 +26,7 @@ namespace {
   // Represents an offset which is subtracted from the non-rounded up worker count
   // This offset tries to avoid cases where a value such as 4.02 provisions 
   // 5 workers and not 4, as woul be ideal
-  double worker_count_alpha_ = 0.1;
+  double worker_count_alpha_ = 0.0;
 }
 
 Status DoBFS(NodeDef* sink_node, GraphDef& graph_def, string prefix) {
