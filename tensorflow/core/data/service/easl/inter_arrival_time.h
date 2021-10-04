@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_DATA_SERVICE_EASL_INTER_ARRIVAL_TIME_H_
 
 #include <deque>
+#include <limits>
 
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -33,39 +34,44 @@ class InterArrivalTimeRepo {
   }
   
   // Times to be added in ms
-  void AddInterArrivalTime(double x, int32 thread_id = 0) TF_LOCKS_EXCLUDED(mu_) {
-    mutex_lock l(mu_);
-    thread_ids_.insert(thread_id);
-    inter_arrival_times_ms_.pop_front();
-    inter_arrival_times_ms_.push_back(x);
+  void AddInterArrivalTime(uint64 x, int32 thread_id = 0) TF_LOCKS_EXCLUDED(mu_) {
+    {
+      mutex_lock l(mu_);
+      thread_ids_.insert(thread_id);
+    }
+
+    // Prevent overflow
+    if ((max_val_ - x) < accumulator_ms_.load()) {
+      accumulator_ms_.store(0u);
+      measurement_count_.store(0u);
+    }
+
+    accumulator_ms_ += x;
+    ++measurement_count_;
   }
   
   // Average time to be returned in ms
   double GetAverageInterArrivalTime() TF_LOCKS_EXCLUDED(mu_) {
-    mutex_lock l(mu_);
-    double total = 0.0;
-    for (double val : inter_arrival_times_ms_) {
-      total += val;
+    uint32 thread_count = 1;
+    {
+      mutex_lock l(mu_);
+      uint32 thread_count = std::max<uint32>(thread_ids_.size(), 1);
     }
-
-    // We also divide by the number of threads since we assume the throughput
-    // Scales linearly with the number of GPUs
-    int thread_count = thread_ids_.size() > 0 ? thread_ids_.size() : 1;
-    total /= (inter_arrival_times_ms_.size() * thread_count);
+    double average = (double)(accumulator_ms_.load()) / 
+      (measurement_count_ * thread_count);
     VLOG(0) << "(InterArrivalTimeRepo::GetAverageInterArrivalTime) Time [ms]: " 
-            << total;
-    return total;
+            << average;
+    return average;
   }
 
  private:
-  InterArrivalTimeRepo() {
-    inter_arrival_times_ms_ = std::deque<double>(measurement_count_, 0.0);
-  }
+  InterArrivalTimeRepo() : accumulator_ms_(0u), measurement_count_(0u) {}
 
   mutex mu_;
-  const int32 measurement_count_ = 50;
   std::set<int32> thread_ids_ TF_GUARDED_BY(mu_);
-  std::deque<double> inter_arrival_times_ms_ TF_GUARDED_BY(mu_); 
+  std::atomic_uint64_t accumulator_ms_;
+  std::atomic_uint64_t measurement_count_;
+  const uint64 max_val_ = std::numeric_limits<uint64>::max();
 };
 
 } // easl
