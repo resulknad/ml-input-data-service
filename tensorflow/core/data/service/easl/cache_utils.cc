@@ -391,7 +391,6 @@ Status DetermineElasticity(
   }
 
   // Pipeline stats: last TF node metrics
-  VLOG(0) << "(DetermineElasticity) Before the GetLastTFNodeMetricsByDatasetKey";
   std::shared_ptr<NodeMetrics> last_tf_node_metrics;
   s = metadata_store.GetLastTFNodeMetricsByDatasetKey(
     dataset_key, last_tf_node_metrics);
@@ -399,11 +398,8 @@ Status DetermineElasticity(
     VLOG(0) << "(DetermineElasticity) Failed to get the last TF node metrics";
     return s;
   }
-  VLOG(0) << "(DetermineElasticity) After the GetLastTFNodeMetricsByDatasetKey " << last_tf_node_metrics;
   size_t num_workers = (last_tf_node_metrics->metrics_).size();
-  VLOG(0) << "(DetermineElasticity) After the GetLastTFNodeMetricsByDatasetKey size get " << num_workers;
   DCHECK(num_workers > 0);
-  VLOG(0) << "(DetermineElasticity) After the GetLastTFNodeMetricsByDatasetKey size check";
 
   // Model stats
   double client_throughput = 0.0;
@@ -411,18 +407,15 @@ Status DetermineElasticity(
   TF_RETURN_IF_ERROR(
     metadata_store.GetModelMetricsByDatasetKey(
       dataset_key, model_metrics));
-  VLOG(0) << "(DetermineElasticity) After the GetModelMetricsByDatasetKey";
 
   // Get the average client throughput 
   for(std::pair<int64, std::shared_ptr<ModelMetrics::Metrics>> e : 
     model_metrics->metrics_) {
     std::shared_ptr<ModelMetrics::Metrics> client_metrics = e.second;
     client_throughput += 1000.0 / client_metrics->inter_arrival_time_ms();
-    VLOG(0) << "(DetermineElasticity) Client inter arrival time " 
-            << client_metrics->inter_arrival_time_ms();
   }
   // Multiply the average throughput by the nr of clients to get the real throughput
-  client_throughput *= model_metrics->metrics_.size();
+  // client_throughput *= model_metrics->metrics_.size();
   VLOG(0) << "(DetermineElasticity) Total client throughput demand " 
           << client_throughput;
 
@@ -435,7 +428,7 @@ Status DetermineElasticity(
     for(std::pair<std::string, std::shared_ptr<NodeMetrics::Metrics>> e : 
       last_tf_node_metrics->metrics_) {
       std::shared_ptr<NodeMetrics::Metrics> worker_metrics = e.second;
-      avg_worker_throughput += 1000.0 / worker_metrics->in_prefix_time_ms();
+      avg_worker_throughput += 1000.0 / worker_metrics->active_time_ms();
     }
     avg_worker_throughput /= num_workers;
     VLOG(0) << "(DetermineElasticity) Average worker throughput "
@@ -466,8 +459,8 @@ Status DetermineElasticity(
 
       row_size += worker_metrics->bytes_produced() / 
         worker_metrics->num_elements();
-      tf_nodes_overhead_ms += worker_metrics_tf_node->in_prefix_time_ms() 
-        - worker_metrics->in_prefix_time_ms();
+      tf_nodes_overhead_ms += worker_metrics_tf_node->active_time_ms() 
+        - worker_metrics->active_time_ms();
     }
 
     row_size /= num_workers;
