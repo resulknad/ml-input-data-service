@@ -282,6 +282,7 @@ cc_library(
         ":dispatcher_cache_state",
         ":dispatcher_proto_cc",
         ":dispatcher_state",
+        ":inter_arrival_time",
         ":metadata_store",
         ":grpc_util",
         ":journal",
@@ -845,6 +846,14 @@ cc_library(
         "//tensorflow/core:lib",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
+    ],
+)
+
+cc_library(
+    name = "inter_arrival_time",
+    hdrs = ["easl/inter_arrival_time.h"],
+    deps = [
+        "//tensorflow/core:framework"
     ],
 )
 
