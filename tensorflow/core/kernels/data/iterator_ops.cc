@@ -158,7 +158,6 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
       thread_end_times_us_[thread_id]) / EnvTime::kMillisToMicros;
     VLOG(3) << "(IteratorResource::GetNext - Thread #" << thread_id << ") "
             << "Inter-arrival time [ms]: " << inter_arrival_time_ms;
-    // TODO(DanGraur): Add calll to global inter-arrival time repo
     easl::InterArrivalTimeRepo::GetInstance().AddInterArrivalTime(
       inter_arrival_time_ms, thread_id);
   }
