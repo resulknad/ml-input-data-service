@@ -1765,8 +1765,10 @@ Model::ModelMetrics Model::CollectMetrics() {
     node_metrics.set_bytes_per_s(bytes_per_ms);
     if (node->num_elements() == 0){ // avoid division by zero
       node_metrics.set_active_time(0.0);
+      node_metrics.set_working_time(0.0);
     } else {
       node_metrics.set_active_time(((double)(node->active_time())) / (EnvTime::kMillisToNanos * node->num_elements()));
+      node_metrics.set_working_time(((double)(node->working_time())) / (EnvTime::kMillisToNanos * node->num_elements()));
     }
     metrics->insert({node->long_name(), node_metrics});
   }

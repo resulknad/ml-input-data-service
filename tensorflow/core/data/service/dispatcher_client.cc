@@ -52,6 +52,7 @@ constexpr const char kInNodeTime[] = "in_node_time";
 constexpr const char kInPrefixTime[] = "in_prefix_time";
 constexpr const char kBytesPerS[] = "bytes_per_s";
 constexpr const char kActiveTime[] = "active_time";
+constexpr const char kWorkingTime[] = "working_time";
 
 } // namespace
 
@@ -96,6 +97,7 @@ Status DataServiceDispatcherClient::WorkerHeartbeat(
       (*metrics)[kInPrefixTime] = node_metrics.second.in_prefix_time();
       (*metrics)[kBytesPerS] = node_metrics.second.bytes_per_s();
       (*metrics)[kActiveTime] = node_metrics.second.active_time();
+      (*metrics)[kWorkingTime] = node_metrics.second.working_time();
     }
   }
 
