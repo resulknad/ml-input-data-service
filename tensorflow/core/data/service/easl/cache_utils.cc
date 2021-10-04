@@ -415,7 +415,6 @@ Status DetermineElasticity(
     client_throughput += 1000.0 / client_metrics->inter_arrival_time_ms();
   }
   // Multiply the average throughput by the nr of clients to get the real throughput
-  // client_throughput *= model_metrics->metrics_.size();
   VLOG(0) << "(DetermineElasticity) Total client throughput demand " 
           << client_throughput;
 
