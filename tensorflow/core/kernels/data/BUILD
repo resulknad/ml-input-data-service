@@ -447,6 +447,7 @@ tf_kernel_library(
         "//tensorflow/core/data:root_dataset",
         "//tensorflow/core/data:serialization_utils",
         "//tensorflow/core/data:unbounded_thread_pool",
+        "//tensorflow/core/data/service:inter_arrival_time",
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/lib:traceme_encode",

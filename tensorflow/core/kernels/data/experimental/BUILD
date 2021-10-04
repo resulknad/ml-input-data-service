@@ -193,6 +193,7 @@ tf_kernel_library(
         "//tensorflow/core/data/service:data_service",
         "//tensorflow/core/data/service:dispatcher_client",
         "//tensorflow/core/data/service:dispatcher_proto_cc",
+        "//tensorflow/core/data/service:inter_arrival_time",
         "//tensorflow/core/data/service:grpc_util",
         "//tensorflow/core/data/service:worker_client",
         "//tensorflow/core/data/service:worker_impl",
