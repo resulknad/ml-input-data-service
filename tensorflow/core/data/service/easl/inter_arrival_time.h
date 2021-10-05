@@ -44,6 +44,7 @@ class InterArrivalTimeRepo {
   
   // Average time to be returned in ms
   double GetAverageInterArrivalTime() TF_LOCKS_EXCLUDED(mu_) {
+<<<<<<< HEAD
     mutex_lock l(mu_);
     uint32 min_len = std::numeric_limits<uint32_t>::max();
     for (auto& p : times_) {
@@ -76,6 +77,19 @@ class InterArrivalTimeRepo {
     VLOG(0) << "(InterArrivalTimeRepo::GetAverageInterArrivalTime) Time [ms]: " 
             << last_inter_arrival_time_ms_;
     return last_inter_arrival_time_ms_;
+=======
+    uint32 thread_count;
+    {
+      mutex_lock l(mu_);
+      thread_count = std::max<uint32>(thread_ids_.size(), 1);
+    }
+    double average = (double)(accumulator_ms_.load()) / 
+      (measurement_count_ * thread_count);
+    average /= thread_count;
+    VLOG(0) << "(InterArrivalTimeRepo::GetAverageInterArrivalTime) Time [ms]: " 
+            << average << " thread count " << thread_count;
+    return average;
+>>>>>>> Made a small modification in the inter arrival time.
   }
 
  private:
