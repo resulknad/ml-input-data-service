@@ -852,13 +852,12 @@ Status DataServiceDispatcherImpl::CreateJob(
   int64 dataset_fingerprint = dataset->fingerprint;
   std::string compute_dataset_key = DatasetKey(dataset_id, dataset_fingerprint);
 
-  service::easl::cache_utils::DetermineJobType(
-      config_, cache_state_, metadata_store_, dataset_fingerprint,
-      compute_dataset_key, job_id, job_type);
-  VLOG(0) << "EASL - Caching decision for dataset_key " 
-            << compute_dataset_key << ": " << job_type;
+  // TF_RETURN_IF_ERROR(service::easl::cache_utils::DetermineJobType(
+  //     config_, cache_state_, metadata_store_, dataset_fingerprint,
+  //     compute_dataset_key, job_id, job_type));
+  // VLOG(0) << "EASL - Caching decision for dataset_key " 
+  //           << compute_dataset_key << ": " << job_type;
 
-  // Infer the worker count for  this job and job type
   int64 total_workers = state_.ListWorkers().size();
   TF_RETURN_IF_ERROR(service::easl::cache_utils::DetermineElasticity(job_type, 
       config_, metadata_store_, compute_dataset_key, total_workers, worker_count));

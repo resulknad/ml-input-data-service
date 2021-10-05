@@ -25,8 +25,13 @@ namespace cache_utils {
 namespace {
   // Represents an offset which is subtracted from the non-rounded up worker count
   // This offset tries to avoid cases where a value such as 4.02 provisions 
-  // 5 workers and not 4, as woul be ideal
+  // 5 workers and not 4, as would be ideal
   double worker_count_alpha_ = 0.0;
+
+  // Constants for the policy decision
+  constexpr const char kFullCache[] = "CACHE";
+  constexpr const char kSourceCache[] = "SOURCE_CACHE";
+  constexpr const char kCompute[[] = "COMPUTE";
 }
 
 Status DoBFS(NodeDef* sink_node, GraphDef& graph_def, string prefix) {
@@ -131,72 +136,26 @@ Status DetermineJobType(const experimental::DispatcherConfig& dispatcher_config,
                      const ::tensorflow::data::easl::MetadataStore& metadata_store,
                      const uint64 fingerprint,
                      const std::string& dataset_key,
-                     const int64 job_id,
-                     std::string& job_type) {
-  // First check if we should use a "fixed" cache policy:
-  // 1 == EASL
-  // 2 == compute 
-  // 3 == full cache(put, then get from 2nd epoch)
-  // 4 == source cache(put, then get from 2nd epoch) 
-  // Compute -------------------------------------------------------------------
-  if(dispatcher_config.cache_policy() == 2){
-    job_type = "COMPUTE";
-    return Status::OK();
-  // Caching -------------------------------------------------------------------
-  } else if(dispatcher_config.cache_policy() == 3){
-    if(cache_state.IsDatasetCached(fingerprint)){
-      job_type = "GET";
-    } else {
-      job_type = "PUT";
-    }
-    return Status::OK();
-  } else if (dispatcher_config.cache_policy() == 30) {
-    job_type = "PUT";
-    return Status::OK();
-  } else if (dispatcher_config.cache_policy() == 31) {
-    job_type = "GET";
-    return Status::OK();
-  // Source Caching ------------------------------------------------------------
-  } else if(dispatcher_config.cache_policy() == 4) {
-    if (cache_state.IsDatasetSourceCached(fingerprint)) {
-      job_type = "GET_SOURCE";
-    } else {
-      job_type = "PUT_SOURCE";
-    }
-    return Status::OK();
-  } else if (dispatcher_config.cache_policy() == 40) {
-    job_type = "PUT_SOURCE";
-    return Status::OK();
-  } else if (dispatcher_config.cache_policy() == 41) {
-    job_type = "GET_SOURCE";
-    return
-  Status::OK();
+                     const int64 job_id
+                     absl::flat_hash_map<string, std::tuple<double, double, double>>& policy_stats) {
+  // Semantics of policy_stats:
+  //    key: the name of the policy ('CACHE', 'SOURCE_CACHE', 'COMPUTE')
+  //    value: tuple: <throughput_per_worker, max_workers_until_io_bound,
+  //                   data_size_in_storage>
+
+  // We initialize the policy_stats first
+  std::vector<string> policies({kFullCache, kSourceCache, kCompute});
+  for (auto& policy : policies) {
+    policy_stats[policy] = std::tuple<double, double, double> tpl{0, 0, 0};
   }
 
-  // ---------------------------------------------------------------------------
-  // Cache policy = EASL (cache_policy==1)
-  // ---------------------------------------------------------------------------
-
-  // If dataset was previously cached, assume it was faster than compute
-  // and decide to read.
-  if (cache_state.IsDatasetCached(fingerprint)){
-    job_type = "GET";
-    return Status::OK();
-  }
-
-  // We always prefer source caching, so if we have full caching, it means
-  // that was necessary. Thus, we check source caching after full caching.
-  if (cache_state.IsDatasetSourceCached(fingerprint)) {
-    job_type = "GET_SOURCE";
-    return Status::OK();
-  }
-  std::shared_ptr<::tensorflow::data::easl::InputPipelineMetrics> job_metrics;
+  std::shared_ptr<easl::InputPipelineMetrics> job_metrics;
   Status s = metadata_store.GetInputPipelineMetricsByDatasetKey(dataset_key, 
     job_metrics);
 
   // We do not yet have the metrics for this dataset
   if(errors::IsNotFound(s)){
-    job_type = "COMPUTE";
+    policy_stats[kCompute] = std::tuple<double, double, double> tpl{0, 0, 0}
     return Status::OK();
   } else if (!s.ok()){
     return s;
@@ -326,36 +285,6 @@ Status DetermineJobType(const experimental::DispatcherConfig& dispatcher_config,
 
     return Status::OK();
   }
-
-
-  /**
-  // We now make the caching decision: fastest option wins
-  std::vector<double> v = {has_marker_node ? source_cache_compute_time_per_row_ms 
-    : std::numeric_limits<double>::max(), cache_read_time_per_row_ms, 
-    compute_time_per_row_ms};
-  int minElementIndex = std::min_element(v.begin(), v.end()) - v.begin();
-
-  switch(minElementIndex) {
-    case 0: // This is the source cache
-    job_type = "PUT_SOURCE";
-    VLOG(0) << "Cache decision: SOURCE CACHING";
-    break;
-    case 1: // This is the full cache
-    job_type = "PUT";
-    VLOG(0) << "Cache decision: FULL CACHING";
-    break;
-    case 2: // This is the compute
-    job_type = "COMPUTE";
-    VLOG(0) << "Cache decision: COMPUTE";
-    break;
-    default:
-    VLOG(0) << "Cache decision: In DEFAULT... Will throw error...";
-    return errors::Unimplemented("Caching decision defaulted to last option... "
-      "See DetermineJobType!");
-  }
-
-  return Status::OK();
-   **/
 }
 
 Status DetermineElasticity(
