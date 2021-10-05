@@ -45,41 +45,44 @@ class InterArrivalTimeRepo {
   // Average time to be returned in ms
   double GetAverageInterArrivalTime() TF_LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
-    double average = 0.0;
     uint32 min_len = std::numeric_limits<uint32_t>::max();
     for (auto& p : times_) {
       min_len = std::min<uint32>(min_len, p.second.size());
     }
 
     // Test if no metrics have been collected
-    if (min_len == std::numeric_limits<uint32_t>::max()) {
+    if (min_len == std::numeric_limits<uint32_t>::max() || 
+        min_len < min_batches_per_average_) {
       // Return big value to force 1 worker decision
-      return std::numeric_limits<double>::max();
+      return last_inter_arrival_time_ms_;
     }
 
     // Get min inter-arrival across each batch
+    last_inter_arrival_time_ms_ = 0.0;
     for (int i = 0; i < min_len; ++i) {
-      int32 min_at_epoch = -1;
+      int32 min_at_batch = -1;
       for (auto& p : times_) {
-        if (min_at_epoch != -1) {
-          min_at_epoch = std::min<int32>(min_at_epoch, p.second.front());
+        if (min_at_batch != -1) {
+          min_at_batch = std::min<int32>(min_at_batch, p.second.front());
         } else {
-          min_at_epoch = p.second.front();
+          min_at_batch = p.second.front();
         }
         p.second.pop_front();
       }
-      average += min_at_epoch;
+      last_inter_arrival_time_ms_ += min_at_batch;
     }
 
-    average /= (min_len * times_.size());
+    last_inter_arrival_time_ms_ /= (min_len * times_.size());
     VLOG(0) << "(InterArrivalTimeRepo::GetAverageInterArrivalTime) Time [ms]: " 
-            << average;
-    return average;
+            << last_inter_arrival_time_ms_;
+    return last_inter_arrival_time_ms_;
   }
 
  private:
 
   mutex mu_;
+  const uint32 min_batches_per_average_ = 20u;
+  double last_inter_arrival_time_ms_ = std::numeric_limits<double>::max();
   absl::flat_hash_map<int32, std::deque<uint64>> times_ TF_GUARDED_BY(mu_);
 };
 
