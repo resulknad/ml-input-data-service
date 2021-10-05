@@ -85,7 +85,6 @@ class InterArrivalTimeRepo {
     }
     double average = (double)(accumulator_ms_.load()) / 
       (measurement_count_ * thread_count);
-    average /= thread_count;
     VLOG(0) << "(InterArrivalTimeRepo::GetAverageInterArrivalTime) Time [ms]: " 
             << average << " thread count " << thread_count;
     return average;
