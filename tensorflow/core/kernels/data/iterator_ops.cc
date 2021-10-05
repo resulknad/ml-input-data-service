@@ -149,7 +149,7 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
     }
     num_get_next_calls_++;
   }
-  
+
   // EASL - Get and store the inter-arrival time
   int32 thread_id = Env::Default()->GetCurrentThreadId();
   if (thread_end_times_us_.contains(thread_id)) {
