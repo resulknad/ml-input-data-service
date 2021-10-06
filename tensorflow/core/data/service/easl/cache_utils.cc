@@ -1,3 +1,4 @@
+#include <limits>
 #include <queue>
 
 #include "tensorflow/core/data/service/easl/cache_utils.h"
@@ -132,12 +133,12 @@ Status DatasetKey(const ::tensorflow::data::easl::CacheState& cache_state,
 }*/
 
 Status DetermineJobType(const experimental::DispatcherConfig& dispatcher_config,
-                     ::tensorflow::data::CacheState& cache_state,
-                     const ::tensorflow::data::easl::MetadataStore& metadata_store,
-                     const uint64 fingerprint,
-                     const std::string& dataset_key,
-                     const int64 job_id
-                     absl::flat_hash_map<string, std::tuple<double, double, double>>& policy_stats) {
+                        ::tensorflow::data::CacheState& cache_state,
+                        const ::tensorflow::data::easl::MetadataStore& metadata_store,
+                        const uint64 fingerprint,
+                        const std::string& dataset_key,
+                        const int64 job_id
+                        absl::flat_hash_map<string, StatsTriplet>& policy_stats) {
   // Semantics of policy_stats:
   //    key: the name of the policy ('CACHE', 'SOURCE_CACHE', 'COMPUTE')
   //    value: tuple: <throughput_per_worker, max_workers_until_io_bound,
@@ -146,23 +147,23 @@ Status DetermineJobType(const experimental::DispatcherConfig& dispatcher_config,
   // We initialize the policy_stats first
   std::vector<string> policies({kFullCache, kSourceCache, kCompute});
   for (auto& policy : policies) {
-    policy_stats[policy] = std::tuple<double, double, double> tpl{0, 0, 0};
+    policy_stats[policy] = StatsTriplet(0, 0, 0);
   }
 
   std::shared_ptr<easl::InputPipelineMetrics> job_metrics;
   Status s = metadata_store.GetInputPipelineMetricsByDatasetKey(dataset_key, 
     job_metrics);
 
-  // We do not yet have the metrics for this dataset
+  // We do not yet have the metrics for this dataset: force COMPUTE 
   if(errors::IsNotFound(s)){
-    policy_stats[kCompute] = std::tuple<double, double, double> tpl{0, 0, 0}
+    double max_double = std::numeric_limits<double>::max();
+    policy_stats[kCompute] = StatsTriplet(max_double, max_double, 0);
     return Status::OK();
   } else if (!s.ok()){
     return s;
   }
 
   // Compute metrics
-  using NodeMetrics = ::tensorflow::data::easl::NodeMetrics;
   std::shared_ptr<NodeMetrics> node_metrics;
   TF_RETURN_IF_ERROR(metadata_store.GetLastNodeMetricsByDatasetKey(
     dataset_key, node_metrics));
@@ -294,9 +295,6 @@ Status DetermineElasticity(
   const std::string& dataset_key,
   const int64 available_workers,
   int64& worker_count) {
-  using NodeMetrics = ::tensorflow::data::easl::NodeMetrics;
-  using ModelMetrics = ::tensorflow::data::easl::ModelMetrics;
-
   // Give out max number of workers
   if(dispatcher_config.scaling_policy() == 2){
     worker_count = available_workers;

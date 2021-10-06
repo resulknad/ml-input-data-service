@@ -18,6 +18,11 @@ namespace service {
 namespace easl{
 namespace cache_utils {
 
+// A triple meant to store: per worker throughput, max_workers, storage size
+using StatsTriplet = std::tuple<double, double, double>;
+using NodeMetrics = ::tensorflow::data::easl::NodeMetrics;
+using ModelMetrics = ::tensorflow::data::easl::ModelMetrics;
+
 std::string DatasetPutKey(const int64 id, const uint64 fingerprint);
 std::string DatasetPutSourceKey(const int64 id, const uint64 fingerprint);
 
@@ -50,7 +55,7 @@ Status DetermineJobType(
     const uint64 fingerprint,
     const std::string& dataset_key,
     const int64 job_id,
-    std::string& job_type);
+    absl::flat_hash_map<string, StatsTriplet>& policy_stats);
 
 Status DetermineElasticity(
     const std::string& job_type,
