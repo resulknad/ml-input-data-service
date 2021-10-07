@@ -34,8 +34,13 @@ class InterArrivalTimeRepo {
   }
   
   // Times to be added in ms
-  void AddInterArrivalTime(uint64 x, int32 thread_id = 0) TF_LOCKS_EXCLUDED(mu_) {
+  void AddInterArrivalTime(uint64 x, uint64 cur_time = 0, int32 thread_id = 0) 
+    TF_LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
+    VLOG(0) << "InterArrivalTimeRepo::AddInterArrivalTime Added time:\n"
+            << "Thread id: " << thread_id << "\n" 
+            << "Timestamp: " << cur_time << "\n"
+            << "Time [ms]: " << x;
     if (!times_.contains(thread_id)) {
       times_[thread_id] = std::deque<uint64>();
     }
@@ -56,6 +61,9 @@ class InterArrivalTimeRepo {
       // Return big value to force 1 worker decision
       return last_inter_arrival_time_ms_;
     }
+
+    // Print the contents of the queue
+    Print(min_len);
 
     // Get min inter-arrival across each batch
     last_inter_arrival_time_ms_ = 0.0;
@@ -79,6 +87,17 @@ class InterArrivalTimeRepo {
   }
 
  private:
+  void Print(int n) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    VLOG(0) << "(InterArrivalTimeRepo::Print) Printing queue contents:";
+    for (auto& entry : times_) {
+      std::string contents = "";
+      for (int i = 0; i < n; ++i) {
+        contents += " " + std::to_string(entry.second[i]);
+      }
+      VLOG(0) << " > " << entry.first << ":" << contents;
+    }
+  }
+
 
   mutex mu_;
   const uint32 min_batches_per_average_ = 20u;
