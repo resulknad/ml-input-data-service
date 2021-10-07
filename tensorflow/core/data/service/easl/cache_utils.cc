@@ -186,9 +186,9 @@ Status DetermineJobType(const experimental::DispatcherConfig& dispatcher_config,
   }
 
   compute_num_elements /= num_workers;
-  compute_time_per_row_ms = compute_time_per_row_ms / num_workers;
+  compute_time_per_row_ms /= num_workers;
   compute_time_total_ms = compute_time_per_row_ms * compute_num_elements;
-  compute_row_size = compute_row_size / num_workers;
+  compute_row_size /= num_workers;
 
   VLOG(0) << "(Full caching) Row size " << compute_row_size;
   VLOG(0) << "Total compute time " << compute_time_total_ms;
