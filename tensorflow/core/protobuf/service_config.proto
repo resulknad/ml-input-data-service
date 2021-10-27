@@ -5,7 +5,7 @@ package tensorflow.data.experimental;
 option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";
 
 // Configuration for a tf.data service DispatchServer.
-// Next id: 16
+// Next id: 17
 message DispatcherConfig {
   // The port for the dispatcher to bind to. A value of 0 indicates that the
   // dispatcher may bind to any available port.
@@ -43,7 +43,7 @@ message DispatcherConfig {
   // We use integers for now, we might change to strings.
 
   // The caching policy applied by the service (e.g. no-cache, all-cache, etc.)
-  int32 cache_policy = 7;
+  int32 cache_policy = 16;
   // The file format to use for cached data
   int32 cache_format = 15;
   // The compression scheme (if any) of the caching op
