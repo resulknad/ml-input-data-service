@@ -101,6 +101,17 @@ public final class InterpreterTest {
   }
 
   @Test
+  public void testInterpreterWithNullOptions() throws Exception {
+    try (Interpreter interpreter = new Interpreter(MODEL_BUFFER, null)) {
+      assertThat(interpreter).isNotNull();
+      assertThat(interpreter.getInputTensorCount()).isEqualTo(1);
+      assertThat(interpreter.getInputTensor(0).dataType()).isEqualTo(DataType.FLOAT32);
+      assertThat(interpreter.getOutputTensorCount()).isEqualTo(1);
+      assertThat(interpreter.getOutputTensor(0).dataType()).isEqualTo(DataType.FLOAT32);
+    }
+  }
+
+  @Test
   public void testRunWithFileModel() throws Exception {
     if (!TestUtils.supportsFilePaths()) {
       System.err.println("Not testing with file model, since file paths aren't supported.");
@@ -597,7 +608,7 @@ public final class InterpreterTest {
           new Interpreter(MODEL_BUFFER, new Interpreter.Options().addDelegate(delegate));
       fail();
     } catch (IllegalArgumentException e) {
-      assertThat(e).hasMessageThat().contains("Internal error: Invalid handle to delegate");
+      assertThat(e).hasMessageThat().contains("Internal error: Found invalid handle");
     }
   }
 
@@ -757,15 +768,15 @@ public final class InterpreterTest {
       return;
     }
     try (Interpreter interpreter = new Interpreter(MODEL_WITH_SIGNATURE_BUFFER)) {
-      String[] signatureNames = interpreter.getSignatureDefNames();
-      String[] expectedSignatureNames = {"mul_add"};
-      assertThat(signatureNames).isEqualTo(expectedSignatureNames);
+      String[] signatureKeys = interpreter.getSignatureKeys();
+      String[] expectedSignatureKeys = {"mul_add"};
+      assertThat(signatureKeys).isEqualTo(expectedSignatureKeys);
 
-      String[] signatureInputs = interpreter.getSignatureInputs(expectedSignatureNames[0]);
+      String[] signatureInputs = interpreter.getSignatureInputs(expectedSignatureKeys[0]);
       String[] expectedSignatureInputs = {"x", "y"};
       assertThat(signatureInputs).isEqualTo(expectedSignatureInputs);
 
-      String[] signatureOutputs = interpreter.getSignatureOutputs(expectedSignatureNames[0]);
+      String[] signatureOutputs = interpreter.getSignatureOutputs(expectedSignatureKeys[0]);
       String[] expectedSignatureOutputs = {"output_0"};
       assertThat(signatureOutputs).isEqualTo(expectedSignatureOutputs);
 
@@ -786,7 +797,7 @@ public final class InterpreterTest {
         inputTensor = interpreter.getInputTensorFromSignature("xx", "mul_add");
         fail();
       } catch (IllegalArgumentException e) {
-        assertThat(e).hasMessageThat().contains("Invalid input tensor");
+        assertThat(e).hasMessageThat().contains("Input error: input xx not found.");
       }
 
       // Test null output name.
@@ -801,7 +812,7 @@ public final class InterpreterTest {
         outputTensor = interpreter.getOutputTensorFromSignature("yy", "mul_add");
         fail();
       } catch (IllegalArgumentException e) {
-        assertThat(e).hasMessageThat().contains("Invalid output tensor");
+        assertThat(e).hasMessageThat().contains("Input error: output yy not found.");
       }
 
       FloatBuffer output = FloatBuffer.allocate(1);
@@ -826,15 +837,15 @@ public final class InterpreterTest {
       return;
     }
     try (Interpreter interpreter = new Interpreter(MODEL_WITH_SIGNATURE_BUFFER)) {
-      String[] signatureNames = interpreter.getSignatureDefNames();
-      String[] expectedSignatureNames = {"mul_add"};
-      assertThat(signatureNames).isEqualTo(expectedSignatureNames);
+      String[] signatureKeys = interpreter.getSignatureKeys();
+      String[] expectedSignatureKeys = {"mul_add"};
+      assertThat(signatureKeys).isEqualTo(expectedSignatureKeys);
 
-      String[] signatureInputs = interpreter.getSignatureInputs(expectedSignatureNames[0]);
+      String[] signatureInputs = interpreter.getSignatureInputs(expectedSignatureKeys[0]);
       String[] expectedSignatureInputs = {"x", "y"};
       assertThat(signatureInputs).isEqualTo(expectedSignatureInputs);
 
-      String[] signatureOutputs = interpreter.getSignatureOutputs(expectedSignatureNames[0]);
+      String[] signatureOutputs = interpreter.getSignatureOutputs(expectedSignatureKeys[0]);
       String[] expectedSignatureOutputs = {"output_0"};
       assertThat(signatureOutputs).isEqualTo(expectedSignatureOutputs);
 
@@ -864,9 +875,9 @@ public final class InterpreterTest {
       return;
     }
     try (Interpreter interpreter = new Interpreter(MODEL_BUFFER)) {
-      String[] signatureNames = interpreter.getSignatureDefNames();
-      String[] expectedSignatureNames = {};
-      assertThat(signatureNames).isEqualTo(expectedSignatureNames);
+      String[] signatureKeys = interpreter.getSignatureKeys();
+      String[] expectedSignatureKeys = {};
+      assertThat(signatureKeys).isEqualTo(expectedSignatureKeys);
       Map<String, Object> inputs = new HashMap<>();
       Map<String, Object> outputs = new HashMap<>();
       try {
@@ -876,7 +887,7 @@ public final class InterpreterTest {
         assertThat(e)
             .hasMessageThat()
             .contains(
-                "Input error: SignatureDef methodName should not be null. null is only allowed if"
+                "Input error: SignatureDef signatureKey should not be null. null is only allowed if"
                     + " the model has a single Signature");
       }
     }
@@ -889,23 +900,23 @@ public final class InterpreterTest {
       return;
     }
     try (Interpreter interpreter = new Interpreter(MODEL_WITH_MULTI_SIGNATURE_BUFFER)) {
-      String[] signatureNames = interpreter.getSignatureDefNames();
-      String[] expectedSignatureNames = {"add", "sub"};
-      assertThat(signatureNames).isEqualTo(expectedSignatureNames);
+      String[] signatureKeys = interpreter.getSignatureKeys();
+      String[] expectedSignatureKeys = {"add", "sub"};
+      assertThat(signatureKeys).isEqualTo(expectedSignatureKeys);
 
-      String[] addSignatureInputs = interpreter.getSignatureInputs(expectedSignatureNames[0]);
+      String[] addSignatureInputs = interpreter.getSignatureInputs(expectedSignatureKeys[0]);
       String[] expectedAddSignatureInputs = {"a", "b"};
       assertThat(addSignatureInputs).isEqualTo(expectedAddSignatureInputs);
 
-      String[] addSignatureOutputs = interpreter.getSignatureOutputs(expectedSignatureNames[0]);
+      String[] addSignatureOutputs = interpreter.getSignatureOutputs(expectedSignatureKeys[0]);
       String[] expectedAddSignatureOutputs = {"add_result"};
       assertThat(addSignatureOutputs).isEqualTo(expectedAddSignatureOutputs);
 
-      String[] subSignatureInputs = interpreter.getSignatureInputs(expectedSignatureNames[1]);
+      String[] subSignatureInputs = interpreter.getSignatureInputs(expectedSignatureKeys[1]);
       String[] expectedSubSignatureInputs = {"x", "y"};
       assertThat(subSignatureInputs).isEqualTo(expectedSubSignatureInputs);
 
-      String[] subSignatureOutputs = interpreter.getSignatureOutputs(expectedSignatureNames[1]);
+      String[] subSignatureOutputs = interpreter.getSignatureOutputs(expectedSignatureKeys[1]);
       String[] expectedSubSignatureOutputs = {"sub_result"};
       assertThat(subSignatureOutputs).isEqualTo(expectedSubSignatureOutputs);
 

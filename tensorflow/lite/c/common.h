@@ -80,12 +80,16 @@ typedef struct TfLiteExternalContext {
 // indices
 typedef struct TfLiteIntArray {
   int size;
-// gcc 6.1+ have a bug where flexible members aren't properly handled
-// https://github.com/google/re2/commit/b94b7cd42e9f02673cd748c1ac1d16db4052514c
-#if (!defined(__clang__) && defined(__GNUC__) && __GNUC__ == 6 && \
-     __GNUC_MINOR__ >= 1) ||                                      \
-    defined(HEXAGON) ||                                           \
+
+#if defined(_MSC_VER)
+  // Context for why this is needed is in http://b/189926408#comment21
+  int data[1];
+#elif (!defined(__clang__) && defined(__GNUC__) && __GNUC__ == 6 && \
+       __GNUC_MINOR__ >= 1) ||                                      \
+    defined(HEXAGON) ||                                             \
     (defined(__clang__) && __clang_major__ == 7 && __clang_minor__ == 1)
+  // gcc 6.1+ have a bug where flexible members aren't properly handled
+  // https://github.com/google/re2/commit/b94b7cd42e9f02673cd748c1ac1d16db4052514c
   int data[0];
 #else
   int data[];
@@ -121,11 +125,15 @@ void TfLiteIntArrayFree(TfLiteIntArray* a);
 // Fixed size list of floats. Used for per-channel quantization.
 typedef struct TfLiteFloatArray {
   int size;
-// gcc 6.1+ have a bug where flexible members aren't properly handled
-// https://github.com/google/re2/commit/b94b7cd42e9f02673cd748c1ac1d16db4052514c
-// This also applies to the toolchain used for Qualcomm Hexagon DSPs.
-#if !defined(__clang__) && defined(__GNUC__) && __GNUC__ == 6 && \
-    __GNUC_MINOR__ >= 1
+#if defined(_MSC_VER)
+  // Context for why this is needed is in http://b/189926408#comment21
+  float data[1];
+#elif (!defined(__clang__) && defined(__GNUC__) && __GNUC__ == 6 && \
+       __GNUC_MINOR__ >= 1) ||                                      \
+    defined(HEXAGON) ||                                             \
+    (defined(__clang__) && __clang_major__ == 7 && __clang_minor__ == 1)
+  // gcc 6.1+ have a bug where flexible members aren't properly handled
+  // https://github.com/google/re2/commit/b94b7cd42e9f02673cd748c1ac1d16db4052514c
   float data[0];
 #else
   float data[];
@@ -562,6 +570,10 @@ typedef struct TfLiteNode {
   // Outputs to this node expressed as indices into the simulator's tensors.
   TfLiteIntArray* outputs;
 
+  // intermediate tensors to this node expressed as indices into the simulator's
+  // tensors.
+  TfLiteIntArray* intermediates;
+
   // Opaque data provided by the node implementer through `Registration.init`.
   void* user_data;
 
@@ -803,6 +815,18 @@ typedef struct TfLiteContext {
   // WARNING: This method may not be available on all platforms.
   TfLiteEvalTensor* (*GetEvalTensor)(const struct TfLiteContext* context,
                                      int tensor_idx);
+
+  // Retrieves named metadata buffer from the TFLite model.
+  // Returns kTfLiteOk if metadata is successfully obtained from the flatbuffer
+  // Model: that is, there exists a `metadata` entry with given `name` string.
+  // (see TFLite's schema.fbs).
+  // The corresponding `buffer` information is populated in `ptr` & `bytes`.
+  // The data from `ptr` is valid for the lifetime of the Interpreter.
+  //
+  // WARNING: This is an experimental interface that is subject to change.
+  TfLiteStatus (*GetModelMetadata)(const struct TfLiteContext* context,
+                                   const char* name, const char** ptr,
+                                   size_t* bytes);
 } TfLiteContext;
 
 typedef struct TfLiteRegistration {

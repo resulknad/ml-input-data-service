@@ -27,10 +27,79 @@ def TensorflowGPUFusion : FunctionPass<"tf-gpu-op-fusion"> {
   let constructor = "TF::CreateGpuOpFusionPass()";
 }
 
+def BatchMatMulToEinsumPass : FunctionPass<"tf-batch-matmul-to-tf-einsum"> {
+  let summary = "Replace TF BatchMatMul op by TF Einsum op.";
+  let constructor = "TF::CreateBatchMatMulToEinsumPass()";
+}
+
+def ClusterTFOpsByHostPass : Pass<"cluster-tf-ops-by-host", "ModuleOp"> {
+  let summary = "Cluster the TensorFlow ops by host so that each function only "
+           "contains ops placed on the same host";
+
+  let constructor = "TF::CreateClusterTFOpsByHostPass()";
+}
+
+def ResourceDeviceInferencePass : Pass<"tf-resource-device-inference", "ModuleOp"> {
+  let summary = "Propagates the device attribute on resources from callers to "
+           "callees.";
+  let constructor = "TF::CreateResourceDeviceInferencePass()";
+}
+
+def StackOpsDecompositionPass : Pass<"tf-stack-ops-decomposition", "ModuleOp"> {
+  let summary = "Decompose stack operations into local variable operations. Needs "
+           "static shapes.";
+  let constructor = "TF::CreateStackOpsDecompositionPass()";
+}
+
+def TPUVariableRuntimeReformattingPass : Pass<"tf-tpu-variable-runtime-reformatting", "ModuleOp"> {
+  let summary = "Adds device variable formatting op to allow compilation-guided "
+           "variable formatting.";
+  let constructor = "TFTPU::CreateTPUVariableReformattingPass()";
+}
+
+def TPUShardingIdentificationPass : Pass<"tf-tpu-sharding-identification", "ModuleOp"> {
+  let summary = "Identifies and handles inputs/outputs of TPU computation that is "
+           "sharded across logical cores.";
+  let constructor = "TFTPU::CreateTPUShardingIdentificationPass()";
+}
+
+def UnrollBatchMatMulPass : FunctionPass<"tf-unroll-batch-matmul"> {
+  let summary = "Unroll TF BatchMatMul op into Reshape, Slice, MatMul, Pack ops.";
+  let constructor = "TF::CreateUnrollBatchMatMulPassPass()";
+}
+
+def ClusterFormationPass : FunctionPass<"tf-device-cluster-formation"> {
+  let summary = "Form clusters from instructions assigned to same device";
+  let constructor = "TFDevice::CreateClusterFormationPass()";
+  let dependentDialects = ["tf_device::TensorFlowDeviceDialect"];
+}
+
 def MaterializePassthroughOp : FunctionPass<"tf-materialize-passthrough-op"> {
   let summary = "Materialize the MlirPassthroughOp by replacing it with the "
     "MLIR module attached as an attribute";
   let constructor = "TF::CreateMaterializePassthroughOpPass()";
+}
+
+def TransformEinsumPass : FunctionPass<"tf-einsum"> {
+  let summary = "Transform Einsum to other TF Ops for the supported variants";
+  let constructor = "TF::CreateTransformEinsumPass()";
+}
+
+def LegalizeHloToTfPass : FunctionPass<"tf-legalize-hlo"> {
+  let summary = "Legalize from HLO to the TF dialect";
+  let dependentDialects = ["TF::TensorFlowDialect"];
+  let constructor = "TF::CreateLegalizeHloToTfPass()";
+}
+
+def ReplicateToIslandPass : FunctionPass<"tf-replicate-to-island"> {
+  let summary = "Lowers device replicate to executor islands";
+  let constructor = "TFDevice::CreateReplicateToIslandPass()";
+}
+
+def ConvertReadonlyReferenceVariablesToResourceVariablesPass :
+  FunctionPass<"tf-readonly-references-to-resources"> {
+  let summary = "Convert readonly reference variables to resource variables.";
+  let constructor = "TF::CreateConvertReadonlyReferenceVariablesToResourceVariablesPass()";
 }
 
 def TensorFlowShapeInferencePass : Pass<"tf-shape-inference", "ModuleOp"> {
@@ -45,17 +114,65 @@ def TensorFlowShapeInferencePass : Pass<"tf-shape-inference", "ModuleOp"> {
   ];
 }
 
-def TensorFlowEnsureStaticShapesPass : FunctionPass<"tf-ensure-static-shapes"> {
-  let summary = "Performs checks that the whole module does not contain dynamic shapes.";
+def ExecutorConvertControlToDataOutputsPass : Pass<"tf-executor-convert-control-to-data-outputs", "ModuleOp"> {
+  let summary = "Chain control outputs of while loop body";
 
   let description = [{
-    This pass performs check that none of the ops in the MLIR module
-    have dynamic shapes.
-    Note, the pass is created temporary to stage the rollout of the second
-    phase of the MLIR bridge and will be deleted after the rollout stage is completed.
+    This pass converts the control outputs of a while loop body function to data
+    outputs. Thus, inter iteration control dependencies are transformed to
+    data dependencies. Since data dependencies can express which particular
+    operations in the while loop body are dependent on which inputs, it captures
+    inter iteration parallelism in while loop. Control dependencies on the other
+    hand create a barrier at the end of while loop body thus blocking any
+    parallelism across iterations.
+
+    For example, the following while loop body has a `%barrier` at the end.
+    Although there is no data/control dependency between `tf.AssignVariableOp`
+    for `%arg0` to `tf.AssignVariableOp` for `%arg1` across any iteration, the
+    while loop body has a control barrier (`%barrier`) at the end which forces
+    a dependency and the two assign variable ops must wait for each other to
+    complete before starting the next iteration. Transforming these control
+    outputs to data outputs removes the dependency between the two assign
+    variable ops, thus allowing them to run in parallel across iterations.
+
+    Before:
+
+    ```mlir
+    !tf_res = type tensor<!tf_type.resource<tensor<f32>>>
+    func @while_body(%arg0: !tf_res, %arg1: !tf_res, %arg2: tensor<f32>, %arg3: tensor<f32>) -> (!tf_res, !tf_res, tensor<f32>, tensor<f32>) {
+      %graph:4 = tf_executor.graph {
+        %assign_0_control = tf_executor.island wraps "tf.AssignVariableOp"(%arg0, %arg2) : (!tf_res, tensor<f32>) -> ()
+        %assign_1_control = tf_executor.island wraps "tf.AssignVariableOp"(%arg1, %arg3) : (!tf_res, tensor<f32>) -> ()
+        %add_out, %add_control = tf_executor.island wraps "tf.Add"(%arg2, %arg3) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+        %mul_out, %mul_control = tf_executor.island wraps "tf.Mul"(%arg2, %arg3) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+        %barrier = tf_executor.island(%assign_0_control, %assign_1_control, %add_control, %mul_control) wraps "tf.NoOp"() : () -> ()
+        tf_executor.fetch %arg0, %arg1, %add_out, %mul_out, %barrier : !tf_res, !tf_res, tensor<f32>, tensor<f32>, !tf_executor.control
+      }
+      return %graph#0, %graph#1, %graph#2, %graph#3 : !tf_res, !tf_res, tensor<f32>, tensor<f32>
+    }
+    ```
+
+    After:
+
+    ```mlir
+    func @while_body(%arg0: !tf_res, %arg1: !tf_res, %arg2: tensor<f32>, %arg3: tensor<f32>, %chain_0: tensor<i32>, %chain_1: tensor<i32>) -> (!tf_res, !tf_res, tensor<f32>, tensor<f32>, tensor<i32>, tensor<i32>) {
+      %graph:6 = tf_executor.graph {
+        %_, %chain_0_src = tf_executor.island wraps "tf.Identity"(%chain_0) : (tensor<i32>) -> tensor<i32>
+        %_, %chain_1_src = tf_executor.island wraps "tf.Identity"(%chain_1) : (tensor<i32>) -> tensor<i32>
+        %assign_0_control = tf_executor.island(%chain_0_src) wraps "tf.AssignVariableOp"(%arg0, %arg2) : (!tf_res, tensor<f32>) -> ()
+        %assign_1_control = tf_executor.island(%chain_1_src) wraps "tf.AssignVariableOp"(%arg1, %arg3) : (!tf_res, tensor<f32>) -> ()
+        %add_out, %add_control = tf_executor.island wraps "tf.Add"(%arg2, %arg3) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+        %mul_out, %mul_control = tf_executor.island wraps "tf.Mul"(%arg2, %arg3) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+        %chain_0_sink, %_ = tf_executor.island(%assign_0_control) wraps "tf.Identity"(%chain_0) : (tensor<i32>) -> tensor<i32>
+        %chain_1_sink, %_ = tf_executor.island(%assign_1_control) wraps "tf.Identity"(%chain_1) : (tensor<i32>) -> tensor<i32>
+        tf_executor.fetch %arg0, %arg1, %add_out, %mul_out, %chain_0_sink, %chain_1_sink : !tf_res, !tf_res, tensor<f32>, tensor<f32>, tensor<i32>, tensor<i32>
+      }
+      return %graph#0, %graph#1, %graph#2, %graph#3, %graph#4, %graph#5 : !tf_res, !tf_res, tensor<f32>, tensor<f32>, tensor<i32>, tensor<i32>
+    }
+    ```
   }];
 
-  let constructor = "TF::CreateTFEnsureStaticShapesPass()";
+  let constructor = "tf_executor::CreateTFExecutorConvertControlToDataOutputsPass()";
 }
 
 def ExecutorGraphPruningPass : FunctionPass<"tf-executor-graph-pruning"> {
@@ -166,6 +283,17 @@ def ExecutorIslandCoarseningPass : FunctionPass<"tf-executor-island-coarsening">
     Once analysis is completed, the pass merges all IslandOps in a single scan.
   }];
   let constructor = "tf_executor::CreateTFExecutorIslandCoarseningPass()";
+}
+
+def TpuV1BridgeExecutorIslandCoarseningPass : Pass<"tf-executor-tpu-v1-island-coarsening", "ModuleOp"> {
+  let summary = "Merges TPU clusters IslandOps, intended for V1 compatibility mode";
+  let constructor = "tf_executor::CreateTFExecutorTPUV1IslandCoarseningPass()";
+}
+
+def TPUBridgeExecutorIslandOutliningPass : Pass<"tf-executor-tpu-v1-island-outlining", "ModuleOp"> {
+  let summary = "Outline TPU clusters from island into a nested module, so it can "
+           "be processed like a V2 module, intended for V1 compatibility mode";
+  let constructor = "tf_executor::CreateTFExecutorTPUV1IslandOutliningPass()";
 }
 
 def ExecutorTPUV1IslandInliningPass : Pass<"tf-executor-tpu-v1-island-inlining", "ModuleOp"> {
@@ -377,6 +505,19 @@ def ClusterOutliningPass : Pass<"tf-device-cluster-outlining", "ModuleOp"> {
   let constructor = "TFDevice::CreateClusterOutliningPass()";
 }
 
+def ConvertTfControlFlowToScfPass : Pass<"convert-tf-control-flow-to-scf", "ModuleOp"> {
+  let summary = "Convert TensorFlow control flow to SCF.";
+
+  let description = [{
+    This pass can be used for all direct control flow lowerings from the TensorFlow
+    dialect to the SCF dialect.
+  }];
+
+  let dependentDialects = ["scf::SCFDialect", "tensor::TensorDialect"];
+
+  let constructor = "TF::createConvertTfControlFlowToScfPass()";
+}
+
 def LaunchOutliningPass : Pass<"tf-device-launch-outlining", "ModuleOp"> {
   let summary = "Outlines regions of tf_device.launch operations";
 
@@ -455,9 +596,9 @@ def TPUResourceReadForWritePass : Pass<"tf-tpu-resource-read-for-write", "Module
     For example, the following:
 
     ```mlir
-    func @write_only_resource(%value: tensor<i32>, %resource: tensor<*x!tf.resource<tensor<i32>>>) {
+    func @write_only_resource(%value: tensor<i32>, %resource: tensor<*x!tf_type.resource<tensor<i32>>>) {
       %0 = "tf_device.cluster_func"(%value) {func = @cluster} : (tensor<i32>) -> tensor<i32>
-      "tf.AssignVariableOp"(%resource, %0) : (tensor<*x!tf.resource<tensor<i32>>>, tensor<i32>) -> ()
+      "tf.AssignVariableOp"(%resource, %0) : (tensor<*x!tf_type.resource<tensor<i32>>>, tensor<i32>) -> ()
       return
     }
 
@@ -470,10 +611,10 @@ def TPUResourceReadForWritePass : Pass<"tf-tpu-resource-read-for-write", "Module
     will be transformed into:
 
     ```mlir
-    func @write_only_resource(%value: tensor<i32>, %resource: tensor<*x!tf.resource<tensor<i32>>>) {
-      %resource_read = "tf.ReadVariableOp"(%resource) : (tensor<*x!tf.resource<tensor<i32>>>) -> tensor<i32>
+    func @write_only_resource(%value: tensor<i32>, %resource: tensor<*x!tf_type.resource<tensor<i32>>>) {
+      %resource_read = "tf.ReadVariableOp"(%resource) : (tensor<*x!tf_type.resource<tensor<i32>>>) -> tensor<i32>
       %0 = "tf_device.cluster_func"(%value, %resource_read) {func = @cluster} : (tensor<i32>, tensor<i32>) -> tensor<i32>
-      "tf.AssignVariableOp"(%resource, %0) : (tensor<*x!tf.resource<tensor<i32>>>, tensor<i32>) -> ()
+      "tf.AssignVariableOp"(%resource, %0) : (tensor<*x!tf_type.resource<tensor<i32>>>, tensor<i32>) -> ()
       return
     }
 
@@ -519,10 +660,10 @@ def TPUExtractOutsideCompilationPass : Pass<"tf-tpu-extract-outside-compilation"
     func @outside_compilation() -> tensor<f32> {
       %0 = "tf_device.parallel_execute"() ( {
         "tf_device.launch"() ( {
-          %1 = "tf._TPUCompileMlirPlaceholderProgramKey"() : () -> tensor<3x!tf.string>
-          %2 = "tf._XlaRecvAtHost"(%1) {device_ordinal = 0 : i64, key = "host_compute_channel_0_0_args"} : (tensor<3x!tf.string>) -> tensor<f32>
+          %1 = "tf._TPUCompileMlirPlaceholderProgramKey"() : () -> tensor<3x!tf_type.string>
+          %2 = "tf._XlaRecvAtHost"(%1) {device_ordinal = 0 : i64, key = "host_compute_channel_0_0_args"} : (tensor<3x!tf_type.string>) -> tensor<f32>
           %3 = "tf.Identity"(%2) : (tensor<f32>) -> tensor<f32>
-          "tf._XlaSendFromHost"(%3, %1) {device_ordinal = 0 : i64, key = "host_compute_channel_0_0_retvals"} : (tensor<f32>, tensor<3x!tf.string>) -> ()
+          "tf._XlaSendFromHost"(%3, %1) {device_ordinal = 0 : i64, key = "host_compute_channel_0_0_retvals"} : (tensor<f32>, tensor<3x!tf_type.string>) -> ()
           tf_device.return
         }) {device = "/job:worker/replica:0/task:0/device:CPU:0"} : () -> ()
         tf_device.return
@@ -689,7 +830,7 @@ def TPUReorderReplicateAndPartitionedInputsPass : FunctionPass<"tf-tpu-reorder-r
     For example, the following:
 
     ```mlir
-    !rtype = type tensor<!tf.resource<tensor<10x3xf32>>>
+    !rtype = type tensor<!tf_type.resource<tensor<10x3xf32>>>
     func @data_and_model_parallelism(%arg0: !rtype, %arg1: !rtype, %arg2: !rtype, %arg3: !rtype) -> !rtype {
       %pi_0 = "tf.TPUPartitionedInput"(%arg0, %arg1) {_XlaSharding = "", device = "", partition_dim = -1 : i64} : (!rtype, !rtype) -> !rtype
       %pi_1 = "tf.TPUPartitionedInput"(%arg2, %arg3) {_XlaSharding = "", device = "", partition_dim = -1 : i64} : (!rtype, !rtype) -> !rtype
@@ -701,7 +842,7 @@ def TPUReorderReplicateAndPartitionedInputsPass : FunctionPass<"tf-tpu-reorder-r
     will be transformed into:
 
     ```mlir
-    !rtype = type tensor<!tf.resource<tensor<10x3xf32>>>
+    !rtype = type tensor<!tf_type.resource<tensor<10x3xf32>>>
     func @data_and_model_parallelism(%arg0: !rtype, %arg1: !rtype, %arg2: !rtype, %arg3: !rtype) -> !rtype {
       %ri_0 = "tf.TPUReplicatedInput"(%arg0, %arg2) : (!rtype, !rtype) -> !rtype
       %ri_1 = "tf.TPUReplicatedInput"(%arg1, %arg3) : (!rtype, !rtype) -> !rtype
@@ -728,11 +869,11 @@ def TPUResourceReadsWritesPartitioningPass : FunctionPass<"tf-tpu-resource-parti
     For example, the following:
 
     ```mlir
-    func @cluster(%arg0: tensor<!tf.resource<tensor<i32>>>, %arg1: tensor<!tf.resource<tensor<i32>>>) {
-      %partitioned_variable = "tf.TPUPartitionedInput"(%arg0, %arg1) {N = 2 : i64, _XlaSharding = "", partition_dim = -1 : i64} : (tensor<!tf.resource<tensor<i32>>>, tensor<!tf.resource<tensor<i32>>>) -> tensor<!tf.resource<tensor<i32>>>
-      %read = "tf.ReadVariableOp"(%partitioned_variable) : (tensor<!tf.resource<tensor<i32>>>) -> tensor<i32>
+    func @cluster(%arg0: tensor<!tf_type.resource<tensor<i32>>>, %arg1: tensor<!tf_type.resource<tensor<i32>>>) {
+      %partitioned_variable = "tf.TPUPartitionedInput"(%arg0, %arg1) {N = 2 : i64, _XlaSharding = "", partition_dim = -1 : i64} : (tensor<!tf_type.resource<tensor<i32>>>, tensor<!tf_type.resource<tensor<i32>>>) -> tensor<!tf_type.resource<tensor<i32>>>
+      %read = "tf.ReadVariableOp"(%partitioned_variable) : (tensor<!tf_type.resource<tensor<i32>>>) -> tensor<i32>
       %computation = "tf_device.cluster_func"(%read) {func = @computation, use_spmd_for_xla_partitioning = true} : (tensor<i32>) -> tensor<i32>
-      "tf.AssignVariableOp"(%partitioned_variable, %computation) : (tensor<!tf.resource<tensor<i32>>>, tensor<i32>) -> ()
+      "tf.AssignVariableOp"(%partitioned_variable, %computation) : (tensor<!tf_type.resource<tensor<i32>>>, tensor<i32>) -> ()
       return
     }
 
@@ -744,14 +885,14 @@ def TPUResourceReadsWritesPartitioningPass : FunctionPass<"tf-tpu-resource-parti
     will be transformed into:
 
     ```mlir
-    func @cluster(%arg0: tensor<!tf.resource<tensor<i32>>>, %arg1: tensor<!tf.resource<tensor<i32>>>) {
-      %read0 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf.resource<tensor<i32>>>) -> tensor<i32>
-      %read1 = "tf.ReadVariableOp"(%arg1) : (tensor<!tf.resource<tensor<i32>>>) -> tensor<i32>
+    func @cluster(%arg0: tensor<!tf_type.resource<tensor<i32>>>, %arg1: tensor<!tf_type.resource<tensor<i32>>>) {
+      %read0 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf_type.resource<tensor<i32>>>) -> tensor<i32>
+      %read1 = "tf.ReadVariableOp"(%arg1) : (tensor<!tf_type.resource<tensor<i32>>>) -> tensor<i32>
       %partitioned_input = "tf.TPUPartitionedInput"(%read0, %read1) {N = 2 : i64, _XlaSharding = "", partition_dim = -1 : i64} : (tensor<i32>, tensor<i32>) -> tensor<i32>
       %computation = "tf_device.cluster_func"(%partitioned_input) {func = @computation, use_spmd_for_xla_partitioning = true} : (tensor<i32>) -> tensor<i32>
       %partitioned_output:2 = "tf.TPUPartitionedOutput"(%computation) {N = 2 : i64, _XlaSharding = "", partition_dim = -1 : i64} : (tensor<i32>) -> (tensor<i32>, tensor<i32>)
-      "tf.AssignVariableOp"(%arg0, %partitioned_output#0) : (tensor<!tf.resource<tensor<i32>>>, tensor<i32>) -> ()
-      "tf.AssignVariableOp"(%arg1, %partitioned_output#1) : (tensor<!tf.resource<tensor<i32>>>, tensor<i32>) -> ()
+      "tf.AssignVariableOp"(%arg0, %partitioned_output#0) : (tensor<!tf_type.resource<tensor<i32>>>, tensor<i32>) -> ()
+      "tf.AssignVariableOp"(%arg1, %partitioned_output#1) : (tensor<!tf_type.resource<tensor<i32>>>, tensor<i32>) -> ()
       return
     }
 
@@ -791,15 +932,15 @@ def TPURewritePass : Pass<"tf-tpu-rewrite", "ModuleOp"> {
     ```mlir
     func @tf_tpu_rewrite(%arg0: tensor<i8>) {
       %0:2 = "tf_device.launch"() ( {
-        %compilation_status, %program = "tf._TPUCompileMlir"() {mlir_module = "<serialized func>"} : () -> (tensor<!tf.string>, tensor<3x!tf.string>)
-        tf_device.return %compilation_status, %program : tensor<!tf.string>, tensor<3x!tf.string>
-      }) {device = "/job:worker/replica:0/task:0/device:CPU:0"} : () -> (tensor<!tf.string>, tensor<3x!tf.string>)
+        %compilation_status, %program = "tf._TPUCompileMlir"() {mlir_module = "<serialized func>"} : () -> (tensor<!tf_type.string>, tensor<3x!tf_type.string>)
+        tf_device.return %compilation_status, %program : tensor<!tf_type.string>, tensor<3x!tf_type.string>
+      }) {device = "/job:worker/replica:0/task:0/device:CPU:0"} : () -> (tensor<!tf_type.string>, tensor<3x!tf_type.string>)
       "tf_device.launch"() ( {
-        "tf.TPUCompileSucceededAssert"(%0#0) : (tensor<!tf.string>) -> ()
+        "tf.TPUCompileSucceededAssert"(%0#0) : (tensor<!tf_type.string>) -> ()
         tf_device.return
       }) {device = "/job:worker/replica:0/task:0/device:CPU:0"} : () -> ()
       %1 = "tf_device.launch"() ( {
-        %2 = "tf.TPUExecute"(%arg0, %0#1) : (tensor<i8>, tensor<3x!tf.string>) -> tensor<i8>
+        %2 = "tf.TPUExecute"(%arg0, %0#1) : (tensor<i8>, tensor<3x!tf_type.string>) -> tensor<i8>
         tf_device.return %2 : tensor<i8>
       }) {device = "/job:worker/replica:0/task:0/device:TPU:0"} : () -> tensor<i8>
       return
@@ -824,15 +965,15 @@ def TPURewritePass : Pass<"tf-tpu-rewrite", "ModuleOp"> {
     func @tf_tpu_rewrite(%arg0: tensor<i8>, %arg1: tensor<i8>) {
       %0:2 = tf_device.replicate([%arg0, %arg1] as %arg2: tensor<i8>) {devices = {TPU_REPLICATED_CORE_0 = ["/job:worker/replica:0/task:0/device:TPU:0", "/job:worker/replica:0/task:0/device:TPU:1"], TPU_REPLICATED_HOST = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:CPU:0"]}, n = 2 : i32} {
         %1:2 = "tf_device.launch"() ( {
-          %compilation_status, %program = "tf._TPUCompileMlir"() {mlir_module = "<serialized func>"} : () -> (tensor<!tf.string>, tensor<3x!tf.string>)
-          tf_device.return %compilation_status, %program : tensor<!tf.string>, tensor<3x!tf.string>
-        }) {device = "/job:worker/replica:0/task:0/device:CPU:0"} : () -> (tensor<!tf.string>, tensor<3x!tf.string>)
+          %compilation_status, %program = "tf._TPUCompileMlir"() {mlir_module = "<serialized func>"} : () -> (tensor<!tf_type.string>, tensor<3x!tf_type.string>)
+          tf_device.return %compilation_status, %program : tensor<!tf_type.string>, tensor<3x!tf_type.string>
+        }) {device = "/job:worker/replica:0/task:0/device:CPU:0"} : () -> (tensor<!tf_type.string>, tensor<3x!tf_type.string>)
         "tf_device.launch"() ( {
-          "tf.TPUCompileSucceededAssert"(%1#0) : (tensor<!tf.string>) -> ()
+          "tf.TPUCompileSucceededAssert"(%1#0) : (tensor<!tf_type.string>) -> ()
           tf_device.return
         }) {device = "/job:worker/replica:0/task:0/device:CPU:0"} : () -> ()
         %2 = "tf_device.launch"() ( {
-          %3 = "tf.TPUExecute"(%arg2, %1#1) : (tensor<i8>, tensor<3x!tf.string>) -> tensor<i8>
+          %3 = "tf.TPUExecute"(%arg2, %1#1) : (tensor<i8>, tensor<3x!tf_type.string>) -> tensor<i8>
           tf_device.return %3 : tensor<i8>
         }) {device = "TPU_REPLICATED_CORE_0"} : () -> tensor<i8>
         tf_device.return %2 : tensor<i8>
@@ -855,22 +996,22 @@ def TPURewritePass : Pass<"tf-tpu-rewrite", "ModuleOp"> {
     ```mlir
     func @tf_tpu_rewrite(%arg0: tensor<8xi32>) -> tensor<8xi32> {
       %0:3 = "tf_device.launch"() ( {
-        %compilation_status, %program:2 = "tf._TPUCompileMlir"() {mlir_module = "<serialized func>"} : () -> (tensor<!tf.string>, tensor<3x!tf.string>, tensor<3x!tf.string>)
-        tf_device.return %compilation_status, %program#0, %program#1 : tensor<!tf.string>, tensor<3x!tf.string>, tensor<3x!tf.string>
-      }) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : () -> (tensor<!tf.string>, tensor<3x!tf.string>, tensor<3x!tf.string>)
+        %compilation_status, %program:2 = "tf._TPUCompileMlir"() {mlir_module = "<serialized func>"} : () -> (tensor<!tf_type.string>, tensor<3x!tf_type.string>, tensor<3x!tf_type.string>)
+        tf_device.return %compilation_status, %program#0, %program#1 : tensor<!tf_type.string>, tensor<3x!tf_type.string>, tensor<3x!tf_type.string>
+      }) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : () -> (tensor<!tf_type.string>, tensor<3x!tf_type.string>, tensor<3x!tf_type.string>)
       "tf_device.launch"() ( {
-        "tf.TPUCompileSucceededAssert"(%0#0) : (tensor<!tf.string>) -> ()
+        "tf.TPUCompileSucceededAssert"(%0#0) : (tensor<!tf_type.string>) -> ()
         tf_device.return
       }) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : () -> ()
       %1 = "tf_device.parallel_execute"() ( {
         %2 = "tf_device.launch"() ( {
-          %3 = "tf.TPUExecute"(%arg0, %0#1) : (tensor<8xi32>, tensor<3x!tf.string>) -> tensor<8xi32>
+          %3 = "tf.TPUExecute"(%arg0, %0#1) : (tensor<8xi32>, tensor<3x!tf_type.string>) -> tensor<8xi32>
           tf_device.return %3 : tensor<8xi32>
         }) {device = "/job:localhost/replica:0/task:0/device:TPU:0"} : () -> tensor<8xi32>
         tf_device.return %2 : tensor<8xi32>
       },  {
         "tf_device.launch"() ( {
-          "tf.TPUExecute"(%0#2) : (tensor<3x!tf.string>) -> ()
+          "tf.TPUExecute"(%0#2) : (tensor<3x!tf_type.string>) -> ()
           tf_device.return
         }) {device = "/job:localhost/replica:0/task:0/device:TPU:1"} : () -> ()
         tf_device.return
@@ -938,8 +1079,8 @@ def TensorFlowOptimizePass : FunctionPass<"tf-optimize"> {
 def PromoteResourcesToArgsPass : Pass<"tf-promote-resources-to-args", "ModuleOp"> {
   let summary = "Promote resources reads/writes to function inputs/outputs.";
   let description = [{
-    This pass promotes resource accesses in the main function to input arguments
-    and outputs of the main function.
+    This pass promotes resource accesses in function(s) (by default, the main)
+    to input arguments and outputs of the function(s).
 
     Two types of resources are supported:
     (1) A function argument of TF::ResourceType type (this pass).
@@ -974,6 +1115,13 @@ def PromoteResourcesToArgsPass : Pass<"tf-promote-resources-to-args", "ModuleOp"
   }];
 
   let constructor = "TF::CreatePromoteResourcesToArgsPass()";
+
+let options = [
+    ListOption<"functions_", "functions", "std::string",
+               "Comma separated list of functions whose resources "
+               "read/writes should be promoted to function inputs/outputs.",
+               "llvm::cl::MiscFlags::CommaSeparated">
+  ];
 }
 
 def PromoteVarHandlesToArgsPass : Pass<"tf-promote-var-handles-to-args", "ModuleOp"> {
@@ -1047,8 +1195,8 @@ def ReplicateInvariantOpHoistingPass : FunctionPass<"tf-replicate-invariant-op-h
     and for resource variables the following
 
     ```mlir
-    tf_device.replicate([%0, %1] as %ri: tensor<*x!tf.resource>) {n = 2 : i32} {
-      %2 = "tf.ReadVariableOp"(%ri) : tensor<*x!tf.resource> -> tensor<*xi32>
+    tf_device.replicate([%0, %1] as %ri: tensor<*x!tf_type.resource>) {n = 2 : i32} {
+      %2 = "tf.ReadVariableOp"(%ri) : tensor<*x!tf_type.resource> -> tensor<*xi32>
       %3 = "tf.Shape"(%2) : (tensor<*xi32>) -> tensor<?xi32>
       tf_device.return
     }
@@ -1057,9 +1205,9 @@ def ReplicateInvariantOpHoistingPass : FunctionPass<"tf-replicate-invariant-op-h
     gets converted to
 
     ```mlir
-    tf_device.replicate([%0, %1] as %ri: tensor<*x!tf.resource>) {n = 2 : i32} {
-      %2 = "tf.ReadVariableOp"(%ri) : tensor<*x!tf.resource> -> tensor<*xi32>
-      %3 = "tf.VariableShape"(%0) : (tensor<*x!tf.resource>) -> tensor<?xi32>
+    tf_device.replicate([%0, %1] as %ri: tensor<*x!tf_type.resource>) {n = 2 : i32} {
+      %2 = "tf.ReadVariableOp"(%ri) : tensor<*x!tf_type.resource> -> tensor<*xi32>
+      %3 = "tf.VariableShape"(%0) : (tensor<*x!tf_type.resource>) -> tensor<?xi32>
       tf_device.return
     }
     ```
@@ -1344,8 +1492,8 @@ For example, the TensorList ops in the following function:
 func @main(%arg0: tensor<8x4xf32>) {
   %elem_shape = "tf.Const"() {value = dense<[8, 4]> : tensor<2xi32>} : () -> tensor<2xi32>
   %max_size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
-  %tl = "tf.EmptyTensorList"(%elem_shape, %max_size) : (tensor<2xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<8x4xf32>>>
-  %push = "tf.TensorListPushBack"(%tl, %arg0) : (tensor<!tf.variant<tensor<8x4xf32>>>, tensor<8x4xf32>) -> tensor<!tf.variant<tensor<8x4xf32>>>
+  %tl = "tf.EmptyTensorList"(%elem_shape, %max_size) : (tensor<2xi32>, tensor<i32>) -> tensor<!tf_type.variant<tensor<8x4xf32>>>
+  %push = "tf.TensorListPushBack"(%tl, %arg0) : (tensor<!tf_type.variant<tensor<8x4xf32>>>, tensor<8x4xf32>) -> tensor<!tf_type.variant<tensor<8x4xf32>>>
   return
 }
 ```
@@ -1375,4 +1523,139 @@ func @main(%arg0: tensor<8x4xf32>) {
   }];
 
   let constructor = "TF::CreateTensorListOpsDecompositionPass()";
+}
+
+def TPUParallelExecuteSinkResourceWritePass : FunctionPass<"tf-tpu-parallel-execute-sink-resource-write"> {
+  let summary = "Moves tf.AssignVariableOp consumers of tf_device.parallel_execute "
+           "into tf_device.parallel_execute regions";
+
+  let constructor = "TFTPU::CreateTPUParallelExecuteSinkResourceWritePass()";
+}
+
+def RewriteTPUEmbeddingOpsPass : FunctionPass<"tf-rewrite-tpu-embedding-ops"> {
+  let summary = "Rewrites TPU embedding send/recv ops by adding TPU embedding "
+           "deduplication data";
+
+  let constructor = "TF::CreateRewriteTPUEmbeddingOpsPass()";
+}
+
+def InitTextFileToImportPass : FunctionPass<"tf-init-text-file-to-import"> {
+  let summary = "convert InitializeTableFromTextFileV2 ops to LookupTableImportV2Op "
+           "to remove the dependency on asset files";
+
+  let constructor = "TF::CreateInitTextFileToImportPass()";
+  let options = [
+    Option<"saved_model_dir_", "tf-saved-model-dir", "std::string", /*default=*/"",
+           "Directory containing the model exported as a TensorFlow "
+           "SavedModel. If your model is not based on the TensorFlow "
+           "SavedModel, use an empty value.">
+  ];
+}
+
+def FusedKernelMatcherPass : FunctionPass<"tf-fused-kernel-matcher"> {
+  let summary = "Matches computations corresponding to optimized fused kernels";
+  let constructor = "TF::CreateFusedKernelMatcherPass()";
+}
+
+def TFDataOptimizationPass : FunctionPass<"tf-data-optimization"> {
+  let summary = "Performs tf.data optimizations";
+  let constructor = "TF::CreateTFDataOptimizationPass()";
+}
+
+def FunctionalControlFlowToCFGPass : FunctionPass<"tf-functional-control-flow-to-cfg"> {
+  let summary = "Transform functional control flow Ops to MLIR Control Form Graph "
+           "(CFG) form";
+  let constructor = "TF::CreateTFFunctionalControlFlowToCFG()";
+  let dependentDialects = ["tensor::TensorDialect"];
+}
+
+def BreakUpIslandsPass : FunctionPass<"tf-functional-control-flow-to-cfg"> {
+  let summary = "Transform from TF control dialect to TF executor dialect.";
+  let constructor = "CreateBreakUpIslandsPass()";
+  let dependentDialects = ["mlir::tf_executor::TensorFlowExecutorDialect"];
+}
+
+def FunctionalToExecutorDialectConversionPass : FunctionPass<"tf-functional-to-executor-conversion"> {
+  let summary = "Transform from func op to TF executor dialect.";
+  let constructor = "CreateFunctionalToExecutorDialectConversionPass()";
+  let dependentDialects = ["mlir::tf_executor::TensorFlowExecutorDialect"];
+}
+
+def SimpleTFDeviceAssignmentPass : FunctionPass<"tf-simple-device-assignment"> {
+  let summary = "Simple device assignment in TF dialect.";
+  let constructor = "TF::CreateSimpleTFDeviceAssignmentPass()";
+  let options = [
+    Option<"default_device_", "default-device", "std::string", /*default=*/"\"cpu\"",
+           "The default device to assign.">
+  ];
+}
+
+def LayoutAssignmentPass : FunctionPass<"tf-layout-assignment"> {
+  let summary = "Layout assignment pass.";
+  let constructor = "TF::CreateLayoutAssignmentPass()";
+  let options = [
+    Option<"force_data_format_", "force-data-format", "std::string", /*default=*/"",
+           "Force data format for all layout sensitive ops.">
+  ];
+}
+
+def MoveTransposesPass : FunctionPass<"tf-move-transposes"> {
+  let summary = "Move transposes pass.";
+  let constructor = "TF::CreateMoveTransposesPass()";
+  let options = [
+    Option<"fold_transpose_in_ops_", "fold-transpose-in-ops", "bool", /*default=*/"true",
+           "Whether to fold transposes in ops which can support folding.">,
+    Option<"direction_", "direction", "enum MoveTransposeDirection",
+           /*default=*/"MoveTransposeDirection::kBegin", "Move transposes to the beginning or"
+           " the end of the block where they are defined.",
+           "llvm::cl::values(clEnumValN(MoveTransposeDirection::kBegin, \"begin\", \"beginning of the block\"),"
+           "clEnumValN(MoveTransposeDirection::kEnd, \"end\", \"end of the block\"))">
+  ];
+}
+
+def BroadcastFoldPass : FunctionPass<"tf-broadcast-fold"> {
+  let summary = "Fold explicit broadcasts into the following operations if they "
+           "support implicit broadcasting on their operand.";
+  let constructor = "TF::CreateBroadcastFoldPass()";
+}
+
+def ParallelExecuteToIslandsPass : FunctionPass<"tf-parallel-execute-to-islands"> {
+  let summary = "Lowers device parallel_execute to executor islands";
+  let constructor = "TFDevice::CreateParallelExecuteToIslandsPass()";
+}
+
+def ConstantOpDeviceAssignmentPass : Pass<"constant-op-device-assignment", "ModuleOp"> {
+  let summary = "Assign device for tf.Const ops";
+  let constructor = "TF::CreateConstantOpDeviceAssignmentPass()";
+}
+
+def GuaranteeAllFuncsOneUsePass : Pass<"tf-guarantee-all-funcs-one-use", "ModuleOp"> {
+  let summary = "Guarantee all FuncOp's have only a single use.";
+  let constructor = "TF::CreateGuaranteeAllFuncsOneUsePass()";
+}
+
+def TPUColocateCompositeResourceOpsPass : FunctionPass<"tf-tpu-colocate-composite-resource-ops"> {
+  let summary = "Colocate resource with composite device assignment to TPU device.";
+  let constructor = "TFTPU::CreateTPUColocateCompositeResourceOps()";
+}
+
+def TPUDevicePropagationPass : FunctionPass<"tf-tpu-device-propagation"> {
+  let summary = "Propagates TPU devices from ops to users";
+  let constructor = "TFTPU::CreateTPUDevicePropagationPass()";
+}
+
+def TPUIdentityPruningPass : Pass<"tf-tpu-identity-pruning", "ModuleOp"> {
+  let summary = "Removes Identity/IdentityN ops from the TPU computation";
+  let constructor = "TFTPU::CreateTPUIdentityPruningPass()";
+}
+
+def TPUDynamicLayoutPass : Pass<"tf-tpu-dynamic-layout-pass", "ModuleOp"> {
+  let summary = "Adds ops that allow TPU program inputs to have layouts determined "
+           "at JIT compile time.";
+  let constructor = "TFTPU::CreateTPUDynamicLayoutPass()";
+}
+
+def DeviceIndexSelectorPass : Pass<"tf-device-index-selector", "FuncOp"> {
+  let summary = "Fold tf.DeviceIndex to constant.";
+  let constructor = "TF::CreateDeviceIndexSelectorPass()";
 }

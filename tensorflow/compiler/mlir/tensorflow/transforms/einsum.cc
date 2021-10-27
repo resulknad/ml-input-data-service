@@ -46,6 +46,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/verification_utils.h"
 #include "tensorflow/core/util/matmul_bcast.h"
 
@@ -62,7 +63,7 @@ TF::TransposeOp createTransposeOp(Value value, Location loc,
   auto perm_type = RankedTensorType::get(
       {static_cast<int32_t>(permutation.size())}, rewriter->getIntegerType(32));
   auto perm_attr = DenseElementsAttr::get(perm_type, permutation);
-  auto perm_op = rewriter->create<ConstantOp>(loc, perm_type, perm_attr);
+  auto perm_op = rewriter->create<arith::ConstantOp>(loc, perm_type, perm_attr);
   SmallVector<int64_t, 4> transposed_shape(shape.begin(), shape.end());
   for (int i = 0, end = shape.size(); i < end; ++i) {
     transposed_shape[i] = shape[permutation[i]];
@@ -82,7 +83,7 @@ TF::ReshapeOp createReshapeOp(Value value, ArrayRef<int64_t> shape,
   Type resultType = RankedTensorType::get(shape, element_type);
   auto constant_attr = DenseElementsAttr::get(shape_spec_type, shape);
   auto shape_tensor =
-      rewriter->create<ConstantOp>(loc, shape_spec_type, constant_attr);
+      rewriter->create<arith::ConstantOp>(loc, shape_spec_type, constant_attr);
   return rewriter->create<TF::ReshapeOp>(loc, resultType, /*tensor=*/value,
                                          /*shape=*/shape_tensor);
 }
@@ -373,6 +374,19 @@ LogicalResult transposeForBatchMatmul(
   return success();
 }
 
+template <int I>
+inline int64_t ProdShapeWithIndexInTuple(
+    ArrayRef<int64_t> shape,
+    const std::vector<std::tuple<int64_t, int64_t>>& index_tuples) {
+  int64_t prod_shape = 1;
+  for (auto index_tuple : index_tuples) {
+    const int64_t shape_i = shape[std::get<I>(index_tuple)];
+    if (shape_i == -1) return -1;
+    prod_shape *= shape_i;
+  }
+  return prod_shape;
+}
+
 // Reshapes LHS and RHS to have B0,...,Bn,L,C and B0,...,Bn,C,R shape
 // respectively while assuming that the initial shape for them is
 // B0,...,Bn,L0,...,Ln,C0,...,Cn and B0,...,Bn,C0,...,Cn,R0,...,Rn respectively.
@@ -390,9 +404,9 @@ LogicalResult reshapeForBatchMatmul(const Location& loc,
   lhs_shape.reserve(dnums.lhs_rhs_out.size() + dnums.lhs_out.size() + 1);
   rhs_shape.reserve(dnums.lhs_rhs_out.size() + 2);
   for (auto i : dnums.lhs_rhs_out) {
-    int64_t b1 = lhs_type.getShape()[std::get<0>(i)];
+    const int64_t b1 = lhs_type.getShape()[std::get<0>(i)];
     lhs_shape.push_back(b1);
-    int64_t b2 = rhs_type.getShape()[std::get<1>(i)];
+    const int64_t b2 = rhs_type.getShape()[std::get<1>(i)];
     rhs_shape.push_back(b2);
   }
   if (!OpTrait::util::getBroadcastedShape(lhs_shape, rhs_shape, *out_shape)) {
@@ -408,36 +422,31 @@ LogicalResult reshapeForBatchMatmul(const Location& loc,
     // If there is not batch labels B0,...,Bn, it is safe to use L0,...,Ln as
     // the batch labels in lhs, the rhs will be broadcasted.
     for (auto i : dnums.lhs_out) {
-      int64_t b = lhs_type.getShape()[std::get<0>(i)];
+      const int64_t b = lhs_type.getShape()[std::get<0>(i)];
       lhs_shape.push_back(b);
       out_shape->push_back(b);
     }
   } else {
-    int64_t lhs_out_size = 1;
-    for (auto i : dnums.lhs_out) {
-      lhs_out_size *= lhs_type.getShape()[std::get<0>(i)];
-    }
+    const int64_t lhs_out_size =
+        ProdShapeWithIndexInTuple<0>(lhs_type.getShape(), dnums.lhs_out);
     lhs_shape.push_back(lhs_out_size);
     out_shape->push_back(lhs_out_size);
   }
 
   // Calculates dimension for the common label C from labels C0,...,Cn that
   // exist in both lhs and rhs.
-  int64_t lhs_size = 1, rhs_size = 1;
-  for (auto i : dnums.lhs_rhs) {
-    lhs_size *= lhs_type.getShape()[std::get<0>(i)];
-    rhs_size *= rhs_type.getShape()[std::get<1>(i)];
-  }
+  const int64_t lhs_size =
+      ProdShapeWithIndexInTuple<0>(lhs_type.getShape(), dnums.lhs_rhs);
+  const int64_t rhs_size =
+      ProdShapeWithIndexInTuple<1>(rhs_type.getShape(), dnums.lhs_rhs);
   lhs_shape.push_back(lhs_size);
   rhs_shape.push_back(rhs_size);
 
   // Calculates dimension for the label R from R0,...,Rn in rhs.
-  rhs_size = 1;
-  for (auto i : dnums.rhs_out) {
-    rhs_size *= rhs_type.getShape()[std::get<0>(i)];
-  }
-  rhs_shape.push_back(rhs_size);
-  out_shape->push_back(rhs_size);
+  const int64_t rhs_out_size =
+      ProdShapeWithIndexInTuple<0>(rhs_type.getShape(), dnums.rhs_out);
+  rhs_shape.push_back(rhs_out_size);
+  out_shape->push_back(rhs_out_size);
 
   if (failed(VerifyShapeOfReshapeOp(lhs_shape)) ||
       failed(VerifyShapeOfReshapeOp(rhs_shape)))
@@ -499,6 +508,20 @@ LogicalResult rewriteToBatchMatmul(TF::EinsumOp op,
   return success();
 }
 
+// Transform Einsum to other TF Ops for the supported variants.
+struct TransformEinsumPass
+    : public TransformEinsumPassBase<TransformEinsumPass> {
+  void runOnFunction() override;
+};
+
+void TransformEinsumPass::runOnFunction() {
+  OwningRewritePatternList patterns(&getContext());
+  auto func = getFunction();
+
+  patterns.insert<ConvertTFEinsumOp>(&getContext());
+  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+}
+
 }  // namespace
 
 LogicalResult ConvertTFEinsumOp::matchAndRewrite(
@@ -511,32 +534,18 @@ LogicalResult ConvertTFEinsumOp::matchAndRewrite(
     return failure();
   }
 
+  // TODO(b/162328998) Better support Einsum with dynamic input. Currently, one
+  // dynamic dimension is always supported. If there are two or more dynamic
+  // dimensions, it is supported if they only exist in a single component
+  // among: L0,...,Ln R0,...,Rn or C0,...,Cn.
   if (const auto dnums_or = GetEinsumDimensionNumbers(op.equation(), lhs, rhs))
     return rewriteToBatchMatmul(op, dnums_or.getValue(), rewriter);
   return rewriter.notifyMatchFailure(op, "unsupported einsum lowering");
 }
 
-// Transform Einsum to other TF Ops for the supported variants.
-struct TransformEinsumPass
-    : public PassWrapper<TransformEinsumPass, FunctionPass> {
-  StringRef getArgument() const final { return "tf-einsum"; }
-
-  StringRef getDescription() const final {
-    return "Transform Einsum to other TF Ops for the supported variants";
-  }
-
-  void runOnFunction() override;
-};
-
-void TransformEinsumPass::runOnFunction() {
-  OwningRewritePatternList patterns(&getContext());
-  auto func = getFunction();
-
-  patterns.insert<ConvertTFEinsumOp>(&getContext());
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+std::unique_ptr<FunctionPass> CreateTransformEinsumPass() {
+  return std::make_unique<TransformEinsumPass>();
 }
-
-static PassRegistration<TransformEinsumPass> pass;
 
 }  // namespace TF
 }  // namespace mlir

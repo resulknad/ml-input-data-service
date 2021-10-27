@@ -14,10 +14,6 @@
 # ==============================================================================
 """AutomaticControlDependencies and related functionality."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import enum
 
@@ -40,7 +36,8 @@ from tensorflow.python.util import tf_decorator
 # LINT.IfChange
 # Op types that should not run in program order, e.g. because they need to run
 # asynchronously to avoid deadlock.
-ASYNC_STATEFUL_OPS = [
+
+ASYNC_STATEFUL_OPS = frozenset((
     "CollectiveGather",
     "CollectiveGatherV2",
     "CollectiveReduce",
@@ -53,9 +50,10 @@ ASYNC_STATEFUL_OPS = [
     # We do not add "Send" here since we want it to be added as a control output
     # in order to avoid being pruned.
     "Recv",
-]
+    "CollectiveInitializeCommunicator",
+))
 
-LEGACY_RANDOM_OPS = [
+LEGACY_RANDOM_OPS = frozenset((
     # These may be used in variable initializers -- thus their execution should
     # not be dependent on other stateful operations.  This is because although
     # according to program order, tf.Variables may be created in sequence,
@@ -99,20 +97,33 @@ LEGACY_RANDOM_OPS = [
     "RandomGammaGrad",
     "RandomPoisson",
     "RandomPoissonV2",
-]
+))
 
-_ORDER_INSENSITIVE_STATEFUL_OPS = [
-    "CudnnRNN", "CudnnRNNBackprop", "CudnnRNNV2", "CudnnRNNV3",
-    "CudnnRNNBackpropV2", "CudnnRNNBackpropV3",
-    "EnqueueTPUEmbeddingSparseBatch", "EnqueueTPUEmbeddingIntegerBatch",
+MUST_RUN_ORDER_INSENSITIVE_STATEFUL_OPS = frozenset((
+))
+
+# These ops are order-insensitive ans should in theory run, but at the moment
+# they either always have the necessary data dependencies, or have workarounds
+# in existing code that would break when adding new control deps. This
+# inconsistency should be eventually fixed, but it would be more effective to
+# retire the list instead.
+SKIPPED_ORDER_INSENSITIVE_STATEFUL_OPS = frozenset((
+    "CudnnRNN",
+    "CudnnRNNBackprop",
+    "CudnnRNNV2",
+    "CudnnRNNV3",
+    "CudnnRNNBackpropV2",
+    "CudnnRNNBackpropV3",
+    "EnqueueTPUEmbeddingSparseBatch",
+    "EnqueueTPUEmbeddingIntegerBatch",
     "EnqueueTPUEmbeddingSparseTensorBatch",
-    "EnqueueTPUEmbeddingRaggedTensorBatch", "RestoreV2", "SaveV2"
-]
+    "EnqueueTPUEmbeddingRaggedTensorBatch",
+    "RestoreV2",
+    "SaveV2",
+    "InfeedEnqueue",
+    "InfeedEnqueueTuple",
+))
 # LINT.ThenChange(//tensorflow/core/grappler/optimizers/function_optimizer.cc)
-
-_ALL_DENYLISTED_OPS = (
-    set(ASYNC_STATEFUL_OPS) | set(LEGACY_RANDOM_OPS)
-    | set(_ORDER_INSENSITIVE_STATEFUL_OPS))
 
 # Op types that are marked as stateless, but should be allowlisted to add auto
 # control dependencies.
@@ -130,8 +141,12 @@ _ALLOWLIST_STATELESS_OPS = [
 
 def op_is_stateful(op):
   # pylint: disable=protected-access
-  return (op._is_stateful and op.type not in _ALL_DENYLISTED_OPS) or (
-      op.type in _ALLOWLIST_STATELESS_OPS)
+  ret = ((op._is_stateful and
+          ((op.type not in ASYNC_STATEFUL_OPS) and
+           (op.type not in LEGACY_RANDOM_OPS) and
+           (op.type not in SKIPPED_ORDER_INSENSITIVE_STATEFUL_OPS))) or
+         (op.type in _ALLOWLIST_STATELESS_OPS))
+  return ret
 
 
 class ResourceType(enum.Enum):
@@ -315,7 +330,9 @@ class AutomaticControlDependencies(object):
 
     if self._graph is not ops.get_default_graph():
       raise RuntimeError(
-          "Graph changed while trying to add control dependencies.")
+          "Within the automatic control dependency context, the default graph"
+          f" cannot change. Upon entry it was {self._graph}, but on exit it"
+          f" changed to {ops.get_default_graph()}")
 
     if hasattr(self._graph, "outer_graph"):
       outer_val = self._graph.outer_graph._add_control_dependencies
@@ -377,15 +394,18 @@ class AutomaticControlDependencies(object):
       if control_flow_util.IsInWhileLoop(op):
         continue
       control_inputs = set()
+
       # Ensure stateful ops run.
       # Read-only ops are added to control outputs if the read value is
       # consumed. This covers the case when the read value is returned from
       # the function since that goes through a tf.identity in mark_as_return.
-      if (op_def_registry.get(op.type) is None or
+      if ((op_def_registry.get(op.type) is None) or
           (op_is_stateful(op) and
            (op.type not in utils.RESOURCE_READ_OPS or
-            any(output.consumers() for output in op.outputs)))):
+            any(output.consumers() for output in op.outputs))) or
+          (op.type in MUST_RUN_ORDER_INSENSITIVE_STATEFUL_OPS)):
         ops_which_must_run.add(op)
+
       # Make a note of all opened manager_ids.
       if op.type == "NoOp":
         try:

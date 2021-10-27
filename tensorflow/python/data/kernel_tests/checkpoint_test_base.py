@@ -14,16 +14,13 @@
 # ==============================================================================
 """Base test class for checkpointing datasets."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 
 import numpy as np
 
 from tensorflow.python.data.experimental.ops import iterator_ops as contrib_iterator_ops
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.eager import context
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
@@ -58,7 +55,7 @@ def default_test_combinations():
   """Returns the default test combinations for testing checkpointing."""
 
   def disable_optimizations(ds_fn):
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_optimization.apply_default_optimizations = False
 
     def ds_fn_no_opt():

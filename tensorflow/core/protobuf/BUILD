@@ -25,6 +25,7 @@ COMMON_PROTO_SRCS = [
     "bfc_memory_map.proto",
     "config.proto",
     "cluster.proto",
+    "coordination_config.proto",
     "debug.proto",
     "device_filters.proto",
     "device_properties.proto",
@@ -33,6 +34,7 @@ COMMON_PROTO_SRCS = [
     "rewriter_config.proto",
     "tensor_bundle.proto",
     "saver.proto",
+    "status.proto",
     "verifier_config.proto",
 ]
 
@@ -60,6 +62,7 @@ tf_proto_library(
     srcs = ["autotuning.proto"],
     cc_api_version = 2,
     make_default_target_header_only = True,
+    protodeps = ["//tensorflow/stream_executor:dnn_proto"],
 )
 
 tf_proto_library(
@@ -147,6 +150,7 @@ exports_files(
         # "critical_section.proto",
         "snapshot.proto",
         "service_cache.proto",
+        "data_service.proto",
         "service_config.proto",
         "debug_event.proto",
         "composite_tensor_variant.proto",
@@ -178,6 +182,7 @@ tf_proto_library(
         # NOTE: tf_proto_library requires files to be in the same package.
         "snapshot.proto",
         "service_cache.proto",
+        "data_service.proto",
         "service_config.proto",
         "debug_event.proto",
         "composite_tensor_variant.proto",

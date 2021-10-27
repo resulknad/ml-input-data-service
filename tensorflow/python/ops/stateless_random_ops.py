@@ -14,14 +14,11 @@
 # ==============================================================================
 """Stateless random ops which take seed as a tensor input."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import enum
 import numpy as np
 import six
 
+from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -85,10 +82,14 @@ def convert_alg_to_int(alg):
     elif alg in ("autoselect", "auto-select", "auto_select"):
       return Algorithm.AUTO_SELECT.value
     else:
-      raise ValueError("Unknown algorithm name: %s" % alg)
+      raise ValueError(
+          f"Argument `alg` got unsupported string value {alg}. Supported "
+          f"string values are 'philox' for the Philox algorithm, 'threefry' "
+          f"for the ThreeFry algorithm, and 'auto_select' for auto-selection.")
   else:
-    raise TypeError("Can't convert algorithm %s of type %s to int" %
-                    (alg, type(alg)))
+    raise TypeError(
+        f"Can't convert argument `alg` (of value {alg} and type {type(alg)}) "
+        f"to int.")
 
 
 def _resolve_alg(alg):
@@ -126,7 +127,11 @@ def _get_key_counter(seed, alg):
         uint32s_to_uint64(math_ops.cast(seed, dtypes.uint32)), [1])
     counter = array_ops.zeros([1], dtypes.uint64)
   else:
-    raise ValueError("Unrecognized RNG algorithm: %s" % alg)
+    raise ValueError(
+        f"Argument `alg` got unsupported value {alg}. Supported values are "
+        f"{Algorithm.PHILOX.value} for the Philox algorithm, "
+        f"{Algorithm.THREEFRY.value} for the ThreeFry algorithm, and "
+        f"{Algorithm.AUTO_SELECT.value} for auto-selection.")
   return key, counter
 
 
@@ -135,7 +140,10 @@ def _get_key_counter_alg(seed, alg):
     alg = Algorithm.AUTO_SELECT.value
   alg = convert_alg_to_int(alg)
   key, counter = _get_key_counter(seed, alg)
-  return key, counter, _resolve_alg(alg)
+  if compat.forward_compatible(2021, 8, 11):
+    return key, counter, alg
+  else:
+    return key, counter, _resolve_alg(alg)
 
 
 def _philox_scramble_seed(seed):
@@ -285,9 +293,9 @@ def stateless_random_uniform(shape,
       be a scalar). The upper bound on the range of random values to generate.
       Defaults to 1 if `dtype` is floating point. Pass `None` for full-range
       integers.
-    dtype: The type of the output: `float16`, `float32`, `float64`, `int32`, or
-      `int64`. For unbounded uniform ints (`minval`, `maxval` both `None`),
-      `uint32` and `uint64` may be used.
+    dtype: The type of the output: `float16`, `bfloat16`, `float32`, `float64`,
+      `int32`, or `int64`. For unbounded uniform ints (`minval`, `maxval` both
+      `None`), `uint32` and `uint64` may be used. Defaults to `float32`.
     name: A name for the operation (optional).
     alg: The RNG algorithm used to generate the random numbers. Valid
       choices are `"philox"` for [the Philox
@@ -308,16 +316,23 @@ def stateless_random_uniform(shape,
       specified.
   """
   dtype = dtypes.as_dtype(dtype)
-  if dtype not in (dtypes.float16, dtypes.bfloat16, dtypes.float32,
-                   dtypes.float64, dtypes.int32, dtypes.int64, dtypes.uint32,
-                   dtypes.uint64):
-    raise ValueError("Invalid dtype %r" % dtype)
+  accepted_dtypes = (dtypes.float16, dtypes.bfloat16, dtypes.float32,
+                     dtypes.float64, dtypes.int32, dtypes.int64, dtypes.uint32,
+                     dtypes.uint64)
+  if dtype not in accepted_dtypes:
+    raise ValueError(
+        f"Argument `dtype` got invalid value {dtype}. Accepted dtypes are "
+        f"{accepted_dtypes}.")
   if dtype.is_integer:
     if (minval is None) != (maxval is None):
-      raise ValueError("For integer dtype {}, minval and maxval must be both "
-                       "`None` or both non-`None`.".format(dtype))
+      raise ValueError(
+          f"For integer `dtype` argument {dtype}, argument `minval` and "
+          f"`maxval` must be both None or not None. Got `minval`={minval} and "
+          f"`maxval`={maxval}.")
     if minval is not None and dtype in (dtypes.uint32, dtypes.uint64):
-      raise ValueError("Invalid dtype for bounded uniform integers: %r" % dtype)
+      raise ValueError(
+          f"Argument `dtype` got invalid value {dtype} when argument `minval` "
+          f"is not None. Please don't use unsigned integers in this case.")
   elif maxval is None:
     maxval = 1
   with ops.name_scope(name, "stateless_random_uniform",
@@ -608,7 +623,8 @@ def stateless_random_normal(shape,
       distribution.
     stddev: A 0-D Tensor or Python value of type `dtype`. The standard deviation
       of the normal distribution.
-    dtype: The type of the output.
+    dtype: The float type of the output: `float16`, `bfloat16`, `float32`,
+      `float64`. Defaults to `float32`.
     name: A name for the operation (optional).
     alg: The RNG algorithm used to generate the random numbers. See
       `tf.random.stateless_uniform` for a detailed explanation.
@@ -711,7 +727,8 @@ def stateless_multinomial(logits,
     num_samples: 0-D.  Number of independent samples to draw for each row slice.
     seed: A shape [2] Tensor, the seed to the random number generator. Must have
       dtype `int32` or `int64`. (When using XLA, only `int32` is allowed.)
-    output_dtype: integer type to use for the output. Defaults to int64.
+    output_dtype: The integer type of the output: `int32` or `int64`. Defaults
+      to `int64`.
     name: Optional name for the operation.
 
   Returns:
@@ -753,7 +770,8 @@ def stateless_categorical(logits,
     num_samples: 0-D.  Number of independent samples to draw for each row slice.
     seed: A shape [2] Tensor, the seed to the random number generator. Must have
       dtype `int32` or `int64`. (When using XLA, only `int32` is allowed.)
-    dtype: integer type to use for the output. Defaults to int64.
+    dtype: The integer type of the output: `int32` or `int64`. Defaults to
+      `int64`.
     name: Optional name for the operation.
 
   Returns:
@@ -767,6 +785,12 @@ def stateless_categorical(logits,
 def stateless_multinomial_categorical_impl(logits, num_samples, dtype, seed):
   """Implementation for stateless multinomial/categorical ops (v1/v2)."""
   logits = ops.convert_to_tensor(logits, name="logits")
+  dtype = dtypes.as_dtype(dtype) if dtype else dtypes.int64
+  accepted_dtypes = (dtypes.int32, dtypes.int64)
+  if dtype not in accepted_dtypes:
+    raise ValueError(
+        f"Argument `dtype` got invalid value {dtype}. Accepted dtypes are "
+        f"{accepted_dtypes}.")
   return gen_stateless_random_ops.stateless_multinomial(
       logits, num_samples, seed, output_dtype=dtype)
 

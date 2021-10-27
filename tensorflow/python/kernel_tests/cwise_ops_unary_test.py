@@ -14,10 +14,6 @@
 # ==============================================================================
 """Functional tests for unary coefficient-wise operations."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import math
 
 import numpy as np
@@ -100,7 +96,7 @@ class UnaryOpTest(test.TestCase):
         s = list(np.shape(x))
         jacob_t, _ = gradient_checker.compute_gradient(
             inx, s, y, s, x_init_value=x)
-        xf = x.astype(np.float)
+        xf = x.astype(np.float64)
         inxf = ops.convert_to_tensor(xf)
         yf = tf_func(inxf)
         _, jacob_n = gradient_checker.compute_gradient(
@@ -494,9 +490,8 @@ class UnaryOpTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testComplex64Basic(self):
-    x = np.complex(1, 1) * np.arange(-3, 3).reshape(1, 3, 2).astype(
-        np.complex64)
-    y = x + np.complex(0.5, 0.5)  # no zeros
+    x = (1 + 1j) * np.arange(-3, 3).reshape(1, 3, 2).astype(np.complex64)
+    y = x + (0.5 + 0.5j)  # no zeros
     self._compareBoth(x, np.abs, math_ops.abs)
     self._compareBoth(x, np.abs, _ABS)
     self._compareBoth(x, np.negative, math_ops.negative)
@@ -539,9 +534,8 @@ class UnaryOpTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testComplex128Basic(self):
-    x = np.complex(1, 1) * np.arange(-3, 3).reshape(1, 3, 2).astype(
-        np.complex128)
-    y = x + np.complex(0.5, 0.5)  # no zeros
+    x = (1 + 1j) * np.arange(-3, 3).reshape(1, 3, 2).astype(np.complex128)
+    y = x + (0.5 + 0.5j)  # no zeros
     self._compareBoth(x, np.abs, math_ops.abs)
     self._compareBoth(x, np.abs, _ABS)
     self._compareBoth(x, np.negative, math_ops.negative)

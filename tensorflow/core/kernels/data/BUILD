@@ -19,6 +19,8 @@ exports_files([
     "batch_dataset_op.h",
     "iterator_ops.cc",
     "iterator_ops.h",
+    "filter_dataset_op.h",
+    "filter_dataset_op.cc",
     "finalize_dataset_op.h",
     "finalize_dataset_op.cc",
     "flat_map_dataset_op.h",
@@ -540,6 +542,7 @@ tf_kernel_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/data:dataset_utils",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -1052,6 +1055,7 @@ tf_kernel_library(
         "//tensorflow/core/data:dataset_utils",
         "//tensorflow/core/data:name_utils",
         "//tensorflow/core/data:serialization_utils",
+        "@com_google_absl//absl/random",
     ],
 )
 

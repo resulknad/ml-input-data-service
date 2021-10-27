@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for ragged_factory_ops.constant_value."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 import numpy as np
 
@@ -164,7 +160,7 @@ class RaggedConstantValueOpTest(test_util.TensorFlowTestCase,
       dict(pylist=[[1., 2.], [], [4., 5., 6.]], expected_dtype=np.float64),
       dict(pylist=[[1, 2], [3.], [4, 5, 6]], expected_dtype=np.float64),
       dict(pylist=[[b'a', b'b'], [b'c']], expected_dtype=np.dtype('S1')),
-      dict(pylist=[[True]], expected_dtype=np.bool),
+      dict(pylist=[[True]], expected_dtype=np.bool_),
       dict(
           pylist=[np.array([1, 2]), np.array([3.]), [4, 5, 6]],
           expected_dtype=np.float64),

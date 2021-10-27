@@ -185,10 +185,6 @@ reasonable default behavior.
 """
 # pylint: enable=line-too-long
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import copy
 import enum  # pylint: disable=g-bad-import-order
@@ -231,7 +227,6 @@ from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
 from tensorflow.tools.docs import doc_controls
-
 
 # ------------------------------------------------------------------------------
 # Context tracking whether in a strategy.update() or .update_non_slot() call.
@@ -374,11 +369,13 @@ class _CurrentDistributionContext(object):
                strategy,
                var_creator_scope,
                var_scope=None,
+               resource_creator_scope=None,
                default_device=None):
     self._context = distribution_strategy_context._CrossReplicaThreadMode(  # pylint: disable=protected-access
         strategy)
     self._var_creator_scope = var_creator_scope
     self._var_scope = var_scope
+    self._resource_creator_scope = resource_creator_scope
     if default_device:
       self._device_scope = ops.device(default_device)
     else:
@@ -396,6 +393,9 @@ class _CurrentDistributionContext(object):
       if self._var_scope:
         self._var_scope.__enter__()
       self._var_creator_scope.__enter__()
+      if self._resource_creator_scope:
+        nest.map_structure(lambda scope: scope.__enter__(),
+                           self._resource_creator_scope)
       if self._device_scope:
         self._device_scope.__enter__()
     return self._context.strategy
@@ -421,6 +421,24 @@ class _CurrentDistributionContext(object):
           RuntimeError("Variable creator scope nesting error: move call to "
                        "tf.distribute.set_strategy() out of `with` scope."),
           e)
+
+    if self._resource_creator_scope:
+      try:
+        if isinstance(self._resource_creator_scope, list):
+          reversed_resource_creator_scope = self._resource_creator_scope[::-1]
+          nest.map_structure(
+              lambda scope: scope.__exit__(exception_type, exception_value,  # pylint:disable=g-long-lambda
+                                           traceback),
+              reversed_resource_creator_scope)
+
+        else:
+          self._resource_creator_scope.__exit__(exception_type, exception_value,
+                                                traceback)
+      except RuntimeError as e:
+        six.raise_from(
+            RuntimeError("Resource creator scope nesting error: move call "
+                         "to tf.distribute.set_strategy() out of `with` "
+                         "scope."), e)
 
     if self._var_scope:
       try:
@@ -1083,6 +1101,8 @@ class StrategyBase(object):
     Returns:
       A `tf.distribute.DistributedDataset`.
     """
+    distribution_strategy_input_api_counter.get_cell(
+        self.__class__.__name__, "distribute_dataset").increase_by(1)
     # pylint: enable=line-too-long
     return self._extended._experimental_distribute_dataset(dataset, options)  # pylint: disable=protected-access
 
@@ -1158,6 +1178,9 @@ class StrategyBase(object):
     Returns:
       A `tf.distribute.DistributedDataset`.
     """
+    distribution_strategy_input_api_counter.get_cell(
+        self.__class__.__name__,
+        "distribute_datasets_from_function").increase_by(1)
     # pylint: enable=line-too-long
     return self._extended._distribute_datasets_from_function(  # pylint: disable=protected-access
         dataset_fn, options)
@@ -2085,6 +2108,10 @@ class StrategyExtendedV2(object):
     # when creating Datasets from numpy array inputs.
     self._require_static_shapes = False
 
+  def _resource_creator_scope(self):
+    """Returns one or a list of ops.resource_creator_scope for some Strategy."""
+    return None
+
   def _container_strategy(self):
     """Get the containing `tf.distribute.Strategy`.
 
@@ -2159,7 +2186,9 @@ class StrategyExtendedV2(object):
         variable_scope.variable_creator_scope(creator_with_resource_vars),
         variable_scope.variable_scope(
             variable_scope.get_variable_scope(),
-            custom_getter=distributed_getter), self._default_device)
+            custom_getter=distributed_getter),
+        strategy.extended._resource_creator_scope(),  # pylint: disable=protected-access
+        self._default_device)
 
   def _allow_variable_partition(self):
     return False
@@ -3524,8 +3553,6 @@ def _batch_reduce_destination(x):
     return x.device
   else:
     return x
-
-
 # ------------------------------------------------------------------------------
 
 
@@ -3820,3 +3847,6 @@ distribution_strategy_replica_gauge = monitoring.IntGauge(
     "/tensorflow/api/distribution_strategy/replica",
     "Gauge to track the number of replica each distribution strategy used.",
     "CountType")
+distribution_strategy_input_api_counter = monitoring.Counter(
+    "/tensorflow/api/distribution_strategy/input_api",
+    "Counter to track the usage of the input APIs", "strategy", "api")

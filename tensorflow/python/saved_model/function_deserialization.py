@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tools for deserializing `Function`s."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import re
 from absl import logging
@@ -33,6 +29,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import custom_gradient
+from tensorflow.python.ops import default_gradient
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.util import compat
@@ -75,7 +72,7 @@ def _call_concrete_function(function, inputs):
           ops.convert_to_tensor(arg, dtype_hint=expected.dtype))
     elif isinstance(expected, resource_variable_ops.VariableSpec):
       tensor_inputs.append(arg)
-  result = function._call_flat(tensor_inputs, function._captured_inputs)  # pylint: disable=protected-access
+  result = function._call_flat(tensor_inputs, function.captured_inputs)  # pylint: disable=protected-access
   if isinstance(result, ops.Operation):
     return None
   return result
@@ -122,15 +119,16 @@ def _concrete_function_callable_with(function, inputs, allow_conversion):
   return True
 
 
-def _deserialize_function_spec_as_nonmethod(function_spec_proto, coder):
+def _deserialize_function_spec_as_nonmethod(function_spec_proto):
   """Deserialize a FunctionSpec object from its proto representation."""
-  typeless_fullargspec = coder.decode_proto(function_spec_proto.fullargspec)
+  typeless_fullargspec = nested_structure_coder.decode_proto(
+      function_spec_proto.fullargspec)
 
   # Convert a method function into a non method.
   if function_spec_proto.is_method:
     if not typeless_fullargspec.args:
       raise NotImplementedError(
-          "Missing support to deserialize a method function without a named "
+          "Cannot deserialize a method function without a named "
           "'self' argument.")
     args = typeless_fullargspec.args[1:]
   else:
@@ -144,7 +142,8 @@ def _deserialize_function_spec_as_nonmethod(function_spec_proto, coder):
       kwonlyargs=typeless_fullargspec.kwonlyargs,
       kwonlydefaults=typeless_fullargspec.kwonlydefaults,
       annotations=typeless_fullargspec.annotations)
-  input_signature = coder.decode_proto(function_spec_proto.input_signature)
+  input_signature = nested_structure_coder.decode_proto(
+      function_spec_proto.input_signature)
 
   # See `tf.function` and the JitCompile proto for details.
   jit_compile = {
@@ -174,10 +173,8 @@ def setup_bare_concrete_function(saved_bare_concrete_function,
   concrete_function._num_positional_args = (
       saved_bare_concrete_function.allowed_positional_arguments)
   if saved_bare_concrete_function.HasField("function_spec"):
-    coder = nested_structure_coder.StructureCoder()
     function_spec = _deserialize_function_spec_as_nonmethod(
-        saved_bare_concrete_function.function_spec,
-        coder)
+        saved_bare_concrete_function.function_spec)
     concrete_function._set_function_spec(function_spec)
   # pylint: enable=protected-access
   concrete_function.add_to_graph()
@@ -241,7 +238,6 @@ def recreate_function(saved_function, concrete_functions):
   # instead of creating a new `Function` backed by a Python layer to
   # glue things together. Current approach is nesting functions deeper for each
   # serialization cycle.
-  coder = nested_structure_coder.StructureCoder()
 
   # Note: handling method functions is tricky since make_decorator does not
   # allows control of "ismethod". Additionally since restored functions do
@@ -253,8 +249,7 @@ def recreate_function(saved_function, concrete_functions):
   # there are SavedModels which have "ismethod" populated and have an extra
   # argument that they expect to be ignored, we do it at deserialization.
   function_spec = _deserialize_function_spec_as_nonmethod(
-      saved_function.function_spec,
-      coder)
+      saved_function.function_spec)
 
   def restored_function_body(*args, **kwargs):
     """Calls a restored function or raises an error if no matching function."""
@@ -286,12 +281,11 @@ def recreate_function(saved_function, concrete_functions):
           "Option {}:\n  {}\n  Keyword arguments: {}"
           .format(index + 1, _pretty_format_positional(positional), keyword))
     raise ValueError(
-        "Could not find matching function to call loaded from the SavedModel. "
-        "Got:\n  {}\n  Keyword arguments: {}\n\nExpected "
-        "these arguments to match one of the following {} option(s):\n\n{}"
-        .format(_pretty_format_positional(args), kwargs,
-                len(saved_function.concrete_functions),
-                "\n\n".join(signature_descriptions)))
+        "Could not find matching concrete function to call loaded from the "
+        f"SavedModel. Got:\n  {_pretty_format_positional(args)}\n  Keyword "
+        f"arguments: {kwargs}\n\n Expected these arguments to match one of the "
+        f"following {len(saved_function.concrete_functions)} option(s):\n\n"
+        f"{(chr(10)+chr(10)).join(signature_descriptions)}")
 
   concrete_function_objects = []
   for concrete_function_name in saved_function.concrete_functions:
@@ -425,8 +419,16 @@ def load_function_def_library(library,
 
 
 def _gen_gradient_func(func):
+  """Wraps a deserialized function."""
 
   def gradient_func(unused_op, *result_grads):
+    # Replace all `None` arguments, because the traced custom gradient function
+    # expects tensors. Replacing with zeros is correct since the `None` values
+    # occur when the gradient is unconnected, and thus the gradient is
+    # "statically proven to be zero." See `tf.UnconnectedGradients` for details.
+    result_grads = [x if x is not None else default_gradient.zeros_like(t)
+                    for (x, t) in zip(result_grads, func.graph.inputs)]
+
     return func(*result_grads)
 
   return gradient_func
@@ -479,8 +481,8 @@ def _sort_function_defs(library, function_deps):
 
   if len(output) != len(library.function):
     failed_to_resolve = sorted(set(in_count.keys()) - set(output))
-    raise ValueError("There is a cyclic-dependency between functions. ",
-                     "Could not resolve %r." % (failed_to_resolve,))
+    raise ValueError("There is a cyclic dependency between functions. ",
+                     f"Could not resolve {failed_to_resolve}.")
 
   reverse = {fdef.signature.name: fdef for fdef in library.function}
   return [reverse[x] for x in output]

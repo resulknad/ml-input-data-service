@@ -33,8 +33,8 @@ class XlaReduceOp : public XlaOpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("reducer", &reducer_));
     OP_REQUIRES_OK(context, context->GetAttr("dimensions_to_reduce",
                                              &dimensions_to_reduce_));
-    std::set<int64> dims_set(dimensions_to_reduce_.begin(),
-                             dimensions_to_reduce_.end());
+    std::set<int64_t> dims_set(dimensions_to_reduce_.begin(),
+                               dimensions_to_reduce_.end());
     OP_REQUIRES(
         context, dims_set.size() == dimensions_to_reduce_.size(),
         errors::InvalidArgument("Duplicate dimension in dimensions_to_reduce "
@@ -62,7 +62,7 @@ class XlaReduceOp : public XlaOpKernel {
                 errors::InvalidArgument("init_value must be a scalar but got ",
                                         init_value_shape.DebugString()));
 
-    auto dim_in_range = [rank](int64 dim) { return dim >= 0 && dim < rank; };
+    auto dim_in_range = [rank](int64_t dim) { return dim >= 0 && dim < rank; };
     OP_REQUIRES(context,
                 rank >= dimensions_to_reduce_.size() &&
                     absl::c_all_of(dimensions_to_reduce_, dim_in_range),
@@ -123,7 +123,7 @@ class XlaReduceOp : public XlaOpKernel {
 
  private:
   const NameAttrList* reducer_;
-  std::vector<int64> dimensions_to_reduce_;
+  std::vector<int64_t> dimensions_to_reduce_;
   bool use_tuples_;
   int n_;
 
@@ -141,8 +141,8 @@ class XlaVariadicReduceOpV2 : public XlaOpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("reducer", &reducer_));
     OP_REQUIRES_OK(context, context->GetAttr("dimensions_to_reduce",
                                              &dimensions_to_reduce_));
-    std::set<int64> dims_set(dimensions_to_reduce_.begin(),
-                             dimensions_to_reduce_.end());
+    std::set<int64_t> dims_set(dimensions_to_reduce_.begin(),
+                               dimensions_to_reduce_.end());
     OP_REQUIRES(
         context, dims_set.size() == dimensions_to_reduce_.size(),
         errors::InvalidArgument("Duplicate dimension in dimensions_to_reduce "
@@ -217,7 +217,7 @@ class XlaVariadicReduceOpV2 : public XlaOpKernel {
             xla::ShapeUtil::HumanString(expected_shape), " got ",
             xla::ShapeUtil::HumanString(reducer.xla_output_shape)));
 
-    auto dim_in_range = [rank](int64 dim) { return dim >= 0 && dim < rank; };
+    auto dim_in_range = [rank](int64_t dim) { return dim >= 0 && dim < rank; };
     OP_REQUIRES(context,
                 rank >= dimensions_to_reduce_.size() &&
                     absl::c_all_of(dimensions_to_reduce_, dim_in_range),
@@ -235,7 +235,7 @@ class XlaVariadicReduceOpV2 : public XlaOpKernel {
  private:
   DataTypeVector input_types_;
   const NameAttrList* reducer_;
-  std::vector<int64> dimensions_to_reduce_;
+  std::vector<int64_t> dimensions_to_reduce_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(XlaVariadicReduceOpV2);
 };

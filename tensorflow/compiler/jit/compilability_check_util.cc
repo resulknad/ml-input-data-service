@@ -97,6 +97,7 @@ StatusOr<std::vector<NodeDef>> MakeCallNodesFromAttribute(
   TF_RETURN_IF_ERROR(GetNodeAttr(node.attrs(), attr_name, &attr_lists));
 
   std::vector<NodeDef> out;
+  out.reserve(attr_lists.size());
   for (int i = 0; i < attr_lists.size(); i++) {
     out.emplace_back();
     NodeDef& inserted = out.back();
@@ -705,6 +706,7 @@ static auto const ops_triggering_xla_compilation =
                                          "XlaReduce",
                                          "XlaReduceWindow",
                                          "XlaReplicaId",
+                                         "XlaRngBitGenerator",
                                          "XlaScatter",
                                          "XlaSelectAndScatter",
                                          "XlaSelfAdjointEig",
@@ -714,6 +716,8 @@ static auto const ops_triggering_xla_compilation =
                                          "XlaSpmdFullToShardShape",
                                          "XlaSpmdShardToFullShape",
                                          "XlaSvd",
+                                         "XlaVariadicReduceV2",
+                                         "XlaVariadicSort",
                                          "XlaWhile"};
 
 static bool NodeCanTriggerXlaCompilation(const NodeDef& node) {
