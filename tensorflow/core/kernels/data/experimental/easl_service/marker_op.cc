@@ -35,7 +35,7 @@ class MarkerOp::Dataset : public DatasetBase {
 
   string DebugString() const override;
 
-  int64_ts Cardinality() const override;
+  int64_t Cardinality() const override;
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override;
 
