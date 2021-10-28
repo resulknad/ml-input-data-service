@@ -130,7 +130,7 @@ void DispatcherState::CreateJob(const CreateJobUpdate& create_job) {
     num_consumers = create_job.num_consumers();
   }
   auto job = std::make_shared<Job>(job_id, create_job.dataset_id(),
-                                   ProcessingMode(create_job.processing_mode()),
+                                   create_job.processing_mode_def(),
                                    create_job.num_split_providers(),
                                    named_job_key, num_consumers, create_job.target_workers(),
                                    create_job.job_type(), create_job.worker_count());
