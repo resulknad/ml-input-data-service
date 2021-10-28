@@ -240,15 +240,17 @@ Status DataServiceWorkerImpl::GetElementResult(
         VLOG(1) << "Task not found (probably not received from dispatcher yet";
         return errors::Unavailable("Task ", request->task_id(), " not found");
       }
-    task = it->second.get();
-    TF_RETURN_IF_ERROR(EnsureTaskInitialized(*task));
-    task->outstanding_requests++;
+      task = it->second.get();
+      TF_RETURN_IF_ERROR(EnsureTaskInitialized(*task));
+      task->outstanding_requests++;
     }
+  }
   auto cleanup = gtl::MakeCleanup([&] {
     mutex_lock l(mu_);
     task->outstanding_requests--;
     cv_.notify_all();
   });
+
   TF_RETURN_IF_ERROR(task->task_runner->GetNext(*request, *result));
 
   if (result->end_of_sequence) {
