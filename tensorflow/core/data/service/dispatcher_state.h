@@ -147,8 +147,9 @@ class DispatcherState {
                  const ProcessingModeDef& processing_mode,
                  int64_t num_split_providers,
                  absl::optional<NamedJobKey> named_job_key,
+                 absl::optional<int64> num_consumers,
                  TargetWorkers target_workers,
-                 absl::optional<int64> num_consumers, const std::string& job_type,
+                 const std::string& job_type,
                  int64 worker_count)
         : job_id(job_id),
           dataset_id(dataset_id),
