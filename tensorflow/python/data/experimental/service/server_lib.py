@@ -43,7 +43,7 @@ def _get_time_or_placeholder(value):
 @tf_export("data.experimental.service.DispatcherConfig")
 class DispatcherConfig(
     collections.namedtuple("DispatcherConfig", [
-        "port", "protocol", "work_dir", "fault_tolerant_mode", "worker_addresses"
+        "port", "protocol", "work_dir", "fault_tolerant_mode", "worker_addresses",
         "job_gc_check_interval_ms", "job_gc_timeout_ms", "cache_policy",
         "cache_format", "cache_compression", "cache_ops_parallelism", "cache_path",
         "scaling_policy", "log_dir", "log_dumps_interval_ms"
