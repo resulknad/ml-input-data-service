@@ -249,9 +249,6 @@ class _TupleCodec(object):
     return tuple(decode_fn(element) for element in value.tuple_value.values)
 
 
-StructureCoder.register_codec(_TupleCodec())
-
-
 class _OrdredDictIntKeyCodec(object):
   """Codec for ordered dicts with integer key type."""
 
@@ -289,9 +286,6 @@ class _OrdredDictIntKeyCodec(object):
         ordered_dict[key] = value
 
     return ordered_dict
-
-
-StructureCoder.register_codec(_OrdredDictIntKeyCodec())
 
 
 class _DictCodec(object):
@@ -682,6 +676,7 @@ _codecs = [
     _BoolCodec(),
     _BoundedTensorSpecCodec(),
     _TensorTypeCodec(),
+    _OrdredDictIntKeyCodec(),
     _DictCodec(),
     _TensorSpecCodec(),
     _TypeSpecCodec(),
