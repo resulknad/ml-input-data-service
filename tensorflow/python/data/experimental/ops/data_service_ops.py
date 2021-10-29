@@ -297,7 +297,6 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
   @property
   def element_spec(self):
     return self._element_spec
->>>>>>> 04c758224ffaf85cf9f261c71feab723ca4875d3
 
 
 class _DataServiceDatasetV1(dataset_ops.DatasetV1Adapter):
