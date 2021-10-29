@@ -121,7 +121,7 @@ class DispatcherConfig(
 
     return super(DispatcherConfig,
                  cls).__new__(cls, port, protocol, work_dir,
-                              fault_tolerant_mode, job_gc_check_interval_ms,
+                              fault_tolerant_mode, worker_addresses, job_gc_check_interval_ms,
                               job_gc_timeout_ms, cache_policy, cache_format,
                               cache_compression, cache_ops_parallelism, cache_path, scaling_policy,
                               log_dir, log_dumps_interval_ms)
