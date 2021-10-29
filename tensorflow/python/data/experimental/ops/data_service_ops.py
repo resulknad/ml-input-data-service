@@ -169,6 +169,7 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
                consumer_index=None,
                num_consumers=None,
                max_outstanding_requests=None,
+               max_request_pipelining_per_worker=1,
                task_refresh_interval_hint_ms=None,
                target_workers="AUTO"):
     """Constructs a _DataServiceDatasetV2.
