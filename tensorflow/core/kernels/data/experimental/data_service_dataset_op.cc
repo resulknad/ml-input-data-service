@@ -346,8 +346,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       do {
         while (!ResultReady() && !Finished() && !cancelled_ && status_.ok()) {
           VLOG(3) << "Blocking in GetNext: " << DebugString();
-          get_next_cv_.wait(l);
-          hadToWait = true; // EASL - metrics collection.
+          // hadToWait = true; // EASL - metrics collection.
           // EASL
           VLOG(1) << "Blocking in GetNext. results_.size():" << results_.size()
                   << " results_.front().ready:"
