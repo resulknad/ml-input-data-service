@@ -234,23 +234,22 @@ Status DataServiceWorkerImpl::GetElementResult(
         result->end_of_sequence = true;
         result->skip = false;
         return Status::OK();
-      } else {
-        // Perhaps the workers hasn't gotten the task from the dispatcher yet.
-        // Return Unavailable so that the client knows to continue retrying.
-        VLOG(1) << "Task not found (probably not received from dispatcher yet";
-        return errors::Unavailable("Task ", request->task_id(), " not found");
       }
-      task = it->second.get();
-      TF_RETURN_IF_ERROR(EnsureTaskInitialized(*task));
-      task->outstanding_requests++;
+      // Perhaps the workers hasn't gotten the task from the dispatcher yet.
+      // Return Unavailable so that the client knows to continue retrying.
+      VLOG(1) << "Task not found (probably not received from dispatcher yet";
+      return errors::Unavailable("Task ", request->task_id(), " not found");
     }
+    task = it->second.get();
+    TF_RETURN_IF_ERROR(EnsureTaskInitialized(*task));
+    task->outstanding_requests++;
   }
   auto cleanup = gtl::MakeCleanup([&] {
     mutex_lock l(mu_);
     task->outstanding_requests--;
     cv_.notify_all();
   });
-
+  VLOG(0) << "GetElementResult - calling task_runner";
   TF_RETURN_IF_ERROR(task->task_runner->GetNext(*request, *result));
 
   if (result->end_of_sequence) {
