@@ -1129,7 +1129,7 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
   TF_RETURN_IF_ERROR(CheckStarted());
   mutex_lock l(mu_);
   // TODO (damien-aymon) revert back to level 4
-  VLOG(4) << "Received heartbeat from client id " << request->job_client_id();
+  VLOG(0) << "Received heartbeat from client id " << request->job_client_id();
   VLOG(4) << "Avg inter-arrival time " << request->avg_inter_arrival_time();
 
   latest_client_heartbeats_time_[request->job_client_id()] =
@@ -1220,7 +1220,8 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
     task_info->set_starting_round(task->starting_round);
   }
   response->set_job_finished(job->finished);
-  VLOG(4) << "Found " << response->task_info_size()
+  // TODO revert to 4
+  VLOG(0) << "Found " << response->task_info_size()
           << " tasks for job client id " << request->job_client_id();
   return Status::OK();
 }

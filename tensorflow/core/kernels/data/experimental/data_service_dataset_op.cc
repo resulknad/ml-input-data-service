@@ -878,6 +878,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
     void UpdateWorkerThreads(IteratorContext* ctx) TF_LOCKS_EXCLUDED(mu_) {
       mutex_lock l(mu_);
+      VLOG(0) << "UpdateWorkerThreads - entering";
 
       // EASL - we allow more than one thread per task.
       //const int64_t max_num_threads =

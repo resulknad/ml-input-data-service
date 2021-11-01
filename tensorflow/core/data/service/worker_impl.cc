@@ -260,6 +260,7 @@ Status DataServiceWorkerImpl::GetElementResult(
     pending_completed_tasks_.insert(request->task_id());
     task_completion_cv_.notify_one();
   }
+  VLOG(0) << "GetElementResult - returning";
   return Status::OK();
 }
 
@@ -394,7 +395,7 @@ void DataServiceWorkerImpl::StopTask(Task& task) TF_LOCKS_EXCLUDED(mu_) {
 
 Status DataServiceWorkerImpl::GetElement(const GetElementRequest* request,
                                          GetElementResponse* response) {
-  VLOG(3) << "Received GetElement request for task " << request->task_id();
+  VLOG(0) << "Received GetElement request for task " << request->task_id();
   struct GetElementResult result;
   TF_RETURN_IF_ERROR(GetElementResult(request, &result));
   response->set_end_of_sequence(result.end_of_sequence);
