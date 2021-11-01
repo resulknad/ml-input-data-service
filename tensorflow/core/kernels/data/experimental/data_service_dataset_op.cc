@@ -593,11 +593,14 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       // Heartbeat
       while (true) {
         {
+          VLOG(0) << "TaskThreadManager - waiting for lock";
           mutex_lock l(mu_);
+          VLOG(0) << "TaskThreadManager - got lock";
           // All units are microseconds.
           while (!cancelled_ && Env::Default()->NowMicros() < next_check) {
             int64_t remaining_time = next_check - Env::Default()->NowMicros();
-            VLOG(4) << "Task thread manager waiting for " << remaining_time
+            // TODO revert to 0
+            VLOG(0) << "Task thread manager waiting for " << remaining_time
                     << "us";
             manager_thread_cv_.wait_for(
                 l, std::chrono::microseconds(remaining_time));
