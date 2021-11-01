@@ -607,9 +607,11 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             return;
           }
         }
+        VLOG(0) << "TaskThreadManager - calling heartbeat";
         Heartbeat(ctx.get());
         UpdateLocalTasks();
         UpdateBufferSize();
+        VLOG(0) << "TaskThreadManager - calling UpdateWorkerThreads";
         UpdateWorkerThreads(ctx.get());
         next_check = Env::Default()->NowMicros() +
             dataset()->task_refresh_interval_ms_ * 1000;
