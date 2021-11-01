@@ -334,6 +334,7 @@ Status DataServiceDispatcherImpl::FindNewTasks(
     }
     TaskDef* task_def = response->add_new_tasks();
     TF_RETURN_IF_ERROR(PopulateTaskDef(task, task_def));
+    VLOG(0) << "FindNewTasks - found new task for worker";
   }
   return Status::OK();
 }
@@ -996,6 +997,7 @@ Status DataServiceDispatcherImpl::CreateTasksForJob(
     TF_RETURN_IF_ERROR(CreateTask(job, worker->address, task));
     tasks.push_back(task);
   }
+  VLOG(0) << "CreateTasksForJob - returning";
   return Status::OK();
 }
 
@@ -1052,6 +1054,7 @@ Status DataServiceDispatcherImpl::CreateTask(std::shared_ptr<const Job> job,
   TF_RETURN_IF_ERROR(Apply(update));
   TF_RETURN_IF_ERROR(state_.TaskFromId(task_id, task));
 
+  VLOG(0) << "CreateTask - returning";
   return Status::OK();
 }
 

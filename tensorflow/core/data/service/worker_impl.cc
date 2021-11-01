@@ -280,7 +280,8 @@ Status DataServiceWorkerImpl::ProcessTaskInternal(const TaskDef& task_def)
     return Status::OK();
   }
   task = absl::make_unique<Task>(task_def);
-  VLOG(3) << "Began processing for task " << task_def.task_id()
+  // TODO revert to 3
+  VLOG(0) << "Began processing for task " << task_def.task_id()
           << " with processing mode "
           << task_def.processing_mode_def().DebugString();
   return Status::OK();
@@ -574,7 +575,7 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
   {
     mutex_lock l(mu_);
     for (const auto& task : response.new_tasks()) {
-      VLOG(1) << "Received new task from dispatcher with id " << task.task_id();
+      VLOG(0) << "Received new task from dispatcher with id " << task.task_id();
       if (deleted_tasks_.contains(task.task_id())) {
         continue;
       }
