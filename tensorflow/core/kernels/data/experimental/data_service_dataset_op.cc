@@ -358,6 +358,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
                   << num_running_worker_threads_
                   << " outstanding_requests_:"
                   << outstanding_requests_;
+          get_next_cv_.wait(l);
         }
         if (cancelled_) {
           VLOG(3) << "Returning from GetNext due to cancellation";
