@@ -249,17 +249,15 @@ Status DataServiceWorkerImpl::GetElementResult(
     task->outstanding_requests--;
     cv_.notify_all();
   });
-  VLOG(0) << "GetElementResult - calling task_runner";
   TF_RETURN_IF_ERROR(task->task_runner->GetNext(*request, *result));
 
   if (result->end_of_sequence) {
     mutex_lock l(mu_);
     VLOG(0) << "Reached end_of_sequence for task " << request->task_id();
-    VLOG(0) << "Outstanding tasks for this task" << task->outstanding_requests;
+    VLOG(0) << "Outstanding requests for this task" << task->outstanding_requests;
     pending_completed_tasks_.insert(request->task_id());
     task_completion_cv_.notify_one();
   }
-  VLOG(0) << "GetElementResult - returning";
   return Status::OK();
 }
 
@@ -280,8 +278,7 @@ Status DataServiceWorkerImpl::ProcessTaskInternal(const TaskDef& task_def)
     return Status::OK();
   }
   task = absl::make_unique<Task>(task_def);
-  // TODO revert to 3
-  VLOG(0) << "Began processing for task " << task_def.task_id()
+  VLOG(3) << "Began processing for task " << task_def.task_id()
           << " with processing mode "
           << task_def.processing_mode_def().DebugString();
   return Status::OK();
@@ -394,7 +391,7 @@ void DataServiceWorkerImpl::StopTask(Task& task) TF_LOCKS_EXCLUDED(mu_) {
 
 Status DataServiceWorkerImpl::GetElement(const GetElementRequest* request,
                                          GetElementResponse* response) {
-  VLOG(0) << "Received GetElement request for task " << request->task_id();
+  VLOG(3) << "Received GetElement request for task " << request->task_id();
   struct GetElementResult result;
   TF_RETURN_IF_ERROR(GetElementResult(request, &result));
   response->set_end_of_sequence(result.end_of_sequence);

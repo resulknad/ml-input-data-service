@@ -594,14 +594,11 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       // Heartbeat
       while (true) {
         {
-          VLOG(0) << "TaskThreadManager - waiting for lock";
           mutex_lock l(mu_);
-          VLOG(0) << "TaskThreadManager - got lock";
           // All units are microseconds.
           while (!cancelled_ && Env::Default()->NowMicros() < next_check) {
             int64_t remaining_time = next_check - Env::Default()->NowMicros();
-            // TODO revert to 0
-            VLOG(0) << "Task thread manager waiting for " << remaining_time
+            VLOG(4) << "Task thread manager waiting for " << remaining_time
                     << "us";
             manager_thread_cv_.wait_for(
                 l, std::chrono::microseconds(remaining_time));
@@ -611,11 +608,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             return;
           }
         }
-        VLOG(0) << "TaskThreadManager - calling heartbeat";
         Heartbeat(ctx.get());
         UpdateLocalTasks();
         UpdateBufferSize();
-        VLOG(0) << "TaskThreadManager - calling UpdateWorkerThreads";
         UpdateWorkerThreads(ctx.get());
         next_check = Env::Default()->NowMicros() +
             dataset()->task_refresh_interval_ms_ * 1000;
@@ -884,8 +879,6 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
     void UpdateWorkerThreads(IteratorContext* ctx) TF_LOCKS_EXCLUDED(mu_) {
       mutex_lock l(mu_);
-      VLOG(0) << "UpdateWorkerThreads - entering";
-
       // EASL - we allow more than one thread per task.
       //const int64_t max_num_threads =
       //    std::min<int64_t>(tasks_.size(), max_outstanding_requests_);

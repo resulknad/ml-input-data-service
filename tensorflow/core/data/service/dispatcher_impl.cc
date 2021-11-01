@@ -334,7 +334,6 @@ Status DataServiceDispatcherImpl::FindNewTasks(
     }
     TaskDef* task_def = response->add_new_tasks();
     TF_RETURN_IF_ERROR(PopulateTaskDef(task, task_def));
-    VLOG(0) << "FindNewTasks - found new task for worker";
   }
   return Status::OK();
 }
@@ -997,7 +996,6 @@ Status DataServiceDispatcherImpl::CreateTasksForJob(
     TF_RETURN_IF_ERROR(CreateTask(job, worker->address, task));
     tasks.push_back(task);
   }
-  VLOG(0) << "CreateTasksForJob - returning";
   return Status::OK();
 }
 
@@ -1054,7 +1052,6 @@ Status DataServiceDispatcherImpl::CreateTask(std::shared_ptr<const Job> job,
   TF_RETURN_IF_ERROR(Apply(update));
   TF_RETURN_IF_ERROR(state_.TaskFromId(task_id, task));
 
-  VLOG(0) << "CreateTask - returning";
   return Status::OK();
 }
 
@@ -1129,7 +1126,7 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
   TF_RETURN_IF_ERROR(CheckStarted());
   mutex_lock l(mu_);
   // TODO (damien-aymon) revert back to level 4
-  VLOG(0) << "Received heartbeat from client id " << request->job_client_id();
+  VLOG(4) << "Received heartbeat from client id " << request->job_client_id();
   VLOG(4) << "Avg inter-arrival time " << request->avg_inter_arrival_time();
 
   latest_client_heartbeats_time_[request->job_client_id()] =
@@ -1220,8 +1217,7 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
     task_info->set_starting_round(task->starting_round);
   }
   response->set_job_finished(job->finished);
-  // TODO revert to 4
-  VLOG(0) << "Found " << response->task_info_size()
+  VLOG(4) << "Found " << response->task_info_size()
           << " tasks for job client id " << request->job_client_id();
   return Status::OK();
 }
