@@ -105,7 +105,7 @@ constexpr int64_t kLocalTaskBufferSize = 2;
 
 bool IsColocatedTask(const TaskInfo& task) {
   return absl::c_any_of(task.worker_tags(), [](absl::string_view worker_tag) {
-    return absl::AsciiStrToUpper(worker_tag) == kColocatedWorkerTag;
+    return absl::AsciiStrToUpper(worker_tag) == kColocaoultedWorkerTag;
   });
 }
 }  // namespace
@@ -344,10 +344,11 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       EnsureThreadsStarted(ctx);
       Result result;
       do {
+        bool hadToWait = false;
         while (!ResultReady() && !Finished() && !cancelled_ && status_.ok()) {
           VLOG(3) << "Blocking in GetNext: " << DebugString();
-          // hadToWait = true; // EASL - metrics collection.
-          // EASL
+          // EASL: We had to wait
+          hadToWait = true;
           VLOG(1) << "Blocking in GetNext. results_.size():" << results_.size()
                   << " results_.front().ready:"
                   << (!results_.empty() && results_.front().ready)
@@ -360,6 +361,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
                   << outstanding_requests_;
           get_next_cv_.wait(l);
         }
+        get_next_history_.pop_front();
+        get_next_history_.push_back(hadToWait);
         if (cancelled_) {
           VLOG(3) << "Returning from GetNext due to cancellation";
           return errors::Cancelled("Data service iterator was cancelled");
@@ -705,6 +708,12 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         // Set the wait time for a GetNext response in ms
         req.set_avg_get_next_processing_time(node_->SelfProcessingTime() / 
           EnvTime::kMillisToNanos);
+
+        // Set the history of GetNext into the heartbeat
+        double stall_percentage = std::count(get_next_history_.begin(),
+            get_next_history_.end(), true) /
+                (float)(get_next_history_.size());
+        req.set_stall_percentage(stall_percentage);
 
         VLOG(3) << "num_elements:"
           << node_->num_elements()
@@ -1305,6 +1314,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     }
 
     const int64_t iterator_index_;
+
+    std::deque<bool> get_next_history_ = {false, false, false, false, false,
+                                          false, false, false, false, false};
 
     mutable mutex mu_;
     condition_variable get_next_cv_ TF_GUARDED_BY(mu_);

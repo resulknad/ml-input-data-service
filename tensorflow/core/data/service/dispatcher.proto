@@ -165,7 +165,7 @@ message ReleaseJobClientRequest {
 // Next tag: 1
 message ReleaseJobClientResponse {}
 
-// Next tag: 5
+// Next tag: 8
 message ClientHeartbeatRequest {
   reserved 3;
   // The job client id to heartbeat for.
@@ -184,6 +184,7 @@ message ClientHeartbeatRequest {
 
   double avg_get_next_processing_time = 5;
   double avg_inter_arrival_time = 6;
+  double stall_percentage = 7;
 }
 
 // Next tag: 4
