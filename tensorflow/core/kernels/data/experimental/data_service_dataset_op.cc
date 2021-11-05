@@ -92,6 +92,20 @@ const int64 kDefaultTaskRefreshIntervalMs = 500;  // 1 second. => now 0.5sec.
 
 constexpr char kDataServiceDatasetV1[] = "DataServiceDataset";
 constexpr char kDataServiceDatasetV2[] = "DataServiceDatasetV2";
+<<<<<<< HEAD
+=======
+
+constexpr const char kParallelEpochs[] = "parallel_epochs";
+constexpr const char kDistributedEpoch[] = "distributed_epoch";
+
+constexpr int64_t kLocalTaskBufferSize = 2;
+
+bool IsColocatedTask(const TaskInfo& task) {
+  return absl::c_any_of(task.worker_tags(), [](absl::string_view worker_tag) {
+    return absl::AsciiStrToUpper(worker_tag) == kColocaoultedWorkerTag;
+  });
+}
+>>>>>>> 2a177fcfae5... Added metric which counts the number of misses in the client's GetNext.
 }  // namespace
 
 // Dataset for reading data from the tf.data service non-deterministically.
@@ -319,12 +333,14 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
       // EASL - metrics collection
       ++num_elements_;
-      bool hadToWait = false;
       int64 start_us = Env::Default()->NowMicros();
+      bool hadToWait = false;
       bool skip = true;
       while (skip) {
+        hadToWait = false;
         while ((results_.empty() || !results_.front().ready) && !Finished() &&
                !cancelled_ && status_.ok()) {
+          hadToWait = true;
           VLOG(1) << "Blocking in GetNext. results_.size():" << results_.size()
                   << " results_.front().ready:"
                   << (!results_.empty() && results_.front().ready)
@@ -338,6 +354,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           get_next_cv_.wait(l);
           hadToWait = true; // EASL - metrics collection.
         }
+        get_next_history_.pop_front();
+        get_next_history_.push_back(hadToWait);
         if (cancelled_) {
           VLOG(3) << "Returning from GetNext due to cancellation";
           return errors::Cancelled("Data service iterator was cancelled");
@@ -647,6 +665,12 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         // Set the wait time for a GetNext response in ms
         req.set_avg_get_next_processing_time(node_->SelfProcessingTime() / 
           EnvTime::kMillisToNanos);
+
+        // Set the history of GetNext into the heartbeat
+        double stall_percentage = std::count(get_next_history_.begin(),
+            get_next_history_.end(), true) /
+                (float)(get_next_history_.size());
+        req.set_stall_percentage(stall_percentage);
 
         VLOG(3) << "num_elements:"
           << node_->num_elements()
@@ -1069,6 +1093,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     }
 
     const int64 iterator_index_;
+
+    std::deque<bool> get_next_history_ = {false, false, false, false, false,
+                                          false, false, false, false, false};
 
     mutable mutex mu_;
     condition_variable get_next_cv_ TF_GUARDED_BY(mu_);

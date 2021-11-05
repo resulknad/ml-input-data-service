@@ -1092,6 +1092,8 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
   // EASL: Update the client metrics
   easl::ModelMetrics::Metrics metrics(request->avg_get_next_processing_time(), 
     request->avg_inter_arrival_time());
+  VLOG(0) << "The stall percentage " << request->get_stall_percentage()
+                << "; greater than 30% " << (request->get_stall_percentage() >= 0.3);
   VLOG(4) << "metrics processing_time: " << metrics.get_next_time_ms();
   s = metadata_store_.UpdateModelMetrics(job->job_id, request->job_client_id(),
     metrics);
