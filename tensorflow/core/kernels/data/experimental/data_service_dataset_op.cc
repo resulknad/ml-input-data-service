@@ -334,7 +334,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       // EASL - metrics collection
       ++num_elements_;
       int64 start_us = Env::Default()->NowMicros();
-      bool hadToWait = false;
+      bool hadToWait;
       bool skip = true;
       while (skip) {
         hadToWait = false;
