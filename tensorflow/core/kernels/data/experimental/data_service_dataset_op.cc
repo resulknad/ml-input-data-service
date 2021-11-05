@@ -336,8 +336,11 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
                   << num_running_worker_threads_
                   << " outstanding_requests_:"
                   << outstanding_requests_;
+          uint start = Env::Default()->NowMicros();
           get_next_cv_.wait(l);
+          uint wait_time = Env::Default()->NowMicros() - start;
           hadToWait = true; // EASL - metrics collection.
+          VLOG(0) << "Wait time is " << wait_time;
         }
         get_next_history_.pop_front();
         VLOG(0) << "(DataServiceDatasetOp::GetNextInternal) Adding: " << hadToWait;
@@ -350,7 +353,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           VLOG(0) << "Returning from GetNext with error " << status_;
           return status_;
         }
-        if(job_finished_){
+        if(job_finished_) {
           VLOG(3) << "Job Finished in GetNext. results_.size():" << results_.size()
                   << " results_.front().ready:"
                   << (!results_.empty() && results_.front().ready)
