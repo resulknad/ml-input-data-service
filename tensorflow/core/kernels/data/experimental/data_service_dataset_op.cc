@@ -326,7 +326,6 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         hadToWait = false;
         while ((results_.empty() || !results_.front().ready) && !Finished() &&
                !cancelled_ && status_.ok()) {
-          hadToWait = true;
           VLOG(1) << "Blocking in GetNext. results_.size():" << results_.size()
                   << " results_.front().ready:"
                   << (!results_.empty() && results_.front().ready)
@@ -341,6 +340,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           hadToWait = true; // EASL - metrics collection.
         }
         get_next_history_.pop_front();
+        VLOG(0) << "(DataServiceDatasetOp::GetNextInternal) Adding: " << hadToWait;
         get_next_history_.push_back(hadToWait);
         if (cancelled_) {
           VLOG(3) << "Returning from GetNext due to cancellation";
