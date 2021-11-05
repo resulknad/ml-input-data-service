@@ -92,20 +92,6 @@ const int64 kDefaultTaskRefreshIntervalMs = 500;  // 1 second. => now 0.5sec.
 
 constexpr char kDataServiceDatasetV1[] = "DataServiceDataset";
 constexpr char kDataServiceDatasetV2[] = "DataServiceDatasetV2";
-<<<<<<< HEAD
-=======
-
-constexpr const char kParallelEpochs[] = "parallel_epochs";
-constexpr const char kDistributedEpoch[] = "distributed_epoch";
-
-constexpr int64_t kLocalTaskBufferSize = 2;
-
-bool IsColocatedTask(const TaskInfo& task) {
-  return absl::c_any_of(task.worker_tags(), [](absl::string_view worker_tag) {
-    return absl::AsciiStrToUpper(worker_tag) == kColocaoultedWorkerTag;
-  });
-}
->>>>>>> 2a177fcfae5... Added metric which counts the number of misses in the client's GetNext.
 }  // namespace
 
 // Dataset for reading data from the tf.data service non-deterministically.
