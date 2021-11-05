@@ -944,7 +944,7 @@ Status DataServiceDispatcherImpl::CreateTasksForJob(
     std::vector<std::shared_ptr<const Task>>& tasks)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   std::vector<std::shared_ptr<Worker>> workers = state_.ReserveWorkers(
-    job->job_id, job->worker_count);
+    job->job_id, 0);
   if (workers.size() < job->worker_count){
     VLOG(0)
     << "EASL - Not enough workers for job. Elasticity policy requires "
