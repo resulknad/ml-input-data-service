@@ -215,6 +215,8 @@ Status DetermineJobType(const experimental::DispatcherConfig& dispatcher_config,
   uint64 compute_num_elements = 0;
   double compute_time_per_row_ms = 0;
   double compute_time_total_ms = 0;
+  double compute_working_time_per_row_ms = 0;
+  double compute_working_time_total_ms = 0;
 
   for(std::pair<std::string, std::shared_ptr<NodeMetrics::Metrics>> e : 
     node_metrics->metrics_){
@@ -223,15 +225,19 @@ Status DetermineJobType(const experimental::DispatcherConfig& dispatcher_config,
     compute_row_size += worker_metrics->bytes_produced() / worker_metrics->num_elements();
     compute_time_per_row_ms += worker_metrics->active_time_ms();
     compute_num_elements += worker_metrics->num_elements();
+    compute_working_time_per_row_ms += worker_metrics->working_time_ms();
   }
 
   compute_num_elements /= num_workers;
   compute_time_per_row_ms = compute_time_per_row_ms / num_workers;
   compute_time_total_ms = compute_time_per_row_ms * compute_num_elements;
   compute_row_size = compute_row_size / num_workers;
+  compute_working_time_per_row_ms = compute_working_time_per_row_ms / num_workers;
+  compute_working_time_total_ms = compute_working_time_per_row_ms * compute_num_elements;
 
   VLOG(0) << "(Full caching) Row size " << compute_row_size;
   VLOG(0) << "Total compute time " << compute_time_total_ms;
+  VLOG(0) << "Total compute working time " << compute_working_time_total_ms;
 
   // Materialized Cache Read expecations
   double cache_read_time_per_row_ms = data::cache_model::GetTimePerRow(compute_row_size);
@@ -300,13 +306,15 @@ Status DetermineJobType(const experimental::DispatcherConfig& dispatcher_config,
       // i.e. if true_compute_time_total > source_cache_io_time then source_cache_compute_time_total should be
       // true_compute_time_total.
       // => it is optimistic about source caching, need another metric: in_node_time without accounting for parallelism..
-      double source_cache_compute_time_total_ms = source_cache_io_time_total_ms;
-          //std::max(source_cache_io_time_per_row_ms, compute_time_per_row_ms);
+      //double source_cache_compute_time_total_ms = source_cache_io_time_total_ms;
+
+      double source_cache_compute_time_total_ms = std::max(source_cache_io_time_per_row_ms, compute_working_time_total_ms);
+          //std::max(source_cache_io_time_per_row_ms, compute_work);
 
       VLOG(0) << "GCS is limited";
       VLOG(0) << "IO row size " << io_row_size;
       VLOG(0) << "Estimated source cache io time: " << source_cache_io_time_total_ms;
-      VLOG(0) << "Estimated source cache compute time: " << source_cache_compute_time_total_ms;
+      VLOG(0) << "Estimated source cache compute time: " << compute_working_time_total_ms;
 
       if (source_cache_compute_time_total_ms < cache_read_time_total_ms) {
         job_type = "PUT_SOURCE";
