@@ -257,7 +257,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         : DatasetIterator<Dataset>(params),
           iterator_index_(iterator_index),
           max_outstanding_requests_(params.dataset->max_outstanding_requests_),
-          max_request_pipelining_per_task_(params.dataset->max_request_pipelining_per_task_){
+          max_request_pipelining_per_task_(params.dataset->max_request_pipelining_per_task_),
+          wait_times_(20, 0.0) {
     }
 
     ~Iterator() override {
@@ -339,11 +340,13 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           uint start = Env::Default()->NowMicros();
           get_next_cv_.wait(l);
           uint wait_time = Env::Default()->NowMicros() - start;
+          ++wait_time_count_;
+          wait_times_.pop_front();
+          wait_times_.push_back(wait_time);
           hadToWait = true; // EASL - metrics collection.
-          VLOG(0) << "Wait time is " << wait_time;
         }
-        get_next_history_.pop_front();
         VLOG(0) << "(DataServiceDatasetOp::GetNextInternal) Adding: " << hadToWait;
+        get_next_history_.pop_front();
         get_next_history_.push_back(hadToWait);
         if (cancelled_) {
           VLOG(3) << "Returning from GetNext due to cancellation";
@@ -365,6 +368,12 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
                   << " time_milisec:"
                   << Env::Default()->NowMicros() / EnvTime::kMillisToMicros;
         }
+
+        if (wait_time_count_ % 20 == 0) {
+          double s = std::accumulate(wait_times_.begin(), wait_times_.end(), 0.0);
+          VLOG(0) << "Average wait time [us]: " << (s / wait_times_.size());
+        }
+
         if (results_.empty()) {
           *end_of_sequence = true;
           VLOG(3) << "Returning from GetNext with end_of_sequence";
@@ -1083,6 +1092,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
     const int64 iterator_index_;
 
+    uint wait_time_count_ = 0;
+    std::deque<double> wait_times_;
     std::deque<bool> get_next_history_ = {false, false, false, false, false,
                                           false, false, false, false, false};
 
