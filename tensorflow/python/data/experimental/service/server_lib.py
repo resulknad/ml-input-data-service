@@ -33,8 +33,9 @@ class DispatcherConfig(
     collections.namedtuple("DispatcherConfig", [
         "port", "protocol", "work_dir", "fault_tolerant_mode",
         "job_gc_check_interval_ms", "job_gc_timeout_ms", "cache_policy",
-        "cache_format", "cache_compression", "cache_ops_parallelism", "cache_path",
-        "scaling_policy", "log_dir", "log_dumps_interval_ms"
+        "cache_format", "cache_compression", "cache_ops_parallelism",
+        "cache_path", "scaling_policy", "worker_count", "log_dir",
+        "log_dumps_interval_ms"
     ])):
   """Configuration class for tf.data service dispatchers.
 
@@ -91,6 +92,7 @@ class DispatcherConfig(
               cache_ops_parallelism=8,
               cache_path="./outputs",
               scaling_policy=1,
+              worker_count=1,
               log_dir="",
               log_dumps_interval_ms=None):
     if protocol is None:
@@ -115,7 +117,8 @@ class DispatcherConfig(
                  cls).__new__(cls, port, protocol, work_dir,
                               fault_tolerant_mode, job_gc_check_interval_ms,
                               job_gc_timeout_ms, cache_policy, cache_format,
-                              cache_compression, cache_ops_parallelism, cache_path, scaling_policy,
+                              cache_compression, cache_ops_parallelism,
+                              cache_path, scaling_policy, worker_count,
                               log_dir, log_dumps_interval_ms)
 
 
@@ -187,6 +190,7 @@ class DispatchServer(object):
         cache_ops_parallelism=config.cache_ops_parallelism,
         cache_path=config.cache_path,
         scaling_policy=config.scaling_policy,
+        worker_count=config.worker_count,
         log_dir=config.log_dir,
         log_dumps_interval_ms=config.log_dumps_interval_ms)
     self._server = _pywrap_server_lib.TF_DATA_NewDispatchServer(
