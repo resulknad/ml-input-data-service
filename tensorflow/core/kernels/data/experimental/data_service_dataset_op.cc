@@ -369,7 +369,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
                   << Env::Default()->NowMicros() / EnvTime::kMillisToMicros;
         }
 
-        if (wait_time_count_ % wait_times_.size() == 0) {
+        if (wait_time_count_ % 50 == 0) {
           double s = std::accumulate(wait_times_.begin(),
               wait_times_.end(), 0.0) / wait_times_.size();
           double std = 0.0;
