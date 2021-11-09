@@ -258,7 +258,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           iterator_index_(iterator_index),
           max_outstanding_requests_(params.dataset->max_outstanding_requests_),
           max_request_pipelining_per_task_(params.dataset->max_request_pipelining_per_task_),
-          wait_times_(20, 0.0) {
+          wait_times_(50, 0.0) {
     }
 
     ~Iterator() override {
@@ -342,10 +342,10 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           uint wait_time = Env::Default()->NowMicros() - start;
           ++wait_time_count_;
           wait_times_.pop_front();
-          wait_times_.push_back(wait_time);
+          wait_times_.push_back(wait_time / (double)EnvTime::kMillisToMicros);
           hadToWait = true; // EASL - metrics collection.
         }
-        VLOG(0) << "(DataServiceDatasetOp::GetNextInternal) Adding: " << hadToWait;
+//        VLOG(0) << "(DataServiceDatasetOp::GetNextInternal) Adding: " << hadToWait;
         get_next_history_.pop_front();
         get_next_history_.push_back(hadToWait);
         if (cancelled_) {
@@ -369,9 +369,16 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
                   << Env::Default()->NowMicros() / EnvTime::kMillisToMicros;
         }
 
-        if (wait_time_count_ % 20 == 0) {
-          double s = std::accumulate(wait_times_.begin(), wait_times_.end(), 0.0);
-          VLOG(0) << "Average wait time [us]: " << (s / wait_times_.size());
+        if (wait_time_count_ % wait_times_.size() == 0) {
+          double s = std::accumulate(wait_times_.begin(),
+              wait_times_.end(), 0.0) / wait_times_.size();
+          double std = 0.0;
+          for (auto x : wait_times_) {
+            std += (x - s) * (x - s);
+          }
+          std = sqrt(std / wait_times_.size());
+          VLOG(0) << "Average wait time [ms]: " << s << "; Std dev [ms]: "
+                        << std;
         }
 
         if (results_.empty()) {
