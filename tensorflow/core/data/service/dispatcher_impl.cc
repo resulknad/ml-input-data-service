@@ -731,6 +731,11 @@ Status DataServiceDispatcherImpl::CreateTasksForJob(
     std::vector<std::shared_ptr<const Task>>& tasks)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   std::vector<std::shared_ptr<const Worker>> workers = state_.ListWorkers();
+  VLOG(0) << "Workers assigned to job: " << workers.size();
+  int count = 0;
+  for (auto& worker : workers) {
+    VLOG(0) << " > Worker #" << count++ << ": " << worker->address;
+  }
   tasks.clear();
   tasks.reserve(workers.size());
   for (const auto& worker : workers) {
