@@ -268,7 +268,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     explicit Iterator(const Params& params, int64_t iterator_index)
         : DatasetIterator<Dataset>(params),
           iterator_index_(iterator_index),
-          max_outstanding_requests_(params.dataset->max_outstanding_requests_) {
+          max_outstanding_requests_(params.dataset->max_outstanding_requests_),
+          wait_times_(30, 0.0),
+          counter_(0) {
     }
 
     ~Iterator() override {
@@ -329,10 +331,27 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       mutex_lock l(mu_);
       EnsureThreadsStarted(ctx);
       Result result;
+      thread_ids_.insert(Env::Default()->GetCurrentThreadId());
       do {
         while (!ResultReady() && !Finished() && !cancelled_ && status_.ok()) {
           VLOG(3) << "Blocking in GetNext: " << DebugString();
+
+          uint64 start = Env::Default()->NowMicros();
           get_next_cv_.wait(l);
+          wait_times_.push_back((Env::Default()->NowMicros() - start) / 
+            (double)(EnvTime::kMillisToMicros));
+          wait_times_.pop_front();
+          ++counter_;
+
+          if (counter_.load() % 30 == 0) {
+            double acc = std::accumulate(wait_times_.begin(), wait_times_.end(), 
+              0.0) / (double)(wait_times_.size());
+            VLOG(0) << "The average wait time is [ms]: " << acc;
+            VLOG(0) << "Printing the thread ids";
+            for (uint32 thread_id : thread_ids_) {
+              VLOG(0) << " > " << thread_id;
+            }
+          }
         }
         if (cancelled_) {
           VLOG(3) << "Returning from GetNext due to cancellation";
@@ -1238,6 +1257,10 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     // to the queue after they are ready, to avoid head-of-line blocking.
     std::queue<Result> results_ TF_GUARDED_BY(mu_);
     std::queue<Result> local_results_buffer_ TF_GUARDED_BY(mu_);
+
+    std::atomic_uint counter_;
+    std::deque<double> wait_times_;
+    absl::flat_hash_set<uint32> thread_ids_;
 
     bool initialized_ = false;
     // Set once in Initialize().
