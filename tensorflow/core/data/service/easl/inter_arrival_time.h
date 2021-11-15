@@ -36,6 +36,7 @@ class InterArrivalTimeRepo {
   // Times to be added in ms
   void AddInterArrivalTime(uint64 x, int32 thread_id = 0) TF_LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
+    VLOG(0) << "(AddInterArrivalTime) This should not be printed";
     if (!times_.contains(thread_id)) {
       times_[thread_id] = std::deque<uint64>();
     }
@@ -45,6 +46,7 @@ class InterArrivalTimeRepo {
   // Average time to be returned in ms
   double GetAverageInterArrivalTime() TF_LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
+    VLOG(0) << "(GetAverageInterArrivalTime) This should not be printed";
     uint32 min_len = std::numeric_limits<uint32_t>::max();
     for (auto& p : times_) {
       min_len = std::min<uint32>(min_len, p.second.size());
