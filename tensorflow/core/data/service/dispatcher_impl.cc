@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
 #include "tensorflow/core/data/service/easl/cache_utils.h"
 #include "tensorflow/core/data/service/easl/metadata_store.h"
+#include "tensorflow/core/data/service/easl/local_decision_utils.h"
 #include "tensorflow/core/data/standalone.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -899,6 +900,12 @@ Status DataServiceDispatcherImpl::CreateJob(
       config_, metadata_store_, compute_dataset_key, total_workers, worker_count));
   VLOG(0) << "EASL - Scalability decision for dataset_key "
           << compute_dataset_key << ": " << worker_count;
+
+  bool if_use_local_workers = false;
+  TF_RETURN_IF_ERROR(service::easl::local_decision::DecideIfLocal(
+          config_, metadata_store_, compute_dataset_key, if_use_local_workers
+          ));
+  VLOG(0) << "EASL-MUYU (CreateJob) - Check Local Worker Policy: " << if_use_local_workers;
 
   // EASL add job entry to metadata store
   std::string dataset_key = service::easl::cache_utils::DatasetKey(

@@ -295,6 +295,7 @@ cc_library(
     ],
     deps = [
         ":cache_utils",
+        ":local_decision_utils",
         ":common",
         ":common_proto_cc",
         ":credentials_factory",
@@ -935,6 +936,21 @@ cc_library(
         "//tensorflow/core/grappler/optimizers/data:add_get_op",
         "//tensorflow/core/grappler/optimizers/data:add_put_op_at_marker",
         "//tensorflow/core/grappler/optimizers/data:add_get_op_at_marker",
+    ],
+)
+
+cc_library(
+    name = "local_decision_utils",
+    srcs = ["easl/local_decision_utils.cc"],
+    hdrs = [
+        "easl/local_decision_utils.h",
+    ],
+    deps = [
+        ":common_proto_cc",
+        ":dispatcher_state",
+        ":metadata_store",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
     ],
 )
 

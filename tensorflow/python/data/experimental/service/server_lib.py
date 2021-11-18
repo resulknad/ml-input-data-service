@@ -46,7 +46,7 @@ class DispatcherConfig(
         "port", "protocol", "work_dir", "fault_tolerant_mode", "worker_addresses",
         "job_gc_check_interval_ms", "job_gc_timeout_ms", "cache_policy",
         "cache_format", "cache_compression", "cache_ops_parallelism", "cache_path",
-        "scaling_policy", "log_dir", "log_dumps_interval_ms"
+        "scaling_policy", "log_dir", "log_dumps_interval_ms", "avg_bytes_per_element_local_thres"
     ])):
   """Configuration class for tf.data service dispatchers.
 
@@ -109,7 +109,9 @@ class DispatcherConfig(
               cache_path="./outputs",
               scaling_policy=1,
               log_dir="",
-              log_dumps_interval_ms=None):
+              log_dumps_interval_ms=None,
+              avg_bytes_per_element_local_thres=1000
+              ):
     if protocol is None:
       protocol = _pywrap_utils.TF_DATA_DefaultProtocol()
     job_gc_check_interval_ms = _get_time_or_placeholder(
@@ -124,7 +126,7 @@ class DispatcherConfig(
                               fault_tolerant_mode, worker_addresses, job_gc_check_interval_ms,
                               job_gc_timeout_ms, cache_policy, cache_format,
                               cache_compression, cache_ops_parallelism, cache_path, scaling_policy,
-                              log_dir, log_dumps_interval_ms)
+                              log_dir, log_dumps_interval_ms, avg_bytes_per_element_local_thres)
 
 
 @tf_export("data.experimental.service.DispatchServer", v1=[])
@@ -202,7 +204,9 @@ class DispatchServer(object):
           cache_path=config.cache_path,
           scaling_policy=config.scaling_policy,
           log_dir=config.log_dir,
-          log_dumps_interval_ms=config.log_dumps_interval_ms)
+          log_dumps_interval_ms=config.log_dumps_interval_ms,
+          avg_bytes_per_element_local_thres=config.avg_bytes_per_element_local_thres,
+      )
     self._server = _pywrap_server_lib.TF_DATA_NewDispatchServer(
         config_proto.SerializeToString())
     if start:
