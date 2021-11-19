@@ -412,7 +412,23 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
             task.mutable_nodes(j)->name(), request->worker_address(), 
             node_metrics));
         }
-      } 
+      }
+
+      // Print the value of the time per item using GetLastTFNodeMetrics
+      std::shared_ptr<easl::NodeMetrics> last_tf_node_metrics;
+      metadata_store_.GetLastTFNodeMetrics(job_id, last_tf_node_metrics);
+
+      uint num_workers = last_tf_node_metrics->metrics_.size();
+      double active_time = 0.0;
+      for (auto& t : last_tf_node_metrics->metrics_) {
+        auto metrics = t.second;
+        active_time += metrics->active_time_ms();
+      }
+      active_time /= num_workers;
+      double num_batches = 1000.0 / active_time;
+      VLOG(0) << "(WorkerHeartbeat) Stats:\n"
+                   << " > Time per batch [ms]: " << active_time
+                   << " > Throughput [batches / s]: " << num_batches;
     }
   }
 
