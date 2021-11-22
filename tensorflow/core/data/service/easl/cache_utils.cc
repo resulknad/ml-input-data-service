@@ -27,6 +27,7 @@ namespace {
   // This offset tries to avoid cases where a value such as 4.02 provisions 
   // 5 workers and not 4, as woul be ideal
   double worker_count_alpha_ = 0.1;
+  int MAX_WORKERS_PER_JOB = 100;
 }
 
 Status DoBFS(NodeDef* sink_node, GraphDef& graph_def, string prefix) {
@@ -378,7 +379,8 @@ Status DetermineElasticity(
 
   // Give out max number of workers
   if(dispatcher_config.scaling_policy() == 2){
-    worker_count = available_workers;
+    //worker_count = available_workers;
+    worker_count = MAX_WORKERS_PER_JOB;
     return Status::OK();
   }
 
