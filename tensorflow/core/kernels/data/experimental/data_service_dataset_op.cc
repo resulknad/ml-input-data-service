@@ -637,8 +637,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
                 tf_data_num_elements_counter->value();*/
 
         // EASL - Getting the average inter-arrival time from the repo
-        double inter_arrival_time_ms = 
-          easl::InterArrivalTimeRepo::GetInstance().GetAverageInterArrivalTime();
+        double inter_arrival_time_ms = 100;
+//          easl::InterArrivalTimeRepo::GetInstance().GetAverageInterArrivalTime();
         VLOG(3) << "Actually got the inter-arrival time: " 
                 << inter_arrival_time_ms;
         req.set_avg_inter_arrival_time(inter_arrival_time_ms);

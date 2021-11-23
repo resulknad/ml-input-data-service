@@ -74,7 +74,7 @@ const char kIteratorVariantTypeName[] = "tensorflow::Iterator";
 const char kOutputShapes[] = "output_shapes";
 const char kOutputTypes[] = "output_types";
 
-// Safely subtracts x from y avoiding underflow.
+// Safely subtracts x from y avoiding unAddInterArrivalTimederflow.
 inline uint64 safe_sub(uint64 x, uint64 y) { return x >= y ? x - y : 0; }
 
 }  // namespace
@@ -149,19 +149,18 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
     }
     num_get_next_calls_++;
   }
-  
+
   // EASL - Get and store the inter-arrival time
-  int32 thread_id = Env::Default()->GetCurrentThreadId();
-  if (thread_end_times_us_.contains(thread_id)) {
-    mutex_lock l(mu_);
-    uint64 inter_arrival_time_ms = (start_time_us - 
-      thread_end_times_us_[thread_id]) / EnvTime::kMillisToMicros;
-    VLOG(3) << "(IteratorResource::GetNext - Thread #" << thread_id << ") "
-            << "Inter-arrival time [ms]: " << inter_arrival_time_ms;
-    // TODO(DanGraur): Add calll to global inter-arrival time repo
-    easl::InterArrivalTimeRepo::GetInstance().AddInterArrivalTime(
-      inter_arrival_time_ms, thread_id);
-  }
+//  int32 thread_id = Env::Default()->GetCurrentThreadId();
+//  if (thread_end_times_us_.contains(thread_id)) {
+//    mutex_lock l(mu_);
+//    uint64 inter_arrival_time_ms = (start_time_us -
+//      thread_end_times_us_[thread_id]) / EnvTime::kMillisToMicros;
+//    VLOG(3) << "(IteratorResource::GetNext - Thread #" << thread_id << ") "
+//            << "Inter-arrival time [ms]: " << inter_arrival_time_ms;
+//    easl::InterArrivalTimeRepo::GetInstance().AddInterArrivalTime(
+//      inter_arrival_time_ms, thread_id);
+//  }
 
   auto iterator_ = captured_state->iterator();
   auto status = iterator_->GetNext(IteratorContext(std::move(params)),
@@ -182,10 +181,10 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
   }
 
   // EASL - Record the end time
-  {
-    mutex_lock l(mu_);
-    thread_end_times_us_[thread_id] = ctx->env()->NowMicros();
-  }
+//  {
+//    mutex_lock l(mu_);
+//    thread_end_times_us_[thread_id] = ctx->env()->NowMicros();
+//  }
 
   return status;
 }

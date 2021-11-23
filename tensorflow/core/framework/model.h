@@ -168,8 +168,8 @@ class Node {
         active_time_(0),
         active_time_record_start_(-1),
         num_active_threads_(0),
-        working_time(0),
-        working_time_record_start(-1),
+        working_time_(0),
+        working_time_record_start_(-1),
         num_working_threads_(0){}
 
   virtual ~Node() {
