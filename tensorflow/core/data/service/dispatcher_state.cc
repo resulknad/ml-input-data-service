@@ -402,7 +402,7 @@ void DispatcherState::ReassignFreeWorkers() {
     return;
   }
 
-  for(auto it = avail_workers_.begin(); it != avail_workers_.end(); ){
+  for(auto it = avail_workers_.begin(); it != avail_workers_.end(); it++){
     // Get a job in need of workers
     std::shared_ptr<Job> job = job_iter->second;
     int64 num_assigned_workers = workers_by_job_[job->job_id].size();
