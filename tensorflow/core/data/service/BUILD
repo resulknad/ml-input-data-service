@@ -896,6 +896,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:errors",
+        "//tensorflow/core:framework",
         "@com_google_absl//absl/strings",
     ],
 )
