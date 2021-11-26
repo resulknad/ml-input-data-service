@@ -83,7 +83,7 @@ void ModelMetrics:: DumpToStream(std::stringstream& ss){
       ss << ", \n";
       first_w_count = false;
     }
-    ss << "{ \"worker_count\": " << std::to_string(*(pair.first)) << ", \"client_metrics\": { ";
+    ss << "{ \"worker_count\": " << std::to_string(pair.first) << ", \"client_metrics\": { ";
 
     bool first = true;
     for ( auto client_metrics_pair : *(pair.second)){
