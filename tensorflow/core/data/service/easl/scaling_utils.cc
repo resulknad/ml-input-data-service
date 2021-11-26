@@ -9,6 +9,8 @@
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/data/service/easl/cache_model.h"
+
 
 namespace tensorflow {
 namespace data {
