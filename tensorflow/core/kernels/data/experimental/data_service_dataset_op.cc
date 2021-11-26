@@ -14,11 +14,14 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/experimental/data_service_dataset_op.h"
 
+#include <cstdlib>
+#include <fstream>
 #include <limits>
 #include <map>
 #include <memory>
 #include <queue>
 #include <string>
+#include <sys/stat.h>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -319,10 +322,15 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
       // EASL - metrics collection
       ++num_elements_;
+      batch_timestamps_ms_.push_back(Env::Default()->NowMicros() /
+        EnvTime::kMillisToMicros);
+
       bool hadToWait = false;
       int64 start_us = Env::Default()->NowMicros();
       bool skip = true;
       while (skip) {
+        uint64 wait_time = Env::Default()->NowMicros(); // EASL metrics
+        result_queue_size_.push_back(results_.size()); // EASL metrics
         while ((results_.empty() || !results_.front().ready) && !Finished() &&
                !cancelled_ && status_.ok()) {
           VLOG(1) << "Blocking in GetNext. results_.size():" << results_.size()
@@ -338,6 +346,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           get_next_cv_.wait(l);
           hadToWait = true; // EASL - metrics collection.
         }
+        wait_time = Env::Default()->NowMicros() - wait_time; // EASL metrics
+        wait_times_ms_.push_back((double)(wait_time) /
+          EnvTime::kMillisToMicros); // EASL metrics
         if (cancelled_) {
           VLOG(3) << "Returning from GetNext due to cancellation";
           return errors::Cancelled("Data service iterator was cancelled");
@@ -371,6 +382,12 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           worker_thread_cv_.notify_one();
         }
       }
+
+      // EASL - If it's time to dump the metrics to disk we do so.
+      if (num_elements_ % metric_write_frequency_ == 0) {
+        write_metrics();
+      }
+
       auto& result = results_.front();
       *end_of_sequence = result.end_of_sequence;
       if (!*end_of_sequence) {
@@ -1068,6 +1085,32 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       return dataset()->num_consumers_.has_value();
     }
 
+    void write_metrics() {
+      // Get the file location
+      const std::string log_location = std::getenv("CACHEW_METRICS_DUMP");
+      std::ofstream file(log_location, std::ios_base::app);
+
+      // Check if file does not exist
+      struct stat buf;
+      if (stat(log_location.c_str(), &buf) == -1) {
+        file << "batch_timestamp_ms,wait_time_ms,result_queue_size\n";
+      }
+
+      for (int i = 0; i < batch_timestamps_ms_.size(); ++i) {
+        file << batch_timestamps_ms_[i] << "," << wait_times_ms_[i] << ","
+             << result_queue_size_[i] << "\n";
+      }
+
+      // Flush and close
+      file.flush();
+      file.close();
+
+      // Clear the metrics
+      batch_timestamps_ms_.clear();
+      wait_times_ms_.clear();
+      result_queue_size_.clear();
+    }
+
     const int64 iterator_index_;
 
     mutable mutex mu_;
@@ -1132,7 +1175,11 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     std::unique_ptr<Thread> task_thread_manager_ TF_GUARDED_BY(mu_);
 
     // EASL metrics collection
+    const uint32 metric_write_frequency_ = 50;
     int64 num_elements_ = 0;
+    std::vector<uint64> batch_timestamps_ms_;
+    std::vector<double> wait_times_ms_;
+    std::vector<uint32> result_queue_size_;
   };
 
   const int op_version_;
