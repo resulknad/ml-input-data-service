@@ -76,6 +76,9 @@ Status DispatcherState::Apply(const Update& update) {
     case Update::kReassignFreeWorkers:
       ReassignFreeWorkers();
       break;
+    case Update::kJobTargetWorkerCountUpdate:
+      UpdateJobTargetWorkerCount(update.update_job_target_worker_count);
+      break;
     case Update::UPDATE_TYPE_NOT_SET:
       return errors::Internal("Update type not set.");
   }
@@ -126,7 +129,7 @@ void DispatcherState::CreateJob(const CreateJobUpdate& create_job) {
                                    ProcessingMode(create_job.processing_mode()),
                                    create_job.num_split_providers(),
                                    named_job_key, num_consumers,
-                                   create_job.job_type(), create_job.worker_count());
+                                   create_job.job_type(), create_job.target_worker_count());
   DCHECK(!jobs_.contains(job_id));
   jobs_[job_id] = job;
   tasks_by_job_[job_id] = std::vector<std::shared_ptr<Task>>();
@@ -258,6 +261,7 @@ void DispatcherState::CreateTask(const CreateTaskUpdate& create_task) {
   DCHECK_NE(job, nullptr);
   task = std::make_shared<Task>(task_id, job, create_task.worker_address(),
                                 create_task.transfer_address(), create_task.dataset_key());
+  job->current_worker_count++;
   tasks_by_job_[create_task.job_id()].push_back(task);
   tasks_by_worker_[create_task.worker_address()][task->task_id] = task;
   next_available_task_id_ = std::max(next_available_task_id_, task_id + 1);
@@ -270,6 +274,8 @@ void DispatcherState::FinishTask(const FinishTaskUpdate& finish_task) {
   DCHECK(task != nullptr);
   task->finished = true;
   tasks_by_worker_[task->worker_address].erase(task->task_id);
+  jobs_[task->job->job_id]->current_worker_count--;
+
   bool all_finished = true;
   for (const auto& task_for_job : tasks_by_job_[task->job->job_id]) {
     if (!task_for_job->finished) {
@@ -406,7 +412,7 @@ void DispatcherState::ReassignFreeWorkers() {
     // Get a job in need of workers
     std::shared_ptr<Job> job = job_iter->second;
     int64 num_assigned_workers = workers_by_job_[job->job_id].size();
-    while (job->finished || num_assigned_workers == job->worker_count){
+    while (job->finished || num_assigned_workers == job->target_worker_count){
       job_iter++;
       if(job_iter == jobs_.end()){
         // Went through all jobs, can return
@@ -424,6 +430,14 @@ void DispatcherState::ReassignFreeWorkers() {
     avail_workers_.erase(it);
 
   }
+}
+
+void DispatcherState::UpdateJobTargetWorkerCount(
+    const JobTargetWorkerCountUpdate job_target_worker_count_update) {
+  DCHECK(jobs_.contains(job_target_worker_count_update.job_id()));
+  std::shared_ptr<Job> job = jobs_[job_target_worker_count_update.job_id()];
+
+  job->target_worker_count = job_target_worker_count_update.target_worker_count();
 }
 
 std::vector<std::shared_ptr<const DispatcherState::Job>>

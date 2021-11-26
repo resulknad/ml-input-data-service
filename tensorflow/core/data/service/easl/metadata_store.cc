@@ -27,12 +27,27 @@ void ModelMetrics::Metrics::Update(ModelMetrics::Metrics& other) {
   inter_arrival_time_ms_ = other.inter_arrival_time_ms_;
 }
 
-Status ModelMetrics::UpdateClientMetrics(int64 client_id, 
+Status ModelMetrics::UpdateClientMetrics(
+  const int64 worker_count,
+  const int64 client_id,
   ModelMetrics::Metrics& metrics) {
-  auto it = metrics_.find(client_id);
-  if (it == metrics_.end()) {
+  using MetricsCollection =
+    absl::flat_hash_map<int64, std::shared_ptr<ModelMetrics::Metrics>>;
+
+  // Level 1 - worker_count
+  auto worker_count_it = metrics_.find(worker_count);
+  if(worker_count_it == metrics_.end()){
+    auto metrics_collection = std::make_shared<MetricsCollection>();
+    metrics_.insert({worker_count, metrics_collection});
+    worker_count_it = metrics_.find(worker_count);
+  }
+  auto metrics_collection = worker_count_it->second;
+
+  // Level 2 - client_id
+  auto it = metrics_collection->find(client_id);
+  if (it == metrics_collection->end()) {
     auto entry = std::make_shared<Metrics>(metrics);
-    metrics_.insert({client_id, entry});
+    metrics_collection->insert({client_id, entry});
     VLOG(2) << "Created model metrics for client " << client_id;
   } else {
     it->second->Update(metrics);
@@ -41,14 +56,23 @@ Status ModelMetrics::UpdateClientMetrics(int64 client_id,
   return Status::OK();
 }
 
-Status ModelMetrics::GetClientMetrics(int64 client_id, 
-  std::shared_ptr<Metrics>& metrics) {
-  auto it = metrics_.find(client_id);
-  if (it != metrics_.end()) {
-    metrics = it->second;
-    return Status::OK();
+Status ModelMetrics::GetAllClientMetrics(std::shared_ptr<MetricsByWorkerCount>& metrics){
+  metrics = std::make_shared<MetricsByWorkerCount>(metrics_);
+  return Status::OK();
+}
+
+Status ModelMetrics::GetClientMetrics(
+    const int64 worker_count, const int64 client_id,
+    std::shared_ptr<Metrics>& metrics) {
+  auto worker_count_it = metrics_.find(worker_count);
+  if(worker_count_it != metrics_.end()){
+    auto it = worker_count_it->second->find(client_id);
+    if (it != worker_count_it->second->end()) {
+      metrics = it->second;
+      return Status::OK();
+    }
   }
-  return errors::NotFound("No metrics under the client with id ", client_id);
+  return errors::NotFound("No metrics under worker_count ", worker_count, " and client with id ", client_id);
 }
 
 void ModelMetrics:: DumpToStream(std::stringstream& ss){
@@ -435,12 +459,13 @@ Status MetadataStore::GetInputPipelineMetricsByDatasetKey(
   return s;
 }
 
-Status MetadataStore::UpdateModelMetrics(int64 job_id, int64 client_id, 
+Status MetadataStore::UpdateModelMetrics(
+  int64 job_id, int64 worker_count, int64 client_id,
   ModelMetrics::Metrics& metrics) {
   std::shared_ptr<ModelMetrics> model_metrics;
   Status s = GetModelMetrics(job_id, model_metrics);
   if (s.ok()) {
-    model_metrics->UpdateClientMetrics(client_id, metrics);
+    model_metrics->UpdateClientMetrics(worker_count, client_id, metrics);
   } 
   // if s != ok --> no such job exists
   return s;

@@ -275,6 +275,7 @@ cc_library(
     ],
     deps = [
         ":cache_utils",
+        ":scaling_utils",
         ":common_proto_cc",
         ":credentials_factory",
         ":data_service",
@@ -876,6 +877,25 @@ cc_library(
         "//tensorflow/core/grappler/optimizers/data:add_get_op",
         "//tensorflow/core/grappler/optimizers/data:add_put_op_at_marker",
         "//tensorflow/core/grappler/optimizers/data:add_get_op_at_marker",
+    ],
+)
+
+cc_library(
+    name = "scaling_utils",
+    srcs = ["easl/scaling_utils.cc"],
+    hdrs = [
+        "easl/scaling_utils.h",
+    ],
+    deps = [
+        ":common_proto_cc",
+        ":data_service",
+        ":dispatcher_cache_state",
+        ":dispatcher_state",
+        ":metadata_store",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:errors",
+        "@com_google_absl//absl/strings",
     ],
 )
 

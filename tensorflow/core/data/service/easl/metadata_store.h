@@ -47,20 +47,25 @@ class ModelMetrics {
         double inter_arrival_time_ms_;
     };
 
-    using MetricsCollection = 
+    // Keys are client_id.
+    using MetricsCollection =
       absl::flat_hash_map<int64, std::shared_ptr<ModelMetrics::Metrics>>;
+
+    using MetricsByWorkerCount =
+    absl::flat_hash_map<int64, std::shared_ptr<MetricsCollection>>;
 
     ModelMetrics() {}
 
-    // Update the values for a client
-    Status UpdateClientMetrics(int64 client_id, Metrics& metrics);
-    Status GetClientMetrics(int64 client_id, std::shared_ptr<Metrics>& metrics);
+    // Update the values for a worker_count, client_id pair.
+    Status UpdateClientMetrics(const int64 worker_count, const int64 client_id, Metrics& metrics);
+    Status GetClientMetrics(const int64 worker_count, const int64 client_id, Metrics& metrics);
+    Status GetAllClientMetrics(std::shared_ptr<MetricsByWorkerCount>& metrics);
 
     // Dump metrics to a string stream
     void DumpToStream(std::stringstream& ss);
 
-    // The keys are the client id
-    MetricsCollection metrics_;
+    // The keys are the worker count
+    MetricsByWorkerCount metrics_;
 };
 
 class NodeMetrics {
@@ -252,7 +257,7 @@ class MetadataStore {
     std::shared_ptr<NodeMetrics>& metrics) const;
 
   // Update or create the metrics for a client
-  Status UpdateModelMetrics(int64 job_id, int64 client_id, 
+  Status UpdateModelMetrics(int64 job_id, int64 worker_count, int64 client_id,
     ModelMetrics::Metrics& metrics);
 
   // Update or create the metrics for a client

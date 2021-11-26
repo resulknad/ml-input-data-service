@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/journal.h"
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
 #include "tensorflow/core/data/service/easl/cache_utils.h"
+#include "tensorflow/core/data/service/easl/scaling_utils.h"
 #include "tensorflow/core/data/service/easl/metadata_store.h"
 #include "tensorflow/core/data/standalone.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -860,9 +861,9 @@ Status DataServiceDispatcherImpl::CreateJob(
 
   // Infer the worker count for  this job and job type
   int64 total_workers = state_.ListWorkers().size();
-  TF_RETURN_IF_ERROR(service::easl::cache_utils::DetermineElasticity(job_type, 
+  TF_RETURN_IF_ERROR(service::easl::scaling_utils::DetermineElasticity(job_type,
       config_, metadata_store_, compute_dataset_key, total_workers, worker_count));
-  VLOG(0) << "EASL - Scalability decision for dataset_key "
+  VLOG(0) << "EASL - Initial scalability decision for dataset_key "
           << compute_dataset_key << ": " << worker_count;
 
   // EASL add job entry to metadata store
@@ -885,7 +886,7 @@ Status DataServiceDispatcherImpl::CreateJob(
   create_job->set_processing_mode(ProcessingModeDef(processing_mode));
   create_job->set_job_type(job_type);
   create_job->set_num_split_providers(num_split_providers);
-  create_job->set_worker_count(worker_count);
+  create_job->set_target_worker_count(worker_count);
   if (named_job_key.has_value()) {
     NamedJobKeyDef* key = create_job->mutable_named_job_key();
     key->set_name(named_job_key->name);
@@ -944,11 +945,11 @@ Status DataServiceDispatcherImpl::CreateTasksForJob(
     std::vector<std::shared_ptr<const Task>>& tasks)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   std::vector<std::shared_ptr<Worker>> workers = state_.ReserveWorkers(
-    job->job_id, job->worker_count);
-  if (workers.size() < job->worker_count){
+    job->job_id, job->target_worker_count);
+  if (workers.size() < job->target_worker_count){
     VLOG(0)
     << "EASL - Not enough workers for job. Elasticity policy requires "
-    << job->worker_count << " but got " << workers.size();
+    << job->target_worker_count << " but got " << workers.size();
   }
   tasks.clear();
   tasks.reserve(workers.size());
@@ -1074,84 +1075,110 @@ Status DataServiceDispatcherImpl::AssignTask(std::shared_ptr<const Task> task)
 Status DataServiceDispatcherImpl::ClientHeartbeat(
     const ClientHeartbeatRequest* request, ClientHeartbeatResponse* response) {
   TF_RETURN_IF_ERROR(CheckStarted());
-  mutex_lock l(mu_);
-  // TODO (damien-aymon) revert back to level 4
-  VLOG(4) << "Received heartbeat from client id " << request->job_client_id();
-  VLOG(4) << "Avg inter-arrival time " << request->avg_inter_arrival_time();
+  bool do_reassign_workers = false;
+  {
+    // Lock once...
+    mutex_lock l(mu_);
+    VLOG(4) << "Received heartbeat from client id " << request->job_client_id();
+    VLOG(4) << "Avg inter-arrival time " << request->avg_inter_arrival_time();
 
+    std::shared_ptr<const Job> job;
+    Status s = state_.JobForJobClientId(request->job_client_id(), job);
+    if (errors::IsNotFound(s) && !config_.fault_tolerant_mode()) {
+      return errors::NotFound(
+          "Unknown job client id ", request->job_client_id(),
+          ". The dispatcher is not configured to be fault tolerant, so this "
+          "could be caused by a dispatcher restart.");
+    }
+    TF_RETURN_IF_ERROR(s);
+
+    // EASL: Update the client metrics
+    easl::ModelMetrics::Metrics metrics(request->avg_get_next_processing_time(),
+                                        request->avg_inter_arrival_time());
+    VLOG(4) << "metrics processing_time: " << metrics.get_next_time_ms();
+    s = metadata_store_.UpdateModelMetrics(job->job_id, job->current_worker_count, request->job_client_id(),
+                                           metrics);
+    // Ignore metrics for jobs which do not have metrics anymore
+    // report error otherwise.
+    if (!s.ok() && !errors::IsNotFound(s)) { return s; }
+
+    // EASL - Determine updated target number of workers
+    int64 target_worker_count;
+    TF_RETURN_IF_ERROR(
+        service::easl::scaling_utils::DynamicWorkerCountUpdate(
+            job->job_type, config_, metadata_store_, job->current_worker_count, target_worker_count));
+    if (target_worker_count != job->current_worker_count) {
+      Update update;
+      JobTargetWorkerCountUpdate *job_target_worker_count_update =
+          update.mutable_job_target_worker_count_update();
+      job_target_worker_count_update->set_job_id(job->job_id);
+      job_target_worker_count_update->set_target_worker_count(target_worker_count);
+      state_.Apply(update);
+    }
+
+    if (job->garbage_collected) {
+      return errors::FailedPrecondition(
+          "The requested job has been garbage collected due to inactivity. "
+          "Consider configuring the dispatcher with a higher "
+          "`job_gc_timeout_ms`.");
+    }
+    if (request->optional_current_round_case() ==
+        ClientHeartbeatRequest::kCurrentRound) {
+      round_robin_rounds_[request->job_client_id()] =
+          std::max(round_robin_rounds_[request->job_client_id()],
+                   request->current_round());
+    }
+    if (!job->pending_tasks.empty()) {
+      const auto &task = job->pending_tasks.front();
+      Update update;
+      ClientHeartbeatUpdate *client_heartbeat = update.mutable_client_heartbeat();
+      bool apply_update = false;
+      client_heartbeat->set_job_client_id(request->job_client_id());
+      absl::optional<int64> blocked_round;
+      if (request->optional_blocked_round_case() ==
+          ClientHeartbeatRequest::kBlockedRound) {
+        blocked_round = request->blocked_round();
+      }
+      VLOG(1) << "Handling pending task in job client heartbeat. job_client_id: "
+              << request->job_client_id()
+              << ". current_round: " << request->current_round()
+              << ". blocked_round: " << blocked_round.value_or(-1)
+              << ". target_round: " << task.target_round;
+      if (request->current_round() >= task.target_round) {
+        TaskRejected *rejected = client_heartbeat->mutable_task_rejected();
+        // Exponentially try later and later rounds until consumers all agree.
+        int64 round_offset = 2;
+        for (int i = 0; i < task.failures; ++i) {
+          round_offset *= 2;
+        }
+        rejected->set_new_target_round(
+            round_robin_rounds_[request->job_client_id()] + round_offset);
+        apply_update = true;
+      }
+      if (blocked_round.has_value() &&
+          blocked_round.value() <= task.target_round &&
+          !task.ready_consumers.contains(request->job_client_id())) {
+        client_heartbeat->set_task_accepted(true);
+        apply_update = true;
+      }
+      if (apply_update) {
+        TF_RETURN_IF_ERROR(Apply(update));
+      }
+    }
+    if (!job->pending_tasks.empty()) {
+      response->set_block_round(job->pending_tasks.front().target_round);
+    }
+
+  }
+  // Free the lock to reassign workers.
+  if (do_reassign_workers){
+    ReassignFreeWorkersAndCreateTasks();
+  }
+
+  // Take back the lock
+  mutex_lock l(mu_);
   std::shared_ptr<const Job> job;
   Status s = state_.JobForJobClientId(request->job_client_id(), job);
-  if (errors::IsNotFound(s) && !config_.fault_tolerant_mode()) {
-    return errors::NotFound(
-        "Unknown job client id ", request->job_client_id(),
-        ". The dispatcher is not configured to be fault tolerant, so this "
-        "could be caused by a dispatcher restart.");
-  }
-  TF_RETURN_IF_ERROR(s);
-
-  // EASL: Update the client metrics
-  easl::ModelMetrics::Metrics metrics(request->avg_get_next_processing_time(), 
-    request->avg_inter_arrival_time());
-  VLOG(4) << "metrics processing_time: " << metrics.get_next_time_ms();
-  s = metadata_store_.UpdateModelMetrics(job->job_id, request->job_client_id(),
-    metrics);
-  // Ignore metrics for jobs which do not have metrics anymore
-  // report error otherwise.
-  if(!s.ok() && !errors::IsNotFound(s)){ return s; }
-
-  if (job->garbage_collected) {
-    return errors::FailedPrecondition(
-        "The requested job has been garbage collected due to inactivity. "
-        "Consider configuring the dispatcher with a higher "
-        "`job_gc_timeout_ms`.");
-  }
-  if (request->optional_current_round_case() ==
-      ClientHeartbeatRequest::kCurrentRound) {
-    round_robin_rounds_[request->job_client_id()] =
-        std::max(round_robin_rounds_[request->job_client_id()],
-                 request->current_round());
-  }
-  if (!job->pending_tasks.empty()) {
-    const auto& task = job->pending_tasks.front();
-    Update update;
-    ClientHeartbeatUpdate* client_heartbeat = update.mutable_client_heartbeat();
-    bool apply_update = false;
-    client_heartbeat->set_job_client_id(request->job_client_id());
-    absl::optional<int64> blocked_round;
-    if (request->optional_blocked_round_case() ==
-        ClientHeartbeatRequest::kBlockedRound) {
-      blocked_round = request->blocked_round();
-    }
-    VLOG(1) << "Handling pending task in job client heartbeat. job_client_id: "
-            << request->job_client_id()
-            << ". current_round: " << request->current_round()
-            << ". blocked_round: " << blocked_round.value_or(-1)
-            << ". target_round: " << task.target_round;
-    if (request->current_round() >= task.target_round) {
-      TaskRejected* rejected = client_heartbeat->mutable_task_rejected();
-      // Exponentially try later and later rounds until consumers all agree.
-      int64 round_offset = 2;
-      for (int i = 0; i < task.failures; ++i) {
-        round_offset *= 2;
-      }
-      rejected->set_new_target_round(
-          round_robin_rounds_[request->job_client_id()] + round_offset);
-      apply_update = true;
-    }
-    if (blocked_round.has_value() &&
-        blocked_round.value() <= task.target_round &&
-        !task.ready_consumers.contains(request->job_client_id())) {
-      client_heartbeat->set_task_accepted(true);
-      apply_update = true;
-    }
-    if (apply_update) {
-      TF_RETURN_IF_ERROR(Apply(update));
-    }
-  }
-  if (!job->pending_tasks.empty()) {
-    response->set_block_round(job->pending_tasks.front().target_round);
-  }
-
   std::vector<std::shared_ptr<const Task>> tasks;
   TF_RETURN_IF_ERROR(state_.TasksForJob(job->job_id, tasks));
   for (const auto& task : tasks) {
@@ -1165,6 +1192,7 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
   response->set_job_finished(job->finished);
   VLOG(4) << "Found " << response->task_info_size()
           << " tasks for job client id " << request->job_client_id();
+
   return Status::OK();
 }
 

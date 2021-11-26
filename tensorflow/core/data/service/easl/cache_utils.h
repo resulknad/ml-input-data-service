@@ -4,7 +4,6 @@
 #include <string>
 #include "tensorflow/core/platform/default/integral_types.h"
 #include "tensorflow/core/data/service/easl/dispatcher_cache_state.h"
-#include "tensorflow/core/data/service/easl/cache_utils.h"
 #include "tensorflow/core/data/service/easl/metadata_store.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/data/service/common.pb.h"
