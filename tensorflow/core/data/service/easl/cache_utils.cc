@@ -374,6 +374,12 @@ Status DetermineElasticity(
     return Status::OK();
   }
 
+  // Give out as many workers as requested, if possible, else max
+  if (dispatcher_config.scaling_policy() == 3){
+    worker_count = dispatcher_config.worker_count();
+    return Status::OK();
+  }
+
   // Check if we have any metrics for this dataset
   std::shared_ptr<data::easl::InputPipelineMetrics> job_metrics;
   Status s = metadata_store.GetInputPipelineMetricsByDatasetKey(
