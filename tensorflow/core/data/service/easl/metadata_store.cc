@@ -56,8 +56,17 @@ Status ModelMetrics::UpdateClientMetrics(
   return Status::OK();
 }
 
-Status ModelMetrics::GetAllClientMetrics(std::shared_ptr<MetricsByWorkerCount>& metrics){
+Status ModelMetrics::GetAllWorkerCountMetrics(std::shared_ptr<MetricsByWorkerCount>& metrics){
   metrics = std::make_shared<MetricsByWorkerCount>(metrics_);
+  return Status::OK();
+}
+
+Status ModelMetrics::GetAllClientMetrics(
+    const int64 worker_count, std::shared_ptr<MetricsCollection>& metrics){
+  auto worker_count_it = metrics_.find(worker_count);
+  if(worker_count_it != metrics_.end()) {
+    metrics = worker_count_it->second;
+  }
   return Status::OK();
 }
 

@@ -77,8 +77,10 @@ Status DetermineElasticity(
           dataset_key, model_metrics));
 
   // Get the average client throughput
+  std::shared_ptr<ModelMetrics::MetricsCollection> metrics_worker_count_1;
+  TF_RETURN_IF_ERROR(model_metrics->GetAllClientMetrics(1, metrics_worker_count_1));
   for(std::pair<int64, std::shared_ptr<ModelMetrics::Metrics>> e :
-      model_metrics->metrics_) {
+      *metrics_worker_count_1) {
     std::shared_ptr<ModelMetrics::Metrics> client_metrics = e.second;
     client_throughput += 1000.0 / client_metrics->inter_arrival_time_ms();
   }

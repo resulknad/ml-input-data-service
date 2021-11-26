@@ -59,7 +59,8 @@ class ModelMetrics {
     // Update the values for a worker_count, client_id pair.
     Status UpdateClientMetrics(const int64 worker_count, const int64 client_id, Metrics& metrics);
     Status GetClientMetrics(const int64 worker_count, const int64 client_id, std::shared_ptr<Metrics>& metrics);
-    Status GetAllClientMetrics(std::shared_ptr<MetricsByWorkerCount>& metrics);
+    Status GetAllWorkerCountMetrics(std::shared_ptr<MetricsByWorkerCount>& metrics);
+    Status GetAllClientMetrics(const int64 worker_count, std::shared_ptr<MetricsCollection>&);
 
     // Dump metrics to a string stream
     void DumpToStream(std::stringstream& ss);
