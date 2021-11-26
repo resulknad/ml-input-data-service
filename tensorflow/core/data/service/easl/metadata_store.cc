@@ -77,13 +77,23 @@ Status ModelMetrics::GetClientMetrics(
 
 void ModelMetrics:: DumpToStream(std::stringstream& ss){
   ss << "{ " << std::endl;
-  bool first = true;
+  bool first_w_count = true;
   for(auto pair : metrics_){
-    if(!first){ ss << "," << std::endl; first = false; } // Add comma before element, not for first though.
-    ss << "\"" << std::to_string(pair.first) << "\" : ";
-    ss << "{ \"get_next_time_ms\" : " << std::to_string(pair.second->get_next_time_ms()) << " , ";
-    ss << "\"inter_arrival_time_ms\" : " << std::to_string(pair.second->inter_arrival_time_ms()) << " }";
-    ss << std::endl;
+    if(!first_w_count){
+      ss << ", \n";
+      first_w_count = false;
+    }
+    ss << "{ \"worker_count\": " << std::to_string(*(pair.first)) << ", \"client_metrics\": { ";
+
+    bool first = true;
+    for ( auto client_metrics_pair : *(pair.second)){
+      if(!first){ ss << "," << std::endl; first = false; } // Add comma before element, not for first though.
+      ss << "\"" << std::to_string(client_metrics_pair.first) << "\" : ";
+      ss << "{ \"get_next_time_ms\" : " << std::to_string(client_metrics_pair.second->get_next_time_ms()) << " , ";
+      ss << "\"inter_arrival_time_ms\" : " << std::to_string(client_metrics_pair.second->inter_arrival_time_ms()) << " }";
+      ss << std::endl;
+    }
+    ss << " }";
   }
   ss << "}";
 }
