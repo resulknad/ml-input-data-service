@@ -2,7 +2,7 @@
 // Created by aymond on 26.11.21.
 //
 
-#include "tensorflow/core/data/service/easl/cache_utils.h"
+#include "tensorflow/core/data/service/easl/scaling_utils.h"
 
 #include <queue>
 #include "absl/container/flat_hash_set.h"
