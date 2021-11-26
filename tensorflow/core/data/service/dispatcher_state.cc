@@ -77,7 +77,7 @@ Status DispatcherState::Apply(const Update& update) {
       ReassignFreeWorkers();
       break;
     case Update::kJobTargetWorkerCountUpdate:
-      UpdateJobTargetWorkerCount(update.update_job_target_worker_count());
+      UpdateJobTargetWorkerCount(update.job_target_worker_count_update());
       break;
     case Update::UPDATE_TYPE_NOT_SET:
       return errors::Internal("Update type not set.");
