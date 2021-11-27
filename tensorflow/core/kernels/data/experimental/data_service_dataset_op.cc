@@ -385,7 +385,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
       // EASL - If it's time to dump the metrics to disk we do so.
       if (num_elements_ % metric_write_frequency_ == 0) {
-        write_metrics();
+        write_metrics(!num_elements_);
       }
 
       auto& result = results_.front();
@@ -1085,14 +1085,13 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       return dataset()->num_consumers_.has_value();
     }
 
-    void write_metrics() {
+    void write_metrics(bool first_time) {
       // Get the file location
       const std::string log_location = std::getenv("CACHEW_METRICS_DUMP");
       std::ofstream file(log_location, std::ios_base::app);
 
       // Check if file does not exist
-      struct stat buf;
-      if (stat(log_location.c_str(), &buf) == -1) {
+      if (first_time) {
         file << "batch_timestamp_ms,wait_time_ms,result_queue_size\n";
       }
 
