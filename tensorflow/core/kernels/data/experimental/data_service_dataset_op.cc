@@ -322,8 +322,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
       // EASL - metrics collection
       ++num_elements_;
-      batch_timestamps_ms_.push_back(Env::Default()->NowMicros() /
-        EnvTime::kMillisToMicros);
+      batch_timestamps_us_.push_back(Env::Default()->NowMicros());
 
       bool hadToWait = false;
       int64 start_us = Env::Default()->NowMicros();
@@ -1094,11 +1093,11 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
       // Check if file does not exist
       if (first_time) {
-        file << "batch_timestamp_ms,wait_time_ms,result_queue_size\n";
+        file << "batch_timestamp_us,wait_time_ms,result_queue_size\n";
       }
 
-      for (int i = 0; i < batch_timestamps_ms_.size(); ++i) {
-        file << batch_timestamps_ms_[i] << "," << wait_times_ms_[i] << ","
+      for (int i = 0; i < batch_timestamps_us_.size(); ++i) {
+        file << batch_timestamps_us_[i] << "," << wait_times_ms_[i] << ","
              << result_queue_size_[i] << "\n";
       }
 
@@ -1107,7 +1106,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       file.close();
 
       // Clear the metrics
-      batch_timestamps_ms_.clear();
+      batch_timestamps_us_.clear();
       wait_times_ms_.clear();
       result_queue_size_.clear();
     }
@@ -1178,7 +1177,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     // EASL metrics collection
     const uint32 metric_write_frequency_ = 50;
     int64 num_elements_ = 0;
-    std::vector<uint64> batch_timestamps_ms_;
+    std::vector<uint64> batch_timestamps_us_;
     std::vector<double> wait_times_ms_;
     std::vector<uint32> result_queue_size_;
   };
