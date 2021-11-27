@@ -348,6 +348,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         wait_time = Env::Default()->NowMicros() - wait_time; // EASL metrics
         wait_times_ms_.push_back((double)(wait_time) /
           EnvTime::kMillisToMicros); // EASL metrics
+        had_to_wait_.push_back(hadToWait);
         if (cancelled_) {
           VLOG(3) << "Returning from GetNext due to cancellation";
           return errors::Cancelled("Data service iterator was cancelled");
@@ -1093,12 +1094,12 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
       // Check if file does not exist
       if (first_time) {
-        file << "batch_timestamp_us,wait_time_ms,result_queue_size\n";
+        file << "batch_timestamp_us,wait_time_ms,had_to_wait,result_queue_size\n";
       }
 
       for (int i = 0; i < batch_timestamps_us_.size(); ++i) {
         file << batch_timestamps_us_[i] << "," << wait_times_ms_[i] << ","
-             << result_queue_size_[i] << "\n";
+             << had_to_wait_[i] << "," << result_queue_size_[i] << "\n";
       }
 
       // Flush and close
@@ -1109,6 +1110,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       batch_timestamps_us_.clear();
       wait_times_ms_.clear();
       result_queue_size_.clear();
+      had_to_wait_.clear();
     }
 
     const int64 iterator_index_;
@@ -1180,6 +1182,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     std::vector<uint64> batch_timestamps_us_;
     std::vector<double> wait_times_ms_;
     std::vector<uint32> result_queue_size_;
+    std::vector<bool> had_to_wait_;
   };
 
   const int op_version_;
