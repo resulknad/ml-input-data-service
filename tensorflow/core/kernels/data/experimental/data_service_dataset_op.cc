@@ -1090,6 +1090,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       const std::string log_location = std::getenv("CACHEW_METRICS_DUMP");
       std::ofstream file(log_location, std::ios_base::app);
 
+      VLOG(0) << "(WriteMetrics) CACHEW_METRICS_DUMP = " << log_location;
+
       // Check if file does not exist
       if (first_time) {
         file << "batch_timestamp_ms,wait_time_ms,result_queue_size\n";
