@@ -384,7 +384,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
       // EASL - If it's time to dump the metrics to disk we do so.
       if (num_elements_ % metric_write_frequency_ == 0) {
-        WriteMetrics(num_elements_ == 1);
+        WriteMetrics((num_elements_ / metric_write_frequency_) == 1);
       }
 
       auto& result = results_.front();
