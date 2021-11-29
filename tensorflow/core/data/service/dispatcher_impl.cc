@@ -503,6 +503,7 @@ Status DataServiceDispatcherImpl::GetSplit(const GetSplitRequest* request,
   TF_RETURN_IF_ERROR(CheckStarted());
   mutex_lock l(mu_);
   int64 job_id = request->job_id();
+  int64 task_id = request->task_id();
   int64 repetition = request->repetition();
   int64 provider_index = request->split_provider_index();
   VLOG(3) << "Received GetSplit request for job " << job_id << ", repetition "
@@ -523,6 +524,16 @@ Status DataServiceDispatcherImpl::GetSplit(const GetSplitRequest* request,
             << repetition;
     return Status::OK();
   }
+
+  // EASL - Check if this is not a "early ended" task
+  bool is_early_ended;
+  TF_RETURN_IF_ERROR(state_.IsEarlyEndedTask(job_id, task_id, is_early_ended)));
+  if (is_early_ended){
+    VLOG(0) << "EASL - Split provider returning eos for early terminated task " << task_id;
+    response->set_end_of_splits(true);
+    return Status::OK();
+  }
+
   SplitProvider* split_provider =
       split_providers_[job_id][provider_index].get();
   DCHECK(split_provider != nullptr);

@@ -261,6 +261,8 @@ class DispatcherState {
   Status TasksForWorker(const absl::string_view worker_address,
                         std::vector<std::shared_ptr<const Task>>& tasks) const;
 
+  Status IsEarlyEndedTask(const int64 job_id, const int64 task_id, bool& is_early_ended_task);
+
  private:
   void RegisterDataset(const RegisterDatasetUpdate& register_dataset);
   void RegisterWorker(const RegisterWorkerUpdate& register_worker);
@@ -319,6 +321,10 @@ class DispatcherState {
   absl::flat_hash_map<int64, std::vector<std::shared_ptr<Worker>>> workers_by_job_;
   // List of jobs associated with each worker, keyed by worker address.
   absl::flat_hash_map<std::string, JobsById> jobs_by_worker_;
+
+  // EASL - List of tasks for which the splitProvider should return eos, keyed by jobId.
+  // The values are a map from task id to task.
+  absl::flat_hash_map<int64, TasksById> ending_tasks_by_job_;
 };
 
 }  // namespace data

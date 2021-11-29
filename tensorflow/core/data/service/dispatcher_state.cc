@@ -17,6 +17,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <vector>
+#include <algorithm>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
@@ -75,7 +76,7 @@ Status DispatcherState::Apply(const Update& update) {
       break;
     case Update::kReassignFreeWorkers:
       ReassignFreeWorkers();
-      break;
+      break;i
     case Update::kJobTargetWorkerCountUpdate:
       UpdateJobTargetWorkerCount(update.job_target_worker_count_update());
       break;
@@ -133,6 +134,8 @@ void DispatcherState::CreateJob(const CreateJobUpdate& create_job) {
   DCHECK(!jobs_.contains(job_id));
   jobs_[job_id] = job;
   tasks_by_job_[job_id] = std::vector<std::shared_ptr<Task>>();
+  ending_tasks_by_job_[job_id] = TasksById();
+
   if (named_job_key.has_value()) {
     DCHECK(!named_jobs_.contains(named_job_key.value()) ||
            named_jobs_[named_job_key.value()]->garbage_collected);
@@ -275,6 +278,7 @@ void DispatcherState::FinishTask(const FinishTaskUpdate& finish_task) {
   task->finished = true;
   tasks_by_worker_[task->worker_address].erase(task->task_id);
   jobs_[task->job->job_id]->current_worker_count--;
+  ending_tasks_by_job_[task->job->job_id].erase(task->task_id);
 
   bool all_finished = true;
   for (const auto& task_for_job : tasks_by_job_[task->job->job_id]) {
@@ -294,6 +298,7 @@ void DispatcherState::FinishTask(const FinishTaskUpdate& finish_task) {
       jobs_by_worker_[worker->address].erase(task->job->job_id);
     }
     workers_by_job_[task->job->job_id].clear();
+    ending_tasks_by_job_[task->job->job_id].clear(); // Or erase?
   }
 }
 
@@ -434,10 +439,38 @@ void DispatcherState::ReassignFreeWorkers() {
 
 void DispatcherState::UpdateJobTargetWorkerCount(
     const JobTargetWorkerCountUpdate job_target_worker_count_update) {
-  DCHECK(jobs_.contains(job_target_worker_count_update.job_id()));
-  std::shared_ptr<Job> job = jobs_[job_target_worker_count_update.job_id()];
+  const int64 job_id = job_target_worker_count_update.job_id();
+  DCHECK(jobs_.contains(job_id));
+  std::shared_ptr<Job> job = jobs_[job_id];
 
-  job->target_worker_count = job_target_worker_count_update.target_worker_count();
+  if (job->target_worker_count < job_target_worker_count_update.target_worker_count()){
+    job->target_worker_count = job_target_worker_count_update.target_worker_count();
+  } else if (job->target_worker_count > job_target_worker_count_update.target_worker_count()){
+    uint64 num_tasks_to_end  =
+        job->target_worker_count - job_target_worker_count_update.target_worker_count();
+    job->target_worker_count = job_target_worker_count_update.target_worker_count();
+
+    // Create map of ending tasks.
+    /*if (!ending_tasks_by_job_.contains(job_id)){
+      ending_tasks_by_job_[job_id] = TasksById();
+    }*/
+
+    // Find tasks to end early
+    DCHECK(tasks_by_job_.contains(job_id));
+    std::vector<std::shared_ptr<Task>> current_tasks = tasks_by_job_[job_id];
+    for (int i=0; i<(current_tasks.size() && num_tasks_to_end>0); i++){
+      auto task = current_tasks[i];
+      // Only add to list if not already there.
+      if (!ending_tasks_by_job_[job_id].contains(task->task_id)){
+        ending_tasks_by_job_[job_id][task->task_id] = task;
+        num_tasks_to_end--;
+      }
+    }
+
+    if(num_tasks_to_end > 0){
+      VLOG(0) << "EASL (UpdateJobTargetWorkerCount) - not able to end enough tasks, check issue..";
+    }
+  }
 }
 
 std::vector<std::shared_ptr<const DispatcherState::Job>>
@@ -544,6 +577,12 @@ Status DispatcherState::TasksForWorker(
   for (const auto& task : worker_tasks) {
     tasks.push_back(task.second);
   }
+  return Status::OK();
+}
+
+Status DispatcherState::IsEarlyEndedTask(const int64 job_id, const int64 task_id, bool& is_early_ended_task){
+  DCHECK(ending_tasks_by_job_.contains(job_id));
+  is_early_ended_task = ending_tasks_by_job_[job_id].contains(task_id);
   return Status::OK();
 }
 

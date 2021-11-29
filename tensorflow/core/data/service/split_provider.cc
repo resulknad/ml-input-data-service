@@ -38,7 +38,7 @@ Status DataServiceSplitProvider::GetNext(Tensor* split, bool* end_of_splits) {
   }
   return grpc_util::Retry(
       [this, split, end_of_splits] {
-        return dispatcher_->GetSplit(job_id_, repetition_,
+        return dispatcher_->GetSplit(job_id_, task_id_, repetition_,
                                      split_provider_index_, *split,
                                      *end_of_splits);
       },

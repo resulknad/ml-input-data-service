@@ -63,8 +63,8 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
 
   // Gets the next split for the specified job id, repetition, and split
   // provider index.
-  Status GetSplit(int64 job_id, int64 repetition, int64 split_provider_index,
-                  Tensor& split, bool& end_of_splits);
+  Status GetSplit(int64 job_id, int64 task_id, int64 repetition,
+                  int64 split_provider_index, Tensor& split, bool& end_of_splits);
 
   // Registers a dataset with the tf.data service, and stores the generated
   // dataset id in `dataset_id`.

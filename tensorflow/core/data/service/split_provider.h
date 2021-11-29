@@ -34,12 +34,14 @@ class DataServiceSplitProvider : public SplitProvider {
  public:
   DataServiceSplitProvider(const std::string& address,
                            const std::string& protocol, int64 job_id,
-                           int64 split_provider_index, int64 timeout_ms)
+                           int64 split_provider_index, int64 timeout_ms,
+                           int64 task_id)
       : address_(address),
         protocol_(protocol),
         job_id_(job_id),
         split_provider_index_(split_provider_index),
-        timeout_ms_(timeout_ms) {}
+        timeout_ms_(timeout_ms),
+        task_id_(task_id){}
 
   Status GetNext(Tensor* split, bool* end_of_splits) override;
   Status Reset() override;
@@ -54,6 +56,9 @@ class DataServiceSplitProvider : public SplitProvider {
   const int64 job_id_;
   const int64 split_provider_index_;
   const int64 timeout_ms_;
+
+  // EASL - used to "end" one task earlier
+  const int64 task_id_;
 
   mutex mu_;
   int64 repetition_ = 0;

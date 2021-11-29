@@ -52,7 +52,7 @@ class ModelMetrics {
       absl::flat_hash_map<int64, std::shared_ptr<ModelMetrics::Metrics>>;
 
     using MetricsByWorkerCount =
-    absl::flat_hash_map<int64, std::shared_ptr<MetricsCollection>>;
+      absl::flat_hash_map<int64, std::shared_ptr<MetricsCollection>>;
 
     ModelMetrics() {}
 
