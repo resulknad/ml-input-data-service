@@ -176,15 +176,21 @@ Status DynamicWorkerCountUpdate(
     worker_count = MAX_WORKERS_PER_JOB;
     return Status::OK();
   }
-
-  if(dispatcher_config.scaling_policy() == 3){ // Alternate between 1 and 2 for testing.
-    if (current_worker_count < 2){
-      worker_count = 2;
-    } else {
-      worker_count = 1;
+  if(dispatcher_config.scaling_policy() == 3){
+    // Alternate between 1 and 2 for testing.
+    static int counter = 0;
+    counter++;
+    if ( counter > 10){
+      if (current_worker_count < 2){
+        worker_count = 2;
+      } else {
+        worker_count = 1;
+      }
+      counter = 0;
     }
     return Status::OK();
   }
+
 
   // TODO Check if split provider reached eos, in which case there is no point to scale up.
   worker_count = current_worker_count;
