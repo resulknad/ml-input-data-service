@@ -76,7 +76,7 @@ Status DispatcherState::Apply(const Update& update) {
       break;
     case Update::kReassignFreeWorkers:
       ReassignFreeWorkers();
-      break;i
+      break;
     case Update::kJobTargetWorkerCountUpdate:
       UpdateJobTargetWorkerCount(update.job_target_worker_count_update());
       break;
