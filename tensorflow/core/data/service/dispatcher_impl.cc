@@ -527,7 +527,7 @@ Status DataServiceDispatcherImpl::GetSplit(const GetSplitRequest* request,
 
   // EASL - Check if this is not a "early ended" task
   bool is_early_ended;
-  TF_RETURN_IF_ERROR(state_.IsEarlyEndedTask(job_id, task_id, is_early_ended)));
+  TF_RETURN_IF_ERROR(state_.IsEarlyEndedTask(job_id, task_id, is_early_ended));
   if (is_early_ended){
     VLOG(0) << "EASL - Split provider returning eos for early terminated task " << task_id;
     response->set_end_of_splits(true);
