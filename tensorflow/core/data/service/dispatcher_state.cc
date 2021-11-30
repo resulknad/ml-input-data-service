@@ -381,7 +381,7 @@ std::vector<std::shared_ptr<DispatcherState::Worker>>
 DispatcherState::ReserveWorkers(
     int64 job_id, int64 target_num_workers) {
   // DCHECK(num_workers <= avail_workers_.size()); 
-
+  jobs_[job_id]->target_worker_count = target_num_workers;
   // If the number of required workers is below those available, we just assign
   // as many as there are available at this epoch's scheduling time.
   int64 num_workers = target_num_workers <= 0 
