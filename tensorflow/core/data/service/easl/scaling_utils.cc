@@ -178,6 +178,7 @@ Status DynamicWorkerCountUpdate(
   }
   if(dispatcher_config.scaling_policy() == 3){
     // Alternate between 1 and 2 for testing.
+
     static int counter = 0;
     counter++;
     if ( counter > 20){
@@ -188,6 +189,9 @@ Status DynamicWorkerCountUpdate(
       }
       counter = 0;
     }
+    VLOG(0) << "EASL - Dynamic scaling, counter " << counter
+            << ", current_worker_count " << current_worker_count
+            << ", worker_count " << worker_count;
     return Status::OK();
   }
 
