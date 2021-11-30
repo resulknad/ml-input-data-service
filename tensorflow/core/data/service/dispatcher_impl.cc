@@ -1118,6 +1118,7 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
     TF_RETURN_IF_ERROR(
         service::easl::scaling_utils::DynamicWorkerCountUpdate(
             job->job_type, config_, metadata_store_, job->target_worker_count, target_worker_count));
+    do_reassign_workers = target_worker_count > job->current_worker_count;
     if (target_worker_count != job->target_worker_count) {
       Update update;
       JobTargetWorkerCountUpdate *job_target_worker_count_update =
