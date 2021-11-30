@@ -447,8 +447,12 @@ void DispatcherState::UpdateJobTargetWorkerCount(
   std::shared_ptr<Job> job = jobs_[job_id];
 
   if (job->target_worker_count < job_target_worker_count_update.target_worker_count()){
+    VLOG(0) << "EASL (UpdateJobTargetWorkerCount) - Increased worker count from "
+    << job->target_worker_count << " to target " << job_target_worker_count_update.target_worker_count();
     job->target_worker_count = job_target_worker_count_update.target_worker_count();
   } else if (job->target_worker_count > job_target_worker_count_update.target_worker_count()){
+    VLOG(0) << "EASL (UpdateJobTargetWorkerCount) - Decreased worker count from "
+            << job->target_worker_count << " to target " << job_target_worker_count_update.target_worker_count();
     uint64 num_tasks_to_end  =
         job->target_worker_count - job_target_worker_count_update.target_worker_count();
     job->target_worker_count = job_target_worker_count_update.target_worker_count();
@@ -468,11 +472,11 @@ void DispatcherState::UpdateJobTargetWorkerCount(
         ending_tasks_by_job_[job_id][task->task_id] = task;
         num_tasks_to_end--;
       }
+      if(num_tasks_to_end > 0){
+        VLOG(0) << "EASL (UpdateJobTargetWorkerCount) - not able to end enough tasks.";
+      }
     }
 
-    if(num_tasks_to_end > 0){
-      VLOG(0) << "EASL (UpdateJobTargetWorkerCount) - not able to end enough tasks, check issue..";
-    }
   }
 }
 
