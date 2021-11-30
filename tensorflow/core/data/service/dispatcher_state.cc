@@ -446,21 +446,16 @@ void DispatcherState::UpdateJobTargetWorkerCount(
   DCHECK(jobs_.contains(job_id));
   std::shared_ptr<Job> job = jobs_[job_id];
 
+  job->target_worker_count = job_target_worker_count_update.target_worker_count();
   if (job->target_worker_count < job_target_worker_count_update.target_worker_count()){
     VLOG(0) << "EASL (UpdateJobTargetWorkerCount) - Increased worker count from "
     << job->target_worker_count << " to target " << job_target_worker_count_update.target_worker_count();
-    job->target_worker_count = job_target_worker_count_update.target_worker_count();
-  } else if (job->target_worker_count > job_target_worker_count_update.target_worker_count()){
+  } else if (job->current_worker_count > job_target_worker_count_update.target_worker_count()){
+    // Remove only created tasks..
     VLOG(0) << "EASL (UpdateJobTargetWorkerCount) - Decreased worker count from "
             << job->target_worker_count << " to target " << job_target_worker_count_update.target_worker_count();
     uint64 num_tasks_to_end  =
-        job->target_worker_count - job_target_worker_count_update.target_worker_count();
-    job->target_worker_count = job_target_worker_count_update.target_worker_count();
-
-    // Create map of ending tasks.
-    /*if (!ending_tasks_by_job_.contains(job_id)){
-      ending_tasks_by_job_[job_id] = TasksById();
-    }*/
+        job->current_worker_count - job_target_worker_count_update.target_worker_count();
 
     // Find tasks to end early
     DCHECK(tasks_by_job_.contains(job_id));

@@ -1183,6 +1183,7 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
   }
   // Free the lock to reassign workers.
   if (do_reassign_workers){
+    VLOG(0) << "EASL - Calling reassign from client heartbeat";
     ReassignFreeWorkersAndCreateTasks();
   }
 
