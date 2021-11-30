@@ -461,7 +461,7 @@ void DispatcherState::UpdateJobTargetWorkerCount(
     // Find tasks to end early
     DCHECK(tasks_by_job_.contains(job_id));
     std::vector<std::shared_ptr<Task>> current_tasks = tasks_by_job_[job_id];
-    for (int i=0; i<(current_tasks.size() && num_tasks_to_end>0); i++){
+    for (int i=0; (i<current_tasks.size()) && num_tasks_to_end>0; i++){
       auto task = current_tasks[i];
       // Only add to list if not already there.
       if (!ending_tasks_by_job_[job_id].contains(task->task_id)){
