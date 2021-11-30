@@ -213,6 +213,8 @@ void DispatcherState::RemoveTask(const RemoveTaskUpdate& remove_task) {
     }
   }
   tasks_by_worker_[task->worker_address].erase(task->task_id);
+  avail_workers_[task->worker_address] = workers_[task->worker_address];
+  ending_tasks_by_job_[task->job->job_id].erase(task->task_id);
   tasks_.erase(task->task_id);
   VLOG(1) << "Removed task " << remove_task.task_id() << " from worker "
           << task->worker_address;
