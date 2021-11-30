@@ -180,7 +180,7 @@ Status DynamicWorkerCountUpdate(
     // Alternate between 1 and 2 for testing.
     static int counter = 0;
     counter++;
-    if ( counter > 10){
+    if ( counter > 20){
       if (current_worker_count < 2){
         worker_count = 2;
       } else {

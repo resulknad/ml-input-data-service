@@ -280,23 +280,24 @@ void DispatcherState::FinishTask(const FinishTaskUpdate& finish_task) {
   jobs_[task->job->job_id]->current_worker_count--;
   ending_tasks_by_job_[task->job->job_id].erase(task->task_id);
 
+  std::shared_ptr<Worker> worker = workers_[task->worker_address];
+  avail_workers_[worker->address] = worker;
+  jobs_by_worker_[worker->address].erase(task->job->job_id);
+  ending_tasks_by_job_[task->job->job_id].erase(task->task_id);
+  VLOG(0) << "(FinishTask) Releasing worker at address " << worker->address
+          << " for job " << task->job->job_id;
+
   bool all_finished = true;
   for (const auto& task_for_job : tasks_by_job_[task->job->job_id]) {
     if (!task_for_job->finished) {
       all_finished = false;
     }
   }
-  VLOG(0) << "(FinishTask) Job " << task->job->job_id << " finished: " 
-          << all_finished;
   jobs_[task->job->job_id]->finished = all_finished;
   // When a job completes, mark its workers as available
   if (all_finished) {
-    for (auto& worker : workers_by_job_[task->job->job_id]) {
-      VLOG(0) << "(FinishTask) Releasing worker at address " << worker->address
-              << " for job " << task->job->job_id;
-      avail_workers_[worker->address] = worker;
-      jobs_by_worker_[worker->address].erase(task->job->job_id);
-    }
+    VLOG(0) << "(FinishTask) Job " << task->job->job_id << " finished: "
+            << all_finished;
     workers_by_job_[task->job->job_id].clear();
     ending_tasks_by_job_[task->job->job_id].clear(); // Or erase?
   }
