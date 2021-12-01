@@ -192,11 +192,11 @@ void DispatcherState::GarbageCollectJob(
   jobs_[job_id]->garbage_collected = true;
 
   // EASL - Update available workers.
-  for (auto& worker : workers_by_job_[job_id]) {
-    VLOG(0) << "(GarbageCollectJob) Releasing worker at address " << worker->address
+  for (auto worker_it = workers_by_job_[job_id].begin(); worker_it != workers_by_job_[job_id].end(); ++it) {
+    VLOG(0) << "(GarbageCollectJob) Releasing worker at address " << worker_it->first
             << " for job " << job_id;
-    avail_workers_[worker->address] = worker;
-    jobs_by_worker_[worker->address].erase(job_id);
+    avail_workers_[worker_it->first] = worker_it->second;
+    jobs_by_worker_[worker_it->first].erase(job_id);
   }
   workers_by_job_[job_id].clear();
 }
@@ -285,6 +285,7 @@ void DispatcherState::FinishTask(const FinishTaskUpdate& finish_task) {
   std::shared_ptr<Worker> worker = workers_[task->worker_address];
   avail_workers_[worker->address] = worker;
   jobs_by_worker_[worker->address].erase(task->job->job_id);
+  workers_by_job_[task->job->job_id].erase(task->worker_address);
   ending_tasks_by_job_[task->job->job_id].erase(task->task_id);
   VLOG(0) << "(FinishTask) Releasing worker at address " << worker->address
           << " for job " << task->job->job_id;
@@ -377,7 +378,7 @@ DispatcherState::ListAvailableWorkers() const {
   return workers;
 }
 
-std::vector<std::shared_ptr<DispatcherState::Worker>>
+std::vector<std::shared_ptr<const DispatcherState::Worker>>
 DispatcherState::ReserveWorkers(
     int64 job_id, int64 target_num_workers) {
   // DCHECK(num_workers <= avail_workers_.size()); 
@@ -396,7 +397,7 @@ DispatcherState::ReserveWorkers(
     workers.push_back(it->second);
     VLOG(0) << "(ReserveWorkers) Assigning worker at address " 
             << it->second->address << " to job " << job_id;
-    workers_by_job_[job_id].push_back(it->second);
+    workers_by_job_[job_id][it->second->address] = it->second;
     jobs_by_worker_[it->second->address][job_id] = jobs_[job_id];
     avail_workers_.erase(it++);
     if (num_workers == 0)
@@ -415,7 +416,7 @@ void DispatcherState::ReassignFreeWorkers() {
     // Went through all jobs, can return
     return;
   }
-
+  VLOG(0) << "EASL (ReassignFreeWorkers) - avail_workers_.size() " << avail_workers_.size();
   for(auto it = avail_workers_.begin(); it != avail_workers_.end(); it++){
     // Get a job in need of workers
     std::shared_ptr<Job> job = job_iter->second;
@@ -433,7 +434,7 @@ void DispatcherState::ReassignFreeWorkers() {
             << it->second->address << " to job " << job->job_id;
 
     // Assign one worker to the job
-    workers_by_job_[job->job_id].push_back(it->second);
+    workers_by_job_[job->job_id][it->second->address] = it->second;
     jobs_by_worker_[it->second->address][job->job_id] = jobs_[job->job_id];
     avail_workers_.erase(it);
 

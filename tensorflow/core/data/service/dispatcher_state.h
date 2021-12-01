@@ -202,6 +202,7 @@ class DispatcherState {
 
   using TasksById = absl::flat_hash_map<int64, std::shared_ptr<Task>>;
   using JobsById = absl::flat_hash_map<int64, std::shared_ptr<Job>>;
+  using WorkersByAddress = absl::flat_hash_map<std::string, std::shared_ptr<Worker>>;
 
   // Returns the next available dataset id.
   int64 NextAvailableDatasetId() const;
@@ -226,7 +227,7 @@ class DispatcherState {
   // Reserves a number of available workers for a particular job. If num_workers
   // is lower than or equal to 0, then the reserved number of workers is equal
   // to all the available workers.
-  std::vector<std::shared_ptr<Worker>> ReserveWorkers(int64 job_id, 
+  std::vector<std::shared_ptr<const Worker>> ReserveWorkers(int64 job_id,
     int64 num_workers = 0);
 
   // Returns the next available job id.
@@ -318,7 +319,7 @@ class DispatcherState {
   // task.
   absl::flat_hash_map<std::string, TasksById> tasks_by_worker_;
   // List of workers associated with each job.
-  absl::flat_hash_map<int64, std::vector<std::shared_ptr<Worker>>> workers_by_job_;
+  absl::flat_hash_map<int64, WorkersByAddress> workers_by_job_;
   // List of jobs associated with each worker, keyed by worker address.
   absl::flat_hash_map<std::string, JobsById> jobs_by_worker_;
 
