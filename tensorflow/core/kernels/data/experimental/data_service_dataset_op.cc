@@ -713,7 +713,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           // Remove already-known tasks from `task_id_to_task`, so that at the
           // end of the loop, only new tasks remain.
           task_id_to_task.erase(task->info.task_id());
-          ++index;
+          //++index;
         } else {
           // Task has been removed.
           if (task->end_of_sequence) {
@@ -730,6 +730,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
               AdvanceTaskIndex();
             }
           } else {
+            ++index;
             VLOG(0) << "Avoided removing task which is not done..";
           }
         }
