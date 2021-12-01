@@ -261,7 +261,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     }
 
     ~Iterator() override {
-      VLOG(1) << "Destroying data service dataset iterator for job id "
+      // TODO (DADA) - revert to 1
+      VLOG(0) << "Destroying data service dataset iterator for job id "
               << job_client_id_;
       CancelThreads();
       if (deregister_fn_) deregister_fn_();

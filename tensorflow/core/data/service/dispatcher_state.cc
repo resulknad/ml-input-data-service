@@ -466,6 +466,7 @@ void DispatcherState::UpdateJobTargetWorkerCount(
       if (!ending_tasks_by_job_[job_id].contains(task->task_id)){
         ending_tasks_by_job_[job_id][task->task_id] = task;
         num_tasks_to_end--;
+        VLOG(0) << "EASL - (UpdateJobTargetWorkerCount) - ending task " << task->task_id;
       }
       if(num_tasks_to_end > 0){
         VLOG(0) << "EASL (UpdateJobTargetWorkerCount) - not able to end enough tasks.";

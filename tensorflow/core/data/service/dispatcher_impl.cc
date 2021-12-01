@@ -544,7 +544,8 @@ Status DataServiceDispatcherImpl::GetSplit(const GetSplitRequest* request,
       job_id, repetition, request->split_provider_index(), end_of_splits));
   response->set_end_of_splits(end_of_splits);
   if (end_of_splits) {
-    VLOG(0) << "EASL - (GetSplit) split provider reached eos for job " << job_id;
+    VLOG(0) << "EASL - (GetSplit) split provider reached eos for job " << job_id
+    << " and task " << task_id;
     // Reset the split provider to prepare for the next repetition.
     TF_RETURN_IF_ERROR(split_providers_[job_id][provider_index]->Reset());
   } else {
