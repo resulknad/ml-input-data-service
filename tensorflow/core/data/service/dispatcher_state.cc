@@ -388,7 +388,7 @@ DispatcherState::ReserveWorkers(
   int64 num_workers = target_num_workers <= 0 
     || target_num_workers > avail_workers_.size() ? avail_workers_.size() 
     : target_num_workers;
-  std::vector<std::shared_ptr<Worker>> workers;
+  std::vector<std::shared_ptr<const Worker>> workers;
   workers.reserve(num_workers);
   VLOG(0) << "(ReserveWorkers) User got " << num_workers << " workers from " 
           << "target " << target_num_workers << " workers";
