@@ -192,11 +192,11 @@ void DispatcherState::GarbageCollectJob(
   jobs_[job_id]->garbage_collected = true;
 
   // EASL - Update available workers.
-  for (auto worker_it = workers_by_job_[job_id].begin(); worker_it != workers_by_job_[job_id].end(); ++it) {
-    VLOG(0) << "(GarbageCollectJob) Releasing worker at address " << worker_it->first
+  for (auto it = workers_by_job_[job_id].begin(); it != workers_by_job_[job_id].end(); ++it) {
+    VLOG(0) << "(GarbageCollectJob) Releasing worker at address " << it->first
             << " for job " << job_id;
-    avail_workers_[worker_it->first] = worker_it->second;
-    jobs_by_worker_[worker_it->first].erase(job_id);
+    avail_workers_[it->first] = it->second;
+    jobs_by_worker_[it->first].erase(job_id);
   }
   workers_by_job_[job_id].clear();
 }
