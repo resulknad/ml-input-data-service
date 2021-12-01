@@ -446,14 +446,13 @@ void DispatcherState::UpdateJobTargetWorkerCount(
   DCHECK(jobs_.contains(job_id));
   std::shared_ptr<Job> job = jobs_[job_id];
 
-  job->target_worker_count = job_target_worker_count_update.target_worker_count();
   if (job->target_worker_count < job_target_worker_count_update.target_worker_count()){
     VLOG(0) << "EASL (UpdateJobTargetWorkerCount) - Increased worker count from "
     << job->target_worker_count << " to target " << job_target_worker_count_update.target_worker_count();
   } else if (job->current_worker_count > job_target_worker_count_update.target_worker_count()){
     // Remove only created tasks..
     VLOG(0) << "EASL (UpdateJobTargetWorkerCount) - Decreased worker count from "
-            << job->target_worker_count << " to target " << job_target_worker_count_update.target_worker_count();
+            << job->current_worker_count << " to target " << job_target_worker_count_update.target_worker_count();
     uint64 num_tasks_to_end  =
         job->current_worker_count - job_target_worker_count_update.target_worker_count();
 
@@ -474,6 +473,8 @@ void DispatcherState::UpdateJobTargetWorkerCount(
     }
 
   }
+  job->target_worker_count = job_target_worker_count_update.target_worker_count();
+
 }
 
 std::vector<std::shared_ptr<const DispatcherState::Job>>

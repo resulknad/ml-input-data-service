@@ -1121,7 +1121,6 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
             job->job_type, config_, metadata_store_, job->target_worker_count, target_worker_count));
     do_reassign_workers = target_worker_count > job->current_worker_count;
     if (target_worker_count != job->target_worker_count) {
-      VLOG(0) << "Would update target_worker_count";
       Update update;
       JobTargetWorkerCountUpdate *job_target_worker_count_update =
           update.mutable_job_target_worker_count_update();
