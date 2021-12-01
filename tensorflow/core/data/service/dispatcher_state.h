@@ -314,7 +314,7 @@ class DispatcherState {
   // Tasks, keyed by task ids.
   TasksById tasks_;
   // List of tasks associated with each job.
-  absl::flat_hash_map<int64, std::vector<std::shared_ptr<Task>>> tasks_by_job_;
+  absl::flat_hash_map<int64, TasksById> tasks_by_job_;
   // Tasks, keyed by worker addresses. The values are a map from task id to
   // task.
   absl::flat_hash_map<std::string, TasksById> tasks_by_worker_;

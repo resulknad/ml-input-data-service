@@ -133,7 +133,7 @@ void DispatcherState::CreateJob(const CreateJobUpdate& create_job) {
                                    create_job.job_type(), create_job.target_worker_count());
   DCHECK(!jobs_.contains(job_id));
   jobs_[job_id] = job;
-  tasks_by_job_[job_id] = std::vector<std::shared_ptr<Task>>();
+  tasks_by_job_[job_id] = TasksById();
   ending_tasks_by_job_[job_id] = TasksById();
 
   if (named_job_key.has_value()) {
@@ -184,9 +184,9 @@ void DispatcherState::ReleaseJobClient(
 void DispatcherState::GarbageCollectJob(
     const GarbageCollectJobUpdate& garbage_collect_job) {
   int64 job_id = garbage_collect_job.job_id();
-  for (auto& task : tasks_by_job_[job_id]) {
-    task->finished = true;
-    tasks_by_worker_[task->worker_address].erase(task->task_id);
+  for(auto it=tasks_by_job_[job_id].begin(); it!=tasks_by_job_[job_id].end(); it++){
+    it->second->finished = true;
+    tasks_by_worker_[it->second->worker_address].erase(it->second->task_id);
   }
   jobs_[job_id]->finished = true;
   jobs_[job_id]->garbage_collected = true;
@@ -205,13 +205,7 @@ void DispatcherState::RemoveTask(const RemoveTaskUpdate& remove_task) {
   std::shared_ptr<Task>& task = tasks_[remove_task.task_id()];
   DCHECK(task);
   task->removed = true;
-  auto& tasks_for_job = tasks_by_job_[task->job->job_id];
-  for (auto it = tasks_for_job.begin(); it != tasks_for_job.end(); ++it) {
-    if ((*it)->task_id == task->task_id) {
-      tasks_for_job.erase(it);
-      break;
-    }
-  }
+  tasks_by_job_[task->job->job_id].erase(task->task_id);
   tasks_by_worker_[task->worker_address].erase(task->task_id);
   avail_workers_[task->worker_address] = workers_[task->worker_address];
   ending_tasks_by_job_[task->job->job_id].erase(task->task_id);
@@ -252,7 +246,7 @@ void DispatcherState::ClientHeartbeat(
       VLOG(1) << "Promoting task " << task.task->task_id
               << " from pending to active";
       task.task->starting_round = task.target_round;
-      tasks_by_job_[job->job_id].push_back(task.task);
+      tasks_by_job_[job->job_id][task.task->task_id] = task.task;
       job->pending_tasks.pop();
     }
   }
@@ -267,7 +261,7 @@ void DispatcherState::CreateTask(const CreateTaskUpdate& create_task) {
   task = std::make_shared<Task>(task_id, job, create_task.worker_address(),
                                 create_task.transfer_address(), create_task.dataset_key());
   job->current_worker_count++;
-  tasks_by_job_[create_task.job_id()].push_back(task);
+  tasks_by_job_[create_task.job_id()][task->task_id] = task;
   tasks_by_worker_[create_task.worker_address()][task->task_id] = task;
   next_available_task_id_ = std::max(next_available_task_id_, task_id + 1);
 }
@@ -280,19 +274,20 @@ void DispatcherState::FinishTask(const FinishTaskUpdate& finish_task) {
   task->finished = true;
   tasks_by_worker_[task->worker_address].erase(task->task_id);
   jobs_[task->job->job_id]->current_worker_count--;
-  ending_tasks_by_job_[task->job->job_id].erase(task->task_id);
+  // Do not remove ended tasks because it's used as a reference for already ended tasks.
+  ending_tasks_by_job_[task->job->job_id].erase(task_id);
+  tasks_by_job_[task->job->job_id].erase(task_id);
 
   std::shared_ptr<Worker> worker = workers_[task->worker_address];
   avail_workers_[worker->address] = worker;
   jobs_by_worker_[worker->address].erase(task->job->job_id);
   workers_by_job_[task->job->job_id].erase(task->worker_address);
-  ending_tasks_by_job_[task->job->job_id].erase(task->task_id);
   VLOG(0) << "(FinishTask) Releasing worker at address " << worker->address
           << " for job " << task->job->job_id;
 
   bool all_finished = true;
-  for (const auto& task_for_job : tasks_by_job_[task->job->job_id]) {
-    if (!task_for_job->finished) {
+  for(auto it = tasks_by_job_[task->job->job_id].begin(); it != tasks_by_job_[task->job->job_id].end(); ++it){
+    if (!it->second->finished) {
       all_finished = false;
     }
   }
@@ -459,20 +454,21 @@ void DispatcherState::UpdateJobTargetWorkerCount(
 
     // Find tasks to end early
     DCHECK(tasks_by_job_.contains(job_id));
-    std::vector<std::shared_ptr<Task>> current_tasks = tasks_by_job_[job_id];
-    for (int i=0; (i<current_tasks.size()) && num_tasks_to_end>0; i++){
-      auto task = current_tasks[i];
+    TasksById current_tasks = tasks_by_job_[job_id];
+    auto it = current_tasks.begin();
+    for (int i=0; it!=current_tasks.end() && num_tasks_to_end>0; i++){
+      auto task = it->second;
       // Only add to list if not already there.
       if (!ending_tasks_by_job_[job_id].contains(task->task_id)){
         ending_tasks_by_job_[job_id][task->task_id] = task;
         num_tasks_to_end--;
         VLOG(0) << "EASL - (UpdateJobTargetWorkerCount) - ending task " << task->task_id;
       }
-      if(num_tasks_to_end > 0){
-        VLOG(0) << "EASL (UpdateJobTargetWorkerCount) - not able to end enough tasks.";
-      }
+      it++;
     }
-
+    if(num_tasks_to_end > 0){
+      VLOG(0) << "EASL (UpdateJobTargetWorkerCount) - not able to end enough tasks.";
+    }
   }
   job->target_worker_count = job_target_worker_count_update.target_worker_count();
 
@@ -562,8 +558,8 @@ Status DispatcherState::TasksForJob(
   }
   tasks.clear();
   tasks.reserve(it->second.size());
-  for (const auto& task : it->second) {
-    tasks.push_back(task);
+  for(auto task_it=it->second.begin(); task_it!=it->second.end(); task_it++) {
+    tasks.push_back(task_it->second);
   }
   return Status::OK();
 }
