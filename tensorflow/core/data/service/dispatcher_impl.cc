@@ -894,6 +894,12 @@ Status DataServiceDispatcherImpl::CreateJob(
   VLOG(0) << "EASL - Caching decision for dataset_key " 
             << compute_dataset_key << ": " << job_type;
 
+
+  // MUYU, firstly check the local_workers from the client
+  absl::flat_hash_set<std::string> local_workers;
+  local_workers.insert(request.local_workers().cbegin(),
+                       request.local_workers().cend());
+
   // Infer the worker count for  this job and job type
   int64 total_workers = state_.ListWorkers().size();
   TF_RETURN_IF_ERROR(service::easl::cache_utils::DetermineElasticity(job_type, 
@@ -930,6 +936,12 @@ Status DataServiceDispatcherImpl::CreateJob(
   create_job->set_num_split_providers(num_split_providers);
 
   create_job->set_if_use_local_workers(if_use_local_workers);
+  *create_job->mutable_local_workers() =
+          {local_workers.begin(), local_workers.end()};
+
+  for (auto worker: local_workers) {
+    VLOG(1) << "EASL-MUYU (CreateJob) local_workers: " << worker;
+  }
 
   if (request.has_job_key()) {
     NamedJobKeyDef* key = create_job->mutable_named_job_key();
@@ -946,6 +958,10 @@ Status DataServiceDispatcherImpl::CreateJob(
 
   VLOG(1) << "EASL-MUYU(DataServiceDispatcherImpl::CreateJob) if_use_local_workers flag is set: "
     << job->if_use_local_workers;
+
+  for (auto worker: job->local_workers) {
+    VLOG(1) << "EASL-MUYU (CreateJob-after) local_workers: " << worker;
+  }
 
   return Status::OK();
 }
@@ -997,7 +1013,7 @@ Status DataServiceDispatcherImpl::CreateTasksForJob(
     std::vector<std::shared_ptr<const Task>>& tasks)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   std::vector<std::shared_ptr<Worker>> workers = state_.ReserveWorkers(
-    job->job_id, job->worker_count);
+    job->job_id, job->worker_count, job->if_use_local_workers, job->local_workers);
   if (workers.size() < job->worker_count){
     VLOG(0)
     << "EASL - Not enough workers for job. Elasticity policy requires "

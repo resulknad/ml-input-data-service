@@ -119,7 +119,7 @@ message JobKey {
   int64 job_name_index = 2;
 }
 
-// Next tag: 10
+// Next tag: 11
 message GetOrCreateJobRequest {
   reserved 2, 3, 4;
   // The id of the dataset to create a job for.
@@ -136,6 +136,9 @@ message GetOrCreateJobRequest {
   }
   // Specifies which workers the client of this job reads from.
   TargetWorkers target_workers = 9;
+
+  // MUYU's changes
+  repeated string local_workers = 10;
 }
 
 // Next tag: 2

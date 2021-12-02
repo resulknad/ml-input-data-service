@@ -151,7 +151,9 @@ class DispatcherState {
                  TargetWorkers target_workers,
                  const std::string& job_type,
                  int64 worker_count,
-                 bool if_use_local_workers = false)
+                 bool if_use_local_workers = false,
+                 absl::flat_hash_set<std::string> local_workers = {}
+                 )
         : job_id(job_id),
           dataset_id(dataset_id),
           processing_mode(processing_mode),
@@ -160,7 +162,9 @@ class DispatcherState {
           job_type(job_type),
           worker_count(worker_count),
           target_workers(target_workers),
-          if_use_local_workers(if_use_local_workers){
+          if_use_local_workers(if_use_local_workers),
+          local_workers(local_workers)
+          {
       if (IsDynamicShard(processing_mode)) {
         distributed_epoch_state = DistributedEpochState(num_split_providers);
       }
@@ -194,6 +198,8 @@ class DispatcherState {
     const int64 worker_count;
     // EASL: indicate whether this job should be processed locally
     const bool if_use_local_workers;
+    // EASL: list of local workers in the client
+    absl::flat_hash_set<std::string> local_workers;
   };
 
   struct Task {
@@ -247,7 +253,10 @@ class DispatcherState {
   // is lower than or equal to 0, then the reserved number of workers is equal
   // to all the available workers.
   std::vector<std::shared_ptr<Worker>> ReserveWorkers(int64 job_id, 
-    int64 num_workers = 0);
+    int64 num_workers = 0,
+    bool if_use_local_workers = false,
+    const absl::flat_hash_set<std::string> local_workers = {}
+    );
 
   // Returns the next available job id.
   int64_t NextAvailableJobId() const;

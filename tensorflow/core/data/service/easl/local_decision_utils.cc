@@ -35,8 +35,12 @@ Status DecideIfLocal(
 
     // Pipeline stats: last TF node metrics
     std::shared_ptr<NodeMetrics> last_tf_node_metrics;
-    s = metadata_store.GetLastTFNodeMetricsByDatasetKey(
-            dataset_key, last_tf_node_metrics);
+
+//    s = metadata_store.GetLastTFNodeMetricsByDatasetKey(
+//            dataset_key, last_tf_node_metrics);
+    s = metadata_store.GetLastNodeMetricsByDatasetKey(
+            dataset_key, last_tf_node_metrics
+            );
     if (!s.ok()) {
         VLOG(0) << "(DecideIfLocal) Failed to get the last TF node metrics";
         return s;

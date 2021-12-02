@@ -326,7 +326,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             return dispatcher_->GetOrCreateJob(
                 dataset()->dataset_id_, dataset()->processing_mode_, key,
                 dataset()->num_consumers_, dataset()->target_workers_,
-                job_client_id_);
+                job_client_id_,
+                LocalWorkers::GetList()
+                );
           },
           /*description=*/
           strings::StrCat("get or create job with dispatcher at ",

@@ -136,6 +136,11 @@ void DispatcherState::CreateJob(const CreateJobUpdate& create_job) {
                                    create_job.job_type(), create_job.worker_count(),
                                    create_job.if_use_local_workers());
 
+  for (auto worker: create_job.local_workers()) {
+    VLOG(1) << "EASL-MUYU (DispatcherState::CreateJob): worker " << worker;
+    job->local_workers.insert(worker);
+  }
+
   DCHECK(!jobs_.contains(job_id));
   jobs_[job_id] = job;
   tasks_by_job_[job_id] = std::vector<std::shared_ptr<Task>>();
@@ -371,7 +376,10 @@ DispatcherState::ListAvailableWorkers() const {
 
 std::vector<std::shared_ptr<DispatcherState::Worker>>
 DispatcherState::ReserveWorkers(
-    int64 job_id, int64 target_num_workers) {
+    int64 job_id, int64 target_num_workers,
+    // MUYU's modification
+    bool if_use_local_workers,
+    const absl::flat_hash_set<std::string> local_workers) {
   // DCHECK(num_workers <= avail_workers_.size()); 
 
   // If the number of required workers is below those available, we just assign
@@ -383,7 +391,25 @@ DispatcherState::ReserveWorkers(
   workers.reserve(num_workers);
   VLOG(0) << "(ReserveWorkers) User got " << num_workers << " workers from " 
           << "target " << target_num_workers << " workers";
+  VLOG(0) << "(ReserveWorkers) IF_USE_LOCAL_WORKERS is set to " << if_use_local_workers;
+
+  for (auto worker: local_workers) {
+    VLOG(1) << "EASL-MUYU (ReserveWorkers) local_workers: " << worker;
+  }
+
   for (auto it = avail_workers_.begin(); it != avail_workers_.end(); ) {
+    if (if_use_local_workers && local_workers.count(it->first) == 0) {
+      VLOG(0) << "EASL-MUYU (ReserveWorkers): local_worker mode is set "
+                 "And we can't find the worker: " << it->first <<
+                 " in the job local worker list";
+      it++;
+      continue;
+    }
+    else if (if_use_local_workers) {
+      VLOG(0) << "EASL-MUYU (ReserveWorkers): local_worker mode is set "
+                 "And we find the worker: " << it->first <<
+              " in the job local worker list";
+    }
     num_workers--;
     workers.push_back(it->second);
     VLOG(0) << "(ReserveWorkers) Assigning worker at address " 
