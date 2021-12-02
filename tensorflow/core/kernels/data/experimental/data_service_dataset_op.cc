@@ -796,7 +796,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         if (it == task_id_to_task.end()) {
           continue;
         }
-        if (!ShouldReadFromTask(task)) {
+        if (!ShouldReadFromTask(task, resp.if_use_local_workers())) {
           VLOG(3) << "Skipping untargeted worker task " << task.task_id();
           should_finish_job_ = false;
           continue;
@@ -810,7 +810,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       }
     }
 
-    bool ShouldReadFromTask(const TaskInfo& task) const
+    bool ShouldReadFromTask(const TaskInfo& task, const bool if_use_local_workers) const
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       if (StrictRoundRobin()) {
         return true;
@@ -818,9 +818,47 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
       const bool is_local_task =
           (LocalWorkers::Get(task.worker_address()) != nullptr);
-      if (dataset()->target_workers_ == TARGET_WORKERS_LOCAL &&
-          !is_local_task) {
-        return false;
+
+      if (if_use_local_workers) {
+          VLOG(1) << "EASL-MUYU: IF_USE_LOCAL_WORKERS is true";
+          if (is_local_task) {
+              VLOG(1) << "EASL-MUYU(IF_USE_LOCAL_WORKERS): the worker address is: ("
+                    << task.worker_address() <<
+                    "), which is local. CHOOSE IT!!";
+          }
+          else {
+              VLOG(1) << "EASL-MUYU(IF_USE_LOCAL_WORKERS): the worker address is: ("
+                      << task.worker_address() <<
+                      "), which is NOT local. DON'T CHOOSE IT!!";
+              return false;
+          }
+      }
+      else {
+          VLOG(1) << "EASL-MUYU: IF_USE_LOCAL_WORKERS is false, do nothing";
+      }
+
+//      if (dataset()->target_workers_ == TARGET_WORKERS_LOCAL &&
+//        !is_local_task) {
+//          VLOG(1) << "EASL-MUYU: TARGET_WORKERS_LOCAL is set. "
+//          return false;
+//      }
+
+      if (dataset()->target_workers_ == TARGET_WORKERS_LOCAL) {
+          VLOG(1) << "EASL-MUYU: TARGET_WORKERS_TAG is set";
+          if (is_local_task) {
+              VLOG(1) << "EASL-MUYU(TARGET_WORKERS_TAG): the worker address is: ("
+                      << task.worker_address() <<
+                      "), which is local. CHOOSE IT!!";
+          }
+          else {
+              VLOG(1) << "EASL-MUYU(TARGET_WORKERS_TAG): the worker address is: ("
+                      << task.worker_address() <<
+                      "), which is NOT local. DON'T CHOOSE IT!!";
+              return false;
+          }
+      }
+      else {
+          VLOG(1) << "EASL-MUYU: TARGET_WORKERS_TAG is not set, do nothing";
       }
 
       // Cross-TF/TPU host reads may cause resource contention on the TF/TPU

@@ -928,6 +928,9 @@ Status DataServiceDispatcherImpl::CreateJob(
   create_job->set_job_type(job_type);
   create_job->set_worker_count(worker_count);
   create_job->set_num_split_providers(num_split_providers);
+
+  create_job->set_if_use_local_workers(if_use_local_workers);
+
   if (request.has_job_key()) {
     NamedJobKeyDef* key = create_job->mutable_named_job_key();
     key->set_name(request.job_key().job_name());
@@ -940,6 +943,10 @@ Status DataServiceDispatcherImpl::CreateJob(
   create_job->set_target_workers(request.target_workers());
   TF_RETURN_IF_ERROR(Apply(update));
   TF_RETURN_IF_ERROR(state_.JobFromId(job_id, job));
+
+  VLOG(1) << "EASL-MUYU(DataServiceDispatcherImpl::CreateJob) if_use_local_workers flag is set: "
+    << job->if_use_local_workers;
+
   return Status::OK();
 }
 
@@ -1224,6 +1231,9 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
     task_info->set_starting_round(task->starting_round);
   }
   response->set_job_finished(job->finished);
+
+  response->set_if_use_local_workers(job->if_use_local_workers);
+
   VLOG(4) << "Found " << response->task_info_size()
           << " tasks for job client id " << request->job_client_id();
   return Status::OK();

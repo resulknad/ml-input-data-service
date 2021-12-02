@@ -196,6 +196,8 @@ message ClientHeartbeatResponse {
   }
   // Whether the job has finished.
   bool job_finished = 2;
+  // EASL: to check whether we should use local workers (based on last epoch's metrics)
+  bool if_use_local_workers = 4;
 }
 
 // Next tag: 3

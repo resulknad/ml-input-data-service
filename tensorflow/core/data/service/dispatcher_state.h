@@ -150,7 +150,8 @@ class DispatcherState {
                  absl::optional<int64> num_consumers,
                  TargetWorkers target_workers,
                  const std::string& job_type,
-                 int64 worker_count)
+                 int64 worker_count,
+                 bool if_use_local_workers = false)
         : job_id(job_id),
           dataset_id(dataset_id),
           processing_mode(processing_mode),
@@ -158,7 +159,8 @@ class DispatcherState {
           num_consumers(num_consumers),
           job_type(job_type),
           worker_count(worker_count),
-          target_workers(target_workers) {
+          target_workers(target_workers),
+          if_use_local_workers(if_use_local_workers){
       if (IsDynamicShard(processing_mode)) {
         distributed_epoch_state = DistributedEpochState(num_split_providers);
       }
@@ -190,6 +192,8 @@ class DispatcherState {
     // EASL
     const std::string job_type;
     const int64 worker_count;
+    // EASL: indicate whether this job should be processed locally
+    const bool if_use_local_workers;
   };
 
   struct Task {
