@@ -709,8 +709,6 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       int index = 0;
       while (index < tasks_.size()) {
         std::shared_ptr<Task> task = tasks_[index];
-        VLOG(0) << "EASL (UpdateTasks) - index " << index << ", task->eos " << task->end_of_sequence
-        << ", task_id " << task->info.task_id();
         if (task_id_to_task.contains(task->info.task_id())) {
           // Remove already-known tasks from `task_id_to_task`, so that at the
           // end of the loop, only new tasks remain.

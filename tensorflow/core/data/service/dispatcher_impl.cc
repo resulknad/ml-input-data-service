@@ -332,7 +332,7 @@ Status DataServiceDispatcherImpl::ReassignFreeWorkersAndCreateTasks() TF_LOCKS_E
     }
   }
   TF_RETURN_IF_ERROR(AssignTasks(tasks));
-  VLOG(0) << "EASL - Reassigned free workers and created " << tasks.size() << " new tasks";
+  VLOG(3) << "EASL - Reassigned free workers and created " << tasks.size() << " new tasks";
 
   return Status::OK();
 };
@@ -519,7 +519,8 @@ Status DataServiceDispatcherImpl::GetSplit(const GetSplitRequest* request,
       job->distributed_epoch_state.value().repetitions[provider_index];
   if (repetition < current_repetition) {
     response->set_end_of_splits(true);
-    VLOG(3) << "Returning end_of_splits since current reptition "
+    // TODO (dada) reset to 3
+    VLOG(0) << "Returning end_of_splits since current reptition "
             << current_repetition << " is greater than the requested reptition "
             << repetition;
     return Status::OK();
@@ -1185,7 +1186,6 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
   }
   // Free the lock to reassign workers.
   if (do_reassign_workers){
-    VLOG(0) << "EASL - Calling reassign from client heartbeat";
     ReassignFreeWorkersAndCreateTasks();
   }
 
