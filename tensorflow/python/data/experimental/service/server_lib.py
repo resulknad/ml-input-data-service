@@ -110,7 +110,7 @@ class DispatcherConfig(
               scaling_policy=1,
               log_dir="",
               log_dumps_interval_ms=None,
-              avg_bytes_per_element_local_thres=1000
+              avg_bytes_per_element_local_thres=1000000000
               ):
     if protocol is None:
       protocol = _pywrap_utils.TF_DATA_DefaultProtocol()
