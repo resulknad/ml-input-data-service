@@ -539,6 +539,7 @@ Status DetermineJobTypeUpdated(const experimental::DispatcherConfig& dispatcher_
     }
 
     return Status::OK();
+  }
 }
 
 Status AddPutOperator(const DatasetDef& dataset,
