@@ -423,6 +423,10 @@ void DispatcherState::ReassignFreeWorkers() {
           if (repetition!=0){
             // (Damien) We only allow for one repetitions per input pipeline.
             job_iter++;
+            if(job_iter == jobs_.end()){
+              // Went through all jobs, can return
+              return;
+            }
             continue;
           }
         }
