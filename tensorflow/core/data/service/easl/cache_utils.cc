@@ -170,8 +170,16 @@ Status DetermineJobType(const experimental::DispatcherConfig& dispatcher_config,
     return Status::OK();
   } else if (dispatcher_config.cache_policy() == 41) {
     job_type = "GET_SOURCE";
-    return
-  Status::OK();
+    return Status::OK();
+  } else if (dispatcher_config.cache_policy() == 5 ){
+    return DetermineJobTypeUpdated(
+        dispatcher_config,
+        cache_state,
+        metadata_store,
+        fingerprint,
+        dataset_key,
+        job_id,
+        job_type);
   }
 
   // ---------------------------------------------------------------------------
@@ -365,6 +373,172 @@ Status DetermineJobType(const experimental::DispatcherConfig& dispatcher_config,
 
   return Status::OK();
    **/
+}
+
+Status DetermineJobTypeUpdated(const experimental::DispatcherConfig& dispatcher_config,
+                     ::tensorflow::data::CacheState& cache_state,
+                     const ::tensorflow::data::easl::MetadataStore& metadata_store,
+                     const uint64 fingerprint,
+                     const std::string& dataset_key,
+                     const int64 job_id,
+                     std::string& job_type) {
+  // ---------------------------------------------------------------------------
+  // Cache policy = EASL direct throughput comparison (cache_policy==5)
+  // ---------------------------------------------------------------------------
+
+  // If dataset was previously cached, assume it was faster than compute
+  // and decide to read.
+  if (cache_state.IsDatasetCached(fingerprint)){
+    job_type = "GET";
+    return Status::OK();
+  }
+
+  // We always prefer source caching, so if we have full caching, it means
+  // that was necessary. Thus, we check source caching after full caching.
+  if (cache_state.IsDatasetSourceCached(fingerprint)) {
+    job_type = "GET_SOURCE";
+    return Status::OK();
+  }
+  std::shared_ptr<::tensorflow::data::easl::InputPipelineMetrics> job_metrics;
+  Status s = metadata_store.GetInputPipelineMetricsByDatasetKey(dataset_key,
+                                                                job_metrics);
+
+  // We do not yet have the metrics for this dataset
+  if(errors::IsNotFound(s)){
+    job_type = "COMPUTE";
+    return Status::OK();
+  } else if (!s.ok()){
+    return s;
+  }
+
+  // Compute metrics
+  using NodeMetrics = ::tensorflow::data::easl::NodeMetrics;
+  std::shared_ptr<NodeMetrics> node_metrics;
+  TF_RETURN_IF_ERROR(metadata_store.GetLastNodeMetricsByDatasetKey(
+      dataset_key, node_metrics));
+
+  size_t num_workers = (node_metrics->metrics_).size();
+  DCHECK(num_workers > 0);
+
+  uint64 compute_row_size = 0;
+  uint64 compute_num_elements = 0;
+  double compute_time_per_row_ms = 0;
+  double compute_time_total_ms = 0;
+  double compute_working_time_per_row_ms = 0;
+  double compute_working_time_total_ms = 0;
+
+  for(std::pair<std::string, std::shared_ptr<NodeMetrics::Metrics>> e :
+      node_metrics->metrics_){
+    std::shared_ptr<NodeMetrics::Metrics> worker_metrics = e.second;
+    // TODO average out row size here for datasets with varying row size?
+    compute_row_size += worker_metrics->bytes_produced() / worker_metrics->num_elements();
+    compute_time_per_row_ms += worker_metrics->active_time_ms();
+    compute_num_elements += worker_metrics->num_elements();
+    compute_working_time_per_row_ms += worker_metrics->working_time_ms();
+  }
+
+  compute_num_elements /= num_workers;
+  compute_time_per_row_ms = compute_time_per_row_ms / num_workers;
+  compute_time_total_ms = compute_time_per_row_ms * compute_num_elements;
+  compute_row_size = compute_row_size / num_workers;
+  compute_working_time_per_row_ms = compute_working_time_per_row_ms / num_workers;
+  compute_working_time_total_ms = compute_working_time_per_row_ms * compute_num_elements;
+
+  VLOG(0) << "EASL (DetermineJobType) - Final row size " << compute_row_size;
+  VLOG(0) << "EASL (DetermineJobType) - Total compute time " << compute_time_total_ms;
+  VLOG(0) << "EASL (DetermineJobType) - Total compute working time " << compute_working_time_total_ms;
+
+  // Materialized Cache Read expections
+  double cache_read_time_per_row_ms = data::cache_model::GetTimePerRow(compute_row_size);
+  double cache_read_time_total_ms = compute_num_elements * cache_read_time_per_row_ms;
+
+  VLOG(0) << "EASL (DetermineJobType) - Full cache inferred GlusterFS read time "
+          << cache_read_time_total_ms;
+
+  // IO metrics
+  bool has_marker_node = false;
+  bool is_gcs_limited = false;
+  double source_cache_compute_time_ms = 0.0;
+  std::shared_ptr<data::easl::InputPipelineMetrics> input_pipeline_metrics;
+  metadata_store.GetInputPipelineMetricsByDatasetKey(dataset_key,
+                                                     input_pipeline_metrics);
+
+  if(input_pipeline_metrics->GetMarkerNodeName() != "") {
+    VLOG(0) << "Found marker node name: " << input_pipeline_metrics->GetMarkerNodeName();
+    has_marker_node = true;
+    std::shared_ptr<data::easl::NodeMetrics> marker_node_metrics;
+    metadata_store.GetMarkerNodeMetricsByDatasetKey(dataset_key,
+                                                    marker_node_metrics);
+
+    uint64 io_row_size = 0;
+    uint64 io_num_elements = 0;
+    double avg_io_bytes_per_s = 0.0; // Will not be used.
+    double avg_io_time_total_ms = 0.0; // == avg_gcs_source_time_ms.
+    for (auto &node_metrics : marker_node_metrics->metrics_) {
+      avg_io_bytes_per_s += node_metrics.second->bytes_per_s();
+      io_row_size += node_metrics.second->bytes_produced() /
+          node_metrics.second->num_elements();
+      avg_io_time_total_ms += node_metrics.second->active_time_ms();
+      io_num_elements += node_metrics.second->num_elements();
+    }
+    avg_io_bytes_per_s /= num_workers;
+    io_row_size /= num_workers;
+    io_num_elements /= num_workers;
+    avg_io_time_total_ms = (avg_io_time_total_ms * io_num_elements) / num_workers; // total io read time.
+    double avg_io_bytes_per_active_time_ms = (io_row_size * io_num_elements) / avg_io_time_total_ms;
+
+    VLOG(0) << "EASL (DetermineJobType) - Total GCS io time " << avg_io_time_total_ms;
+    VLOG(0) << "EASL (DetermineJobType) - GCS io throughput bytes/ms" << avg_io_bytes_per_s;
+    VLOG(0) << "EASL (DetermineJobType) - GCS io throughput per active time" << avg_io_bytes_per_active_time_ms;
+    VLOG(0) << "EASL (DetermineJobType) - GCS io row size " << io_row_size;
+
+    // Derive source caching values
+    double source_cache_io_time_per_row_ms = data::cache_model::GetTimePerRow(
+        io_row_size);
+    double source_cache_io_time_total_ms = source_cache_io_time_per_row_ms * io_num_elements;
+
+    double
+        source_cache_compute_time_total_ms = std::max(source_cache_io_time_per_row_ms, compute_working_time_total_ms);
+
+    VLOG(0) << "EASL (DetermineJobType) - Estimated source cache io time: " << source_cache_io_time_total_ms;
+    VLOG(0) << "EASL (DetermineJobType) - Estimated source cache compute time: " << compute_working_time_total_ms;
+    VLOG(0) << "EASL (DetermineJobType) - Estimated source cache total time: " << source_cache_compute_time_total_ms;
+
+    // Take a decision
+
+    std::vector<double> v = {has_marker_node ? source_cache_compute_time_total_ms;
+    : std::numeric_limits<double>::max(), cache_read_time_total_ms,
+    compute_time_total_ms};
+    int minElementIndex = std::min_element(v.begin(), v.end()) - v.begin();
+
+    switch (minElementIndex) {
+      case 0: // This is the source cache
+        job_type = "PUT_SOURCE";
+        VLOG(0) << "Cache decision: SOURCE CACHING";
+        break;
+      case 1: // This is the full cache
+        job_type = "PUT";
+        VLOG(0) << "Cache decision: FULL CACHING";
+        break;
+      case 2: // This is the compute
+        job_type = "COMPUTE";
+        VLOG(0) << "Cache decision: COMPUTE";
+        break;
+      default:VLOG(0) << "Cache decision: In DEFAULT... Will throw error...";
+        return errors::Unimplemented("Caching decision defaulted to last option... "
+                                     "See DetermineJobType!");
+    }
+
+    return Status::OK();
+  } else {
+    VLOG(0) << "No marker node found, choosing between put or compute";
+    if (compute_time_per_row_ms < cache_read_time_per_row_ms) {
+      job_type = "COMPUTE";
+    } else {
+      job_type = "PUT";
+    }
+
+    return Status::OK();
 }
 
 Status AddPutOperator(const DatasetDef& dataset,
