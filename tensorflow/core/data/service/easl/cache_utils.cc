@@ -1,6 +1,5 @@
-#include <queue>
-
 #include "tensorflow/core/data/service/easl/cache_utils.h"
+#include <queue>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
@@ -29,6 +28,14 @@ namespace {
   double worker_count_alpha_ = 0.1;
   int MAX_WORKERS_PER_JOB = 100;
 }
+/*
+Status DetermineJobTypeUpdated(const experimental::DispatcherConfig& dispatcher_config,
+                               ::tensorflow::data::CacheState& cache_state,
+                               const ::tensorflow::data::easl::MetadataStore& metadata_store,
+                               const uint64 fingerprint,
+                               const std::string& dataset_key,
+                               const int64 job_id,
+                               std::string& job_type);*/
 
 Status DoBFS(NodeDef* sink_node, GraphDef& graph_def, string prefix) {
   absl::flat_hash_set<std::string> visited;

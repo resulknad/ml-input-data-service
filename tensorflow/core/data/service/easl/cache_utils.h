@@ -57,7 +57,7 @@ Status DetermineJobTypeUpdated(const experimental::DispatcherConfig& dispatcher_
                      const uint64 fingerprint,
                      const std::string& dataset_key,
                      const int64 job_id,
-                     std::string& job_type)
+                     std::string& job_type);
 
 Status AddPutOperator(const DatasetDef& dataset,
                       const uint64 fingerprint,
