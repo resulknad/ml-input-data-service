@@ -506,7 +506,7 @@ Status DetermineJobTypeUpdated(const experimental::DispatcherConfig& dispatcher_
 
     // Take a decision
 
-    std::vector<double> v = {has_marker_node ? source_cache_compute_time_total_ms;
+    std::vector<double> v = {has_marker_node ? source_cache_compute_time_total_ms
     : std::numeric_limits<double>::max(), cache_read_time_total_ms,
     compute_time_total_ms};
     int minElementIndex = std::min_element(v.begin(), v.end()) - v.begin();
