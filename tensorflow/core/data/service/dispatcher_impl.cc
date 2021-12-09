@@ -88,7 +88,7 @@ constexpr const char kInNodeTime[] = "in_node_time";
 constexpr const char kInPrefixTime[] = "in_prefix_time";
 constexpr const char kBytesPerS[] = "bytes_per_s";
 constexpr const char kActiveTime[] = "active_time";
-constexpr const char kWorkingTime[] = "active_time";
+constexpr const char kWorkingTime[] = "working_time";
 
 
 
