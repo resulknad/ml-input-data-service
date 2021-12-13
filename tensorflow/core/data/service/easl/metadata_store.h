@@ -31,20 +31,35 @@ class ModelMetrics {
   public:
     class Metrics {
       public:
+        Metrics();
         Metrics(Metrics& other);
         Metrics(double get_next_time_ms, double inter_arrival_time_ms);
+        Metrics(double get_next_time_ms, double inter_arrival_time_ms,
+          double last_x_batch_time_ms, double relative_wait_fraction,
+          double result_queue_size);
 
         void Update(Metrics& other);
 
         void set_get_next_time_ms(double x) { get_next_time_ms_ = x; }
         void set_inter_arrival_time_ms(double x) { inter_arrival_time_ms_ = x; }
+        void set_last_x_batch_time_ms(double x) { last_x_batch_time_ms_ = x; }
+        void set_relative_wait_fraction(double x) { relative_wait_fraction_ = x; }
+        void set_result_queue_size(double x) { result_queue_size_ = x; }
 
+        bool has_scalability_metrics() { return has_scalability_metrics_; }
         double get_next_time_ms() { return get_next_time_ms_; }
         double inter_arrival_time_ms() { return inter_arrival_time_ms_; }
+        double last_x_batch_time_ms() { return last_x_batch_time_ms_; }
+        double relative_wait_fraction() { return relative_wait_fraction_; }
+        double result_queue_size() { return result_queue_size_; }
 
       private:
+        bool has_scalability_metrics_;
         double get_next_time_ms_; 
         double inter_arrival_time_ms_;
+        double last_x_batch_time_ms_;
+        double relative_wait_fraction_;
+        double result_queue_size_;
     };
 
     // Keys are client_id.

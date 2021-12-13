@@ -670,6 +670,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           result_queue_size /= BATCH_INTERVAL;
 
           // Add the metrics to the request
+          req.set_has_scalability_metrics(true);
           req.set_last_x_batch_time_ms(last_x_batch_time_ms);
           req.set_relative_wait_fraction(relative_wait_fraction);
           req.set_result_queue_size(result_queue_size);
@@ -1082,6 +1083,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           }
         }
         int64 backoff_until = std::min(
+            deadline_micros,
             deadline_micros,
             now_micros + ::tensorflow::ComputeBackoffMicroseconds(num_retries));
         VLOG(0) << "Failed to get an element from worker "

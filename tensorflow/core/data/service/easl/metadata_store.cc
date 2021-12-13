@@ -13,14 +13,28 @@ namespace easl {
 
 
 // Metrics from the Client
+ModelMetrics::Metrics::Metrics() {}
+
 ModelMetrics::Metrics::Metrics(double get_next_time_ms, 
   double inter_arrival_time_ms) 
   : get_next_time_ms_(get_next_time_ms),
-    inter_arrival_time_ms_(inter_arrival_time_ms) {}
+    inter_arrival_time_ms_(inter_arrival_time_ms),
+    has_scalability_metrics_(false) {}
+
+ModelMetrics::Metrics::Metrics(double get_next_time_ms,
+    double inter_arrival_time_ms, double last_x_batch_time_ms,
+    double relative_wait_fraction, double result_queue_size)
+    : get_next_time_ms_(get_next_time_ms),
+      inter_arrival_time_ms_(inter_arrival_time_ms),
+      last_x_batch_time_ms_(last_x_batch_time_ms),
+      relative_wait_fraction_(relative_wait_fraction),
+      result_queue_size_(result_queue_size),
+      has_scalability_metrics_(true) {}
 
 ModelMetrics::Metrics::Metrics(ModelMetrics::Metrics& other) 
   : get_next_time_ms_(other.get_next_time_ms()),
-    inter_arrival_time_ms_(other.inter_arrival_time_ms()) {}
+    inter_arrival_time_ms_(other.inter_arrival_time_ms()),
+    has_scalability_metrics_(false) {}
 
 void ModelMetrics::Metrics::Update(ModelMetrics::Metrics& other) {
   get_next_time_ms_ = other.get_next_time_ms_;

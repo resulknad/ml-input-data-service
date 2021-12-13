@@ -1106,11 +1106,22 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
     TF_RETURN_IF_ERROR(s);
 
     // EASL: Update the client metrics
-    easl::ModelMetrics::Metrics metrics(request->avg_get_next_processing_time(),
-                                        request->avg_inter_arrival_time());
+    easl::ModelMetrics::Metrics metrics;
+    if (!request->has_scalability_metrics()) {
+      metrics = easl::ModelMetrics::Metrics(
+        request->avg_get_next_processing_time(),
+        request->avg_inter_arrival_time());
+    } else {
+      metrics = easl::ModelMetrics::Metrics(
+        request->avg_get_next_processing_time(),
+        request->avg_inter_arrival_time(),
+        request->last_x_batch_time_ms(),
+        request->relative_wait_fraction(),
+        request->result_queue_size());
+    }
     VLOG(4) << "metrics processing_time: " << metrics.get_next_time_ms();
-    s = metadata_store_.UpdateModelMetrics(job->job_id, job->current_worker_count, request->job_client_id(),
-                                           metrics);
+    s = metadata_store_.UpdateModelMetrics(job->job_id,
+        job->current_worker_count, request->job_client_id(),metrics);
     // Ignore metrics for jobs which do not have metrics anymore
     // report error otherwise.
     if (!s.ok() && !errors::IsNotFound(s)) { return s; }
