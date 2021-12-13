@@ -320,10 +320,14 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
       // EASL - metrics collection
       ++num_elements_;
+      batch_timestamps_us_.push_back(Env::Default()->NowMicros());
+
       bool hadToWait = false;
       int64 start_us = Env::Default()->NowMicros();
       bool skip = true;
       while (skip) {
+        uint64 wait_time = Env::Default()->NowMicros(); // EASL metrics
+        result_queue_size_.push_back(results_.size()); // EASL metrics
         while ((results_.empty() || !results_.front().ready) && !Finished() &&
                !cancelled_ && status_.ok()) {
           VLOG(1) << "Blocking in GetNext. results_.size():" << results_.size()
@@ -339,6 +343,10 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           get_next_cv_.wait(l);
           hadToWait = true; // EASL - metrics collection.
         }
+        wait_time = Env::Default()->NowMicros() - wait_time; // EASL metrics
+        wait_times_ms_.push_back((double)(wait_time) /
+                                 EnvTime::kMillisToMicros); // EASL metrics
+        had_to_wait_.push_back(hadToWait); // EASL metrics
         if (cancelled_) {
           VLOG(3) << "Returning from GetNext due to cancellation";
           return errors::Cancelled("Data service iterator was cancelled");
@@ -638,12 +646,36 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
                 tf_data_num_elements_counter->value();*/
 
         // EASL - Getting the average inter-arrival time from the repo
-        double inter_arrival_time_ms = 100;
-//          easl::InterArrivalTimeRepo::GetInstance().GetAverageInterArrivalTime();
-        VLOG(3) << "Actually got the inter-arrival time: " 
-                << inter_arrival_time_ms;
-        req.set_avg_inter_arrival_time(inter_arrival_time_ms);
-          
+        // This is a dummy value; not used any longer
+        req.set_avg_inter_arrival_time(100);
+
+        // Add the scalability metrics if sufficient measurements have been retrieved
+        if (had_to_wait_.size() >= BATCH_INTERVAL) {
+          // Protect the metrics
+          mutex_lock l(mu_);
+
+          // Compute the last x batch time
+          double last_x_batch_time_ms =
+              ((double)(batch_timestamps_us_[BATCH_INTERVAL - 1]) -
+              batch_timestamps_us_[0]) / EnvTime::kMillisToMicros;
+
+          // Compute the relative_wait_fraction & the average size of the result queue
+          double relative_wait_fraction = 0.0;
+          double result_queue_size = 0.0;
+          for (int i = 0; i < BATCH_INTERVAL; ++i) {
+            relative_wait_fraction += wait_times_ms_[i];
+            result_queue_size += result_queue_size_[i];
+          }
+          relative_wait_fraction /= last_x_batch_time_ms;
+          result_queue_size /= BATCH_INTERVAL;
+
+          // Add the metrics to the request
+          req.set_last_x_batch_time_ms(last_x_batch_time_ms);
+          req.set_relative_wait_fraction(relative_wait_fraction);
+          req.set_result_queue_size(result_queue_size);
+
+          ClearScalabilityMetrics();
+        }
 
         // Set the wait time for a GetNext response in ms
         req.set_avg_get_next_processing_time(node_->SelfProcessingTime() / 
@@ -696,6 +728,13 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       UpdateTasks(resp);
     }
 
+    void ClearScalabilityMetrics() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      batch_timestamps_us_.clear();
+      wait_times_ms_.clear();
+      result_queue_size_.clear();
+      had_to_wait_.clear();
+    }
+
     void UpdateTasks(const ClientHeartbeatResponse& resp)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       absl::flat_hash_map<int64, TaskInfo> task_id_to_task;
@@ -704,6 +743,11 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       }
       if (job_finished_) {
         return;
+      }
+
+      // EASL - Check if the dispatcher has scaled either up or down
+      if (resp.task_info_size() != tasks_.size()) {
+        ClearScalabilityMetrics();
       }
 
       int index = 0;
@@ -1135,6 +1179,13 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
     // EASL metrics collection
     int64 num_elements_ = 0;
+
+    // Number of batches to sample before sending scalability metrics to dispatcher
+    const uint32 BATCH_INTERVAL = 50;
+    std::vector<uint64> batch_timestamps_us_ TF_GUARDED_BY(mu_);
+    std::vector<double> wait_times_ms_ TF_GUARDED_BY(mu_);
+    std::vector<uint32> result_queue_size_ TF_GUARDED_BY(mu_);
+    std::vector<bool> had_to_wait_ TF_GUARDED_BY(mu_);
   };
 
   const int op_version_;
