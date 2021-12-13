@@ -185,9 +185,9 @@ message ClientHeartbeatRequest {
   double avg_inter_arrival_time = 6;
 
   // EASL - Metrics for scalability; only present after specific intervals
-  optional double last_x_batch_time_ms = 7;
-  optional double relative_wait_fraction = 8;
-  optional double result_queue_size = 9;
+  double last_x_batch_time_ms = 7;
+  double relative_wait_fraction = 8;
+  double result_queue_size = 9;
 }
 
 // Next tag: 4
