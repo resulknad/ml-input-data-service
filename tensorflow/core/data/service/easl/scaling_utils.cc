@@ -163,6 +163,7 @@ Status DetermineElasticity(
 
 Status DynamicWorkerCountUpdate(
     const std::string& job_type,
+    const int64 job_id,
     const experimental::DispatcherConfig& dispatcher_config,
     const ::tensorflow::data::easl::MetadataStore& metadata_store,
     const int64 current_worker_count,
@@ -196,6 +197,11 @@ Status DynamicWorkerCountUpdate(
     return Status::OK();
   }
 
+  /*
+  ModelMetrics::MetricsHistory metrics_history;
+  ModelMetrics model_metrics;
+  TF_RETURN_IF_ERROR(metadata_store.GetModelMetrics(job_id, model_metrics));
+  */
 
   // TODO Check if split provider reached eos, in which case there is no point to scale up.
   worker_count = current_worker_count;

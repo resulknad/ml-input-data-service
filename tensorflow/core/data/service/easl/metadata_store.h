@@ -33,21 +33,15 @@ class ModelMetrics {
       public:
         Metrics();
         Metrics(Metrics& other);
-        Metrics(double get_next_time_ms, double inter_arrival_time_ms);
-        Metrics(double get_next_time_ms, double inter_arrival_time_ms,
-          int64 worker_count, double last_x_batch_time_ms,
+        Metrics(int64 worker_count, double last_x_batch_time_ms,
           double relative_wait_fraction, double result_queue_size);
 
-        void set_get_next_time_ms(double x) { get_next_time_ms_ = x; }
-        void set_inter_arrival_time_ms(double x) { inter_arrival_time_ms_ = x; }
         void set_last_x_batch_time_ms(double x) { last_x_batch_time_ms_ = x; }
         void set_relative_wait_fraction(double x) { relative_wait_fraction_ = x; }
         void set_result_queue_size(double x) { result_queue_size_ = x; }
         void set_worker_count(int64 x) { worker_count_ = x; }
 
         bool has_scalability_metrics() { return has_scalability_metrics_; }
-        double get_next_time_ms() { return get_next_time_ms_; }
-        double inter_arrival_time_ms() { return inter_arrival_time_ms_; }
         int64 worker_count() { return worker_count_; }
         double last_x_batch_time_ms() { return last_x_batch_time_ms_; }
         double relative_wait_fraction() { return relative_wait_fraction_; }
@@ -56,8 +50,6 @@ class ModelMetrics {
       private:
         bool has_scalability_metrics_;
         int64 worker_count_;
-        double get_next_time_ms_; 
-        double inter_arrival_time_ms_;
         double last_x_batch_time_ms_;
         double relative_wait_fraction_;
         double result_queue_size_;
@@ -65,12 +57,12 @@ class ModelMetrics {
 
     // Keys are client_id.
     using MetricsCollection =
-      absl::flat_hash_map<int64, std::vector<std::shared_ptr<ModelMetrics::Metrics>>>;
+      absl::flat_hash_map<int64, std::deque<std::shared_ptr<ModelMetrics::Metrics>>>;
 
     using MetricsByWorkerCount =
       absl::flat_hash_map<int64, std::shared_ptr<MetricsCollection>>;
 
-    using MetricsHistory = std::vector<std::pair<int64, ModelMetrics::Metrics>>;
+    using MetricsHistory = std::deque<std::shared_ptr<ModelMetrics::Metrics>>;
 
     ModelMetrics() {}
 
@@ -79,7 +71,7 @@ class ModelMetrics {
     Status GetClientMetrics(const int64 worker_count, const int64 client_id, std::vector<std::shared_ptr<Metrics>>& metrics);
     Status GetAllWorkerCountMetrics(std::shared_ptr<MetricsByWorkerCount>& metrics);
     Status GetAllClientMetrics(const int64 worker_count, std::shared_ptr<MetricsCollection>&);
-    Status GetMetricsHistory(std::vector<std::shared_ptr<Metrics>>& metrics_history);
+    Status GetMetricsHistory(MetricsHistory& metrics_history);
 
     // Dump metrics to a string stream
     void DumpToStream(std::stringstream& ss);
@@ -87,7 +79,7 @@ class ModelMetrics {
     // The keys are the worker count
     MetricsByWorkerCount metrics_;
     // Metrics history, stored in order of arrival
-    std::vector<std::shared_ptr<Metrics>> metrics_history;
+    MetricsHistory metrics_history_;
 };
 
 class NodeMetrics {
@@ -218,8 +210,7 @@ class JobMetrics {
     JobMetrics(int64 job_id,
                int64 dataset_id,
                int64 dataset_fingerprint,
-               std::string& dataset_key,
-               uint32 initial_worker_count = 1);
+               std::string& dataset_key);
 
     void DumpToFile(const std::string& path);
     void DumpToStream(std::stringstream& ss);
@@ -229,7 +220,6 @@ class JobMetrics {
     int64 dataset_id_;
     int64 dataset_fingerprint_;
     std::string dataset_key_;
-    std::deque<uint32> worker_count_;
     std::shared_ptr<ModelMetrics> model_metrics_;
     std::shared_ptr<InputPipelineMetrics> input_pipeline_metrics_;
 };
@@ -244,8 +234,7 @@ class MetadataStore {
   Status CreateJob(int64 job_id,
                    int64 dataset_id,
                    int64 dataset_fingerprint,
-                   std::string& dataset_key,
-                   uint32 initial_worker_count = 1);
+                   std::string& dataset_key);
 
   // Remove job
   Status RemoveJob(int64 job_id);
@@ -292,12 +281,6 @@ class MetadataStore {
   
   Status UpdateNodeNames(int64 job_id, string last_node_name, 
     string last_tf_node_name, string marker_node_name);
-
-  // Logic related to the meta-scalability metrics
-  Status UpdateJobWorkerCount(int64 job_id, uint32 worker_count);
-  Status GetWorkerCountHistory(int64 job_id, std::deque<uint32>& history);
-  Status GetWorkerCountHistoryByDatasetKey(const std::string& dataset_key,
-    std::deque<uint32>& history);
 
   Status SetJobIsScaling(int64 job_id);
   Status UnsetJobIsScaling(int64 job_id);

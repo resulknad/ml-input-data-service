@@ -637,68 +637,33 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         VLOG(3) << "heartbeat - num_elements_: " << num_elements_;
       }
 
-      // We get processing time computed by the model, from the metrics counters
-      auto model = ctx->model();
-      if (model){
-        // OK since there should only be one dataset of that type.
-        // Since we have access to the node_ of the model, we do not use the
-        // counters anymore.
-        /*monitoring::CounterCell* tf_data_processing_time_counter =
-            tensorflow::metrics::GetTFDataProcessingTimeCounter(kDatasetType);
-        monitoring::CounterCell* tf_data_num_elements_counter =
-            tensorflow::metrics::GetTFDataElementsCounter(kDatasetType);
-        VLOG(0) << " EASL - Dataservice client heartbeat processing time "
-                   "counter: " <<
-        tf_data_processing_time_counter->value();
-        VLOG(0) << " EASL - Dataservice client heartbeat element "
-                   "counter: " <<
-                tf_data_num_elements_counter->value();*/
+      // Add the scalability metrics if sufficient measurements have been retrieved
+      if (had_to_wait_.size() >= BATCH_INTERVAL) {
+        // Protect the metrics
+        mutex_lock l(mu_);
 
-        // EASL - Getting the average inter-arrival time from the repo
-        // This is a dummy value; not used any longer
-        req.set_avg_inter_arrival_time(100);
+        // Compute the last x batch time
+        double last_x_batch_time_ms =
+            ((double)(batch_timestamps_us_[BATCH_INTERVAL - 1]) -
+            batch_timestamps_us_[0]) / EnvTime::kMillisToMicros;
 
-        // Add the scalability metrics if sufficient measurements have been retrieved
-        if (had_to_wait_.size() >= BATCH_INTERVAL) {
-          // Protect the metrics
-          mutex_lock l(mu_);
-
-          // Compute the last x batch time
-          double last_x_batch_time_ms =
-              ((double)(batch_timestamps_us_[BATCH_INTERVAL - 1]) -
-              batch_timestamps_us_[0]) / EnvTime::kMillisToMicros;
-
-          // Compute the relative_wait_fraction & the average size of the result queue
-          double relative_wait_fraction = 0.0;
-          double result_queue_size = 0.0;
-          for (int i = 0; i < BATCH_INTERVAL; ++i) {
-            relative_wait_fraction += wait_times_ms_[i];
-            result_queue_size += result_queue_size_[i];
-          }
-          relative_wait_fraction /= last_x_batch_time_ms;
-          result_queue_size /= BATCH_INTERVAL;
-
-          // Add the metrics to the request
-          req.set_has_scalability_metrics(true);
-          req.set_last_x_batch_time_ms(last_x_batch_time_ms);
-          req.set_relative_wait_fraction(relative_wait_fraction);
-          req.set_result_queue_size(result_queue_size);
-
-          ClearScalabilityMetrics();
+        // Compute the relative_wait_fraction & the average size of the result queue
+        double relative_wait_fraction = 0.0;
+        double result_queue_size = 0.0;
+        for (int i = 0; i < BATCH_INTERVAL; ++i) {
+          relative_wait_fraction += wait_times_ms_[i];
+          result_queue_size += result_queue_size_[i];
         }
+        relative_wait_fraction /= last_x_batch_time_ms;
+        result_queue_size /= BATCH_INTERVAL;
 
-        // Set the wait time for a GetNext response in ms
-        req.set_avg_get_next_processing_time(node_->SelfProcessingTime() / 
-          EnvTime::kMillisToNanos);
+        // Add the metrics to the request
+        req.set_has_scalability_metrics(true);
+        req.set_last_x_batch_time_ms(last_x_batch_time_ms);
+        req.set_relative_wait_fraction(relative_wait_fraction);
+        req.set_result_queue_size(result_queue_size);
 
-        VLOG(3) << "num_elements:"
-          << node_->num_elements()
-          << "\nprocessing_time:"
-          << node_->processing_time()
-          << "\ninter_arrival_time:"
-          << req.avg_inter_arrival_time();
-      } else {
-        VLOG(3) << "There is no model in the data_service_dataset_op...";
+        ClearScalabilityMetrics();
       }
 
       // Fill up the metadata fields in the heartbeat request

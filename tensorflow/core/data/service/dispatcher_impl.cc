@@ -1108,14 +1108,12 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
     // EASL: Update the client metrics
     if (request->has_scalability_metrics()) {
       easl::ModelMetrics::Metrics metrics = easl::ModelMetrics::Metrics(
-        request->avg_get_next_processing_time(),
-        request->avg_inter_arrival_time(),
-        job->current_worker_count, // TODO (Damien) add worker count to request.
+        request->worker_count(),
         request->last_x_batch_time_ms(),
         request->relative_wait_fraction(),
         request->result_queue_size());
 
-      VLOG(4) << "metrics processing_time: " << metrics.get_next_time_ms();
+      VLOG(0) << "metrics processing_time: " << metrics.get_next_time_ms();
       s = metadata_store_.UpdateModelMetrics(job->job_id,
                                              job->current_worker_count, request->job_client_id(),metrics);
       // Ignore metrics for jobs which do not have metrics anymore
@@ -1126,7 +1124,7 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
       int64 target_worker_count;
       TF_RETURN_IF_ERROR(
           service::easl::scaling_utils::DynamicWorkerCountUpdate(
-              job->job_type, config_, metadata_store_, job->target_worker_count, target_worker_count));
+              job->job_type, job->job_id, config_, metadata_store_, job->target_worker_count, target_worker_count));
       do_reassign_workers = target_worker_count > job->current_worker_count;
       if (target_worker_count != job->target_worker_count) {
         Update update;

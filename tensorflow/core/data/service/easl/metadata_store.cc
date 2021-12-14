@@ -11,54 +11,36 @@ namespace tensorflow {
 namespace data {
 namespace easl {
 
+namespace {
+  const uint8 kMaxClientMetricsHistory = 20;
+  const uint8 kMaxPerWorkerClientMetricHistory = 3;
+}
+
 
 // Metrics from the Client
 ModelMetrics::Metrics::Metrics() {}
 
-ModelMetrics::Metrics::Metrics(double get_next_time_ms, 
-  double inter_arrival_time_ms) 
-  : get_next_time_ms_(get_next_time_ms),
-    inter_arrival_time_ms_(inter_arrival_time_ms),
-    has_scalability_metrics_(false) {}
 
-ModelMetrics::Metrics::Metrics(double get_next_time_ms,
-    double inter_arrival_time_ms, int64 worker_count,
+ModelMetrics::Metrics::Metrics(int64 worker_count,
     double last_x_batch_time_ms, double relative_wait_fraction,
-    double result_queue_size)
-    : get_next_time_ms_(get_next_time_ms),
-      inter_arrival_time_ms_(inter_arrival_time_ms),
+    double result_queue_size):
       worker_count_(worker_count),
       last_x_batch_time_ms_(last_x_batch_time_ms),
       relative_wait_fraction_(relative_wait_fraction),
-      result_queue_size_(result_queue_size),
-      has_scalability_metrics_(true) {}
+      result_queue_size_(result_queue_size){}
 
-ModelMetrics::Metrics::Metrics(ModelMetrics::Metrics& other) 
-  : get_next_time_ms_(other.get_next_time_ms()),
-    inter_arrival_time_ms_(other.inter_arrival_time_ms()){
-  if (other.has_scalability_metrics()){
-    worker_count_ = other.worker_count_;
-    last_x_batch_time_ms_ = other.last_x_batch_time_ms_;
-    relative_wait_fraction_ = other.relative_wait_fraction_;
-    result_queue_size_ = other.result_queue_size_;
-    has_scalability_metrics_ = true;
-  } else {
-    has_scalability_metrics_ = false;
-  }
-}
-
-/*
-void ModelMetrics::Metrics::Update(ModelMetrics::Metrics& other) {
-  get_next_time_ms_ = other.get_next_time_ms_;
-  inter_arrival_time_ms_ = other.inter_arrival_time_ms_;
-}*/
+ModelMetrics::Metrics::Metrics(ModelMetrics::Metrics& other) :
+    worker_count_(other.worker_count_),
+    last_x_batch_time_ms_(other.last_x_batch_time_ms_),
+    relative_wait_fraction_(other.relative_wait_fraction_),
+    result_queue_size_(other.result_queue_size_){}
 
 Status ModelMetrics::UpdateClientMetrics(
   const int64 worker_count,
   const int64 client_id,
   ModelMetrics::Metrics& metrics) {
-  using MetricsCollection =
-    absl::flat_hash_map<int64, std::vector<std::shared_ptr<ModelMetrics::Metrics>>>;
+  //using MetricsCollection =
+  //  absl::flat_hash_map<int64, std::deque<std::shared_ptr<ModelMetrics::Metrics>>>;
 
   auto metrics_ptr = std::make_shared<Metrics>(metrics);
 
@@ -74,15 +56,23 @@ Status ModelMetrics::UpdateClientMetrics(
   // Level 2 - client_id
   auto it = metrics_collection->find(client_id);
   if (it == metrics_collection->end()) {
-    auto entry = std::vector<std::shared_ptr<Metrics>>();
+    auto entry = std::deque<std::shared_ptr<Metrics>>();
     entry.push_back(metrics_ptr);
     metrics_collection->insert({client_id, entry});
     VLOG(2) << "Created model metrics for client " << client_id;
   } else {
+    if (it->second.size() >= kMaxPerWorkerClientMetricHistory){
+      it->second.pop_front();
+    }
     it->second.push_back(metrics_ptr);
     VLOG(2) << "Appended model metrics for client " << client_id;
   }
-  metrics_history.push_back(metrics_ptr);
+
+  if (metrics_history_.size() >= kMaxClientMetricsHistory){
+    metrics_history_.pop_front();
+  }
+  metrics_history_.push_back(metrics_ptr);
+
   return Status::OK();
 }
 
@@ -114,6 +104,7 @@ Status ModelMetrics::GetClientMetrics(
   return errors::NotFound("No metrics under worker_count ", worker_count, " and client with id ", client_id);
 }
 
+// TODO (Damien) update to print latest metrics.
 void ModelMetrics:: DumpToStream(std::stringstream& ss){
   ss << "{ " << std::endl;
   bool first_w_count = true;
@@ -128,8 +119,8 @@ void ModelMetrics:: DumpToStream(std::stringstream& ss){
     for ( auto client_metrics_pair : *(pair.second)){
       if(!first){ ss << "," << std::endl; first = false; } // Add comma before element, not for first though.
       ss << "\"" << std::to_string(client_metrics_pair.first) << "\" : ";
-      ss << "{ \"get_next_time_ms\" : " << std::to_string(client_metrics_pair.second->get_next_time_ms()) << " , ";
-      ss << "\"inter_arrival_time_ms\" : " << std::to_string(client_metrics_pair.second->inter_arrival_time_ms()) << " }";
+      ss << "{ \"get_next_time_ms\" : " << 0 << " , ";
+      ss << "\"inter_arrival_time_ms\" : " << 0 << " }";
       ss << std::endl;
     }
     ss << " }";
@@ -321,8 +312,7 @@ void InputPipelineMetrics::DumpToStream(std::stringstream& ss){
 JobMetrics::JobMetrics(int64 job_id,
                        int64 dataset_id,
                        int64 dataset_fingerprint,
-                       std::string& dataset_key,
-                       uint32 initial_worker_count)
+                       std::string& dataset_key)
       : job_id_(job_id),
         dataset_id_(dataset_id),
         dataset_fingerprint_(dataset_fingerprint),
@@ -331,7 +321,6 @@ JobMetrics::JobMetrics(int64 job_id,
         input_pipeline_metrics_() {
           model_metrics_ = std::make_shared<ModelMetrics>();
           input_pipeline_metrics_ = std::make_shared<InputPipelineMetrics>();
-          worker_count_.push_back(initial_worker_count);
         }
 
 
@@ -366,11 +355,10 @@ MetadataStore::MetadataStore()
     dataset_key_metadata_() {}
 
 Status MetadataStore::CreateJob(int64 job_id, int64 dataset_id, 
-  int64 dataset_fingerprint, std::string& dataset_key,
-  uint32 initial_worker_count) {
+  int64 dataset_fingerprint, std::string& dataset_key) {
   std::string ds_key = dataset_key;
   auto job_metrics = std::make_shared<JobMetrics>(
-      job_id, dataset_id, dataset_fingerprint, ds_key, initial_worker_count);
+      job_id, dataset_id, dataset_fingerprint, ds_key);
   job_metadata_.insert_or_assign(job_id, job_metrics);
 
   return Status::OK();
@@ -558,29 +546,6 @@ Status MetadataStore::UpdateNodeNames(int64 job_id, string last_node_name,
   } 
   // if s != ok --> no such job exists
   return s;
-}
-
-Status MetadataStore::UpdateJobWorkerCount(int64 job_id, uint32 worker_count) {
-  std::shared_ptr<JobMetrics> jobMetrics;
-  TF_RETURN_IF_ERROR(GetJobMetrics(job_id, jobMetrics));
-  jobMetrics->worker_count_.push_front(worker_count);
-  return Status::OK();
-}
-
-Status MetadataStore::GetWorkerCountHistory(int64 job_id,
-  std::deque<uint32>& history) {
-  std::shared_ptr<JobMetrics> jobMetrics;
-  TF_RETURN_IF_ERROR(GetJobMetrics(job_id, jobMetrics));
-  history = jobMetrics->worker_count_;
-  return Status::OK();
-}
-
-Status MetadataStore::GetWorkerCountHistoryByDatasetKey(
-  const std::string& dataset_key, std::deque<uint32>& history) {
-  std::shared_ptr<JobMetrics> jobMetrics;
-  TF_RETURN_IF_ERROR(GetJobMetricsByDatasetKey(dataset_key, jobMetrics));
-  history = jobMetrics->worker_count_;
-  return Status::OK();
 }
 
 Status MetadataStore::SetJobIsScaling(int64 job_id) {

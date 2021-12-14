@@ -163,7 +163,7 @@ message ReleaseJobClientRequest {
 // Next tag: 1
 message ReleaseJobClientResponse {}
 
-// Next tag: 10
+// Next tag: 10, 5 unused.
 message ClientHeartbeatRequest {
   reserved 3;
   // The job client id to heartbeat for.
@@ -180,11 +180,8 @@ message ClientHeartbeatRequest {
     int64 blocked_round = 4;
   }
 
-  // EASL
-  double avg_get_next_processing_time = 5;
-  double avg_inter_arrival_time = 6;
-
   // EASL - Metrics for scalability; only present after specific intervals
+  uint32 worker_count = 6;
   bool has_scalability_metrics = 7;
   double last_x_batch_time_ms = 8;
   double relative_wait_fraction = 9;
