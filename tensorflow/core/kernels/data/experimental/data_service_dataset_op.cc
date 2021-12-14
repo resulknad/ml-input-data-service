@@ -380,6 +380,15 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           worker_thread_cv_.notify_one();
         }
       }
+
+      // Discard scalability metrics at epoch start or after scale change
+      if (num_elements_ <= EPOCH_START_BUFFER_INTERVAL || buffer_period > 0) {
+        if (buffer_period > 0) {
+          --buffer_period;
+        }
+        RemoveLastScalabilityMetrics();
+      }
+
       auto& result = results_.front();
       *end_of_sequence = result.end_of_sequence;
       if (!*end_of_sequence) {
@@ -736,6 +745,13 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       had_to_wait_.clear();
     }
 
+    void RemoveLastScalabilityMetrics() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      batch_timestamps_us_.pop_back();
+      wait_times_ms_.pop_back();
+      result_queue_size_.pop_back();
+      had_to_wait_.pop_back();
+    }
+
     void UpdateTasks(const ClientHeartbeatResponse& resp)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       absl::flat_hash_map<int64, TaskInfo> task_id_to_task;
@@ -749,6 +765,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       // EASL - Check if the dispatcher has scaled either up or down
       if (resp.task_info_size() != tasks_.size()) {
         ClearScalabilityMetrics();
+        buffer_period = RESCALE_BUFFER_INTERVAL;
       }
 
       int index = 0;
@@ -1084,7 +1101,6 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         }
         int64 backoff_until = std::min(
             deadline_micros,
-            deadline_micros,
             now_micros + ::tensorflow::ComputeBackoffMicroseconds(num_retries));
         VLOG(0) << "Failed to get an element from worker "
                 << task->info.worker_address() << ": " << s
@@ -1183,7 +1199,11 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     int64 num_elements_ = 0;
 
     // Number of batches to sample before sending scalability metrics to dispatcher
+    uint32 buffer_period;
     const uint32 BATCH_INTERVAL = 50;
+    const uint32 RESCALE_BUFFER_INTERVAL = 10;
+    const uint32 EPOCH_START_BUFFER_INTERVAL = 100;
+
     std::vector<uint64> batch_timestamps_us_ TF_GUARDED_BY(mu_);
     std::vector<double> wait_times_ms_ TF_GUARDED_BY(mu_);
     std::vector<uint32> result_queue_size_ TF_GUARDED_BY(mu_);

@@ -321,7 +321,8 @@ void InputPipelineMetrics::DumpToStream(std::stringstream& ss){
 JobMetrics::JobMetrics(int64 job_id,
                        int64 dataset_id,
                        int64 dataset_fingerprint,
-                       std::string& dataset_key)
+                       std::string& dataset_key,
+                       uint32 initial_worker_count)
       : job_id_(job_id),
         dataset_id_(dataset_id),
         dataset_fingerprint_(dataset_fingerprint),
@@ -330,6 +331,7 @@ JobMetrics::JobMetrics(int64 job_id,
         input_pipeline_metrics_() {
           model_metrics_ = std::make_shared<ModelMetrics>();
           input_pipeline_metrics_ = std::make_shared<InputPipelineMetrics>();
+          worker_count_.push_back(initial_worker_count);
         }
 
 
@@ -364,10 +366,11 @@ MetadataStore::MetadataStore()
     dataset_key_metadata_() {}
 
 Status MetadataStore::CreateJob(int64 job_id, int64 dataset_id, 
-  int64 dataset_fingerprint, std::string& dataset_key) {
+  int64 dataset_fingerprint, std::string& dataset_key,
+  uint32 initial_worker_count) {
   std::string ds_key = dataset_key;
   auto job_metrics = std::make_shared<JobMetrics>(
-      job_id, dataset_id, dataset_fingerprint, ds_key);
+      job_id, dataset_id, dataset_fingerprint, ds_key, initial_worker_count);
   job_metadata_.insert_or_assign(job_id, job_metrics);
 
   return Status::OK();
@@ -557,11 +560,55 @@ Status MetadataStore::UpdateNodeNames(int64 job_id, string last_node_name,
   return s;
 }
 
+Status MetadataStore::UpdateJobWorkerCount(int64 job_id, uint32 worker_count) {
+  std::shared_ptr<JobMetrics> jobMetrics;
+  TF_RETURN_IF_ERROR(GetJobMetrics(job_id, jobMetrics));
+  jobMetrics->worker_count_.push_front(worker_count);
+  return Status::OK();
+}
+
+Status MetadataStore::GetWorkerCountHistory(int64 job_id,
+  std::deque<uint32>& history) {
+  std::shared_ptr<JobMetrics> jobMetrics;
+  TF_RETURN_IF_ERROR(GetJobMetrics(job_id, jobMetrics));
+  history = jobMetrics->worker_count_;
+  return Status::OK();
+}
+
+Status MetadataStore::GetWorkerCountHistoryByDatasetKey(
+  const std::string& dataset_key, std::deque<uint32>& history) {
+  std::shared_ptr<JobMetrics> jobMetrics;
+  TF_RETURN_IF_ERROR(GetJobMetricsByDatasetKey(dataset_key, jobMetrics));
+  history = jobMetrics->worker_count_;
+  return Status::OK();
+}
+
+Status MetadataStore::SetJobIsScaling(int64 job_id) {
+  std::shared_ptr<JobMetrics> jobMetrics;
+  TF_RETURN_IF_ERROR(GetJobMetrics(job_id, jobMetrics));
+  jobMetrics->is_scaling = true;
+  return Status::OK();
+}
+
+Status MetadataStore::UnsetJobIsScaling(int64 job_id) {
+  std::shared_ptr<JobMetrics> jobMetrics;
+  TF_RETURN_IF_ERROR(GetJobMetrics(job_id, jobMetrics));
+  jobMetrics->is_scaling = false;
+  return Status::OK();
+}
+
+Status MetadataStore::IsJobScaling(int64 job_id, bool& is_scaling) {
+  std::shared_ptr<JobMetrics> jobMetrics;
+  TF_RETURN_IF_ERROR(GetJobMetrics(job_id, jobMetrics));
+  is_scaling = jobMetrics->is_scaling;
+  return Status::OK();
+}
 
 Status MetadataStore::DumpJobMetricsToFile(int64 job_id, const std::string& path){
   std::shared_ptr<JobMetrics> jobMetrics;
   TF_RETURN_IF_ERROR(GetJobMetrics(job_id, jobMetrics));
   jobMetrics->DumpToFile(path);
+  return Status::OK();
 }
 
 Status MetadataStore::AppendJobMetricsDumps(Env* env, const std::string& path) {
@@ -588,6 +635,7 @@ Status MetadataStore::AppendJobMetricsDumps(Env* env, const std::string& path) {
     fstream << ss.rdbuf();
     fstream.close();
   }
+  return Status::OK();
 }
 
 void TerminateJobMetricsAppendDumps(int64 job_id, const std::string& path){
