@@ -22,10 +22,12 @@ ModelMetrics::Metrics::Metrics(double get_next_time_ms,
     has_scalability_metrics_(false) {}
 
 ModelMetrics::Metrics::Metrics(double get_next_time_ms,
-    double inter_arrival_time_ms, double last_x_batch_time_ms,
-    double relative_wait_fraction, double result_queue_size)
+    double inter_arrival_time_ms, int64 worker_count,
+    double last_x_batch_time_ms, double relative_wait_fraction,
+    double result_queue_size)
     : get_next_time_ms_(get_next_time_ms),
       inter_arrival_time_ms_(inter_arrival_time_ms),
+      worker_count_(worker_count),
       last_x_batch_time_ms_(last_x_batch_time_ms),
       relative_wait_fraction_(relative_wait_fraction),
       result_queue_size_(result_queue_size),
@@ -33,20 +35,32 @@ ModelMetrics::Metrics::Metrics(double get_next_time_ms,
 
 ModelMetrics::Metrics::Metrics(ModelMetrics::Metrics& other) 
   : get_next_time_ms_(other.get_next_time_ms()),
-    inter_arrival_time_ms_(other.inter_arrival_time_ms()),
-    has_scalability_metrics_(false) {}
+    inter_arrival_time_ms_(other.inter_arrival_time_ms()){
+  if (other.has_scalability_metrics()){
+    worker_count_ = other.worker_count_;
+    last_x_batch_time_ms_ = other.last_x_batch_time_ms_;
+    relative_wait_fraction_ = other.relative_wait_fraction_;
+    result_queue_size_ = other.result_queue_size_;
+    has_scalability_metrics_ = true;
+  } else {
+    has_scalability_metrics_ = false;
+  }
+}
 
+/*
 void ModelMetrics::Metrics::Update(ModelMetrics::Metrics& other) {
   get_next_time_ms_ = other.get_next_time_ms_;
   inter_arrival_time_ms_ = other.inter_arrival_time_ms_;
-}
+}*/
 
 Status ModelMetrics::UpdateClientMetrics(
   const int64 worker_count,
   const int64 client_id,
   ModelMetrics::Metrics& metrics) {
   using MetricsCollection =
-    absl::flat_hash_map<int64, std::shared_ptr<ModelMetrics::Metrics>>;
+    absl::flat_hash_map<int64, std::vector<std::shared_ptr<ModelMetrics::Metrics>>>;
+
+  auto metrics_ptr = std::make_shared<Metrics>(metrics);
 
   // Level 1 - worker_count
   auto worker_count_it = metrics_.find(worker_count);
@@ -60,13 +74,15 @@ Status ModelMetrics::UpdateClientMetrics(
   // Level 2 - client_id
   auto it = metrics_collection->find(client_id);
   if (it == metrics_collection->end()) {
-    auto entry = std::make_shared<Metrics>(metrics);
+    auto entry = std::vector<std::shared_ptr<Metrics>>();
+    entry.push_back(metrics_ptr);
     metrics_collection->insert({client_id, entry});
     VLOG(2) << "Created model metrics for client " << client_id;
   } else {
-    it->second->Update(metrics);
-    VLOG(2) << "Updated model metrics for client " << client_id;
+    it->second.push_back(metrics_ptr);
+    VLOG(2) << "Appended model metrics for client " << client_id;
   }
+  metrics_history.push_back(metrics_ptr);
   return Status::OK();
 }
 
@@ -86,7 +102,7 @@ Status ModelMetrics::GetAllClientMetrics(
 
 Status ModelMetrics::GetClientMetrics(
     const int64 worker_count, const int64 client_id,
-    std::shared_ptr<Metrics>& metrics) {
+    std::vector<std::shared_ptr<Metrics>>& metrics) {
   auto worker_count_it = metrics_.find(worker_count);
   if(worker_count_it != metrics_.end()){
     auto it = worker_count_it->second->find(client_id);

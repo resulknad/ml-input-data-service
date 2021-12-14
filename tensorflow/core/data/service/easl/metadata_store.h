@@ -35,26 +35,27 @@ class ModelMetrics {
         Metrics(Metrics& other);
         Metrics(double get_next_time_ms, double inter_arrival_time_ms);
         Metrics(double get_next_time_ms, double inter_arrival_time_ms,
-          double last_x_batch_time_ms, double relative_wait_fraction,
-          double result_queue_size);
-
-        void Update(Metrics& other);
+          int64 worker_count, double last_x_batch_time_ms,
+          double relative_wait_fraction, double result_queue_size);
 
         void set_get_next_time_ms(double x) { get_next_time_ms_ = x; }
         void set_inter_arrival_time_ms(double x) { inter_arrival_time_ms_ = x; }
         void set_last_x_batch_time_ms(double x) { last_x_batch_time_ms_ = x; }
         void set_relative_wait_fraction(double x) { relative_wait_fraction_ = x; }
         void set_result_queue_size(double x) { result_queue_size_ = x; }
+        void set_worker_count(int64 x) { worker_count_ = x; }
 
         bool has_scalability_metrics() { return has_scalability_metrics_; }
         double get_next_time_ms() { return get_next_time_ms_; }
         double inter_arrival_time_ms() { return inter_arrival_time_ms_; }
+        int64 worker_count() { return worker_count_; }
         double last_x_batch_time_ms() { return last_x_batch_time_ms_; }
         double relative_wait_fraction() { return relative_wait_fraction_; }
         double result_queue_size() { return result_queue_size_; }
 
       private:
         bool has_scalability_metrics_;
+        int64 worker_count_;
         double get_next_time_ms_; 
         double inter_arrival_time_ms_;
         double last_x_batch_time_ms_;
@@ -64,24 +65,29 @@ class ModelMetrics {
 
     // Keys are client_id.
     using MetricsCollection =
-      absl::flat_hash_map<int64, std::shared_ptr<ModelMetrics::Metrics>>;
+      absl::flat_hash_map<int64, std::vector<std::shared_ptr<ModelMetrics::Metrics>>>;
 
     using MetricsByWorkerCount =
       absl::flat_hash_map<int64, std::shared_ptr<MetricsCollection>>;
+
+    using MetricsHistory = std::vector<std::pair<int64, ModelMetrics::Metrics>>;
 
     ModelMetrics() {}
 
     // Update the values for a worker_count, client_id pair.
     Status UpdateClientMetrics(const int64 worker_count, const int64 client_id, Metrics& metrics);
-    Status GetClientMetrics(const int64 worker_count, const int64 client_id, std::shared_ptr<Metrics>& metrics);
+    Status GetClientMetrics(const int64 worker_count, const int64 client_id, std::vector<std::shared_ptr<Metrics>>& metrics);
     Status GetAllWorkerCountMetrics(std::shared_ptr<MetricsByWorkerCount>& metrics);
     Status GetAllClientMetrics(const int64 worker_count, std::shared_ptr<MetricsCollection>&);
+    Status GetMetricsHistory(std::vector<std::shared_ptr<Metrics>>& metrics_history);
 
     // Dump metrics to a string stream
     void DumpToStream(std::stringstream& ss);
 
     // The keys are the worker count
     MetricsByWorkerCount metrics_;
+    // Metrics history, stored in order of arrival
+    std::vector<std::shared_ptr<Metrics>> metrics_history;
 };
 
 class NodeMetrics {

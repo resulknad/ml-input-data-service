@@ -1106,39 +1106,36 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
     TF_RETURN_IF_ERROR(s);
 
     // EASL: Update the client metrics
-    easl::ModelMetrics::Metrics metrics;
-    if (!request->has_scalability_metrics()) {
-      metrics = easl::ModelMetrics::Metrics(
-        request->avg_get_next_processing_time(),
-        request->avg_inter_arrival_time());
-    } else {
-      metrics = easl::ModelMetrics::Metrics(
+    if (request->has_scalability_metrics()) {
+      easl::ModelMetrics::Metrics metrics = easl::ModelMetrics::Metrics(
         request->avg_get_next_processing_time(),
         request->avg_inter_arrival_time(),
+        job->current_worker_count, // TODO (Damien) add worker count to request.
         request->last_x_batch_time_ms(),
         request->relative_wait_fraction(),
         request->result_queue_size());
-    }
-    VLOG(4) << "metrics processing_time: " << metrics.get_next_time_ms();
-    s = metadata_store_.UpdateModelMetrics(job->job_id,
-        job->current_worker_count, request->job_client_id(),metrics);
-    // Ignore metrics for jobs which do not have metrics anymore
-    // report error otherwise.
-    if (!s.ok() && !errors::IsNotFound(s)) { return s; }
 
-    // EASL - Determine updated target number of workers
-    int64 target_worker_count;
-    TF_RETURN_IF_ERROR(
-        service::easl::scaling_utils::DynamicWorkerCountUpdate(
-            job->job_type, config_, metadata_store_, job->target_worker_count, target_worker_count));
-    do_reassign_workers = target_worker_count > job->current_worker_count;
-    if (target_worker_count != job->target_worker_count) {
-      Update update;
-      JobTargetWorkerCountUpdate *job_target_worker_count_update =
-          update.mutable_job_target_worker_count_update();
-      job_target_worker_count_update->set_job_id(job->job_id);
-      job_target_worker_count_update->set_target_worker_count(target_worker_count);
-      state_.Apply(update);
+      VLOG(4) << "metrics processing_time: " << metrics.get_next_time_ms();
+      s = metadata_store_.UpdateModelMetrics(job->job_id,
+                                             job->current_worker_count, request->job_client_id(),metrics);
+      // Ignore metrics for jobs which do not have metrics anymore
+      // report error otherwise.
+      if (!s.ok() && !errors::IsNotFound(s)) { return s; }
+
+      // EASL - Determine updated target number of workers
+      int64 target_worker_count;
+      TF_RETURN_IF_ERROR(
+          service::easl::scaling_utils::DynamicWorkerCountUpdate(
+              job->job_type, config_, metadata_store_, job->target_worker_count, target_worker_count));
+      do_reassign_workers = target_worker_count > job->current_worker_count;
+      if (target_worker_count != job->target_worker_count) {
+        Update update;
+        JobTargetWorkerCountUpdate *job_target_worker_count_update =
+            update.mutable_job_target_worker_count_update();
+        job_target_worker_count_update->set_job_id(job->job_id);
+        job_target_worker_count_update->set_target_worker_count(target_worker_count);
+        state_.Apply(update);
+      }
     }
 
     if (job->garbage_collected) {
