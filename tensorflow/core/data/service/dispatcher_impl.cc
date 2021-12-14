@@ -1093,7 +1093,6 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
     // Lock once...
     mutex_lock l(mu_);
     VLOG(4) << "Received heartbeat from client id " << request->job_client_id();
-    VLOG(4) << "Avg inter-arrival time " << request->avg_inter_arrival_time();
 
     std::shared_ptr<const Job> job;
     Status s = state_.JobForJobClientId(request->job_client_id(), job);
@@ -1107,13 +1106,12 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
 
     // EASL: Update the client metrics
     if (request->has_scalability_metrics()) {
-      easl::ModelMetrics::Metrics metrics = easl::ModelMetrics::Metrics(
+      easl::ModelMetrics::Metrics metrics(
         request->worker_count(),
         request->last_x_batch_time_ms(),
         request->relative_wait_fraction(),
         request->result_queue_size());
 
-      VLOG(0) << "metrics processing_time: " << metrics.get_next_time_ms();
       s = metadata_store_.UpdateModelMetrics(job->job_id,
                                              job->current_worker_count, request->job_client_id(),metrics);
       // Ignore metrics for jobs which do not have metrics anymore
