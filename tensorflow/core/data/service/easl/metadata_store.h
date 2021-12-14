@@ -212,15 +212,18 @@ class JobMetrics {
     JobMetrics(int64 job_id,
                int64 dataset_id,
                int64 dataset_fingerprint,
-               std::string& dataset_key);
+               std::string& dataset_key,
+               uint32 initial_worker_count = 1);
 
     void DumpToFile(const std::string& path);
     void DumpToStream(std::stringstream& ss);
 
+    bool is_scaling;
     int64 job_id_;
     int64 dataset_id_;
     int64 dataset_fingerprint_;
     std::string dataset_key_;
+    std::deque<uint32> worker_count_;
     std::shared_ptr<ModelMetrics> model_metrics_;
     std::shared_ptr<InputPipelineMetrics> input_pipeline_metrics_;
 };
@@ -235,7 +238,8 @@ class MetadataStore {
   Status CreateJob(int64 job_id,
                    int64 dataset_id,
                    int64 dataset_fingerprint,
-                   std::string& dataset_key);
+                   std::string& dataset_key,
+                   uint32 initial_worker_count = 1);
 
   // Remove job
   Status RemoveJob(int64 job_id);
@@ -282,6 +286,16 @@ class MetadataStore {
   
   Status UpdateNodeNames(int64 job_id, string last_node_name, 
     string last_tf_node_name, string marker_node_name);
+
+  // Logic related to the meta-scalability metrics
+  Status UpdateJobWorkerCount(int64 job_id, uint32 worker_count);
+  Status GetWorkerCountHistory(int64 job_id, std::deque<uint32>& history);
+  Status GetWorkerCountHistoryByDatasetKey(const std::string& dataset_key,
+    std::deque<uint32>& history);
+
+  Status SetJobIsScaling(int64 job_id);
+  Status UnsetJobIsScaling(int64 job_id);
+  Status IsJobScaling(int64 job_id, bool& is_scaling);
 
   // Update or create the metrics for the dataset key from the given job.
   Status UpdateDatasetKeyJobMetrics(int64 job_id, const std::string& dataset_key);
