@@ -92,7 +92,7 @@ Status ModelMetrics::GetAllClientMetrics(
 
 Status ModelMetrics::GetClientMetrics(
     const int64 worker_count, const int64 client_id,
-    std::vector<std::shared_ptr<Metrics>>& metrics) {
+    std::deque<std::shared_ptr<Metrics>>& metrics) {
   auto worker_count_it = metrics_.find(worker_count);
   if(worker_count_it != metrics_.end()){
     auto it = worker_count_it->second->find(client_id);
