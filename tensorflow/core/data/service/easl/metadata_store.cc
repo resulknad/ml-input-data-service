@@ -318,7 +318,8 @@ JobMetrics::JobMetrics(int64 job_id,
         dataset_fingerprint_(dataset_fingerprint),
         dataset_key_(dataset_key),
         model_metrics_(), 
-        input_pipeline_metrics_() {
+        input_pipeline_metrics_(),
+        is_scaling_(true){
           model_metrics_ = std::make_shared<ModelMetrics>();
           input_pipeline_metrics_ = std::make_shared<InputPipelineMetrics>();
         }
@@ -551,21 +552,21 @@ Status MetadataStore::UpdateNodeNames(int64 job_id, string last_node_name,
 Status MetadataStore::SetJobIsScaling(int64 job_id) {
   std::shared_ptr<JobMetrics> jobMetrics;
   TF_RETURN_IF_ERROR(GetJobMetrics(job_id, jobMetrics));
-  jobMetrics->is_scaling = true;
+  jobMetrics->is_scaling_ = true;
   return Status::OK();
 }
 
 Status MetadataStore::UnsetJobIsScaling(int64 job_id) {
   std::shared_ptr<JobMetrics> jobMetrics;
   TF_RETURN_IF_ERROR(GetJobMetrics(job_id, jobMetrics));
-  jobMetrics->is_scaling = false;
+  jobMetrics->is_scaling_ = false;
   return Status::OK();
 }
 
 Status MetadataStore::IsJobScaling(int64 job_id, bool& is_scaling) {
   std::shared_ptr<JobMetrics> jobMetrics;
   TF_RETURN_IF_ERROR(GetJobMetrics(job_id, jobMetrics));
-  is_scaling = jobMetrics->is_scaling;
+  is_scaling = jobMetrics->is_scaling_;
   return Status::OK();
 }
 

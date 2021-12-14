@@ -34,7 +34,7 @@ Status DynamicWorkerCountUpdate(
     const std::string& job_type,
     const int64 job_id,
     const experimental::DispatcherConfig& dispatcher_config,
-    const ::tensorflow::data::easl::MetadataStore& metadata_store,
+    ::tensorflow::data::easl::MetadataStore& metadata_store,
     const int64 current_worker_count,
     int64& worker_count
     );

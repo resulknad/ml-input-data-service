@@ -215,7 +215,7 @@ class JobMetrics {
     void DumpToFile(const std::string& path);
     void DumpToStream(std::stringstream& ss);
 
-    bool is_scaling;
+    bool is_scaling_ = true;
     int64 job_id_;
     int64 dataset_id_;
     int64 dataset_fingerprint_;
