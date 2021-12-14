@@ -120,8 +120,7 @@ Status DynamicWorkerCountUpdate(
   std::shared_ptr<ModelMetrics> model_metrics;
   TF_RETURN_IF_ERROR(metadata_store.GetModelMetrics(job_id, model_metrics));
 
-  ModelMetrics::MetricsHistory metrics_history;
-  TF_RETURN_IF_ERROR(model_metrics->GetMetricsHistory(metrics_history));
+  ModelMetrics::MetricsHistory metrics_history = model_metrics->metrics_history_;
 
   if(is_scaling) {
     std::shared_ptr<ModelMetrics::Metrics> second_to_last_metrics = metrics_history[metrics_history.size() - 2];
