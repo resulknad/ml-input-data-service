@@ -1101,7 +1101,6 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         }
         int64 backoff_until = std::min(
             deadline_micros,
-            deadline_micros,
             now_micros + ::tensorflow::ComputeBackoffMicroseconds(num_retries));
         VLOG(0) << "Failed to get an element from worker "
                 << task->info.worker_address() << ": " << s
