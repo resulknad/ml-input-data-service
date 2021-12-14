@@ -123,8 +123,24 @@ Status DynamicWorkerCountUpdate(
   ModelMetrics::MetricsHistory metrics_history = model_metrics->metrics_history_;
 
   if(is_scaling) {
+    if (metrics_history.size() == 1){ // Cannot be smaller than 1
+      worker_count = metrics_history.back()->worker_count() + 1;
+      return Status::OK();
+    }
+
     std::shared_ptr<ModelMetrics::Metrics> second_to_last_metrics = metrics_history[metrics_history.size() - 2];
     std::shared_ptr<ModelMetrics::Metrics> last_metrics = metrics_history[metrics_history.size() - 1];
+
+    int second_to_last_index = metrics_history.size() - 2;
+    while(second_to_last_metrics->worker_count() == last_metrics->worker_count()){
+      if (second_to_last_index == 0){
+        VLOG(0) << "EASL (DynamicWorkerCountUpdate) - Should not enter here!"
+        << "This might lead to an infinite loop! ";
+        worker_count = metrics_history.back()->worker_count();
+        return Status::OK();
+      }
+      second_to_last_metrics = metrics_history[--second_to_last_index];
+    }
 
     double stl_batch_time = second_to_last_metrics->last_x_batch_time_ms();
     double l_batch_time = last_metrics->last_x_batch_time_ms();
