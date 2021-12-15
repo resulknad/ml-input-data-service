@@ -666,6 +666,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           req.set_last_x_batch_time_ms(last_x_batch_time_ms);
           req.set_relative_wait_fraction(relative_wait_fraction);
           req.set_result_queue_size(result_queue_size);
+          req.set_worker_count(tasks_.size());
 
           ClearScalabilityMetrics();
         }

@@ -114,6 +114,9 @@ Status DynamicWorkerCountUpdate(
     return Status::OK();
   }
 
+  VLOG(0) << "EASL (DynamicWorkerCountUpdate) - Entering. Current worker count "
+  << current_worker_count;
+
   bool is_scaling;
   TF_RETURN_IF_ERROR(metadata_store.IsJobScaling(job_id, is_scaling));
 
@@ -123,7 +126,9 @@ Status DynamicWorkerCountUpdate(
   ModelMetrics::MetricsHistory metrics_history = model_metrics->metrics_history_;
 
   if(is_scaling) {
+    VLOG(0) << "EASL (DynamicWorkerCountUpdate) - is_scaline is true";
     if (metrics_history.size() == 1){ // Cannot be smaller than 1
+      VLOG(0) << "EASL (DynamicWorkerCountUpdate) - no metrics_history -> increasing worker count";
       worker_count = metrics_history.back()->worker_count() + 1;
       return Status::OK();
     }
