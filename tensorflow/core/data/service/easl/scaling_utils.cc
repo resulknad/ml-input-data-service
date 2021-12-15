@@ -170,7 +170,7 @@ Status DynamicWorkerCountUpdate(
 
 
   // TODO Check if split provider reached eos, in which case there is no point to scale up.
-  worker_count = current_worker_count;
+  worker_count = metrics_history[metrics_history.size()-1]->worker_count(); // guaranteed to work.
   return Status::OK();
 
   /**
