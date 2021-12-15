@@ -638,32 +638,37 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       }
 
       // Add the scalability metrics if sufficient measurements have been retrieved
-      if (had_to_wait_.size() >= BATCH_INTERVAL) {
+      {
         // Protect the metrics
         mutex_lock l(mu_);
+        if (had_to_wait_.size() >= BATCH_INTERVAL) {
+          VLOG(0) << "EASL (Heartbeat) - Enough measurements for scalability metrics";
+          // Compute the last x batch time
+          double last_x_batch_time_ms =
+              ((double)(batch_timestamps_us_[BATCH_INTERVAL - 1]) -
+                  batch_timestamps_us_[0]) / EnvTime::kMillisToMicros;
+          VLOG(0) << "EASL (Heartbeat) - Accessed last_x_batch_time_ms";
 
-        // Compute the last x batch time
-        double last_x_batch_time_ms =
-            ((double)(batch_timestamps_us_[BATCH_INTERVAL - 1]) -
-            batch_timestamps_us_[0]) / EnvTime::kMillisToMicros;
+          // Compute the relative_wait_fraction & the average size of the result queue
+          double relative_wait_fraction = 0.0;
+          double result_queue_size = 0.0;
+          for (int i = 0; i < BATCH_INTERVAL; ++i) {
+            relative_wait_fraction += wait_times_ms_[i];
+            result_queue_size += result_queue_size_[i];
+          }
+          VLOG(0) << "EASL (Heartbeat) - Accessed two other metrics";
 
-        // Compute the relative_wait_fraction & the average size of the result queue
-        double relative_wait_fraction = 0.0;
-        double result_queue_size = 0.0;
-        for (int i = 0; i < BATCH_INTERVAL; ++i) {
-          relative_wait_fraction += wait_times_ms_[i];
-          result_queue_size += result_queue_size_[i];
+          relative_wait_fraction /= last_x_batch_time_ms;
+          result_queue_size /= BATCH_INTERVAL;
+
+          // Add the metrics to the request
+          req.set_has_scalability_metrics(true);
+          req.set_last_x_batch_time_ms(last_x_batch_time_ms);
+          req.set_relative_wait_fraction(relative_wait_fraction);
+          req.set_result_queue_size(result_queue_size);
+
+          ClearScalabilityMetrics();
         }
-        relative_wait_fraction /= last_x_batch_time_ms;
-        result_queue_size /= BATCH_INTERVAL;
-
-        // Add the metrics to the request
-        req.set_has_scalability_metrics(true);
-        req.set_last_x_batch_time_ms(last_x_batch_time_ms);
-        req.set_relative_wait_fraction(relative_wait_fraction);
-        req.set_result_queue_size(result_queue_size);
-
-        ClearScalabilityMetrics();
       }
 
       // Fill up the metadata fields in the heartbeat request
@@ -704,6 +709,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     }
 
     void ClearScalabilityMetrics() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      VLOG(0) << "EASL - Clearing scalability metrics";
       batch_timestamps_us_.clear();
       wait_times_ms_.clear();
       result_queue_size_.clear();
@@ -711,6 +717,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     }
 
     void RemoveLastScalabilityMetrics() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      VLOG(0) << "EASL - Trying to remove last scalability metrics";
       batch_timestamps_us_.pop_back();
       wait_times_ms_.pop_back();
       result_queue_size_.pop_back();
