@@ -570,6 +570,28 @@ Status MetadataStore::IsJobScaling(int64 job_id, bool& is_scaling) {
   return Status::OK();
 }
 
+Status MetadataStore::GetSameScaleCounter(int64 job_id, uint64& counter) {
+  std::shared_ptr<JobMetrics> jobMetrics;
+  TF_RETURN_IF_ERROR(GetJobMetrics(job_id, jobMetrics));
+  counter = jobMetrics->same_scale_counter_;
+  return Status::OK();
+}
+
+Status MetadataStore::IncrementSameScaleCounter(int64 job_id, uint64& counter) {
+  std::shared_ptr<JobMetrics> jobMetrics;
+  TF_RETURN_IF_ERROR(GetJobMetrics(job_id, jobMetrics));
+  jobMetrics->same_scale_counter_++;
+  counter = jobMetrics->same_scale_counter_;
+  return Status::OK();
+}
+
+Status MetadataStore::ResetSameScaleCounter(int64 job_id) {
+  std::shared_ptr<JobMetrics> jobMetrics;
+  TF_RETURN_IF_ERROR(GetJobMetrics(job_id, jobMetrics));
+  jobMetrics->same_scale_counter_ = 1;
+  return Status::OK();
+}
+
 Status MetadataStore::SetJobTargetWorkerCount(int64 job_id, int64 target_worker_count) {
   std::shared_ptr<JobMetrics> jobMetrics;
   TF_RETURN_IF_ERROR(GetJobMetrics(job_id, jobMetrics));

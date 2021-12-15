@@ -26,6 +26,7 @@ double worker_count_alpha_ = 0.1;
 int MAX_WORKERS_PER_JOB = 100;
 
 double kMinBatchTimeRelativeImprovement = 0.05; // 5%
+uint32 kInStabilityBeforeScaling = 20;
 }
 
 
@@ -154,7 +155,7 @@ Status DynamicWorkerCountUpdate(
     double l_batch_time = last_metrics->last_x_batch_time_ms();
     double relative_improvement = 1.0 - l_batch_time / stl_batch_time;
 
-    if (second_to_last_metrics->worker_count() < last_metrics->worker_count()){
+    if (second_to_last_metrics->worker_count() < last_metrics->worker_count()) {
       // We are scaling up
       if (relative_improvement > kMinBatchTimeRelativeImprovement){
         worker_count = last_metrics->worker_count() + 1;
@@ -165,12 +166,12 @@ Status DynamicWorkerCountUpdate(
       } else {
         worker_count = second_to_last_metrics->worker_count();
         metadata_store.UnsetJobIsScaling(job_id);
+        metadata_store.ResetSameScaleCounter(job_id);
         VLOG(0) << "(EASL::DynamicWorkerCountUpdate::ScalingUp) "
                 << "Improvement NOT large enough:\n"
                 << " > improvement: " << relative_improvement << "\n"
                 << " > next worker count: " << worker_count;
       }
-      return Status::OK();
     } else {
       // We are scaling down
       if (relative_improvement > -kMinBatchTimeRelativeImprovement) {
@@ -181,12 +182,25 @@ Status DynamicWorkerCountUpdate(
                 << " > next worker count: " << worker_count;
       } else {
         worker_count = second_to_last_metrics->worker_count();
+        metadata_store.UnsetJobIsScaling(job_id);
+        metadata_store.ResetSameScaleCounter(job_id);
         VLOG(0) << "(EASL::DynamicWorkerCountUpdate::ScalingDown) "
                 << "Improvement loss NOT ok:\n"
                 << " > improvement: " << relative_improvement << "\n"
                 << " > next worker count: " << worker_count;
       }
     }
+    return Status::OK();
+  } else {
+    // We're not scaling --> We're in a period of stability
+    uint64 same_scale_counter;
+    TF_RETURN_IF_ERROR(metadata_store.IncrementSameScaleCounter(job_id,
+      same_scale_counter));
+
+//    if (same_scale_counter > kInStabilityBeforeScaling) {
+//
+//    }
+
   }
 
 
@@ -194,117 +208,6 @@ Status DynamicWorkerCountUpdate(
   worker_count = metrics_history[metrics_history.size()-1]->worker_count(); // guaranteed to work.
   metadata_store.SetJobTargetWorkerCount(job_id, worker_count);
   return Status::OK();
-
-  /**
-
-  // Check if we have any metrics for this dataset
-  std::shared_ptr<data::easl::InputPipelineMetrics> job_metrics;
-  Status s = metadata_store.GetInputPipelineMetricsByDatasetKey(
-      dataset_key, job_metrics);
-
-  // We do not yet have the metrics for this dataset --> use 1 worker
-  if(errors::IsNotFound(s)) {
-    VLOG(0) << "(DynamicWorkerCountUpdate) No metrics found for dataset "
-            << dataset_key << ". Will use 1 worker in " << job_type << " mode.";
-    worker_count = 1;
-    return Status::OK();
-  } else if (!s.ok()) {
-    VLOG(0) << "(DynamicWorkerCountUpdate) Another error has been thrown: " << s;
-    return s;
-  }
-
-  // Pipeline stats: last TF node metrics
-  std::shared_ptr<NodeMetrics> last_tf_node_metrics;
-  s = metadata_store.GetLastTFNodeMetricsByDatasetKey(
-      dataset_key, last_tf_node_metrics);
-  if (!s.ok()) {
-    VLOG(0) << "(DetermineElasticity) Failed to get the last TF node metrics";
-    return s;
-  }
-  size_t num_workers = (last_tf_node_metrics->metrics_).size();
-  DCHECK(num_workers > 0);
-
-  // Model stats
-  double client_throughput = 0.0;
-  std::shared_ptr<ModelMetrics> model_metrics;
-  TF_RETURN_IF_ERROR(
-      metadata_store.GetModelMetricsByDatasetKey(
-          dataset_key, model_metrics));
-
-  // Get the average client throughput
-  for(std::pair<int64, std::shared_ptr<ModelMetrics::Metrics>> e :
-      model_metrics->metrics_) {
-    std::shared_ptr<ModelMetrics::Metrics> client_metrics = e.second;
-    client_throughput += 1000.0 / client_metrics->inter_arrival_time_ms();
-  }
-  // Multiply the average throughput by the nr of clients to get the real throughput
-  VLOG(0) << "(DetermineElasticity) Total client throughput demand "
-          << client_throughput;
-
-  if (job_type == "COMPUTE" || job_type == "PUT") {
-    VLOG(0) << "(DetermineElasticity) In COMPUTE or PUT branch with case "
-            << job_type;
-    double avg_worker_throughput = 0.0;
-
-    // Get the average throughput for a worker
-    for(std::pair<std::string, std::shared_ptr<NodeMetrics::Metrics>> e :
-        last_tf_node_metrics->metrics_) {
-      std::shared_ptr<NodeMetrics::Metrics> worker_metrics = e.second;
-      avg_worker_throughput += 1000.0 / worker_metrics->active_time_ms();
-    }
-    avg_worker_throughput /= num_workers;
-    VLOG(0) << "(DetermineElasticity) Average worker throughput "
-            << avg_worker_throughput;
-
-    // Infer the number of workers required to sustain the model
-    worker_count = std::max<int64>(ceil(client_throughput / avg_worker_throughput -
-        worker_count_alpha_), 1);
-  } else {
-    VLOG(0) << "(DetermineElasticity) In GET branch.";
-
-    // Get last user node metrics
-    std::shared_ptr<NodeMetrics> last_node_metrics;
-    TF_RETURN_IF_ERROR(
-        metadata_store.GetLastNodeMetricsByDatasetKey(
-            dataset_key, last_node_metrics));
-    DCHECK(num_workers == (last_node_metrics->metrics_).size());
-
-    // Get the time per row and the TF nodes overhead
-    uint64 row_size = 0;
-    double tf_nodes_overhead_ms = 0.0;
-
-    for(std::pair<std::string, std::shared_ptr<NodeMetrics::Metrics>> e :
-        last_node_metrics->metrics_) {
-      std::shared_ptr<NodeMetrics::Metrics> worker_metrics = e.second;
-      std::shared_ptr<NodeMetrics::Metrics> worker_metrics_tf_node =
-          last_tf_node_metrics->metrics_[e.first];
-
-      row_size += worker_metrics->bytes_produced() /
-          worker_metrics->num_elements();
-      tf_nodes_overhead_ms += worker_metrics_tf_node->active_time_ms()
-          - worker_metrics->active_time_ms();
-    }
-
-    row_size /= num_workers;
-    tf_nodes_overhead_ms /= num_workers;
-    double cache_read_time_per_row_ms = data::cache_model::GetTimePerRow(
-        row_size);
-
-    VLOG(0) << "(DetermineElasticity) Average row size " << row_size;
-    VLOG(0) << "(DetermineElasticity) Average read time per item "
-            << cache_read_time_per_row_ms;
-    VLOG(0) << "(DetermineElasticity) Average TF overhead "
-            << tf_nodes_overhead_ms;
-
-    // Infer the worker count for the cache GET use case
-    worker_count = std::max<int64>(ceil(client_throughput *
-        (cache_read_time_per_row_ms + tf_nodes_overhead_ms)
-                                            / 1000.0 - worker_count_alpha_), 1);
-  }
-  VLOG(0) << "(DetermineElasticity) Inferred workers " << worker_count;
-
-  return Status::OK();
-   */
 }
 
 

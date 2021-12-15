@@ -99,7 +99,6 @@ class NodeMetrics {
         void set_bytes_produced(int64 x)   { bytes_produced_ = x; }
         void set_num_elements(int64 x)     { num_elements_ = x; }
         void set_bytes_per_s(int64 x)       { bytes_per_s_ = x; }
-        // void set_computation_time(int64 x) { computation_time_ = x; }
         void set_in_node_time_ms(double x)    { in_node_time_ms_ = x; }
         void set_in_prefix_time_ms(double x)  { in_prefix_time_ms_ = x; }
         void set_active_time_ms(double x) { active_time_ms_ = x; }
@@ -109,7 +108,6 @@ class NodeMetrics {
         int64 bytes_produced()   { return bytes_produced_; }
         int64 num_elements()     { return num_elements_; }
         int64 bytes_per_s()     { return bytes_per_s_; }
-        // int64 computation_time() { return computation_time_; }
         double in_node_time_ms()     { return in_node_time_ms_; }
         double in_prefix_time_ms()   { return in_prefix_time_ms_; }
         double active_time_ms() { return active_time_ms_; }
@@ -130,7 +128,6 @@ class NodeMetrics {
         int64 bytes_produced_;
         int64 num_elements_;
         int64 bytes_per_s_;
-        // int64 computation_time_;
         double in_node_time_ms_;
         double in_prefix_time_ms_;
         double active_time_ms_;
@@ -215,7 +212,8 @@ class JobMetrics {
     void DumpToFile(const std::string& path);
     void DumpToStream(std::stringstream& ss);
 
-    bool is_scaling_ = true;
+    bool is_scaling_ ;
+    uint64 same_scale_counter_;
     int64 target_worker_count_;
     int64 job_id_;
     int64 dataset_id_;
@@ -286,6 +284,12 @@ class MetadataStore {
   Status SetJobIsScaling(int64 job_id);
   Status UnsetJobIsScaling(int64 job_id);
   Status IsJobScaling(int64 job_id, bool& is_scaling);
+
+  // These are required since looking up in metrics history is both expensive
+  // and history can be trimmed
+  Status GetSameScaleCounter(int64 job_id, uint64& counter);
+  Status IncrementSameScaleCounter(int64 job_id, uint64& counter);
+  Status ResetSameScaleCounter(int64 job_id);
 
   Status SetJobTargetWorkerCount(int64 job_id, int64 target_worker_count);
 
