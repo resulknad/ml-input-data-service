@@ -114,7 +114,7 @@ Status DynamicWorkerCountUpdate(
     return Status::OK();
   }
 
-  VLOG(0) << "EASL (DynamicWorkerCountUpdate) - Entering."
+  VLOG(0) << "EASL (DynamicWorkerCountUpdate) - Entering.";
 
   bool is_scaling;
   TF_RETURN_IF_ERROR(metadata_store.IsJobScaling(job_id, is_scaling));
