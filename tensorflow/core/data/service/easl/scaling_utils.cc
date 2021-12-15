@@ -163,7 +163,7 @@ Status DynamicWorkerCountUpdate(
                      << " > improvement: " << relative_improvement << "\n"
                      << " > next worker count: " << worker_count;
       } else {
-        worker_count = last_metrics->worker_count();
+        worker_count = second_to_last_metrics->worker_count();
         metadata_store.UnsetJobIsScaling(job_id);
         VLOG(0) << "(EASL::DynamicWorkerCountUpdate::ScalingUp) "
                 << "Improvement NOT large enough:\n"
