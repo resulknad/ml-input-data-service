@@ -155,13 +155,17 @@ Status DynamicWorkerCountUpdate(
       // We are scaling up
       if (relative_improvement > kMinBatchTimeRelativeImprovement){
         worker_count = last_metrics->worker_count() + 1;
+        VLOG(0) << "EASL (DynamicWorkerCountUpdate) - relative improvement large enough: scaling up"
+                << " Target worker_count: " << worker_count;
       } else {
         worker_count = last_metrics->worker_count();
         metadata_store.UnsetJobIsScaling(job_id);
+        VLOG(0) << "EASL (DynamicWorkerCountUpdate) - relative improvement not large enough"
+            << " Target worker_count: " << worker_count;
       }
+      return Status::OK();
     }
   }
-
 
 
   // TODO Check if split provider reached eos, in which case there is no point to scale up.
