@@ -216,6 +216,7 @@ class JobMetrics {
     void DumpToStream(std::stringstream& ss);
 
     bool is_scaling_ = true;
+    int64 target_worker_count_;
     int64 job_id_;
     int64 dataset_id_;
     int64 dataset_fingerprint_;
@@ -285,6 +286,8 @@ class MetadataStore {
   Status SetJobIsScaling(int64 job_id);
   Status UnsetJobIsScaling(int64 job_id);
   Status IsJobScaling(int64 job_id, bool& is_scaling);
+
+  Status SetJobTargetWorkerCount(int64 job_id, int64 target_worker_count);
 
   // Update or create the metrics for the dataset key from the given job.
   Status UpdateDatasetKeyJobMetrics(int64 job_id, const std::string& dataset_key);

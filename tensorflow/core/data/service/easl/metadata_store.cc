@@ -319,7 +319,8 @@ JobMetrics::JobMetrics(int64 job_id,
         dataset_key_(dataset_key),
         model_metrics_(), 
         input_pipeline_metrics_(),
-        is_scaling_(true){
+        is_scaling_(true),
+        target_worker_count_(-1){
           model_metrics_ = std::make_shared<ModelMetrics>();
           input_pipeline_metrics_ = std::make_shared<InputPipelineMetrics>();
         }
@@ -567,6 +568,13 @@ Status MetadataStore::IsJobScaling(int64 job_id, bool& is_scaling) {
   std::shared_ptr<JobMetrics> jobMetrics;
   TF_RETURN_IF_ERROR(GetJobMetrics(job_id, jobMetrics));
   is_scaling = jobMetrics->is_scaling_;
+  return Status::OK();
+}
+
+Status MetadataStore::SetJobTargetWorkerCount(int64 job_id, int64 target_worker_count) {
+  std::shared_ptr<JobMetrics> jobMetrics;
+  TF_RETURN_IF_ERROR(GetJobMetrics(job_id, jobMetrics));
+  jobMetrics->target_worker_count_ = target_worker_count;
   return Status::OK();
 }
 

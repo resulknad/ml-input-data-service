@@ -66,9 +66,13 @@ Status DetermineElasticity(
     return s;
   }
 
-  std::shared_ptr<ModelMetrics::Metrics> last_model_metrics =
-      job_metrics->model_metrics_->metrics_history_.back();
-  worker_count = last_model_metrics->worker_count();
+  job_metrics->model_metrics_->metrics_history_.back();
+  worker_count = job_metrics->target_worker_count_;
+
+  if (worker_count < 1){
+    VLOG(0) << "(DetermineElasticity) - Target worker count not set for previous job with same dataset key.";
+    worker_count = 1;
+  }
 
   VLOG(0) << "(DetermineElasticity) Metrics found for dataset "
           << dataset_key << ". Will use " << worker_count << " workers in "
