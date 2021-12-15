@@ -709,7 +709,6 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     }
 
     void ClearScalabilityMetrics() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-      VLOG(0) << "EASL - Clearing scalability metrics";
       batch_timestamps_us_.clear();
       wait_times_ms_.clear();
       result_queue_size_.clear();
@@ -717,10 +716,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     }
 
     void RemoveLastScalabilityMetrics() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-      VLOG(0) << "EASL - Trying to remove last scalability metrics";
-      if(batch_timestamps_us_.size() <= 0){
-        VLOG(0) << "EASL (RemoveLastScalabilityMetrics) - already empty...";
-      } else {
+      if(batch_timestamps_us_.size() > 0){
         batch_timestamps_us_.pop_back();
         wait_times_ms_.pop_back();
         result_queue_size_.pop_back();
