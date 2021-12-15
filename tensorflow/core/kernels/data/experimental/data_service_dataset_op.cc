@@ -647,7 +647,6 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           double last_x_batch_time_ms =
               ((double)(batch_timestamps_us_[BATCH_INTERVAL - 1]) -
                   batch_timestamps_us_[0]) / EnvTime::kMillisToMicros;
-          VLOG(0) << "EASL (Heartbeat) - Accessed last_x_batch_time_ms";
 
           // Compute the relative_wait_fraction & the average size of the result queue
           double relative_wait_fraction = 0.0;
@@ -656,7 +655,6 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             relative_wait_fraction += wait_times_ms_[i];
             result_queue_size += result_queue_size_[i];
           }
-          VLOG(0) << "EASL (Heartbeat) - Accessed two other metrics";
 
           relative_wait_fraction /= last_x_batch_time_ms;
           result_queue_size /= BATCH_INTERVAL;
