@@ -131,6 +131,7 @@ Status DynamicWorkerCountUpdate(
     if (metrics_history.size() == 1){ // Cannot be smaller than 1
       VLOG(0) << "EASL (DynamicWorkerCountUpdate) - no metrics_history -> increasing worker count";
       worker_count = metrics_history.back()->worker_count() + 1;
+      metadata_store.SetJobTargetWorkerCount(job_id, worker_count);
       return Status::OK();
     }
 
@@ -143,6 +144,7 @@ Status DynamicWorkerCountUpdate(
         VLOG(0) << "EASL (DynamicWorkerCountUpdate) - Should not enter here!"
         << "This might lead to an infinite loop! ";
         worker_count = metrics_history.back()->worker_count();
+        metadata_store.SetJobTargetWorkerCount(job_id, worker_count);
         return Status::OK();
       }
       second_to_last_metrics = metrics_history[--second_to_last_index];
@@ -165,12 +167,14 @@ Status DynamicWorkerCountUpdate(
             << " Target worker_count: " << worker_count;
       }
       return Status::OK();
+      metadata_store.SetJobTargetWorkerCount(job_id, worker_count);
     }
   }
 
 
   // TODO Check if split provider reached eos, in which case there is no point to scale up.
   worker_count = metrics_history[metrics_history.size()-1]->worker_count(); // guaranteed to work.
+  metadata_store.SetJobTargetWorkerCount(job_id, worker_count);
   return Status::OK();
 
   /**
