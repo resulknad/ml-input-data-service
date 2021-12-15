@@ -158,16 +158,34 @@ Status DynamicWorkerCountUpdate(
       // We are scaling up
       if (relative_improvement > kMinBatchTimeRelativeImprovement){
         worker_count = last_metrics->worker_count() + 1;
-        VLOG(0) << "EASL (DynamicWorkerCountUpdate) - relative improvement large enough: scaling up"
-                << " Target worker_count: " << worker_count;
+        VLOG(0) << "(EASL::DynamicWorkerCountUpdate::ScalingUp) "
+                     << "Improvement large enough:\n"
+                     << " > improvement: " << relative_improvement << "\n"
+                     << " > next worker count: " << worker_count;
       } else {
         worker_count = last_metrics->worker_count();
         metadata_store.UnsetJobIsScaling(job_id);
-        VLOG(0) << "EASL (DynamicWorkerCountUpdate) - relative improvement not large enough"
-            << " Target worker_count: " << worker_count;
+        VLOG(0) << "(EASL::DynamicWorkerCountUpdate::ScalingUp) "
+                << "Improvement NOT large enough:\n"
+                << " > improvement: " << relative_improvement << "\n"
+                << " > next worker count: " << worker_count;
       }
       return Status::OK();
-      metadata_store.SetJobTargetWorkerCount(job_id, worker_count);
+    } else {
+      // We are scaling down
+      if (relative_improvement > -kMinBatchTimeRelativeImprovement) {
+        worker_count = last_metrics->worker_count() - 1;
+        VLOG(0) << "(EASL::DynamicWorkerCountUpdate::ScalingDown) "
+                << "Improvement loss ok:\n"
+                << " > improvement: " << relative_improvement << "\n"
+                << " > next worker count: " << worker_count;
+      } else {
+        worker_count = second_to_last_metrics->worker_count();
+        VLOG(0) << "(EASL::DynamicWorkerCountUpdate::ScalingDown) "
+                << "Improvement loss NOT ok:\n"
+                << " > improvement: " << relative_improvement << "\n"
+                << " > next worker count: " << worker_count;
+      }
     }
   }
 
