@@ -718,10 +718,14 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
     void RemoveLastScalabilityMetrics() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       VLOG(0) << "EASL - Trying to remove last scalability metrics";
-      batch_timestamps_us_.pop_back();
-      wait_times_ms_.pop_back();
-      result_queue_size_.pop_back();
-      had_to_wait_.pop_back();
+      if(batch_timestamps_us_.size() <= 0){
+        VLOG(0) << "EASL (RemoveLastScalabilityMetrics) - already empty...";
+      } else {
+        batch_timestamps_us_.pop_back();
+        wait_times_ms_.pop_back();
+        result_queue_size_.pop_back();
+        had_to_wait_.pop_back();
+      }
     }
 
     void UpdateTasks(const ClientHeartbeatResponse& resp)
