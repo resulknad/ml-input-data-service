@@ -36,14 +36,13 @@ ModelMetrics::Metrics::Metrics(ModelMetrics::Metrics& other) :
     result_queue_size_(other.result_queue_size_){}
 
 Status ModelMetrics::UpdateClientMetrics(
-  const int64 worker_count,
   const int64 client_id,
   ModelMetrics::Metrics& metrics) {
   //using MetricsCollection =
   //  absl::flat_hash_map<int64, std::deque<std::shared_ptr<ModelMetrics::Metrics>>>;
 
   auto metrics_ptr = std::make_shared<Metrics>(metrics);
-
+  int64 worker_count = metrics.worker_count();
   // Level 1 - worker_count
   auto worker_count_it = metrics_.find(worker_count);
   if(worker_count_it == metrics_.end()){
@@ -502,12 +501,12 @@ Status MetadataStore::GetInputPipelineMetricsByDatasetKey(
 }
 
 Status MetadataStore::UpdateModelMetrics(
-  int64 job_id, int64 worker_count, int64 client_id,
+  int64 job_id, int64 client_id,
   ModelMetrics::Metrics& metrics) {
   std::shared_ptr<ModelMetrics> model_metrics;
   Status s = GetModelMetrics(job_id, model_metrics);
   if (s.ok()) {
-    model_metrics->UpdateClientMetrics(worker_count, client_id, metrics);
+    model_metrics->UpdateClientMetrics(client_id, metrics);
   } 
   // if s != ok --> no such job exists
   return s;

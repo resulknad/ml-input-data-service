@@ -1112,17 +1112,22 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
         request->relative_wait_fraction(),
         request->result_queue_size());
 
-      s = metadata_store_.UpdateModelMetrics(job->job_id,
-                                             job->current_worker_count, request->job_client_id(),metrics);
+      s = metadata_store_.UpdateModelMetrics(
+          job->job_id, request->job_client_id(), metrics);
       // Ignore metrics for jobs which do not have metrics anymore
       // report error otherwise.
+      if(!s.ok()){
+        VLOG(0) << "EASL (ClientHeartbeat) - metadatastore error code " << s.code();
+        VLOG(0) << s.ToString();
+        VLOG(0) << errors::IsNotFound(s);
+      }
       if (!s.ok() && !errors::IsNotFound(s)) { return s; }
 
       // EASL - Determine updated target number of workers
       int64 target_worker_count;
       TF_RETURN_IF_ERROR(
           service::easl::scaling_utils::DynamicWorkerCountUpdate(
-              job->job_type, job->job_id, config_, metadata_store_, job->target_worker_count, target_worker_count));
+              job->job_type, job->job_id, config_, metadata_store_, target_worker_count));
       do_reassign_workers = target_worker_count > job->current_worker_count;
       if (target_worker_count != job->target_worker_count) {
         Update update;

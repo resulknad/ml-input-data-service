@@ -67,7 +67,7 @@ class ModelMetrics {
     ModelMetrics() {}
 
     // Update the values for a worker_count, client_id pair.
-    Status UpdateClientMetrics(const int64 worker_count, const int64 client_id, Metrics& metrics);
+    Status UpdateClientMetrics(const int64 client_id, Metrics& metrics);
     Status GetClientMetrics(const int64 worker_count, const int64 client_id, std::deque<std::shared_ptr<Metrics>>& metrics);
     Status GetAllWorkerCountMetrics(std::shared_ptr<MetricsByWorkerCount>& metrics);
     Status GetAllClientMetrics(const int64 worker_count, std::shared_ptr<MetricsCollection>&);
@@ -273,7 +273,7 @@ class MetadataStore {
     std::shared_ptr<NodeMetrics>& metrics) const;
 
   // Update or create the metrics for a client
-  Status UpdateModelMetrics(int64 job_id, int64 worker_count, int64 client_id,
+  Status UpdateModelMetrics(int64 job_id, int64 client_id,
     ModelMetrics::Metrics& metrics);
 
   // Update or create the metrics for a client

@@ -87,7 +87,6 @@ Status DynamicWorkerCountUpdate(
     const int64 job_id,
     const experimental::DispatcherConfig& dispatcher_config,
     ::tensorflow::data::easl::MetadataStore& metadata_store,
-    const int64 current_worker_count,
     int64& worker_count) {
   using NodeMetrics = ::tensorflow::data::easl::NodeMetrics;
   using ModelMetrics = ::tensorflow::data::easl::ModelMetrics;
@@ -103,23 +102,19 @@ Status DynamicWorkerCountUpdate(
 
     static int counter = 0;
     counter++;
-    worker_count = current_worker_count;
     if ( counter > 20){
-      if (current_worker_count < 2){
-        worker_count = 2;
-      } else {
-        worker_count = 1;
-      }
+      worker_count = 2;
       counter = 0;
+    } else if( counter > 40 ){
+      worker_count = 1;
+      counter = 0;
+    } else {
+      worker_count = 1;
     }
-    VLOG(0) << "EASL - Dynamic scaling, counter " << counter
-            << ", current_worker_count " << current_worker_count
-            << ", worker_count " << worker_count;
     return Status::OK();
   }
 
-  VLOG(0) << "EASL (DynamicWorkerCountUpdate) - Entering. Current worker count "
-  << current_worker_count;
+  VLOG(0) << "EASL (DynamicWorkerCountUpdate) - Entering."
 
   bool is_scaling;
   TF_RETURN_IF_ERROR(metadata_store.IsJobScaling(job_id, is_scaling));
@@ -128,6 +123,8 @@ Status DynamicWorkerCountUpdate(
   TF_RETURN_IF_ERROR(metadata_store.GetModelMetrics(job_id, model_metrics));
 
   ModelMetrics::MetricsHistory metrics_history = model_metrics->metrics_history_;
+  VLOG(0) << "EASL (DynamicWorkerCountUpdate) - Worker count for last metrics: " <<
+  metrics_history[metrics_history.size()-1]->worker_count(); // Guaranteed to succeed.
 
   if(is_scaling) {
     VLOG(0) << "EASL (DynamicWorkerCountUpdate) - is_scaline is true";
