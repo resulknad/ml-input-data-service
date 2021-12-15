@@ -66,7 +66,7 @@ Status DetermineElasticity(
     return s;
   }
 
-  job_metrics->model_metrics_->metrics_history_.back();
+//  job_metrics->model_metrics_->metrics_history_.back();
   worker_count = job_metrics->target_worker_count_;
 
   if (worker_count < 1){
