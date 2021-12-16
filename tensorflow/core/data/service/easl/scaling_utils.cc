@@ -25,8 +25,10 @@ namespace {
 double worker_count_alpha_ = 0.1;
 int MAX_WORKERS_PER_JOB = 100;
 
-double kMinBatchTimeRelativeImprovement = 0.05; // 5%
+double kMinBatchTimeRelativeImprovement = 0.02; // 2%
 uint32 kInStabilityBeforeScaling = 20;
+double kMinQueueSizeRelativeGrowth = 1.1; // +10%
+double kMinBatchTimeRelativeGrowth = 1.1; // +10%
 }
 
 
@@ -197,12 +199,59 @@ Status DynamicWorkerCountUpdate(
     TF_RETURN_IF_ERROR(metadata_store.IncrementSameScaleCounter(job_id,
       same_scale_counter));
 
-//    if (same_scale_counter > kInStabilityBeforeScaling) {
-//
-//    }
+    if (same_scale_counter == 1){
+      // Set the converged metrics
+      model_metrics->converged_metrics_ = metrics_history[metrics_history.size() - 1];
+    }
 
+    if (same_scale_counter > kInStabilityBeforeScaling) {
+      VLOG(0) << "(EASL::DynamicWorkerCountUpdate::StablePeriod) - "
+          << "Checking for potential rescaling after stable period.";
+      metadata_store.ResetSameScaleCounter(job_id);
+      // access on queue in O(n). => store metrics of converged state?
+      std::shared_ptr<ModelMetrics::Metrics> converged_metrics = model_metrics->converged_metrics_;
+      std::shared_ptr<ModelMetrics::Metrics> last_metrics = metrics_history[metrics_history.size() - 1];
+
+      double queue_size_converged = converged_metrics->result_queue_size();
+      double queue_size_last_metrics = last_metrics->result_queue_size();
+      double relative_queue_size = queue_size_last_metrics / queue_size_converged;
+
+      VLOG(0) << "(EASL::DynamicWorkerCountUpdate::StablePeriod) - "
+          << "relative_queue_size: " << relative_queue_size << "\n"
+          << "queue_size_converged: " << queue_size_converged << "\n"
+          << "queue_size_last_metrics: " << queue_size_last_metrics << "\n";
+
+      double converged_batch_time = converged_metrics->last_x_batch_time_ms();
+      double l_batch_time = last_metrics->last_x_batch_time_ms();
+      double relative_batch_time = l_batch_time / converged_batch_time;
+
+      VLOG(0) << "(EASL::DynamicWorkerCountUpdate::StablePeriod) - "
+              << "relative_batch_time: " << relative_batch_time << "\n"
+              << "converged_batch_time: " << converged_batch_time << "\n"
+              << "l_batch_time: " << l_batch_time << "\n";
+
+      if (relative_queue_size > kMinQueueSizeRelativeGrowth){
+        VLOG(0) << "Triggering downscale";
+        worker_count = last_metrics->worker_count() - 1;
+        metadata_store.SetJobTargetWorkerCount(job_id, worker_count);
+        metadata_store.SetJobIsScaling(job_id);
+        return Status::OK();
+      }
+
+      if ( relative_batch_time > kMinBatchTimeRelativeGrowth){
+        VLOG(0) << "Triggering upscale";
+        worker_count = last_metrics->worker_count() + 1;
+        metadata_store.SetJobTargetWorkerCount(job_id, worker_count);
+        metadata_store.SetJobIsScaling(job_id);
+        return Status::OK();
+      }
+
+      VLOG(0) << "No rescale triggered";
+
+      worker_count = last_metrics->worker_count();
+      return Status::OK();
+    }
   }
-
 
   // TODO Check if split provider reached eos, in which case there is no point to scale up.
   worker_count = metrics_history[metrics_history.size()-1]->worker_count(); // guaranteed to work.

@@ -319,7 +319,8 @@ JobMetrics::JobMetrics(int64 job_id,
         model_metrics_(), 
         input_pipeline_metrics_(),
         is_scaling_(true),
-        target_worker_count_(-1){
+        target_worker_count_(-1),
+        same_scale_counter_(0) {
           model_metrics_ = std::make_shared<ModelMetrics>();
           input_pipeline_metrics_ = std::make_shared<InputPipelineMetrics>();
         }
@@ -588,7 +589,7 @@ Status MetadataStore::IncrementSameScaleCounter(int64 job_id, uint64& counter) {
 Status MetadataStore::ResetSameScaleCounter(int64 job_id) {
   std::shared_ptr<JobMetrics> jobMetrics;
   TF_RETURN_IF_ERROR(GetJobMetrics(job_id, jobMetrics));
-  jobMetrics->same_scale_counter_ = 1;
+  jobMetrics->same_scale_counter_ = 0;
   return Status::OK();
 }
 

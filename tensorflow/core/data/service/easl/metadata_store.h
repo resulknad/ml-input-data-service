@@ -80,6 +80,8 @@ class ModelMetrics {
     MetricsByWorkerCount metrics_;
     // Metrics history, stored in order of arrival
     MetricsHistory metrics_history_;
+    // Metrics for converged state
+    std::shared_ptr<Metrics> converged_metrics_;
 };
 
 class NodeMetrics {
