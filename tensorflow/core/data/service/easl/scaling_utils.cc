@@ -141,6 +141,13 @@ Status DynamicWorkerCountUpdate(
     std::shared_ptr<ModelMetrics::Metrics> second_to_last_metrics = metrics_history[metrics_history.size() - 2];
     std::shared_ptr<ModelMetrics::Metrics> last_metrics = metrics_history[metrics_history.size() - 1];
 
+    int64 current_target_worker_count;
+    TF_RETURN_IF_ERROR(metadata_store.GetJobTargetWorkerCount(job_id, current_target_worker_count));
+    if (last_metrics->worker_count() != current_target_worker_count){
+      worker_count = current_target_worker_count;
+      return Status::OK();
+    }
+
     int second_to_last_index = metrics_history.size() - 2;
     while(second_to_last_metrics->worker_count() == last_metrics->worker_count()){
       if (second_to_last_index == 0){
@@ -192,6 +199,7 @@ Status DynamicWorkerCountUpdate(
                 << " > next worker count: " << worker_count;
       }
     }
+    metadata_store.SetJobTargetWorkerCount(job_id, worker_count);
     return Status::OK();
   } else {
     // We're not scaling --> We're in a period of stability
@@ -235,6 +243,7 @@ Status DynamicWorkerCountUpdate(
         worker_count = last_metrics->worker_count() - 1;
         metadata_store.SetJobTargetWorkerCount(job_id, worker_count);
         metadata_store.SetJobIsScaling(job_id);
+        metadata_store.SetJobTargetWorkerCount(job_id, worker_count);
         return Status::OK();
       }
 
@@ -243,6 +252,7 @@ Status DynamicWorkerCountUpdate(
         worker_count = last_metrics->worker_count() + 1;
         metadata_store.SetJobTargetWorkerCount(job_id, worker_count);
         metadata_store.SetJobIsScaling(job_id);
+        metadata_store.SetJobTargetWorkerCount(job_id, worker_count);
         return Status::OK();
       }
 

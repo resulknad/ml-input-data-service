@@ -294,6 +294,7 @@ class MetadataStore {
   Status ResetSameScaleCounter(int64 job_id);
 
   Status SetJobTargetWorkerCount(int64 job_id, int64 target_worker_count);
+  Status GetJobTargetWorkerCount(int64 job_id, int64& target_worker_count);
 
   // Update or create the metrics for the dataset key from the given job.
   Status UpdateDatasetKeyJobMetrics(int64 job_id, const std::string& dataset_key);

@@ -600,6 +600,13 @@ Status MetadataStore::SetJobTargetWorkerCount(int64 job_id, int64 target_worker_
   return Status::OK();
 }
 
+Status MetadataStore::GetJobTargetWorkerCount(int64 job_id, int64& target_worker_count) {
+  std::shared_ptr<JobMetrics> jobMetrics;
+  TF_RETURN_IF_ERROR(GetJobMetrics(job_id, jobMetrics));
+  target_worker_count = jobMetrics->target_worker_count_;
+  return Status::OK();
+}
+
 Status MetadataStore::DumpJobMetricsToFile(int64 job_id, const std::string& path){
   std::shared_ptr<JobMetrics> jobMetrics;
   TF_RETURN_IF_ERROR(GetJobMetrics(job_id, jobMetrics));
