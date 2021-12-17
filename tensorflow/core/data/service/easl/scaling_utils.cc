@@ -216,7 +216,6 @@ Status DynamicWorkerCountUpdate(
       VLOG(0) << "(EASL::DynamicWorkerCountUpdate::StablePeriod) - "
           << "Checking for potential rescaling after stable period.";
       metadata_store.ResetSameScaleCounter(job_id);
-      // access on queue in O(n). => store metrics of converged state?
       std::shared_ptr<ModelMetrics::Metrics> converged_metrics = model_metrics->converged_metrics_;
       std::shared_ptr<ModelMetrics::Metrics> last_metrics = metrics_history[metrics_history.size() - 1];
 
@@ -243,16 +242,14 @@ Status DynamicWorkerCountUpdate(
         worker_count = last_metrics->worker_count() - 1;
         metadata_store.SetJobTargetWorkerCount(job_id, worker_count);
         metadata_store.SetJobIsScaling(job_id);
-        metadata_store.SetJobTargetWorkerCount(job_id, worker_count);
         return Status::OK();
       }
 
-      if ( relative_batch_time > kMinBatchTimeRelativeGrowth){
+      if (relative_batch_time > kMinBatchTimeRelativeGrowth){
         VLOG(0) << "Triggering upscale";
         worker_count = last_metrics->worker_count() + 1;
         metadata_store.SetJobTargetWorkerCount(job_id, worker_count);
         metadata_store.SetJobIsScaling(job_id);
-        metadata_store.SetJobTargetWorkerCount(job_id, worker_count);
         return Status::OK();
       }
 
