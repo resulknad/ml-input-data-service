@@ -126,8 +126,8 @@ Status DynamicWorkerCountUpdate(
   TF_RETURN_IF_ERROR(metadata_store.GetModelMetrics(job_id, model_metrics));
 
   ModelMetrics::MetricsHistory metrics_history = model_metrics->metrics_history_;
-  VLOG(0) << "EASL (DynamicWorkerCountUpdate) - Worker count for last metrics: " <<
-  metrics_history[metrics_history.size()-1]->worker_count(); // Guaranteed to succeed.
+  VLOG(0) << "EASL (DynamicWorkerCountUpdate) - Worker count for last metrics: "
+               << metrics_history[metrics_history.size()-1]->worker_count(); // Guaranteed to succeed.
 
   if(is_scaling) {
     VLOG(0) << "EASL (DynamicWorkerCountUpdate) - is_scaline is true";
@@ -143,7 +143,10 @@ Status DynamicWorkerCountUpdate(
 
     int64 current_target_worker_count;
     TF_RETURN_IF_ERROR(metadata_store.GetJobTargetWorkerCount(job_id, current_target_worker_count));
-    if (last_metrics->worker_count() != current_target_worker_count){
+    if (last_metrics->worker_count() != current_target_worker_count) {
+      VLOG(0) << "EASL (DynamicWorkerCountUpdate) - Target metrics count not fulfilled: "
+                   << " > target: " << current_target_worker_count
+                   << " > actual: " << last_metrics->worker_count();
       worker_count = current_target_worker_count;
       return Status::OK();
     }
