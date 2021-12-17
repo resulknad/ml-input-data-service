@@ -305,6 +305,9 @@ class MetadataStore {
   // Appends json representation of current status to a separate file for each job
   Status AppendJobMetricsDumps(Env* env, const std::string& path);
 
+  // Transfers the model metrics history previously collected to a new job
+  Status TransferModelMetricsToNewJob(std::string dataset_key, int64 job_id);
+
 
  private:
   // Key is job id

@@ -27,6 +27,7 @@ Status DetermineElasticity(
     const experimental::DispatcherConfig& dispatcher_config,
     const ::tensorflow::data::easl::MetadataStore& metadata_store,
     const std::string& dataset_key,
+    const int64 job_id,
     const int64 available_workers,
     int64& worker_count);
 

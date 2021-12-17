@@ -641,6 +641,17 @@ Status MetadataStore::AppendJobMetricsDumps(Env* env, const std::string& path) {
   return Status::OK();
 }
 
+Status MetadataStore::TransferModelMetricsToNewJob(std::string dataset_key, int64 job_id){
+  std::shared_ptr<JobMetrics> old_job_metrics;
+  TF_RETURN_IF_ERROR(GetJobMetrics(job_id, old_job_metrics));
+
+  std::shared_ptr<JobMetrics> job_metrics;
+  TF_RETURN_IF_ERROR(GetJobMetricsByDatasetKey(dataset_key, job_metrics));
+
+  job_metrics->model_metrics_ = old_job_metrics->model_metrics_;
+};
+
+
 void TerminateJobMetricsAppendDumps(int64 job_id, const std::string& path){
   std::string fname = path + "/metrics_updates_job_" + std::to_string(job_id) + ".json";
   std::stringstream ss;

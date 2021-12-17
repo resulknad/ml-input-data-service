@@ -37,6 +37,7 @@ Status DetermineElasticity(
     const experimental::DispatcherConfig& dispatcher_config,
     const ::tensorflow::data::easl::MetadataStore& metadata_store,
     const std::string& dataset_key,
+    const int64 job_id,
     const int64 available_workers,
     int64& worker_count) {
   using NodeMetrics = ::tensorflow::data::easl::NodeMetrics;
@@ -71,6 +72,7 @@ Status DetermineElasticity(
 
 //  job_metrics->model_metrics_->metrics_history_.back();
   worker_count = job_metrics->target_worker_count_;
+  metadata_store.TransferModelMetricsToNewJob(dataset_key, job_id);
 
   if (worker_count < 1){
     VLOG(0) << "(DetermineElasticity) - Target worker count not set for previous job with same dataset key.";
@@ -212,7 +214,18 @@ Status DynamicWorkerCountUpdate(
 
     if (same_scale_counter == 1){
       // Set the converged metrics
-      model_metrics->converged_metrics_ = metrics_history[metrics_history.size() - 1];
+      int64 target_worker_count;
+      TF_RETURN_IF_ERROR(metadata_store.GetJobTargetWorkerCount(job_id, target_worker_count));
+      int converged_index = metrics_history.size() - 1;
+      while(metrics_history[converged_index]->worker_count() != target_worker_count) {
+        if (converged_index == 0) {
+          VLOG(0)
+          << "EASL (DynamicWorkerCountUpdate) - Did not find metrics for target_worker_count, using oldest instead";
+          break;
+        }
+        --converged_index;
+      }
+      model_metrics->converged_metrics_ = metrics_history[converged_index];
     }
 
     if (same_scale_counter > kInStabilityBeforeScaling) {
