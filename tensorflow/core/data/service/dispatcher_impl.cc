@@ -519,10 +519,10 @@ Status DataServiceDispatcherImpl::GetSplit(const GetSplitRequest* request,
       job->distributed_epoch_state.value().repetitions[provider_index];
   if (repetition < current_repetition) {
     response->set_end_of_splits(true);
-    // TODO (dada) reset to 3
+    // TODO(dada) reset to 3
     VLOG(0) << "Returning end_of_splits since current reptition "
-            << current_repetition << " is greater than the requested reptition "
-            << repetition;
+                 << current_repetition << " is greater than the requested reptition "
+                 << repetition;
     return Status::OK();
   }
 
@@ -1105,7 +1105,9 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
     TF_RETURN_IF_ERROR(s);
 
     // EASL: Update the client metrics
-    if (request->has_scalability_metrics()) {
+    // FIXME: Note that we're only checking the first split provider
+    if (request->has_scalability_metrics() && // split_providers_[job->job_id][0].get()) {
+      job->distributed_epoch_state.value().repetitions[0] == 0)
       easl::ModelMetrics::Metrics metrics(
         request->worker_count(),
         request->last_x_batch_time_ms(),
