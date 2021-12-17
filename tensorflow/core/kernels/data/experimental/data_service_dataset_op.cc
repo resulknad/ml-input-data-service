@@ -1172,7 +1172,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     // Number of batches to sample before sending scalability metrics to dispatcher
     uint32 buffer_period;
     const uint32 BATCH_INTERVAL = 50;
-    const uint32 RESCALE_BUFFER_INTERVAL = 50;
+    const uint32 RESCALE_BUFFER_INTERVAL = 200;
     const uint32 EPOCH_START_BUFFER_INTERVAL = 200;
 
     std::vector<uint64> batch_timestamps_us_ TF_GUARDED_BY(mu_);
