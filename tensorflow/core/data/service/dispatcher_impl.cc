@@ -1106,8 +1106,8 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
 
     // EASL: Update the client metrics
     // FIXME: Note that we're only checking the first split provider
-    if (request->has_scalability_metrics() && // split_providers_[job->job_id][0].get()) {
-      job->distributed_epoch_state.value().repetitions[0] == 0)
+    if (request->has_scalability_metrics() && 
+      job->distributed_epoch_state.value().repetitions[0] == 0) {
       easl::ModelMetrics::Metrics metrics(
         request->worker_count(),
         request->last_x_batch_time_ms(),
