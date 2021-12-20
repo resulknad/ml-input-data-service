@@ -29,6 +29,10 @@ double kMinBatchTimeRelativeImprovement = 0.02; // 2%
 uint32 kInStabilityBeforeScaling = 20;
 double kMinQueueSizeRelativeGrowth = 1.1; // +10%
 double kMinBatchTimeRelativeGrowth = 1.1; // +10%
+
+
+double kLastBatchCount = 50;
+double kEfficiency = 0.95;
 }
 
 
@@ -100,7 +104,7 @@ Status DynamicWorkerCountUpdate(
 
     int second_to_last_index = metrics_history.size() - 2;
     while(second_to_last_metrics->worker_count() == last_metrics->worker_count()){
-      if (second_to_last_index == 0){
+      if (second_to_last_index == 0) {
         VLOG(0) << "EASL (DynamicWorkerCountUpdate) - Should not enter here!"
         << "This might lead to an infinite loop! ";
         worker_count = metrics_history.back()->worker_count();
@@ -110,17 +114,24 @@ Status DynamicWorkerCountUpdate(
       second_to_last_metrics = metrics_history[--second_to_last_index];
     }
 
-    double stl_batch_time = second_to_last_metrics->last_x_batch_time_ms();
-    double l_batch_time = last_metrics->last_x_batch_time_ms();
-    double relative_improvement = 1.0 - l_batch_time / stl_batch_time;
+    // FIXME: Using a constant here for the last batch count; make sure
+    //        it actually matches the metric in the client
+    double previous_throughput = kLastBatchCount /
+      second_to_last_metrics->last_x_batch_time_ms();
+    double current_throughput = kLastBatchCount /
+      last_metrics->last_x_batch_time_ms();
 
     if (second_to_last_metrics->worker_count() < last_metrics->worker_count()) {
       // We are scaling up
-      if (relative_improvement > kMinBatchTimeRelativeImprovement){
+      double projected_throughput = (previous_throughput *
+        last_metrics->worker_count()) / second_to_last_metrics->worker_count();
+      double efficiency = current_throughput / projected_throughput;
+
+      if (efficiency >= kEfficiency){
         worker_count = last_metrics->worker_count() + 1;
         VLOG(0) << "(EASL::DynamicWorkerCountUpdate::ScalingUp) "
                      << "Improvement large enough:\n"
-                     << " > improvement: " << relative_improvement << "\n"
+                     << " > efficiency: " << efficiency << "\n"
                      << " > next worker count: " << worker_count;
       } else {
         worker_count = second_to_last_metrics->worker_count();
@@ -128,16 +139,20 @@ Status DynamicWorkerCountUpdate(
         metadata_store.ResetSameScaleCounter(job_id);
         VLOG(0) << "(EASL::DynamicWorkerCountUpdate::ScalingUp) "
                 << "Improvement NOT large enough:\n"
-                << " > improvement: " << relative_improvement << "\n"
+                << " > efficiency: " << efficiency << "\n"
                 << " > next worker count: " << worker_count;
       }
     } else {
       // We are scaling down
-      if (relative_improvement > -kMinBatchTimeRelativeImprovement) {
+      double projected_throughput = (current_throughput *
+        second_to_last_metrics->worker_count()) / last_metrics->worker_count();
+      double efficiency = previous_throughput / projected_throughput;
+
+      if (efficiency < kEfficiency) {
         worker_count = last_metrics->worker_count() - 1;
         VLOG(0) << "(EASL::DynamicWorkerCountUpdate::ScalingDown) "
                 << "Improvement loss ok:\n"
-                << " > improvement: " << relative_improvement << "\n"
+                << " > efficiency: " << efficiency << "\n"
                 << " > next worker count: " << worker_count;
       } else {
         worker_count = second_to_last_metrics->worker_count();
@@ -145,7 +160,7 @@ Status DynamicWorkerCountUpdate(
         metadata_store.ResetSameScaleCounter(job_id);
         VLOG(0) << "(EASL::DynamicWorkerCountUpdate::ScalingDown) "
                 << "Improvement loss NOT ok:\n"
-                << " > improvement: " << relative_improvement << "\n"
+                << " > efficiency: " << efficiency << "\n"
                 << " > next worker count: " << worker_count;
       }
     }
