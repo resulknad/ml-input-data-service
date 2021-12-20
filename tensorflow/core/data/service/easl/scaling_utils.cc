@@ -32,61 +32,6 @@ double kMinBatchTimeRelativeGrowth = 1.1; // +10%
 }
 
 
-Status DetermineElasticity(
-    const std::string& job_type,
-    const experimental::DispatcherConfig& dispatcher_config,
-    ::tensorflow::data::easl::MetadataStore& metadata_store,
-    const std::string& dataset_key,
-    const int64 job_id,
-    const int64 available_workers,
-    int64& worker_count) {
-  using NodeMetrics = ::tensorflow::data::easl::NodeMetrics;
-  using ModelMetrics = ::tensorflow::data::easl::ModelMetrics;
-  using JobMetrics = ::tensorflow::data::easl::JobMetrics;
-
-  // Give out max number of workers
-  if(dispatcher_config.scaling_policy() == 2){
-    //worker_count = available_workers;
-    worker_count = MAX_WORKERS_PER_JOB;
-    return Status::OK();
-  }
-
-  if(dispatcher_config.scaling_policy() == 3){
-    worker_count = 1;
-    return Status::OK();
-  }
-
-  std::shared_ptr<JobMetrics> job_metrics;
-  Status s = metadata_store.GetJobMetricsByDatasetKey(dataset_key, job_metrics);
-
-  // We do not yet have the metrics for this dataset --> use 1 worker
-  if(errors::IsNotFound(s)) {
-    VLOG(0) << "(DetermineElasticity) No metrics found for dataset "
-            << dataset_key << ". Will use 1 worker in " << job_type << " mode.";
-    worker_count = 1;
-    return Status::OK();
-  } else if (!s.ok()) {
-    VLOG(0) << "(DetermineElasticity) Another error has been thrown: " << s;
-    return s;
-  }
-
-//  job_metrics->model_metrics_->metrics_history_.back();
-  worker_count = job_metrics->target_worker_count_;
-  metadata_store.TransferModelMetricsToNewJob(dataset_key, job_id);
-
-  if (worker_count < 1){
-    VLOG(0) << "(DetermineElasticity) - Target worker count not set for previous job with same dataset key.";
-    worker_count = 1;
-  }
-
-  VLOG(0) << "(DetermineElasticity) Metrics found for dataset "
-          << dataset_key << ". Will use " << worker_count << " workers in "
-          << job_type << " mode.";
-
-  return Status::OK();
-}
-
-
 Status DynamicWorkerCountUpdate(
     const std::string& job_type,
     const int64 job_id,

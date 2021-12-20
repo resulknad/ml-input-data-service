@@ -22,14 +22,6 @@ namespace service {
 namespace easl{
 namespace scaling_utils {
 
-Status DetermineElasticity(
-    const std::string& job_type,
-    const experimental::DispatcherConfig& dispatcher_config,
-    ::tensorflow::data::easl::MetadataStore& metadata_store,
-    const std::string& dataset_key,
-    const int64 job_id,
-    const int64 available_workers,
-    int64& worker_count);
 
 Status DynamicWorkerCountUpdate(
     const std::string& job_type,

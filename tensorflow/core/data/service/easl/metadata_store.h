@@ -249,13 +249,13 @@ class MetadataStore {
   Status GetInputPipelineMetrics(int64 job_id, 
     std::shared_ptr<InputPipelineMetrics>& metrics) const;
 
-  Status GetJobMetricsByDatasetKey(const std::string& dataset_key, 
+  Status GetJobMetricsByDatasetFingerprint(const int64 dataset_fingerprint,
     std::shared_ptr<JobMetrics>& metrics) const;
 
-  Status GetModelMetricsByDatasetKey(const std::string& dataset_key, 
+  Status GetModelMetricsByDatasetFingerprint(const int64 dataset_fingerprint,
     std::shared_ptr<ModelMetrics>& metrics) const;
 
-  Status GetInputPipelineMetricsByDatasetKey(const std::string& dataset_key, 
+  Status GetInputPipelineMetricsByDatasetFingerprint(const int64 dataset_fingerprint,
     std::shared_ptr<InputPipelineMetrics>& metrics) const;
   
   Status GetLastNodeMetrics(int64 job_id, 
@@ -265,11 +265,11 @@ class MetadataStore {
   Status GetMarkerNodeMetrics(int64 job_id, 
     std::shared_ptr<NodeMetrics>& metrics) const;
 
-  Status GetLastNodeMetricsByDatasetKey(const std::string& dataset_key,
+  Status GetLastNodeMetricsByDatasetFingerprint(const int64 dataset_fingerprint,
     std::shared_ptr<NodeMetrics>& metrics) const;
-  Status GetLastTFNodeMetricsByDatasetKey(const std::string& dataset_key,
+  Status GetLastTFNodeMetricsByDatasetFingerprint(const int64 dataset_fingerprint,
     std::shared_ptr<NodeMetrics>& metrics) const;
-  Status GetMarkerNodeMetricsByDatasetKey(const std::string& dataset_key,
+  Status GetMarkerNodeMetricsByDatasetFingerprint(const int64 dataset_fingerprint,
     std::shared_ptr<NodeMetrics>& metrics) const;
 
   // Update or create the metrics for a client
@@ -297,7 +297,7 @@ class MetadataStore {
   Status GetJobTargetWorkerCount(int64 job_id, int64& target_worker_count);
 
   // Update or create the metrics for the dataset key from the given job.
-  Status UpdateDatasetKeyJobMetrics(int64 job_id, const std::string& dataset_key);
+  Status UpdateFingerprintKeyJobMetrics(int64 job_id);
 
   // Dumps the job metrics in a file named after its id at the given path.
   Status DumpJobMetricsToFile(int64 job_id, const std::string& path);
@@ -306,14 +306,14 @@ class MetadataStore {
   Status AppendJobMetricsDumps(Env* env, const std::string& path);
 
   // Transfers the model metrics history previously collected to a new job
-  Status TransferModelMetricsToNewJob(std::string dataset_key, int64 job_id);
+  //Status TransferModelMetricsToNewJob(std::string dataset_key, int64 job_id);
 
 
  private:
   // Key is job id
   absl::flat_hash_map<int64, std::shared_ptr<JobMetrics>> job_metadata_;
-  // Key is dataset_key
-  absl::flat_hash_map<std::string, std::shared_ptr<JobMetrics>> dataset_key_metadata_;
+  // Key is fingerprint
+  absl::flat_hash_map<int64, std::shared_ptr<JobMetrics>> fingerprint_key_metadata_;
 };
 
 // Utils function to append the missing trailing "]"

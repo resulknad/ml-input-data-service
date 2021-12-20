@@ -462,7 +462,7 @@ Status DataServiceDispatcherImpl::WorkerUpdate(
         // Update metadata store directly, quicker than waiting for the GCOldJobs to run.
         if(job->finished){
           do_reassign_free_workers = true;
-          TF_RETURN_IF_ERROR(metadata_store_.UpdateDatasetKeyJobMetrics(job->job_id, task->dataset_key));
+          TF_RETURN_IF_ERROR(metadata_store_.UpdateFingerprintJobMetrics(job->job_id));
           if(log_dumps_enabled_){
             TF_RETURN_IF_ERROR(metadata_store_.DumpJobMetricsToFile(job->job_id, config_.log_dir()));
             easl::TerminateJobMetricsAppendDumps(job->job_id, config_.log_dir());
@@ -872,18 +872,23 @@ Status DataServiceDispatcherImpl::CreateJob(
   VLOG(0) << "EASL - Caching decision for dataset_key " 
             << compute_dataset_key << ": " << job_type;
 
-  // Infer the worker count for  this job and job type
-  int64 total_workers = state_.ListWorkers().size();
-  TF_RETURN_IF_ERROR(service::easl::scaling_utils::DetermineElasticity(job_type,
-      config_, metadata_store_, compute_dataset_key, job_id, total_workers, worker_count));
-  VLOG(0) << "EASL - Initial scalability decision for dataset_key "
-          << compute_dataset_key << ": " << worker_count;
-
   // EASL add job entry to metadata store
   std::string dataset_key = service::easl::cache_utils::DatasetKey(
     dataset->dataset_id, dataset->fingerprint, job_type);
   TF_RETURN_IF_ERROR(metadata_store_.CreateJob(job_id, dataset->dataset_id,
                               dataset->fingerprint, dataset_key));
+
+  std::shared_ptr<easl::JobMetrics> job_metrics;
+  Status s = metadata_store_.GetJobMetrics(job_id, job_metrics);
+  worker_count = job_metrics->target_worker_count_;
+  if (worker_count < 0){
+    worker_count = 1; // Set default to 1 if no previous job with same dataset fingerprint.
+    if (config_.scaling_policy() == 2){
+      worker_count = 100;
+    }
+    VLOG(0) << "EASL (CreateJob) - Initial scalability decision for dataset_key "
+            << compute_dataset_key << ": " << worker_count;
+  }
 
   int64 num_split_providers = 0;
   if (processing_mode == ProcessingMode::DISTRIBUTED_EPOCH) {

@@ -354,13 +354,27 @@ void JobMetrics::DumpToStream(std::stringstream& ss){
 // Metadata store 
 MetadataStore::MetadataStore() 
   : job_metadata_(),
-    dataset_key_metadata_() {}
+    fingerprint_key_metadata_() {}
 
 Status MetadataStore::CreateJob(int64 job_id, int64 dataset_id, 
   int64 dataset_fingerprint, std::string& dataset_key) {
-  std::string ds_key = dataset_key;
-  auto job_metrics = std::make_shared<JobMetrics>(
-      job_id, dataset_id, dataset_fingerprint, ds_key);
+  auto it = fingerprint_key_metadata_.find(dataset_fingerprint);
+  if ( it == fingerprint_key_metadata_.end()){
+    std::string ds_key = dataset_key;
+    auto job_metrics = std::make_shared<JobMetrics>(
+        job_id, dataset_id, dataset_fingerprint, ds_key);
+    job_metadata_.insert_or_assign(job_id, job_metrics);
+
+    return Status::OK();
+  }
+
+  // TODO FIXME This is not a deep copy of the JobMetrics object
+  // Multiple clients could copy the same object and share it, the second client would overwrite the job_id_, .. fields.
+  std::shared_ptr<JobMetrics> job_metrics = it->second;
+  job_metrics->job_id_ = job_id;
+  job_metrics->dataset_id_ = dataset_id;
+  job_metrics->dataset_key_ = dataset_key;
+
   job_metadata_.insert_or_assign(job_id, job_metrics);
 
   return Status::OK();
@@ -374,7 +388,6 @@ Status MetadataStore::RemoveJob(int64 job_id) {
     return errors::NotFound("Job with id ", job_id, " does not have metrics");
   }
   auto job_metrics = it->second;
-  //dataset_key_metadata_.insert_or_assign(job_metrics->dataset_key_, job_metrics);
 
   // Properly erase job.
   job_metadata_.erase(job_id);
@@ -441,60 +454,60 @@ Status MetadataStore::GetMarkerNodeMetrics(int64 job_id,
   return s;
 }
 
-Status MetadataStore::GetLastNodeMetricsByDatasetKey(
-  const std::string& dataset_key, std::shared_ptr<NodeMetrics>& metrics) const {
+Status MetadataStore::GetLastNodeMetricsByDatasetFingerprint(
+    const int64 dataset_fingerprint, std::shared_ptr<NodeMetrics>& metrics) const {
   std::shared_ptr<JobMetrics> job_metrics;
-  Status s = GetJobMetricsByDatasetKey(dataset_key, job_metrics);
+  Status s = GetJobMetricsByDatasetFingerprint(dataset_fingerprint, job_metrics);
   if (s.ok()) {
     return job_metrics->input_pipeline_metrics_->GetLastNodeMetrics(metrics);
   }
   return s;
 }
 
-Status MetadataStore::GetLastTFNodeMetricsByDatasetKey(
-  const std::string& dataset_key, std::shared_ptr<NodeMetrics>& metrics) const {
+Status MetadataStore::GetLastTFNodeMetricsByDatasetFingerprint(
+    const int64 dataset_fingerprint, std::shared_ptr<NodeMetrics>& metrics) const {
   std::shared_ptr<JobMetrics> job_metrics;
-  Status s = GetJobMetricsByDatasetKey(dataset_key, job_metrics);
+  Status s = GetJobMetricsByDatasetFingerprint(dataset_fingerprint, job_metrics);
   if (s.ok()) {
     return job_metrics->input_pipeline_metrics_->GetLastTFNodeMetrics(metrics);
   }
   return s;
 }
 
-Status MetadataStore::GetMarkerNodeMetricsByDatasetKey(
-  const std::string& dataset_key, std::shared_ptr<NodeMetrics>& metrics) const {
+Status MetadataStore::GetMarkerNodeMetricsByDatasetFingerprint(
+    const int64 dataset_fingerprint, std::shared_ptr<NodeMetrics>& metrics) const {
   std::shared_ptr<JobMetrics> job_metrics;
-  Status s = GetJobMetricsByDatasetKey(dataset_key, job_metrics);
+  Status s = GetJobMetricsByDatasetFingerprint(dataset_fingerprint, job_metrics);
   if (s.ok()) {
     return job_metrics->input_pipeline_metrics_->GetMarkerNodeMetrics(metrics);
   }
   return s;
 }
 
-Status MetadataStore::GetJobMetricsByDatasetKey(
-    const std::string& dataset_key, std::shared_ptr<JobMetrics>& metrics) const {
-  auto it = dataset_key_metadata_.find(dataset_key);
-  if (it == dataset_key_metadata_.end()) {
-    return errors::NotFound("Dataset ", dataset_key, " does not (yet) have metrics");
+Status MetadataStore::GetJobMetricsByDatasetFingerprint(
+    const int64 dataset_fingerprint, std::shared_ptr<JobMetrics>& metrics) const {
+  auto it = fingerprint_key_metadata_.find(dataset_fingerprint);
+  if (it == fingerprint_key_metadata_.end()) {
+    return errors::NotFound("Dataset ", dataset_fingerprint, " does not (yet) have metrics");
   }
   metrics = it->second;
   return Status::OK();
 }
 
-Status MetadataStore::GetModelMetricsByDatasetKey(
-    const std::string& dataset_key, std::shared_ptr<ModelMetrics>& metrics) const {
+Status MetadataStore::GetModelMetricsByDatasetFingerprint(
+    const int64 dataset_fingerprint, std::shared_ptr<ModelMetrics>& metrics) const {
   std::shared_ptr<JobMetrics> job_metrics;
-  Status s = GetJobMetricsByDatasetKey(dataset_key, job_metrics);
+  Status s = GetJobMetricsByDatasetFingerprint(dataset_fingerprint, job_metrics);
   if (s.ok()) {
     metrics = job_metrics->model_metrics_;
   }
   return s;
 }
 
-Status MetadataStore::GetInputPipelineMetricsByDatasetKey(
-    const std::string& dataset_key, std::shared_ptr<InputPipelineMetrics>& metrics) const {
+Status MetadataStore::GetInputPipelineMetricsByDatasetFingerprint(
+    const int64 dataset_fingerprint, std::shared_ptr<InputPipelineMetrics>& metrics) const {
   std::shared_ptr<JobMetrics> job_metrics;
-  Status s = GetJobMetricsByDatasetKey(dataset_key, job_metrics);
+  Status s = GetJobMetricsByDatasetFingerprint(dataset_fingerprint, job_metrics);
   if (s.ok()) {
     metrics = job_metrics->input_pipeline_metrics_;
   }
@@ -525,14 +538,13 @@ Status MetadataStore::UpdateInputPipelineMetrics(int64 job_id,
   return s;
 }
 
-Status MetadataStore::UpdateDatasetKeyJobMetrics(int64 job_id, 
-  const std::string& dataset_key){
+Status MetadataStore::UpdateFingerprintKeyJobMetrics(int64 job_id){
   auto it = job_metadata_.find(job_id);
   if (it == job_metadata_.end()) {
     return errors::NotFound("Job with id ", job_id, " does not have metrics");
   }
   auto job_metrics = it->second;
-  dataset_key_metadata_.insert_or_assign(job_metrics->dataset_key_, job_metrics);
+  fingerprint_key_metadata_.insert_or_assign(job_metrics->dataset_fingerprint_, job_metrics);
 
   return Status::OK();
 }
@@ -641,6 +653,7 @@ Status MetadataStore::AppendJobMetricsDumps(Env* env, const std::string& path) {
   return Status::OK();
 }
 
+/*
 Status MetadataStore::TransferModelMetricsToNewJob(std::string dataset_key, int64 job_id){
   std::shared_ptr<JobMetrics> old_job_metrics;
   TF_RETURN_IF_ERROR(GetJobMetrics(job_id, old_job_metrics));
@@ -650,7 +663,7 @@ Status MetadataStore::TransferModelMetricsToNewJob(std::string dataset_key, int6
 
   job_metrics->model_metrics_ = old_job_metrics->model_metrics_;
 };
-
+*/
 
 void TerminateJobMetricsAppendDumps(int64 job_id, const std::string& path){
   std::string fname = path + "/metrics_updates_job_" + std::to_string(job_id) + ".json";
