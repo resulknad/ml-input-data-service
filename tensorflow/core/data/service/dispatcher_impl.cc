@@ -462,7 +462,7 @@ Status DataServiceDispatcherImpl::WorkerUpdate(
         // Update metadata store directly, quicker than waiting for the GCOldJobs to run.
         if(job->finished){
           do_reassign_free_workers = true;
-          TF_RETURN_IF_ERROR(metadata_store_.UpdateFingerprintJobMetrics(job->job_id));
+          TF_RETURN_IF_ERROR(metadata_store_.UpdateFingerprintKeyJobMetrics(job->job_id));
           if(log_dumps_enabled_){
             TF_RETURN_IF_ERROR(metadata_store_.DumpJobMetricsToFile(job->job_id, config_.log_dir()));
             easl::TerminateJobMetricsAppendDumps(job->job_id, config_.log_dir());
