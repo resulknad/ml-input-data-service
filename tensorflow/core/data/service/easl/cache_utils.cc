@@ -207,7 +207,7 @@ Status DetermineJobType(const experimental::DispatcherConfig& dispatcher_config,
     return Status::OK();
   }
   std::shared_ptr<::tensorflow::data::easl::InputPipelineMetrics> job_metrics;
-  Status s = metadata_store.GetInputPipelineMetricsByDatasetKey(dataset_key, 
+  Status s = metadata_store.GetInputPipelineMetricsByDatasetFingerprint(fingerprint,
     job_metrics);
 
   // We do not yet have the metrics for this dataset
@@ -221,8 +221,8 @@ Status DetermineJobType(const experimental::DispatcherConfig& dispatcher_config,
   // Compute metrics
   using NodeMetrics = ::tensorflow::data::easl::NodeMetrics;
   std::shared_ptr<NodeMetrics> node_metrics;
-  TF_RETURN_IF_ERROR(metadata_store.GetLastNodeMetricsByDatasetKey(
-    dataset_key, node_metrics));
+  TF_RETURN_IF_ERROR(metadata_store.GetLastNodeMetricsByDatasetFingerprint(
+      fingerprint, node_metrics));
 
   size_t num_workers = (node_metrics->metrics_).size();
   DCHECK(num_workers > 0);
@@ -265,7 +265,7 @@ Status DetermineJobType(const experimental::DispatcherConfig& dispatcher_config,
   bool is_gcs_limited = false;
   double source_cache_compute_time_ms = 0.0;
   std::shared_ptr<data::easl::InputPipelineMetrics> input_pipeline_metrics; 
-  metadata_store.GetInputPipelineMetricsByDatasetKey(dataset_key, 
+  metadata_store.GetInputPipelineMetricsByDatasetFingerprint(fingerprint,
     input_pipeline_metrics);
 
 
@@ -276,7 +276,7 @@ Status DetermineJobType(const experimental::DispatcherConfig& dispatcher_config,
     VLOG(0) << "Found marker node name: " << input_pipeline_metrics->GetMarkerNodeName();
     has_marker_node = true;
     std::shared_ptr<data::easl::NodeMetrics> marker_node_metrics;
-    metadata_store.GetMarkerNodeMetricsByDatasetKey(dataset_key, 
+    metadata_store.GetMarkerNodeMetricsByDatasetFingerprint(fingerprint,
       marker_node_metrics);
   
     uint64 io_row_size = 0;
@@ -407,7 +407,7 @@ Status DetermineJobTypeUpdated(const experimental::DispatcherConfig& dispatcher_
     return Status::OK();
   }
   std::shared_ptr<::tensorflow::data::easl::InputPipelineMetrics> job_metrics;
-  Status s = metadata_store.GetInputPipelineMetricsByDatasetKey(dataset_key,
+  Status s = metadata_store.GetInputPipelineMetricsByDatasetFingerprint(fingerprint,
                                                                 job_metrics);
 
   // We do not yet have the metrics for this dataset
@@ -421,8 +421,8 @@ Status DetermineJobTypeUpdated(const experimental::DispatcherConfig& dispatcher_
   // Compute metrics
   using NodeMetrics = ::tensorflow::data::easl::NodeMetrics;
   std::shared_ptr<NodeMetrics> node_metrics;
-  TF_RETURN_IF_ERROR(metadata_store.GetLastNodeMetricsByDatasetKey(
-      dataset_key, node_metrics));
+  TF_RETURN_IF_ERROR(metadata_store.GetLastNodeMetricsByDatasetFingerprint(
+      fingerprint, node_metrics));
 
   size_t num_workers = (node_metrics->metrics_).size();
   DCHECK(num_workers > 0);
@@ -467,14 +467,14 @@ Status DetermineJobTypeUpdated(const experimental::DispatcherConfig& dispatcher_
   bool is_gcs_limited = false;
   double source_cache_compute_time_ms = 0.0;
   std::shared_ptr<data::easl::InputPipelineMetrics> input_pipeline_metrics;
-  metadata_store.GetInputPipelineMetricsByDatasetKey(dataset_key,
+  metadata_store.GetInputPipelineMetricsByDatasetFingerprint(fingerprint,
                                                      input_pipeline_metrics);
 
   if(input_pipeline_metrics->GetMarkerNodeName() != "") {
     VLOG(0) << "Found marker node name: " << input_pipeline_metrics->GetMarkerNodeName();
     has_marker_node = true;
     std::shared_ptr<data::easl::NodeMetrics> marker_node_metrics;
-    metadata_store.GetMarkerNodeMetricsByDatasetKey(dataset_key,
+    metadata_store.GetMarkerNodeMetricsByDatasetFingerprint(fingerprint,
                                                     marker_node_metrics);
 
     uint64 io_row_size = 0;
