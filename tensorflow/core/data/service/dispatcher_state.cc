@@ -602,6 +602,20 @@ Status DispatcherState::IsEarlyEndedTask(const int64 job_id, const int64 task_id
   return Status::OK();
 }
 
+void DispatcherState::AddFutureEndedJob(int64 job_id,
+  int32 split_provider_index) {
+  std::string key = std::to_string(job_id) + "_" + std::to_string(
+    split_provider_index);
+  future_terminated_split_providers_.insert(key);
+}
+bool DispatcherState::IsFutureEndedJob(int64 job_id,
+  int32 split_provider_index) {
+  std::string key = std::to_string(job_id) + "_" + std::to_string(
+    split_provider_index);
+  auto loc = future_terminated_split_providers_.find(key);
+  return loc != future_terminated_split_providers_.end();
+}
+
 int64 DispatcherState::NextAvailableTaskId() const {
   return next_available_task_id_;
 }

@@ -264,6 +264,9 @@ class DispatcherState {
 
   Status IsEarlyEndedTask(const int64 job_id, const int64 task_id, bool& is_early_ended_task);
 
+  void AddFutureEndedJob(int64 job_id, int32 split_provider_index);
+  bool IsFutureEndedJob(int64 job_id, int32 split_provider_index);
+
  private:
   void RegisterDataset(const RegisterDatasetUpdate& register_dataset);
   void RegisterWorker(const RegisterWorkerUpdate& register_worker);
@@ -326,6 +329,9 @@ class DispatcherState {
   // EASL - List of tasks for which the splitProvider should return eos, keyed by jobId.
   // The values are a map from task id to task.
   absl::flat_hash_map<int64, TasksById> ending_tasks_by_job_;
+  // Split providers to be terminated after the scaling is done
+  // Key to this data structure is: `<job_id>_<split_provider_index>`
+  std::set<std::string> future_terminated_split_providers_;
 };
 
 }  // namespace data

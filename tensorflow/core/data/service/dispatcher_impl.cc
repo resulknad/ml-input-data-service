@@ -529,7 +529,7 @@ Status DataServiceDispatcherImpl::GetSplit(const GetSplitRequest* request,
   // EASL - Check if this is not a "early ended" task
   bool is_early_ended;
   TF_RETURN_IF_ERROR(state_.IsEarlyEndedTask(job_id, task_id, is_early_ended));
-  if (is_early_ended){
+  if (is_early_ended) {
     VLOG(0) << "EASL - Split provider returning eos for early terminated task " << task_id;
     response->set_end_of_splits(true);
     return Status::OK();
@@ -541,6 +541,19 @@ Status DataServiceDispatcherImpl::GetSplit(const GetSplitRequest* request,
   Tensor split;
   bool end_of_splits = false;
   TF_RETURN_IF_ERROR(split_provider->GetNext(&split, &end_of_splits));
+  // EASL - check to see if we've reached the eos
+  bool scaling;
+  TF_RETURN_IF_ERROR(metadata_store_.IsJobScaling(job_id, scaling));
+  if (end_of_splits && scaling) {
+    // FIXME: Note that this might infinitely loop in the first epoch due to
+    //        async between stability period and eos
+    state_.AddFutureEndedJob(job_id, provider_index);
+    split_provider->Reset();
+    split_provider->GetNext(&split, &end_of_splits);
+  } else if (!scaling && state_.IsFutureEndedJob(job_id, provider_index)) {
+    end_of_splits = true;
+  }
+
   TF_RETURN_IF_ERROR(RecordSplitProduced(
       job_id, repetition, request->split_provider_index(), end_of_splits));
   response->set_end_of_splits(end_of_splits);
