@@ -115,6 +115,11 @@ Status DynamicWorkerCountUpdate(
     double l_batch_time = last_metrics->last_x_batch_time_ms();
     double relative_improvement = 1.0 - l_batch_time / stl_batch_time;
 
+    if (relative_improvement > 1.2) {
+      worker_count = current_target_worker_count;
+      return Status::OK();
+    }
+
     if (second_to_last_metrics->worker_count() < last_metrics->worker_count()) {
       // We are scaling up
       if (relative_improvement > kMinBatchTimeRelativeImprovement){
