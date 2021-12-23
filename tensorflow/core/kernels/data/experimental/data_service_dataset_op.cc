@@ -642,16 +642,20 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         // Protect the metrics
         mutex_lock l(mu_);
         if (had_to_wait_.size() >= BATCH_INTERVAL) {
-          VLOG(0) << "EASL (Heartbeat) - Enough measurements for scalability metrics";
+          VLOG(0) << "EASL (Heartbeat) - Enough measurements for "
+                       << "scalability metrics";
           // Compute the last x batch time
+          int32 metrics_count = had_to_wait_.size();
           double last_x_batch_time_ms =
-              ((double)(batch_timestamps_us_[BATCH_INTERVAL - 1]) -
-                  batch_timestamps_us_[0]) / EnvTime::kMillisToMicros;
+              ((double)(batch_timestamps_us_[metrics_count - 1])
+                  - batch_timestamps_us_[metrics_count - BATCH_INTERVAL])
+                  / EnvTime::kMillisToMicros;
 
           // Compute the relative_wait_fraction & the average size of the result queue
           double relative_wait_fraction = 0.0;
           double result_queue_size = 0.0;
-          for (int i = 0; i < BATCH_INTERVAL; ++i) {
+          for (int32 i = metrics_count - BATCH_INTERVAL;
+            i < metrics_count; ++i) {
             relative_wait_fraction += wait_times_ms_[i];
             result_queue_size += result_queue_size_[i];
           }
@@ -667,6 +671,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           req.set_worker_count(tasks_.size());
 
           ClearScalabilityMetrics();
+        } else {
+          req.set_has_scalability_metrics(false);
         }
       }
 
@@ -715,7 +721,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     }
 
     void RemoveLastScalabilityMetrics() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-      if(batch_timestamps_us_.size() > 0){
+      if(!batch_timestamps_us_.empty()) {
         batch_timestamps_us_.pop_back();
         wait_times_ms_.pop_back();
         result_queue_size_.pop_back();

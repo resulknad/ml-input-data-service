@@ -27,8 +27,8 @@ int MAX_WORKERS_PER_JOB = 100;
 
 double kMinBatchTimeRelativeImprovement = 0.1; // 10%
 uint32 kInStabilityBeforeScaling = 20;
-double kMinQueueSizeRelativeGrowth = 1.1; // +10%
-double kMinBatchTimeRelativeGrowth = 1.1; // +10%
+double kMinQueueSizeRelativeGrowth = 1.2; // +20%
+double kMinBatchTimeRelativeGrowth = 1.2; // +20%
 }
 
 
@@ -77,29 +77,30 @@ Status DynamicWorkerCountUpdate(
                << metrics_history[metrics_history.size()-1]->worker_count(); // Guaranteed to succeed.
 
   if(is_scaling) {
-    VLOG(0) << "EASL (DynamicWorkerCountUpdate) - is_scaline is true";
-    if (metrics_history.size() == 1){ // Cannot be smaller than 1
+    VLOG(0) << "EASL (DynamicWorkerCountUpdate) - is_scaling is true";
+    if (metrics_history.size() == 1) { // Cannot be smaller than 1
       VLOG(0) << "EASL (DynamicWorkerCountUpdate) - no metrics_history -> increasing worker count";
       worker_count = metrics_history.back()->worker_count() + 1;
       metadata_store.SetJobTargetWorkerCount(job_id, worker_count);
       return Status::OK();
     }
 
-    std::shared_ptr<ModelMetrics::Metrics> second_to_last_metrics = metrics_history[metrics_history.size() - 2];
     std::shared_ptr<ModelMetrics::Metrics> last_metrics = metrics_history[metrics_history.size() - 1];
 
     int64 current_target_worker_count;
     TF_RETURN_IF_ERROR(metadata_store.GetJobTargetWorkerCount(job_id, current_target_worker_count));
     if (last_metrics->worker_count() != current_target_worker_count) {
-      VLOG(0) << "EASL (DynamicWorkerCountUpdate) - Target metrics count not fulfilled: "
-                   << " > target: " << current_target_worker_count
+      VLOG(0) << "EASL (DynamicWorkerCountUpdate) - Target metrics count not fulfilled:\n"
+                   << " > target: " << current_target_worker_count << "\n"
                    << " > actual: " << last_metrics->worker_count();
       worker_count = current_target_worker_count;
       return Status::OK();
     }
 
     int second_to_last_index = metrics_history.size() - 2;
-    while(second_to_last_metrics->worker_count() == last_metrics->worker_count()){
+    std::shared_ptr<ModelMetrics::Metrics> second_to_last_metrics =
+      metrics_history[second_to_last_index];
+    while(second_to_last_metrics->worker_count() == last_metrics->worker_count()) {
       if (second_to_last_index == 0){
         VLOG(0) << "EASL (DynamicWorkerCountUpdate) - Should not enter here!"
         << "This might lead to an infinite loop! ";
@@ -124,6 +125,7 @@ Status DynamicWorkerCountUpdate(
                      << " > next worker count: " << worker_count;
       } else {
         worker_count = second_to_last_metrics->worker_count();
+        model_metrics->converged_metrics_ = second_to_last_metrics;
         metadata_store.UnsetJobIsScaling(job_id);
         metadata_store.ResetSameScaleCounter(job_id);
         VLOG(0) << "(EASL::DynamicWorkerCountUpdate::ScalingUp) "
@@ -141,6 +143,7 @@ Status DynamicWorkerCountUpdate(
                 << " > next worker count: " << worker_count;
       } else {
         worker_count = second_to_last_metrics->worker_count();
+        model_metrics->converged_metrics_ = second_to_last_metrics;
         metadata_store.UnsetJobIsScaling(job_id);
         metadata_store.ResetSameScaleCounter(job_id);
         VLOG(0) << "(EASL::DynamicWorkerCountUpdate::ScalingDown) "
@@ -157,28 +160,28 @@ Status DynamicWorkerCountUpdate(
     TF_RETURN_IF_ERROR(metadata_store.IncrementSameScaleCounter(job_id,
       same_scale_counter));
 
-    if (same_scale_counter == 1){
-      // Set the converged metrics
-      int64 target_worker_count;
-      TF_RETURN_IF_ERROR(metadata_store.GetJobTargetWorkerCount(job_id, target_worker_count));
-      int converged_index = metrics_history.size() - 1;
-      while(metrics_history[converged_index]->worker_count() != target_worker_count) {
-        if (converged_index == 0) {
-          VLOG(0)
-          << "EASL (DynamicWorkerCountUpdate) - Did not find metrics for target_worker_count, using oldest instead";
-          break;
-        }
-        --converged_index;
-      }
-      model_metrics->converged_metrics_ = metrics_history[converged_index];
-    }
+//    if (same_scale_counter == 1) {
+//      // Set the converged metrics
+//      int64 target_worker_count;
+//      TF_RETURN_IF_ERROR(metadata_store.GetJobTargetWorkerCount(job_id, target_worker_count));
+//      int converged_index = metrics_history.size() - 1;
+//      while(metrics_history[converged_index]->worker_count() != target_worker_count) {
+//        if (converged_index == 0) {
+//          VLOG(0)
+//          << "EASL (DynamicWorkerCountUpdate) - Did not find metrics for target_worker_count, using oldest instead";
+//          break;
+//        }
+//        --converged_index;
+//      }
+//      model_metrics->converged_metrics_ = metrics_history[converged_index];
+//    }
 
     if (same_scale_counter > kInStabilityBeforeScaling) {
       VLOG(0) << "(EASL::DynamicWorkerCountUpdate::StablePeriod) - "
           << "Checking for potential rescaling after stable period.";
       metadata_store.ResetSameScaleCounter(job_id);
       std::shared_ptr<ModelMetrics::Metrics> converged_metrics = model_metrics->converged_metrics_;
-      std::shared_ptr<ModelMetrics::Metrics> last_metrics = metrics_history[metrics_history.size() - 1];
+      std::shared_ptr<ModelMetrics::Metrics> last_metrics = metrics_history.back();
 
       double queue_size_converged = converged_metrics->result_queue_size();
       double queue_size_last_metrics = last_metrics->result_queue_size();
@@ -200,7 +203,7 @@ Status DynamicWorkerCountUpdate(
 
       if (relative_queue_size > kMinQueueSizeRelativeGrowth){
         VLOG(0) << "Triggering downscale";
-        worker_count = last_metrics->worker_count() - 1;
+        worker_count = converged_metrics->worker_count() - 1;
         metadata_store.SetJobTargetWorkerCount(job_id, worker_count);
         metadata_store.SetJobIsScaling(job_id);
         return Status::OK();
@@ -208,7 +211,7 @@ Status DynamicWorkerCountUpdate(
 
       if (relative_batch_time > kMinBatchTimeRelativeGrowth){
         VLOG(0) << "Triggering upscale";
-        worker_count = last_metrics->worker_count() + 1;
+        worker_count = converged_metrics->worker_count() + 1;
         metadata_store.SetJobTargetWorkerCount(job_id, worker_count);
         metadata_store.SetJobIsScaling(job_id);
         return Status::OK();
@@ -221,8 +224,7 @@ Status DynamicWorkerCountUpdate(
     }
   }
 
-  // TODO Check if split provider reached eos, in which case there is no point to scale up.
-  worker_count = metrics_history[metrics_history.size()-1]->worker_count(); // guaranteed to work.
+  worker_count = metrics_history.back()->worker_count();
   metadata_store.SetJobTargetWorkerCount(job_id, worker_count);
   return Status::OK();
 }
