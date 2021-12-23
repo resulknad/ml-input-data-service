@@ -1129,8 +1129,12 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
 
     // EASL: Update the client metrics
     // FIXME: Note that we're only checking the first split provider
+    int64 job_target_worker_count;
+    TF_RETURN_IF_ERROR(metadata_store_.GetJobTargetWorkerCount(job->job_id,
+      job_target_worker_count));
     if (request->has_scalability_metrics() && 
-      job->distributed_epoch_state.value().repetitions[0] == 0) {
+        job->distributed_epoch_state.value().repetitions[0] == 0 &&
+        request->worker_count() == job_target_worker_count) {
       easl::ModelMetrics::Metrics metrics(
         request->worker_count(),
         request->last_x_batch_time_ms(),
@@ -1154,6 +1158,9 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
           service::easl::scaling_utils::DynamicWorkerCountUpdate(
               job->job_type, job->job_id, config_, metadata_store_, target_worker_count));
       do_reassign_workers = target_worker_count > job->current_worker_count;
+      VLOG(0) << "(ClientHeartbeat) After DynamicWorkerCountUpdate; "
+              << "target_worker_count = " << target_worker_count
+              << "; job->target_worker_count = " << job->target_worker_count;
       if (target_worker_count != job->target_worker_count) {
         Update update;
         JobTargetWorkerCountUpdate *job_target_worker_count_update =
