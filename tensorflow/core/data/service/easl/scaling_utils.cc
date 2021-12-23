@@ -143,7 +143,8 @@ Status DynamicWorkerCountUpdate(
       }
     } else {
       // We are scaling down
-      if (relative_improvement > -kMinBatchTimeRelativeImprovement) {
+      if (relative_improvement > -kMinBatchTimeRelativeImprovement
+        && last_metrics->worker_count() > 1) {
         worker_count = last_metrics->worker_count() - 1;
         VLOG(0) << "(EASL::DynamicWorkerCountUpdate::ScalingDown) "
                 << "Improvement loss ok:\n"
@@ -155,7 +156,7 @@ Status DynamicWorkerCountUpdate(
         metadata_store.UnsetJobIsScaling(job_id);
         metadata_store.ResetSameScaleCounter(job_id);
         VLOG(0) << "(EASL::DynamicWorkerCountUpdate::ScalingDown) "
-                << "Improvement loss NOT ok:\n"
+                << "Improvement loss NOT ok (or only 1 worker left):\n"
                 << " > improvement: " << relative_improvement << "\n"
                 << " > next worker count: " << worker_count;
       }
@@ -209,7 +210,8 @@ Status DynamicWorkerCountUpdate(
               << "converged_batch_time: " << converged_batch_time << "\n"
               << "l_batch_time: " << l_batch_time << "\n";
 
-      if (relative_queue_size > kMinQueueSizeRelativeGrowth){
+      if (relative_queue_size > kMinQueueSizeRelativeGrowth
+        && converged_metrics->worker_count() > 1) {
         VLOG(0) << "Triggering downscale";
         worker_count = converged_metrics->worker_count() - 1;
         metadata_store.SetJobTargetWorkerCount(job_id, worker_count);
