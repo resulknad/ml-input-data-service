@@ -237,8 +237,11 @@ Status DynamicWorkerCountUpdate(
     }
   }
 
-  worker_count = metrics_history.back()->worker_count();
-  metadata_store.SetJobTargetWorkerCount(job_id, worker_count);
+  // Note: One will end up here in the iteration immediately after convergence
+  //       when it's highly likely that the metrics pertain to the scale prior
+  //       to convergence. You also end up here when in stability without trying
+  //       to rescale.
+  metadata_store.GetJobTargetWorkerCount(job_id, worker_count);
   return Status::OK();
 }
 
