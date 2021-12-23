@@ -1130,11 +1130,10 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
     // EASL: Update the client metrics
     // FIXME: Note that we're only checking the first split provider
     int64 job_target_worker_count;
-    TF_RETURN_IF_ERROR(metadata_store_.GetJobTargetWorkerCount(job->job_id,
-      job_target_worker_count));
+//    TF_RETURN_IF_ERROR(metadata_store_.GetJobTargetWorkerCount(job->job_id,
+//      job_target_worker_count));
     if (request->has_scalability_metrics() && 
-        job->distributed_epoch_state.value().repetitions[0] == 0 &&
-        request->worker_count() == job_target_worker_count) {
+        job->distributed_epoch_state.value().repetitions[0] == 0) {
       easl::ModelMetrics::Metrics metrics(
         request->worker_count(),
         request->last_x_batch_time_ms(),
