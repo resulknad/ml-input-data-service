@@ -210,8 +210,9 @@ Status DynamicWorkerCountUpdate(
               << "converged_batch_time: " << converged_batch_time << "\n"
               << "l_batch_time: " << l_batch_time << "\n";
 
-      if (relative_queue_size > kMinQueueSizeRelativeGrowth
-        && converged_metrics->worker_count() > 1) {
+      if (!isfinite(relative_queue_size)
+          && relative_queue_size > kMinQueueSizeRelativeGrowth
+          && converged_metrics->worker_count() > 1) {
         VLOG(0) << "Triggering downscale";
         worker_count = converged_metrics->worker_count() - 1;
         metadata_store.SetJobTargetWorkerCount(job_id, worker_count);
@@ -219,7 +220,8 @@ Status DynamicWorkerCountUpdate(
         return Status::OK();
       }
 
-      if (relative_batch_time > kMinBatchTimeRelativeGrowth){
+      if (!isfinite(relative_queue_size)
+          && relative_batch_time > kMinBatchTimeRelativeGrowth){
         VLOG(0) << "Triggering upscale";
         worker_count = converged_metrics->worker_count() + 1;
         metadata_store.SetJobTargetWorkerCount(job_id, worker_count);
