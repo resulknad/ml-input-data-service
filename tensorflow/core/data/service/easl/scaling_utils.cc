@@ -116,6 +116,9 @@ Status DynamicWorkerCountUpdate(
     double relative_improvement = 1.0 - l_batch_time / stl_batch_time;
 
     if (relative_improvement > 1.2) {
+      VLOG(0) << "(EASL::DynamicWorkerCountUpdate) Relative improvement "
+                   << "was unstable: " << relative_improvement
+                   << "; discarding it...";
       worker_count = current_target_worker_count;
       return Status::OK();
     }
