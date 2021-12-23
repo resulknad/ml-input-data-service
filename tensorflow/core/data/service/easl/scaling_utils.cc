@@ -25,10 +25,11 @@ namespace {
 double worker_count_alpha_ = 0.1;
 int MAX_WORKERS_PER_JOB = 100;
 
-double kMinBatchTimeRelativeImprovement = 0.07; // 10%
+double kMinBatchTimeRelativeImprovementUp = 0.07; // 7%
+double kMinBatchTimeRelativeImprovementDown = 0.03
 uint32 kInStabilityBeforeScaling = 20;
-double kMinQueueSizeRelativeGrowth = 1.2; // +20%
-double kMinBatchTimeRelativeGrowth = 1.2; // +20%
+double kMinQueueSizeRelativeGrowth = 1.3; // +30%
+double kMinBatchTimeRelativeGrowth = 1.3; // +30%
 }
 
 
@@ -125,7 +126,7 @@ Status DynamicWorkerCountUpdate(
 
     if (second_to_last_metrics->worker_count() < last_metrics->worker_count()) {
       // We are scaling up
-      if (relative_improvement > kMinBatchTimeRelativeImprovement){
+      if (relative_improvement > kMinBatchTimeRelativeImprovementUp){
         worker_count = last_metrics->worker_count() + 1;
         VLOG(0) << "(EASL::DynamicWorkerCountUpdate::ScalingUp) "
                      << "Improvement large enough:\n"
@@ -143,7 +144,7 @@ Status DynamicWorkerCountUpdate(
       }
     } else {
       // We are scaling down
-      if (relative_improvement > -kMinBatchTimeRelativeImprovement
+      if (relative_improvement > -kMinBatchTimeRelativeImprovementDown
         && last_metrics->worker_count() > 1) {
         worker_count = last_metrics->worker_count() - 1;
         VLOG(0) << "(EASL::DynamicWorkerCountUpdate::ScalingDown) "
