@@ -213,7 +213,7 @@ Status DynamicWorkerCountUpdate(
               << "converged_batch_time: " << converged_batch_time << "\n"
               << "l_batch_time: " << l_batch_time << "\n";
 
-      if (!isfinite(relative_queue_size)
+      if (isfinite(relative_queue_size)
           && relative_queue_size > kMinQueueSizeRelativeGrowth
           && converged_metrics->worker_count() > 1) {
         VLOG(0) << "Triggering downscale";
@@ -223,7 +223,7 @@ Status DynamicWorkerCountUpdate(
         return Status::OK();
       }
 
-      if (!isfinite(relative_queue_size)
+      if (isfinite(relative_queue_size)
           && relative_batch_time > kMinBatchTimeRelativeGrowth){
         VLOG(0) << "Triggering upscale";
         worker_count = converged_metrics->worker_count() + 1;
