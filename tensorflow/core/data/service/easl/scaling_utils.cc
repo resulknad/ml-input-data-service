@@ -77,24 +77,26 @@ Status DynamicWorkerCountUpdate(
   VLOG(0) << "EASL (DynamicWorkerCountUpdate) - Worker count for last metrics: "
                << metrics_history[metrics_history.size()-1]->worker_count(); // Guaranteed to succeed.
 
+
+  std::shared_ptr<ModelMetrics::Metrics> last_metrics =
+      metrics_history[metrics_history.size() - 1];
+  int64 current_target_worker_count;
+  TF_RETURN_IF_ERROR(metadata_store.GetJobTargetWorkerCount(job_id,
+    current_target_worker_count));
+  if (last_metrics->worker_count() != current_target_worker_count) {
+    VLOG(0) << "EASL (DynamicWorkerCountUpdate) - Target metrics count not fulfilled:\n"
+            << " > target: " << current_target_worker_count << "\n"
+            << " > actual: " << last_metrics->worker_count();
+    worker_count = current_target_worker_count;
+    return Status::OK();
+  }
+
   if(is_scaling) {
     VLOG(0) << "EASL (DynamicWorkerCountUpdate) - is_scaling is true";
     if (metrics_history.size() == 1) { // Cannot be smaller than 1
       VLOG(0) << "EASL (DynamicWorkerCountUpdate) - no metrics_history -> increasing worker count";
       worker_count = metrics_history.back()->worker_count() + 1;
       metadata_store.SetJobTargetWorkerCount(job_id, worker_count);
-      return Status::OK();
-    }
-
-    std::shared_ptr<ModelMetrics::Metrics> last_metrics = metrics_history[metrics_history.size() - 1];
-
-    int64 current_target_worker_count;
-    TF_RETURN_IF_ERROR(metadata_store.GetJobTargetWorkerCount(job_id, current_target_worker_count));
-    if (last_metrics->worker_count() != current_target_worker_count) {
-      VLOG(0) << "EASL (DynamicWorkerCountUpdate) - Target metrics count not fulfilled:\n"
-                   << " > target: " << current_target_worker_count << "\n"
-                   << " > actual: " << last_metrics->worker_count();
-      worker_count = current_target_worker_count;
       return Status::OK();
     }
 
