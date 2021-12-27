@@ -552,11 +552,6 @@ Status DataServiceDispatcherImpl::GetSplit(const GetSplitRequest* request,
     split_provider->GetNext(&split, &end_of_splits);
     VLOG(0) << "(GetSplit) Reached EOS while still scaling in " << job_id
                  << " at provider index " << provider_index;
-  } else if (!scaling && state_.IsFutureEndedJob(job_id, provider_index)) {
-    end_of_splits = true;
-    VLOG(0) << "(GetSplit) Currently not scaling any longer in " << job_id
-                 << " so will send EOS for split provider at index "
-                 << provider_index;
   }
 
   TF_RETURN_IF_ERROR(RecordSplitProduced(
