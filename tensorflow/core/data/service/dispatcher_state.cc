@@ -397,6 +397,17 @@ DispatcherState::ReserveWorkers(
     VLOG(1) << "EASL-MUYU (ReserveWorkers) local_workers: " << worker;
   }
 
+  int num_local_workers_available = 0;
+  for (auto it = avail_workers_.begin(); it != avail_workers_.end(); it++) {
+    if (local_workers.count(it->first))
+      num_local_workers_available++;
+  }
+  if (if_use_local_workers && num_local_workers_available == 0) {
+    VLOG(0) << "EASL-MUYU (ReserveWorkers): local worker mode is set "
+               "but no local worker is available, change to default mode";
+    if_use_local_workers = false;
+  }
+
   for (auto it = avail_workers_.begin(); it != avail_workers_.end(); ) {
     if (if_use_local_workers && local_workers.count(it->first) == 0) {
       VLOG(0) << "EASL-MUYU (ReserveWorkers): local_worker mode is set "

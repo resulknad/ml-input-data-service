@@ -832,8 +832,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           else {
               VLOG(1) << "EASL-MUYU(IF_USE_LOCAL_WORKERS): the worker address is: ("
                       << task.worker_address() <<
-                      "), which is NOT local. DON'T CHOOSE IT!!";
-              return false;
+                      "), which is NOT local. BUT Anyways choosing it!!";
           }
       }
       else {
@@ -1214,8 +1213,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           results_.push(std::move(result));
         }
 
-        const std::string log_location = std::getenv("EASL_MUYU_WORKER_METRICS");
-        if (log_location && log_location.size() >= 3) {
+        const char* log_location = std::getenv("EASL_MUYU_WORKER_METRICS");
+        if (log_location) {
           std::ofstream file(log_location, std::ios_base::app);
 
           file << current_micro_timestamp << ","
