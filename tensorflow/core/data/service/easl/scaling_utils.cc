@@ -45,12 +45,13 @@ Status DynamicWorkerCountUpdate(
   // Give out max number of workers
   if(dispatcher_config.scaling_policy() == 2){
     //worker_count = available_workers;
+    metadata_store.UnsetJobIsScaling(job_id);
     worker_count = MAX_WORKERS_PER_JOB;
     return Status::OK();
   }
   if(dispatcher_config.scaling_policy() == 3){
     // Alternate between 1 and 2 for testing.
-
+    metadata_store.UnsetJobIsScaling(job_id);
     static int counter = 0;
     counter++;
     if ( counter > 20){
