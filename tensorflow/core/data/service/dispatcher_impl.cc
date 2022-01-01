@@ -1127,7 +1127,8 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
     int64 job_target_worker_count;
 //    TF_RETURN_IF_ERROR(metadata_store_.GetJobTargetWorkerCount(job->job_id,
 //      job_target_worker_count));
-    if (request->has_scalability_metrics() && 
+    if (config_.scaling_policy() == 1 &&
+        request->has_scalability_metrics() &&
         job->distributed_epoch_state.value().repetitions[0] == 0) {
       easl::ModelMetrics::Metrics metrics(
         request->worker_count(),
@@ -1163,6 +1164,14 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
         job_target_worker_count_update->set_target_worker_count(target_worker_count);
         state_.Apply(update);
       }
+    } else if (config_.scaling_policy() == 2 &&
+      job->target_worker_count != state_.ListWorkers().size()) {
+      Update update;
+      JobTargetWorkerCountUpdate *job_target_worker_count_update =
+          update.mutable_job_target_worker_count_update();
+      job_target_worker_count_update->set_job_id(job->job_id);
+      job_target_worker_count_update->set_target_worker_count(state_.ListWorkers().size());
+      state_.Apply(update);
     }
 
     if (job->garbage_collected) {
