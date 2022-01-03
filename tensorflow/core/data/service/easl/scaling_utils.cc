@@ -173,22 +173,6 @@ Status DynamicWorkerCountUpdate(
     TF_RETURN_IF_ERROR(metadata_store.IncrementSameScaleCounter(job_id,
       same_scale_counter));
 
-//    if (same_scale_counter == 1) {
-//      // Set the converged metrics
-//      int64 target_worker_count;
-//      TF_RETURN_IF_ERROR(metadata_store.GetJobTargetWorkerCount(job_id, target_worker_count));
-//      int converged_index = metrics_history.size() - 1;
-//      while(metrics_history[converged_index]->worker_count() != target_worker_count) {
-//        if (converged_index == 0) {
-//          VLOG(0)
-//          << "EASL (DynamicWorkerCountUpdate) - Did not find metrics for target_worker_count, using oldest instead";
-//          break;
-//        }
-//        --converged_index;
-//      }
-//      model_metrics->converged_metrics_ = metrics_history[converged_index];
-//    }
-
     if (same_scale_counter > kInStabilityBeforeScaling) {
       VLOG(0) << "(EASL::DynamicWorkerCountUpdate::StablePeriod) - "
           << "Checking for potential rescaling after stable period.";

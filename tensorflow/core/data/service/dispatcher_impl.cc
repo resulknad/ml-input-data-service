@@ -885,14 +885,19 @@ Status DataServiceDispatcherImpl::CreateJob(
   VLOG(0) << "EASL - Caching decision for dataset_key " 
             << compute_dataset_key << ": " << job_type;
 
+  // Check to see what the previous execution type for this job was
+  string existing_job_type;
+  Status s = metadata_store_.GetJobType(dataset_fingerprint, existing_job_type);
+  bool trigger_scaling = s.ok() && existing_job_type != job_type;
+
   // EASL add job entry to metadata store
   std::string dataset_key = service::easl::cache_utils::DatasetKey(
     dataset->dataset_id, dataset->fingerprint, job_type);
-  TF_RETURN_IF_ERROR(metadata_store_.CreateJob(job_id, dataset->dataset_id,
-                              dataset->fingerprint, dataset_key));
+  TF_RETURN_IF_ERROR(metadata_store_.CreateJob(job_id, job_type,
+      dataset->dataset_id, dataset->fingerprint, dataset_key, trigger_scaling));
 
   std::shared_ptr<easl::JobMetrics> job_metrics;
-  Status s = metadata_store_.GetJobMetrics(job_id, job_metrics);
+  s = metadata_store_.GetJobMetrics(job_id, job_metrics);
   worker_count = job_metrics->target_worker_count_;
   if (worker_count < 0){
     worker_count = 1; // Set default to 1 if no previous job with same dataset fingerprint.

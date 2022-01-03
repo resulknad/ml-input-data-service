@@ -207,6 +207,7 @@ class InputPipelineMetrics {
 class JobMetrics {
   public:
     JobMetrics(int64 job_id,
+               std::string& job_type,
                int64 dataset_id,
                int64 dataset_fingerprint,
                std::string& dataset_key);
@@ -214,7 +215,8 @@ class JobMetrics {
     void DumpToFile(const std::string& path);
     void DumpToStream(std::stringstream& ss);
 
-    bool is_scaling_ ;
+    bool is_scaling_;
+    string job_type_;
     uint64 same_scale_counter_;
     int64 target_worker_count_;
     int64 job_id_;
@@ -233,9 +235,11 @@ class MetadataStore {
 
   // Create a job entry
   Status CreateJob(int64 job_id,
+                   string& job_type,
                    int64 dataset_id,
                    int64 dataset_fingerprint,
-                   std::string& dataset_key);
+                   std::string& dataset_key,
+                   bool trigger_rescale = false);
 
   // Remove job
   Status RemoveJob(int64 job_id);
@@ -282,6 +286,8 @@ class MetadataStore {
   
   Status UpdateNodeNames(int64 job_id, string last_node_name, 
     string last_tf_node_name, string marker_node_name);
+
+  Status GetJobType(int64 fingerprint, string& job_type);
 
   Status SetJobIsScaling(int64 job_id);
   Status UnsetJobIsScaling(int64 job_id);

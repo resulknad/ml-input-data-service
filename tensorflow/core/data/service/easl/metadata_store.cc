@@ -309,10 +309,12 @@ void InputPipelineMetrics::DumpToStream(std::stringstream& ss){
 
 // Job metrics
 JobMetrics::JobMetrics(int64 job_id,
+                       std::string& job_type,
                        int64 dataset_id,
                        int64 dataset_fingerprint,
                        std::string& dataset_key)
       : job_id_(job_id),
+        job_type_(job_type),
         dataset_id_(dataset_id),
         dataset_fingerprint_(dataset_fingerprint),
         dataset_key_(dataset_key),
@@ -356,13 +358,14 @@ MetadataStore::MetadataStore()
   : job_metadata_(),
     fingerprint_key_metadata_() {}
 
-Status MetadataStore::CreateJob(int64 job_id, int64 dataset_id, 
-  int64 dataset_fingerprint, std::string& dataset_key) {
+Status MetadataStore::CreateJob(int64 job_id, string& job_type,
+  int64 dataset_id,   int64 dataset_fingerprint, std::string& dataset_key,
+  bool trigger_rescale) {
   auto it = fingerprint_key_metadata_.find(dataset_fingerprint);
   if ( it == fingerprint_key_metadata_.end()){
     std::string ds_key = dataset_key;
     auto job_metrics = std::make_shared<JobMetrics>(
-        job_id, dataset_id, dataset_fingerprint, ds_key);
+        job_id, job_type, dataset_id, dataset_fingerprint, ds_key);
     job_metadata_.insert_or_assign(job_id, job_metrics);
 
     return Status::OK();
@@ -372,8 +375,16 @@ Status MetadataStore::CreateJob(int64 job_id, int64 dataset_id,
   // Multiple clients could copy the same object and share it, the second client would overwrite the job_id_, .. fields.
   std::shared_ptr<JobMetrics> job_metrics = it->second;
   job_metrics->job_id_ = job_id;
+  job_metrics->job_type_ = job_type;
   job_metrics->dataset_id_ = dataset_id;
   job_metrics->dataset_key_ = dataset_key;
+
+  if (trigger_rescale) {
+    job_metrics->is_scaling_ = true;
+    job_metrics->same_scale_counter_ = 0;
+    job_metrics->target_worker_count_ = 1;
+    job_metrics->model_metrics_->metrics_history_.clear();
+  }
 
   job_metadata_.insert_or_assign(job_id, job_metrics);
 
@@ -560,6 +571,16 @@ Status MetadataStore::UpdateNodeNames(int64 job_id, string last_node_name,
   } 
   // if s != ok --> no such job exists
   return s;
+}
+
+Status MetadataStore::GetJobType(int64 fingerprint, string& job_type) {
+  auto it = fingerprint_key_metadata_.find(fingerprint);
+  if (it == fingerprint_key_metadata_.end()) {
+    return errors::NotFound("Could not find the dataset");
+  }
+  // it->second should be of std::shared_ptr<JobMetrics> type
+  job_type = it->second->job_type_;
+  return Status::OK();
 }
 
 Status MetadataStore::SetJobIsScaling(int64 job_id) {
