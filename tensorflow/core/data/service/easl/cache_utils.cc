@@ -228,73 +228,90 @@ Status DetermineJobType(const experimental::DispatcherConfig& dispatcher_config,
   DCHECK(num_workers > 0);
 
   uint64 compute_row_size = 0;
-  uint64 compute_num_elements = 0;
   double compute_time_per_row_ms = 0;
   double compute_time_total_ms = 0;
   double compute_working_time_per_row_ms = 0;
   double compute_working_time_total_ms = 0;
 
-  for(std::pair<std::string, std::shared_ptr<NodeMetrics::Metrics>> e : 
-    node_metrics->metrics_){
-    std::shared_ptr<NodeMetrics::Metrics> worker_metrics = e.second;
-    // TODO average out row size here for datasets with varying row size?
-    compute_row_size += worker_metrics->bytes_produced() / worker_metrics->num_elements();
-    compute_time_per_row_ms += worker_metrics->active_time_ms();
-    compute_num_elements += worker_metrics->num_elements();
-    compute_working_time_per_row_ms += worker_metrics->working_time_ms();
+  double compute_total_processed_instances = 0.0;
+  for(std::pair<std::string, std::shared_ptr<NodeMetrics::Metrics>> e :
+      node_metrics->metrics_) {
+    compute_total_processed_instances += e.second->num_elements();
   }
 
-  compute_num_elements /= num_workers;
-  compute_time_per_row_ms = compute_time_per_row_ms / num_workers;
-  compute_time_total_ms = compute_time_per_row_ms * compute_num_elements;
-  compute_row_size = compute_row_size / num_workers;
-  compute_working_time_per_row_ms = compute_working_time_per_row_ms / num_workers;
-  compute_working_time_total_ms = compute_working_time_per_row_ms * compute_num_elements;
+  for(std::pair<std::string, std::shared_ptr<NodeMetrics::Metrics>> e : 
+    node_metrics->metrics_) {
+    std::shared_ptr<NodeMetrics::Metrics> worker_metrics = e.second;
+    double weight = worker_metrics->num_elements() /
+      compute_total_processed_instances;
+    compute_row_size += weight * worker_metrics->bytes_produced() /
+                        worker_metrics->num_elements();
+    compute_time_per_row_ms += worker_metrics->active_time_ms() * weight;
+    compute_working_time_per_row_ms += worker_metrics->working_time_ms() * weight;
+  }
+
+  // For the next values need 'normalization', since you might have batching
+  // after the marker, hence you need to compare the total times for a
+  // fair comparison
+  compute_time_total_ms = compute_time_per_row_ms *
+    compute_total_processed_instances;
+  compute_working_time_total_ms = compute_working_time_per_row_ms *
+    compute_total_processed_instances;
 
   VLOG(0) << "(Full caching) Row size " << compute_row_size;
   VLOG(0) << "Total compute time " << compute_time_total_ms;
   VLOG(0) << "Total compute working time " << compute_working_time_total_ms;
 
-  // Materialized Cache Read expecations
-  double cache_read_time_per_row_ms = data::cache_model::GetTimePerRow(compute_row_size);
-  double cache_read_time_total_ms = compute_num_elements * cache_read_time_per_row_ms;
-
+  // For the next values need 'normalization', since you might have batching
+  // after the marker, hence you need to compare the total times for a
+  // fair comparison
+  double cache_read_time_per_row_ms = data::cache_model::GetTimePerRow(
+    compute_row_size);
+  double cache_read_time_total_ms = cache_read_time_per_row_ms *
+    compute_total_processed_instances;
 
   // IO metrics
-  bool has_marker_node = false;
-  bool is_gcs_limited = false;
-  double source_cache_compute_time_ms = 0.0;
-  std::shared_ptr<data::easl::InputPipelineMetrics> input_pipeline_metrics; 
+  std::shared_ptr<data::easl::InputPipelineMetrics> input_pipeline_metrics;
   metadata_store.GetInputPipelineMetricsByDatasetFingerprint(fingerprint,
     input_pipeline_metrics);
-
 
   VLOG(0) << "(Full caching) Inferred GlusterFS read time "
           << cache_read_time_total_ms;
   
-  if(input_pipeline_metrics->GetMarkerNodeName() != "") {
-    VLOG(0) << "Found marker node name: " << input_pipeline_metrics->GetMarkerNodeName();
-    has_marker_node = true;
+  if(!input_pipeline_metrics->GetMarkerNodeName().empty()) {
+    VLOG(0) << "Found marker node name: "
+                  << input_pipeline_metrics->GetMarkerNodeName();
     std::shared_ptr<data::easl::NodeMetrics> marker_node_metrics;
     metadata_store.GetMarkerNodeMetricsByDatasetFingerprint(fingerprint,
       marker_node_metrics);
   
     uint64 io_row_size = 0;
-    uint64 io_num_elements = 0;
     double avg_io_bytes_per_s = 0.0; // Will not be used.
     double avg_io_time_total_ms = 0.0; // == avg_gcs_source_time_ms.
-    for (auto& node_metrics : marker_node_metrics->metrics_) {
-      avg_io_bytes_per_s += node_metrics.second->bytes_per_s();
-      io_row_size += node_metrics.second->bytes_produced() /
-        node_metrics.second->num_elements();
-      avg_io_time_total_ms += node_metrics.second->active_time_ms();
-      io_num_elements += node_metrics.second->num_elements();
+
+    double marker_cache_total_processed_instances = 0.0;
+    for(std::pair<std::string, std::shared_ptr<NodeMetrics::Metrics>> e :
+        marker_node_metrics->metrics_) {
+      marker_cache_total_processed_instances += e.second->num_elements();
     }
-    avg_io_bytes_per_s /= num_workers;
-    io_row_size /= num_workers;
-    io_num_elements /= num_workers;
-    avg_io_time_total_ms = (avg_io_time_total_ms * io_num_elements) / num_workers; // total io read time.
-    double avg_io_bytes_per_active_time_ms = (io_row_size * io_num_elements) / avg_io_time_total_ms;
+
+    for (auto& e : marker_node_metrics->metrics_) {
+      std::shared_ptr<NodeMetrics::Metrics> node_metrics = e.second;
+      double weight = node_metrics->num_elements() /
+        marker_cache_total_processed_instances;
+      avg_io_bytes_per_s += node_metrics->bytes_per_s() * weight;
+      io_row_size += weight * node_metrics->bytes_produced() /
+          node_metrics->num_elements();
+      avg_io_time_total_ms += node_metrics->active_time_ms() * weight;
+    }
+
+    // The next values need 'normalization', since you might have batching
+    // after the marker, hence you need to compare the total times for a
+    // fair comparison
+    avg_io_time_total_ms = avg_io_time_total_ms *
+      marker_cache_total_processed_instances;
+    double avg_io_bytes_per_active_time_ms = io_row_size *
+      marker_cache_total_processed_instances;
 
     VLOG(0) << "Total GCS io time " << avg_io_time_total_ms;
     VLOG(0) << "GCS io throughput bytes/ms" << avg_io_bytes_per_s;
@@ -302,12 +319,13 @@ Status DetermineJobType(const experimental::DispatcherConfig& dispatcher_config,
     VLOG(0) << "GCS io row size " << io_row_size;
 
     if ((compute_time_total_ms < avg_io_time_total_ms) ||
-        ((compute_time_total_ms >= avg_io_time_total_ms) && (avg_io_bytes_per_active_time_ms > 524288) /*500MiB/sec*/)) {
+        ((compute_time_total_ms >= avg_io_time_total_ms) &&
+        (avg_io_bytes_per_active_time_ms > 524288) /*500MiB/ms*/)) {
         //avg_io_bytes_per_s < 0.001 * cache_model::GetGCSThrouhgput(0.95)) {
       // 1. compute active time is less than io time => pipeline is not io bound
       // 2. compute active time is more than io time, but io throughput is not at the limit. => bytes per active time is very high because always element in cache.
       // => compare directly with caching
-      if (compute_time_total_ms < cache_read_time_total_ms) {
+      if (compute_time_per_row_ms < cache_read_time_per_row_ms) {
         job_type = "COMPUTE";
       } else {
         job_type = "PUT";
@@ -317,15 +335,18 @@ Status DetermineJobType(const experimental::DispatcherConfig& dispatcher_config,
       // pipeline is io bound, decide between source caching and caching
       double source_cache_io_time_per_row_ms = data::cache_model::GetTimePerRow(
           io_row_size);
-      double source_cache_io_time_total_ms = source_cache_io_time_per_row_ms * io_num_elements;
+      double source_cache_io_time_total_ms = source_cache_io_time_per_row_ms *
+          marker_cache_total_processed_instances;
       // This assumes the pipeline would be io bound with source caching
       // i.e. if true_compute_time_total > source_cache_io_time then source_cache_compute_time_total should be
       // true_compute_time_total.
       // => it is optimistic about source caching, need another metric: in_node_time without accounting for parallelism..
       //double source_cache_compute_time_total_ms = source_cache_io_time_total_ms;
 
-      double source_cache_compute_time_total_ms = std::max(source_cache_io_time_per_row_ms, compute_working_time_total_ms);
-          //std::max(source_cache_io_time_per_row_ms, compute_work);
+      // TODO(Dan): Here it was source_cache_io_time_per_row_ms instead of
+      //            source_cache_io_time_total_ms; I think that was a mistake
+      double source_cache_compute_time_total_ms = std::max(
+        source_cache_io_time_total_ms, compute_working_time_total_ms);
 
       VLOG(0) << "GCS is limited";
       VLOG(0) << "IO row size " << io_row_size;
@@ -350,36 +371,6 @@ Status DetermineJobType(const experimental::DispatcherConfig& dispatcher_config,
 
     return Status::OK();
   }
-
-
-  /**
-  // We now make the caching decision: fastest option wins
-  std::vector<double> v = {has_marker_node ? source_cache_compute_time_per_row_ms 
-    : std::numeric_limits<double>::max(), cache_read_time_per_row_ms, 
-    compute_time_per_row_ms};
-  int minElementIndex = std::min_element(v.begin(), v.end()) - v.begin();
-
-  switch(minElementIndex) {
-    case 0: // This is the source cache
-    job_type = "PUT_SOURCE";
-    VLOG(0) << "Cache decision: SOURCE CACHING";
-    break;
-    case 1: // This is the full cache
-    job_type = "PUT";
-    VLOG(0) << "Cache decision: FULL CACHING";
-    break;
-    case 2: // This is the compute
-    job_type = "COMPUTE";
-    VLOG(0) << "Cache decision: COMPUTE";
-    break;
-    default:
-    VLOG(0) << "Cache decision: In DEFAULT... Will throw error...";
-    return errors::Unimplemented("Caching decision defaulted to last option... "
-      "See DetermineJobType!");
-  }
-
-  return Status::OK();
-   **/
 }
 
 Status DetermineJobTypeUpdated(const experimental::DispatcherConfig& dispatcher_config,

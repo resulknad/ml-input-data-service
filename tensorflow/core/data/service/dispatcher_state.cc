@@ -457,7 +457,7 @@ void DispatcherState::UpdateJobTargetWorkerCount(
   DCHECK(jobs_.contains(job_id));
   std::shared_ptr<Job> job = jobs_[job_id];
 
-  VLOG(0) << "Got request for worker count change:\n"
+  VLOG(3) << "Got request for worker count change:\n"
                << " > job_target: " << job->target_worker_count << "\n"
                << " > current: " << job->current_worker_count << "\n"
                << " > request: " << job_target_worker_count_update.target_worker_count();
