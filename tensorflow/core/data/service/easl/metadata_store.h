@@ -288,6 +288,7 @@ class MetadataStore {
     string last_tf_node_name, string marker_node_name);
 
   Status GetJobType(int64 fingerprint, string& job_type);
+  Status GetJobTypeByJobId(int64 job_id, string& job_type);
 
   Status SetJobIsScaling(int64 job_id);
   Status UnsetJobIsScaling(int64 job_id);

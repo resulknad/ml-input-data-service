@@ -583,6 +583,13 @@ Status MetadataStore::GetJobType(int64 fingerprint, string& job_type) {
   return Status::OK();
 }
 
+Status MetadataStore::GetJobTypeByJobId(int64 job_id, string& job_type) {
+  std::shared_ptr<JobMetrics> jobMetrics;
+  TF_RETURN_IF_ERROR(GetJobMetrics(job_id, jobMetrics));
+  job_type = jobMetrics->job_type_;
+  return Status::OK();
+}
+
 Status MetadataStore::SetJobIsScaling(int64 job_id) {
   std::shared_ptr<JobMetrics> jobMetrics;
   TF_RETURN_IF_ERROR(GetJobMetrics(job_id, jobMetrics));

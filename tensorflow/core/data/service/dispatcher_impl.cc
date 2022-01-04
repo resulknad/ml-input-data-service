@@ -543,8 +543,11 @@ Status DataServiceDispatcherImpl::GetSplit(const GetSplitRequest* request,
   TF_RETURN_IF_ERROR(split_provider->GetNext(&split, &end_of_splits));
   // EASL - check to see if we've reached the eos
   bool scaling;
+  string execution_mode;
   TF_RETURN_IF_ERROR(metadata_store_.IsJobScaling(job_id, scaling));
-  if (end_of_splits && scaling) {
+  TF_RETURN_IF_ERROR(metadata_store_.GetJobTypeByJobId(job_id, execution_mode));
+  if (end_of_splits && scaling && execution_mode != "PUT"  &&
+    execution_mode != "PUT_SOURCE") {
     // FIXME: Note that this might infinitely loop in the first epoch due to
     //        async between stability period and eos
     state_.AddFutureEndedJob(job_id, provider_index);
