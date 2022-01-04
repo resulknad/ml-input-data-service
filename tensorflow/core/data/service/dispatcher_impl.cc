@@ -1161,7 +1161,10 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
       VLOG(0) << "(ClientHeartbeat) After DynamicWorkerCountUpdate; "
               << "target_worker_count = " << target_worker_count
               << "; job->target_worker_count = " << job->target_worker_count;
-      if (target_worker_count != job->target_worker_count) {
+
+      // Re-adjust the worker count in the metrics is not equal to what we
+      // want it to be
+      if (target_worker_count != metrics.worker_count()) {
         Update update;
         JobTargetWorkerCountUpdate *job_target_worker_count_update =
             update.mutable_job_target_worker_count_update();

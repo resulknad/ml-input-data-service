@@ -224,6 +224,9 @@ Status DynamicWorkerCountUpdate(
     }
   }
 
+  // TODO: Consider setting the reference metrics for the next scale when moving
+  //       up or down. This ensures the analysis is uniform.
+
   // Note: One will end up here in the iteration immediately after convergence
   //       when it's highly likely that the metrics pertain to the scale prior
   //       to convergence. You also end up here when in stability without trying

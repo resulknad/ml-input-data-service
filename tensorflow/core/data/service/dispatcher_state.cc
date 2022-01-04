@@ -457,6 +457,11 @@ void DispatcherState::UpdateJobTargetWorkerCount(
   DCHECK(jobs_.contains(job_id));
   std::shared_ptr<Job> job = jobs_[job_id];
 
+  VLOG(0) << "Got request for worker count change:\n"
+               << " > job_target: " << job->target_worker_count << "\n"
+               << " > current: " << job->current_worker_count << "\n"
+               << " > request: " << job_target_worker_count_update.target_worker_count();
+
   if (job->target_worker_count < job_target_worker_count_update.target_worker_count()){
     VLOG(0) << "EASL (UpdateJobTargetWorkerCount) - Increased worker count from "
     << job->target_worker_count << " to target " << job_target_worker_count_update.target_worker_count();
