@@ -436,6 +436,10 @@ Status DetermineJobTypeUpdated(const experimental::DispatcherConfig& dispatcher_
   for(std::pair<std::string, std::shared_ptr<NodeMetrics::Metrics>> e :
       node_metrics->metrics_) {
     std::shared_ptr<NodeMetrics::Metrics> worker_metrics = e.second;
+    if (worker_metrics->num_elements() <= 0) {
+      continue;
+    }
+
     double weight = worker_metrics->num_elements() /
                     compute_total_processed_instances;
     compute_row_size += weight * worker_metrics->bytes_produced() /
@@ -512,6 +516,10 @@ Status DetermineJobTypeUpdated(const experimental::DispatcherConfig& dispatcher_
 
     for (auto& e : marker_node_metrics->metrics_) {
       std::shared_ptr<NodeMetrics::Metrics> node_metrics = e.second;
+      if (node_metrics->num_elements() <= 0) {
+        continue;
+      }
+
       double weight = node_metrics->num_elements() /
                       marker_cache_total_processed_instances;
       avg_io_bytes_per_s += node_metrics->bytes_per_s() * weight;
