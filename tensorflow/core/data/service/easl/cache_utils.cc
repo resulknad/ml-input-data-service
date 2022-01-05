@@ -134,290 +134,42 @@ Status DatasetKey(const ::tensorflow::data::easl::CacheState& cache_state,
   return Status::OK();
 }*/
 
-Status DetermineJobType(const experimental::DispatcherConfig& dispatcher_config,
-                     ::tensorflow::data::CacheState& cache_state,
-                     const ::tensorflow::data::easl::MetadataStore& metadata_store,
-                     const uint64 fingerprint,
-                     const std::string& dataset_key,
-                     const int64 job_id,
-                     std::string& job_type) {
-  // First check if we should use a "fixed" cache policy:
-  // 1 == EASL
-  // 2 == compute 
-  // 3 == full cache(put, then get from 2nd epoch)
-  // 4 == source cache(put, then get from 2nd epoch) 
-  // Compute -------------------------------------------------------------------
-  if(dispatcher_config.cache_policy() == 2){
-    job_type = "COMPUTE";
-    return Status::OK();
-  // Caching -------------------------------------------------------------------
-  } else if(dispatcher_config.cache_policy() == 3){
-    if(cache_state.IsDatasetCached(fingerprint)){
-      job_type = "GET";
-    } else {
-      job_type = "PUT";
-    }
-    return Status::OK();
-  } else if (dispatcher_config.cache_policy() == 30) {
-    job_type = "PUT";
-    return Status::OK();
-  } else if (dispatcher_config.cache_policy() == 31) {
-    job_type = "GET";
-    return Status::OK();
-  // Source Caching ------------------------------------------------------------
-  } else if(dispatcher_config.cache_policy() == 4) {
-    if (cache_state.IsDatasetSourceCached(fingerprint)) {
-      job_type = "GET_SOURCE";
-    } else {
-      job_type = "PUT_SOURCE";
-    }
-    return Status::OK();
-  } else if (dispatcher_config.cache_policy() == 40) {
-    job_type = "PUT_SOURCE";
-    return Status::OK();
-  } else if (dispatcher_config.cache_policy() == 41) {
-    job_type = "GET_SOURCE";
-    return Status::OK();
-  } else if (dispatcher_config.cache_policy() == 5 ){
-    return DetermineJobTypeUpdated(
-        dispatcher_config,
-        cache_state,
-        metadata_store,
-        fingerprint,
-        dataset_key,
-        job_id,
-        job_type);
-  }
 
-  // ---------------------------------------------------------------------------
-  // Cache policy = EASL (cache_policy==1)
-  // ---------------------------------------------------------------------------
-
-  // If dataset was previously cached, assume it was faster than compute
-  // and decide to read.
-  if (cache_state.IsDatasetCached(fingerprint)){
-    job_type = "GET";
-    return Status::OK();
-  }
-
-  // We always prefer source caching, so if we have full caching, it means
-  // that was necessary. Thus, we check source caching after full caching.
-  if (cache_state.IsDatasetSourceCached(fingerprint)) {
-    job_type = "GET_SOURCE";
-    return Status::OK();
-  }
-  std::shared_ptr<::tensorflow::data::easl::InputPipelineMetrics> job_metrics;
-  Status s = metadata_store.GetInputPipelineMetricsByDatasetFingerprint(fingerprint,
-    job_metrics);
-
-  // We do not yet have the metrics for this dataset
-  if(errors::IsNotFound(s)){
-    job_type = "COMPUTE";
-    return Status::OK();
-  } else if (!s.ok()){
-    return s;
-  }
-
-  // Compute metrics
-  using NodeMetrics = ::tensorflow::data::easl::NodeMetrics;
-  std::shared_ptr<NodeMetrics> node_metrics;
-  TF_RETURN_IF_ERROR(metadata_store.GetLastNodeMetricsByDatasetFingerprint(
-      fingerprint, node_metrics));
-
-  size_t num_workers = (node_metrics->metrics_).size();
-  DCHECK(num_workers > 0);
-
-  uint64 compute_row_size = 0;
-  double compute_time_per_row_ms = 0;
-  double compute_time_total_ms = 0;
-  double compute_working_time_per_row_ms = 0;
-  double compute_working_time_total_ms = 0;
-
-  double compute_total_processed_instances = 0.0;
-  for(std::pair<std::string, std::shared_ptr<NodeMetrics::Metrics>> e :
-      node_metrics->metrics_) {
-    compute_total_processed_instances += e.second->num_elements();
-  }
-
-  for(std::pair<std::string, std::shared_ptr<NodeMetrics::Metrics>> e : 
-    node_metrics->metrics_) {
-    std::shared_ptr<NodeMetrics::Metrics> worker_metrics = e.second;
-    double weight = worker_metrics->num_elements() /
-      compute_total_processed_instances;
-    compute_row_size += weight * worker_metrics->bytes_produced() /
-                        worker_metrics->num_elements();
-    compute_time_per_row_ms += worker_metrics->active_time_ms() * weight;
-    compute_working_time_per_row_ms += worker_metrics->working_time_ms() * weight;
-  }
-
-  // For the next values need 'normalization', since you might have batching
-  // after the marker, hence you need to compare the total times for a
-  // fair comparison
-  compute_time_total_ms = compute_time_per_row_ms *
-    compute_total_processed_instances;
-  compute_working_time_total_ms = compute_working_time_per_row_ms *
-    compute_total_processed_instances;
-
-  // For the next values need 'normalization', since you might have batching
-  // after the marker, hence you need to compare the total times for a
-  // fair comparison
-  double cache_read_time_per_row_ms = data::cache_model::GetTimePerRow(
-    compute_row_size);
-  double cache_read_time_total_ms = cache_read_time_per_row_ms *
-    compute_total_processed_instances;
-
-  // IO metrics
-  std::shared_ptr<data::easl::InputPipelineMetrics> input_pipeline_metrics;
-  metadata_store.GetInputPipelineMetricsByDatasetFingerprint(fingerprint,
-    input_pipeline_metrics);
-
-  VLOG(0) << "(DetermineJobTypeUpdated) Compute values:\n"
-          << " > total_elements: " << compute_total_processed_instances << "\n"
-          << " > row_size: " << compute_row_size << "\n"
-          << " > compute_time_per_row_ms: " << compute_time_per_row_ms << "\n"
-          << " > compute_working_time_per_row_ms: " << compute_working_time_per_row_ms << "\n"
-          << " > (M) compute_time_total_ms: " << compute_time_total_ms << "\n"
-          << " > compute_working_time_total_ms: " << compute_working_time_total_ms << "\n"
-          << " > cache_read_time_per_row_ms: " << cache_read_time_per_row_ms << "\n"
-          << " > (M) cache_read_time_total_ms: " << cache_read_time_total_ms;
-  
-  if(!input_pipeline_metrics->GetMarkerNodeName().empty()) {
-    VLOG(0) << "Found marker node name: "
-                  << input_pipeline_metrics->GetMarkerNodeName();
-    std::shared_ptr<data::easl::NodeMetrics> marker_node_metrics;
-    metadata_store.GetMarkerNodeMetricsByDatasetFingerprint(fingerprint,
-      marker_node_metrics);
-  
-    uint64 io_row_size = 0;
-    double avg_io_bytes_per_s = 0.0; // Will not be used.
-    double avg_io_time_total_ms = 0.0; // == avg_gcs_source_time_ms.
-
-    double marker_cache_total_processed_instances = 0.0;
-    for(std::pair<std::string, std::shared_ptr<NodeMetrics::Metrics>> e :
-        marker_node_metrics->metrics_) {
-      marker_cache_total_processed_instances += e.second->num_elements();
-    }
-
-    for (auto& e : marker_node_metrics->metrics_) {
-      std::shared_ptr<NodeMetrics::Metrics> node_metrics = e.second;
-      double weight = node_metrics->num_elements() /
-        marker_cache_total_processed_instances;
-      avg_io_bytes_per_s += node_metrics->bytes_per_s() * weight;
-      io_row_size += weight * node_metrics->bytes_produced() /
-          node_metrics->num_elements();
-      avg_io_time_total_ms += node_metrics->active_time_ms() * weight;
-    }
-
-    // The next values need 'normalization', since you might have batching
-    // after the marker, hence you need to compare the total times for a
-    // fair comparison
-    avg_io_time_total_ms = avg_io_time_total_ms *
-      marker_cache_total_processed_instances;
-    double avg_io_bytes_per_active_time_ms = io_row_size *
-      marker_cache_total_processed_instances;
-
-    VLOG(0) << "Total GCS io time " << avg_io_time_total_ms;
-    VLOG(0) << "GCS io throughput bytes/ms" << avg_io_bytes_per_s;
-    VLOG(0) << "GCS io throughput per active time" << avg_io_bytes_per_active_time_ms;
-    VLOG(0) << "GCS io row size " << io_row_size;
-
-    if ((compute_time_total_ms < avg_io_time_total_ms) ||
-        ((compute_time_total_ms >= avg_io_time_total_ms) &&
-        (avg_io_bytes_per_active_time_ms > 524288) /*500MiB/ms*/)) {
-        //avg_io_bytes_per_s < 0.001 * cache_model::GetGCSThrouhgput(0.95)) {
-      // 1. compute active time is less than io time => pipeline is not io bound
-      // 2. compute active time is more than io time, but io throughput is not at the limit. => bytes per active time is very high because always element in cache.
-      // => compare directly with caching
-      if (compute_time_per_row_ms < cache_read_time_per_row_ms) {
-        job_type = "COMPUTE";
-      } else {
-        job_type = "PUT";
-      }
-      return Status::OK();
-    } else {
-      // pipeline is io bound, decide between source caching and caching
-      double source_cache_io_time_per_row_ms = data::cache_model::GetTimePerRow(
-          io_row_size);
-      double source_cache_io_time_total_ms = source_cache_io_time_per_row_ms *
-          marker_cache_total_processed_instances;
-      // This assumes the pipeline would be io bound with source caching
-      // i.e. if true_compute_time_total > source_cache_io_time then source_cache_compute_time_total should be
-      // true_compute_time_total.
-      // => it is optimistic about source caching, need another metric: in_node_time without accounting for parallelism..
-      //double source_cache_compute_time_total_ms = source_cache_io_time_total_ms;
-
-      // TODO(Dan): Here it was source_cache_io_time_per_row_ms instead of
-      //            source_cache_io_time_total_ms; I think that was a mistake
-      double source_cache_compute_time_total_ms = std::max(
-        source_cache_io_time_total_ms, compute_working_time_total_ms);
-
-      VLOG(0) << "GCS is limited";
-      VLOG(0) << "IO row size " << io_row_size;
-      VLOG(0) << "Estimated source cache io time: " << source_cache_io_time_total_ms;
-      VLOG(0) << "Estimated source cache compute time: " << compute_working_time_total_ms;
-
-      if (source_cache_compute_time_total_ms < cache_read_time_total_ms) {
-        job_type = "PUT_SOURCE";
-      } else {
-        job_type = "PUT";
-      }
-      return Status::OK();
-    }
-
-  } else {
-    VLOG(0) << "No marker node found, choosing between put or compute";
-    if (compute_time_per_row_ms < cache_read_time_per_row_ms) {
-      job_type = "COMPUTE";
-    } else {
-      job_type = "PUT";
-    }
-
-    return Status::OK();
-  }
-}
-
-Status DetermineJobTypeUpdated(const experimental::DispatcherConfig& dispatcher_config,
-                     ::tensorflow::data::CacheState& cache_state,
-                     const ::tensorflow::data::easl::MetadataStore& metadata_store,
-                     const uint64 fingerprint,
-                     const std::string& dataset_key,
-                     const int64 job_id,
-                     std::string& job_type) {
+Status DetermineJobTypeUpdated(
+    const experimental::DispatcherConfig& dispatcher_config,
+    ::tensorflow::data::CacheState& cache_state,
+    ::tensorflow::data::easl::MetadataStore& metadata_store,
+    const int64 job_id) {
   // ---------------------------------------------------------------------------
   // Cache policy = EASL direct throughput comparison (cache_policy==5)
   // ---------------------------------------------------------------------------
 
-  // If dataset was previously cached, assume it was faster than compute
-  // and decide to read.
-  if (cache_state.IsDatasetCached(fingerprint)){
-    job_type = "GET";
-    return Status::OK();
-  }
+  // FIXME: These need to be moved to CreateJob
+//  if (cache_state.IsDatasetCached(fingerprint)) {
+//    metadata_store.SetJobTypeByJobId(job_id, "GET");
+//    return Status::OK();
+//  }
 
-  // We always prefer source caching, so if we have full caching, it means
-  // that was necessary. Thus, we check source caching after full caching.
-  if (cache_state.IsDatasetSourceCached(fingerprint)) {
-    job_type = "GET_SOURCE";
-    return Status::OK();
-  }
-  std::shared_ptr<::tensorflow::data::easl::InputPipelineMetrics> job_metrics;
-  Status s = metadata_store.GetInputPipelineMetricsByDatasetFingerprint(fingerprint,
-                                                                job_metrics);
+//  if (cache_state.IsDatasetSourceCached(fingerprint)) {
+//    metadata_store.SetJobTypeByJobId(job_id, "GET_SOURCE");
+//    return Status::OK();
+//  }
 
-  // We do not yet have the metrics for this dataset, must be the first epoch
-  // we'll enter a special scaling + profiling epoch
-  if(errors::IsNotFound(s)){
-    job_type = "PROFILE";
-    return Status::OK();
-  } else if (!s.ok()){
-    return s;
-  }
+  // Fixme: To set a job in PROFILE mode, one needs to set it in createJob by checking if
+  //        its fingerprint has been seen; if not PROFILE. Should change in multi tenant situns
+//  std::shared_ptr<::tensorflow::data::easl::InputPipelineMetrics> job_metrics;
+//  Status s = metadata_store.GetInputPipelineMetrics(job_id, job_metrics);
+//  if(errors::IsNotFound(s)){
+//    job_type = "PROFILE";
+//    return Status::OK();
+//  } else if (!s.ok()){
+//    return s;
+//  }
 
   // Compute metrics
   using NodeMetrics = ::tensorflow::data::easl::NodeMetrics;
   std::shared_ptr<NodeMetrics> node_metrics;
-  TF_RETURN_IF_ERROR(metadata_store.GetLastNodeMetricsByDatasetFingerprint(
-      fingerprint, node_metrics));
+  TF_RETURN_IF_ERROR(metadata_store.GetLastNodeMetrics(job_id, node_metrics));
 
   size_t num_workers = (node_metrics->metrics_).size();
   DCHECK(num_workers > 0);
@@ -494,16 +246,14 @@ Status DetermineJobTypeUpdated(const experimental::DispatcherConfig& dispatcher_
   bool is_gcs_limited = false;
   double source_cache_compute_time_ms = 0.0;
   std::shared_ptr<data::easl::InputPipelineMetrics> input_pipeline_metrics;
-  metadata_store.GetInputPipelineMetricsByDatasetFingerprint(fingerprint,
-                                                     input_pipeline_metrics);
+  metadata_store.GetInputPipelineMetrics(job_id, input_pipeline_metrics);
 
   if(!input_pipeline_metrics->GetMarkerNodeName().empty()) {
     VLOG(0) << "Found marker node name: "
                  << input_pipeline_metrics->GetMarkerNodeName();
     has_marker_node = true;
     std::shared_ptr<data::easl::NodeMetrics> marker_node_metrics;
-    metadata_store.GetMarkerNodeMetricsByDatasetFingerprint(fingerprint,
-                                                    marker_node_metrics);
+    metadata_store.GetMarkerNodeMetrics(job_id, marker_node_metrics);
 
     double io_row_size = 0.0;
     double avg_io_bytes_per_s = 0.0; // Will not be used.
@@ -576,15 +326,15 @@ Status DetermineJobTypeUpdated(const experimental::DispatcherConfig& dispatcher_
 
     switch (minElementIndex) {
       case 0: // This is the source cache
-        job_type = "PUT_SOURCE";
+        metadata_store.SetJobTypeByJobId(job_id, "PUT_SOURCE");
         VLOG(0) << "Cache decision: SOURCE CACHING";
         break;
       case 1: // This is the full cache
-        job_type = "PUT";
+        metadata_store.SetJobTypeByJobId(job_id, "PUT");
         VLOG(0) << "Cache decision: FULL CACHING";
         break;
       case 2: // This is the compute
-        job_type = "COMPUTE";
+        metadata_store.SetJobTypeByJobId(job_id, "COMPUTE");
         VLOG(0) << "Cache decision: COMPUTE";
         break;
       default:
@@ -597,9 +347,9 @@ Status DetermineJobTypeUpdated(const experimental::DispatcherConfig& dispatcher_
   } else {
     VLOG(0) << "No marker node found, choosing between put or compute";
     if (compute_time_per_row_ms < cache_read_time_per_row_ms) {
-      job_type = "COMPUTE";
+      metadata_store.SetJobTypeByJobId(job_id, "COMPUTE");
     } else {
-      job_type = "PUT";
+      metadata_store.SetJobTypeByJobId(job_id, "PUT");
     }
 
     return Status::OK();

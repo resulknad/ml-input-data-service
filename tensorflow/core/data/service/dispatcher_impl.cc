@@ -423,9 +423,14 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
       TF_RETURN_IF_ERROR(metadata_store_.GetWorkerUpdateCounter(job_id,
         update_count));
       if (job_type == "PROFILE" && update_count >= kWorkerHeartbeatThreshold) {
-//        service::easl::cache_utils::DetermineJobTypeUpdated(
-//            config_, cache_state_, metadata_store_, dataset_fingerprint,
-//            compute_dataset_key, job_id, job_type);
+        // Will change the job_type of job with job_id to something else
+        service::easl::cache_utils::DetermineJobTypeUpdated(config_,
+          cache_state_, metadata_store_, job_id);
+
+        // We will allow the job to start scaling
+        // Note that job is expected to start at 1 worker
+        metadata_store_.ResetSameScaleCounter(job_id);
+        metadata_store_.SetJobIsScaling(job_id);
       }
     }
   }

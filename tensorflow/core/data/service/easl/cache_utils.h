@@ -42,22 +42,11 @@ Status DatasetKeyOld(const ::tensorflow::data::easl::CacheState& cache_state,
                   const int64 task_id,
                   std::string& dataset_key);
 */
-Status DetermineJobType(
-    const experimental::DispatcherConfig& dispatcher_config,
-    ::tensorflow::data::CacheState& cache_state,
-    const ::tensorflow::data::easl::MetadataStore& metadata_store,
-    const uint64 fingerprint,
-    const std::string& dataset_key,
-    const int64 job_id,
-    std::string& job_type);
 
 Status DetermineJobTypeUpdated(const experimental::DispatcherConfig& dispatcher_config,
                      ::tensorflow::data::CacheState& cache_state,
                      const ::tensorflow::data::easl::MetadataStore& metadata_store,
-                     const uint64 fingerprint,
-                     const std::string& dataset_key,
-                     const int64 job_id,
-                     std::string& job_type);
+                     const int64 job_id);
 
 Status AddPutOperator(const DatasetDef& dataset,
                       const uint64 fingerprint,

@@ -289,8 +289,10 @@ class MetadataStore {
   Status UpdateNodeNames(int64 job_id, string last_node_name, 
     string last_tf_node_name, string marker_node_name);
 
+  Status SetJobType(int64 fingerprint, string job_type);
   Status GetJobType(int64 fingerprint, string& job_type);
   Status GetJobTypeByJobId(int64 job_id, string& job_type);
+  Status SetJobTypeByJobId(int64 job_id, string job_type);
 
   Status SetJobIsScaling(int64 job_id);
   Status UnsetJobIsScaling(int64 job_id);

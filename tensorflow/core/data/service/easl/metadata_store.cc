@@ -574,6 +574,16 @@ Status MetadataStore::UpdateNodeNames(int64 job_id, string last_node_name,
   return s;
 }
 
+Status MetadataStore::SetJobType(int64 fingerprint, string job_type) {
+  auto it = fingerprint_key_metadata_.find(fingerprint);
+  if (it == fingerprint_key_metadata_.end()) {
+    return errors::NotFound("Could not find the dataset");
+  }
+  // it->second should be of std::shared_ptr<JobMetrics> type
+  it->second->job_type_ = job_type;
+  return Status::OK();
+}
+
 Status MetadataStore::GetJobType(int64 fingerprint, string& job_type) {
   auto it = fingerprint_key_metadata_.find(fingerprint);
   if (it == fingerprint_key_metadata_.end()) {
@@ -581,6 +591,13 @@ Status MetadataStore::GetJobType(int64 fingerprint, string& job_type) {
   }
   // it->second should be of std::shared_ptr<JobMetrics> type
   job_type = it->second->job_type_;
+  return Status::OK();
+}
+
+Status MetadataStore::SetJobTypeByJobId(int64 job_id, string job_type) {
+  std::shared_ptr<JobMetrics> jobMetrics;
+  TF_RETURN_IF_ERROR(GetJobMetrics(job_id, jobMetrics));
+  jobMetrics->job_type_ = job_type;
   return Status::OK();
 }
 
