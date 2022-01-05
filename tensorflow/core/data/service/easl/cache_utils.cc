@@ -421,7 +421,7 @@ Status DetermineJobTypeUpdated(const experimental::DispatcherConfig& dispatcher_
   size_t num_workers = (node_metrics->metrics_).size();
   DCHECK(num_workers > 0);
 
-  uint64 compute_row_size = 0;
+  double compute_row_size = 0;
   double compute_time_per_row_ms = 0;
   double compute_time_total_ms = 0;
   double compute_working_time_per_row_ms = 0;
@@ -442,6 +442,17 @@ Status DetermineJobTypeUpdated(const experimental::DispatcherConfig& dispatcher_
                         worker_metrics->num_elements();
     compute_time_per_row_ms += worker_metrics->active_time_ms() * weight;
     compute_working_time_per_row_ms += worker_metrics->working_time_ms() * weight;
+    VLOG(0) << "(DetermineJobTypeUpdated) Per worker row size last node:\n"
+            << " > bytes_produced: " << worker_metrics->bytes_produced() << "\n"
+            << " > num_elements: " << worker_metrics->num_elements() << "\n"
+            << " > weight: " << weight << "\n"
+            << " > compute_row_size component: " << (weight * worker_metrics->bytes_produced() /
+                                                     worker_metrics->num_elements()) << "\n"
+            << " > compute_row_size: " << compute_row_size << "\n"
+            << " > compute_time_per_row_ms component: " << (worker_metrics->active_time_ms() * weight) << "\n"
+            << " > compute_time_per_row_ms: " << compute_time_per_row_ms << "\n"
+            << " > compute_working_time_per_row_ms component: " << (worker_metrics->working_time_ms() * weight) << "\n"
+            << " > compute_working_time_per_row_ms: " << compute_working_time_per_row_ms;
   }
 
   // For the next values need 'normalization', since you might have batching
@@ -489,7 +500,7 @@ Status DetermineJobTypeUpdated(const experimental::DispatcherConfig& dispatcher_
     metadata_store.GetMarkerNodeMetricsByDatasetFingerprint(fingerprint,
                                                     marker_node_metrics);
 
-    uint64 io_row_size = 0;
+    double io_row_size = 0.0;
     double avg_io_bytes_per_s = 0.0; // Will not be used.
     double avg_io_time_total_ms = 0.0; // == avg_gcs_source_time_ms.
 
@@ -507,6 +518,15 @@ Status DetermineJobTypeUpdated(const experimental::DispatcherConfig& dispatcher_
       io_row_size += weight * node_metrics->bytes_produced() /
                      node_metrics->num_elements();
       avg_io_time_total_ms += node_metrics->active_time_ms() * weight;
+      VLOG(0) << "(DetermineJobTypeUpdated) Per worker row size marker node:\n"
+              << " > bytes_produced: " << node_metrics->bytes_produced() << "\n"
+              << " > num_elements: " << node_metrics->num_elements() << "\n"
+              << " > weight: " << weight << "\n"
+              << " > io_row_size component: " << (weight * node_metrics->bytes_produced() /
+                                             node_metrics->num_elements()) << "\n"
+              << " > io_row_size: " << io_row_size << "\n"
+              << " > avg_io_time_total_ms component: " << (node_metrics->active_time_ms() * weight) << "\n"
+              << " > avg_io_time_total_ms: " << avg_io_time_total_ms;
     }
 
     // The next values need 'normalization', since you might have batching
@@ -537,8 +557,7 @@ Status DetermineJobTypeUpdated(const experimental::DispatcherConfig& dispatcher_
             << " > avg_io_time_total_ms: " << avg_io_time_total_ms << "\n"
             << " > (M) source_cache_compute_time_total_ms: " << source_cache_compute_time_total_ms << "\n"
             << " > avg_io_bytes_per_active_time_ms: " << avg_io_bytes_per_active_time_ms << "\n"
-            << " > cache_read_time_per_row_ms: " << cache_read_time_per_row_ms << "\n"
-            << " > cache_read_time_total_ms: " << source_cache_io_time_total_ms;
+            << " > cache_read_time_per_row_ms: " << cache_read_time_per_row_ms;
 
     // Take a decision
     std::vector<double> v = {has_marker_node ? source_cache_compute_time_total_ms
