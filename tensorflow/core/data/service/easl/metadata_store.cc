@@ -359,7 +359,7 @@ MetadataStore::MetadataStore()
     fingerprint_key_metadata_() {}
 
 Status MetadataStore::CreateJob(int64 job_id, string& job_type,
-  int64 dataset_id,   int64 dataset_fingerprint, std::string& dataset_key,
+  int64 dataset_id, int64 dataset_fingerprint, std::string& dataset_key,
   bool trigger_rescale) {
   auto it = fingerprint_key_metadata_.find(dataset_fingerprint);
   if ( it == fingerprint_key_metadata_.end()){
@@ -542,6 +542,7 @@ Status MetadataStore::UpdateInputPipelineMetrics(int64 job_id,
   std::shared_ptr<InputPipelineMetrics> pipeline_metrics;
   Status s = GetInputPipelineMetrics(job_id, pipeline_metrics);
   if (s.ok()) {
+    pipeline_metrics->update_counter_++;
     pipeline_metrics->UpdateNodeMetrics(node_long_name, worker_address, 
       metrics);
   } 
@@ -608,6 +609,14 @@ Status MetadataStore::IsJobScaling(int64 job_id, bool& is_scaling) {
   std::shared_ptr<JobMetrics> jobMetrics;
   TF_RETURN_IF_ERROR(GetJobMetrics(job_id, jobMetrics));
   is_scaling = jobMetrics->is_scaling_;
+  return Status::OK();
+}
+
+Status MetadataStore::GetWorkerUpdateCounter(int64 job_id,
+  uint64 heartbeat_counter) {
+  std::shared_ptr<JobMetrics> jobMetrics;
+  TF_RETURN_IF_ERROR(GetJobMetrics(job_id, jobMetrics));
+  heartbeat_counter = jobMetrics->input_pipeline_metrics_->update_counter_;
   return Status::OK();
 }
 

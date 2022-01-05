@@ -90,6 +90,7 @@ constexpr const char kBytesPerS[] = "bytes_per_s";
 constexpr const char kActiveTime[] = "active_time";
 constexpr const char kWorkingTime[] = "working_time";
 
+const uint64 kWorkerHeartbeatThreshold = 40;
 
 
 using Dataset = DispatcherState::Dataset;
@@ -413,7 +414,19 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
             task.mutable_nodes(j)->name(), request->worker_address(), 
             node_metrics));
         }
-      } 
+      }
+
+      // Try to see if we need to decide on the execution mode
+      string job_type;
+      uint64 update_count;
+      TF_RETURN_IF_ERROR(metadata_store_.GetJobTypeByJobId(job_id, job_type));
+      TF_RETURN_IF_ERROR(metadata_store_.GetWorkerUpdateCounter(job_id,
+        update_count));
+      if (job_type == "PROFILE" && update_count >= kWorkerHeartbeatThreshold) {
+//        service::easl::cache_utils::DetermineJobTypeUpdated(
+//            config_, cache_state_, metadata_store_, dataset_fingerprint,
+//            compute_dataset_key, job_id, job_type);
+      }
     }
   }
 
@@ -891,7 +904,13 @@ Status DataServiceDispatcherImpl::CreateJob(
   // Check to see what the previous execution type for this job was
   string existing_job_type;
   Status s = metadata_store_.GetJobType(dataset_fingerprint, existing_job_type);
-  bool trigger_scaling = s.ok() && existing_job_type != job_type;
+
+  // Forcefully trigger rescale if:
+  //  * it's not the first epoch
+  //  * we've transitioned to a new execution type
+  //  * the previous epoch was not PROFILING and the current one is not COMPUTE
+  bool trigger_scaling = s.ok() && existing_job_type != job_type
+    && !(existing_job_type == "PROFILE" && job_type == "COMPUTE");
 
   // EASL add job entry to metadata store
   std::string dataset_key = service::easl::cache_utils::DatasetKey(

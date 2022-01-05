@@ -404,9 +404,10 @@ Status DetermineJobTypeUpdated(const experimental::DispatcherConfig& dispatcher_
   Status s = metadata_store.GetInputPipelineMetricsByDatasetFingerprint(fingerprint,
                                                                 job_metrics);
 
-  // We do not yet have the metrics for this dataset
+  // We do not yet have the metrics for this dataset, must be the first epoch
+  // we'll enter a special scaling + profiling epoch
   if(errors::IsNotFound(s)){
-    job_type = "COMPUTE";
+    job_type = "PROFILE";
     return Status::OK();
   } else if (!s.ok()){
     return s;

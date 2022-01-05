@@ -202,6 +202,8 @@ class InputPipelineMetrics {
     std::string maker_node_name_;
     // The keys are the long name of the node
     MetricsCollection metrics_;
+    // Counter to understand how many worker heartbeats we had
+    uint64 update_counter_;
 };
 
 class JobMetrics {
@@ -293,6 +295,8 @@ class MetadataStore {
   Status SetJobIsScaling(int64 job_id);
   Status UnsetJobIsScaling(int64 job_id);
   Status IsJobScaling(int64 job_id, bool& is_scaling);
+
+  Status GetWorkerUpdateCounter(int64 job_id, uint64 heartbeat_counter);
 
   // These are required since looking up in metrics history is both expensive
   // and history can be trimmed
