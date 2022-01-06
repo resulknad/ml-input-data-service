@@ -910,10 +910,10 @@ Status DataServiceDispatcherImpl::CreateJob(
   Status s = metadata_store_.GetJobType(dataset_fingerprint, existing_job_type);
 
   // Forcefully trigger rescale if:
-  //  * it's not the first epoch
   //  * we've transitioned to a new execution type
-  //  * the previous epoch was not PROFILING and the current one is not COMPUTE
-  bool trigger_scaling = s.ok() && existing_job_type != job_type;
+  //  * if we're putting anything into cache (this can only happen once after profiling)
+  bool trigger_scaling = s.ok() && (existing_job_type != job_type ||
+    job_type == "PUT" || job_type == "PUT_SOURCE");
 
   // EASL add job entry to metadata store
   std::string dataset_key = service::easl::cache_utils::DatasetKey(
