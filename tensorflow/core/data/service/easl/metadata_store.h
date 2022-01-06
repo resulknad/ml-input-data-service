@@ -292,14 +292,14 @@ class MetadataStore {
 
   Status SetJobType(int64 fingerprint, string job_type);
   Status GetJobType(int64 fingerprint, string& job_type);
-  Status GetJobTypeByJobId(int64 job_id, string& job_type);
   Status SetJobTypeByJobId(int64 job_id, string job_type);
+  Status GetJobTypeByJobId(int64 job_id, string& job_type);
 
   Status SetJobIsScaling(int64 job_id);
   Status UnsetJobIsScaling(int64 job_id);
   Status IsJobScaling(int64 job_id, bool& is_scaling);
 
-  Status GetWorkerUpdateCounter(int64 job_id, uint64 heartbeat_counter);
+  Status GetWorkerUpdateCounter(int64 job_id, uint64& heartbeat_counter);
 
   // These are required since looking up in metrics history is both expensive
   // and history can be trimmed

@@ -634,7 +634,7 @@ Status MetadataStore::IsJobScaling(int64 job_id, bool& is_scaling) {
 }
 
 Status MetadataStore::GetWorkerUpdateCounter(int64 job_id,
-  uint64 heartbeat_counter) {
+  uint64& heartbeat_counter) {
   std::shared_ptr<JobMetrics> jobMetrics;
   TF_RETURN_IF_ERROR(GetJobMetrics(job_id, jobMetrics));
   heartbeat_counter = jobMetrics->input_pipeline_metrics_->update_counter_;
