@@ -423,12 +423,15 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
       TF_RETURN_IF_ERROR(metadata_store_.GetWorkerUpdateCounter(job_id,
         update_count));
       if (job_type == "PROFILE" && update_count >= kWorkerHeartbeatThreshold) {
+        VLOG(0) << "(WorkerHeartbeat) At least "
+                     << kWorkerHeartbeatThreshold << " heartbeats have passed";
         // Will change the job_type of job with job_id to something else
         service::easl::cache_utils::DetermineJobTypeUpdated(config_,
           cache_state_, metadata_store_, job_id);
 
         // We will allow the job to start scaling
         // Note that job is expected to start at 1 worker
+        VLOG(0) << "(WorkerHeartbeat) Enabling scaling";
         metadata_store_.ResetSameScaleCounter(job_id);
         metadata_store_.SetJobIsScaling(job_id);
       }
@@ -902,8 +905,8 @@ Status DataServiceDispatcherImpl::CreateJob(
 
   service::easl::cache_utils::DetermineJobType(config_, cache_state_,
     metadata_store_, dataset_fingerprint, job_type);
-  VLOG(0) << "EASL - Caching decision for dataset_key " 
-            << compute_dataset_key << ": " << job_type;
+  VLOG(0) << "(CreateJob) Caching decision for dataset_key "
+               << compute_dataset_key << ": " << job_type;
 
   // Check to see what the previous execution type for this job was
   string existing_job_type;
@@ -929,7 +932,7 @@ Status DataServiceDispatcherImpl::CreateJob(
     if (config_.scaling_policy() == 2){
       worker_count = 100;
     }
-    VLOG(0) << "EASL (CreateJob) - Initial scalability decision for dataset_key "
+    VLOG(0) << "(CreateJob) - Initial scalability decision for dataset_key "
             << compute_dataset_key << ": " << worker_count;
   }
 

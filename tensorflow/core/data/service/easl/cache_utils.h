@@ -50,10 +50,11 @@ Status DetermineJobType(
         const uint64 fingerprint,
         std::string& job_type);
 
-Status DetermineJobTypeUpdated(const experimental::DispatcherConfig& dispatcher_config,
-                     ::tensorflow::data::CacheState& cache_state,
-                     const ::tensorflow::data::easl::MetadataStore& metadata_store,
-                     const int64 job_id);
+Status DetermineJobTypeUpdated(
+                      const experimental::DispatcherConfig& dispatcher_config,
+                      ::tensorflow::data::CacheState& cache_state,
+                      ::tensorflow::data::easl::MetadataStore& metadata_store,
+                      const int64 job_id);
 
 Status AddPutOperator(const DatasetDef& dataset,
                       const uint64 fingerprint,
