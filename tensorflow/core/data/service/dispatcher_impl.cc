@@ -900,9 +900,8 @@ Status DataServiceDispatcherImpl::CreateJob(
   int64 dataset_fingerprint = dataset->fingerprint;
   std::string compute_dataset_key = DatasetKey(dataset_id, dataset_fingerprint);
 
-  service::easl::cache_utils::DetermineJobType(
-      config_, cache_state_, metadata_store_, dataset_fingerprint,
-      compute_dataset_key, job_id, job_type);
+  service::easl::cache_utils::DetermineJobType(config_, cache_state_,
+    metadata_store_, dataset_fingerprint, job_type);
   VLOG(0) << "EASL - Caching decision for dataset_key " 
             << compute_dataset_key << ": " << job_type;
 
@@ -914,8 +913,7 @@ Status DataServiceDispatcherImpl::CreateJob(
   //  * it's not the first epoch
   //  * we've transitioned to a new execution type
   //  * the previous epoch was not PROFILING and the current one is not COMPUTE
-  bool trigger_scaling = s.ok() && existing_job_type != job_type
-    && !(existing_job_type == "PROFILE" && job_type == "COMPUTE");
+  bool trigger_scaling = s.ok() && existing_job_type != job_type;
 
   // EASL add job entry to metadata store
   std::string dataset_key = service::easl::cache_utils::DatasetKey(

@@ -212,7 +212,8 @@ class JobMetrics {
                std::string& job_type,
                int64 dataset_id,
                int64 dataset_fingerprint,
-               std::string& dataset_key);
+               std::string& dataset_key,
+               bool is_scaling = true);
 
     void DumpToFile(const std::string& path);
     void DumpToStream(std::stringstream& ss);

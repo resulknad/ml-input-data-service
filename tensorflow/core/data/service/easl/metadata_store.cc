@@ -312,7 +312,8 @@ JobMetrics::JobMetrics(int64 job_id,
                        std::string& job_type,
                        int64 dataset_id,
                        int64 dataset_fingerprint,
-                       std::string& dataset_key)
+                       std::string& dataset_key,
+                       bool is_scaling)
       : job_id_(job_id),
         job_type_(job_type),
         dataset_id_(dataset_id),
@@ -320,7 +321,7 @@ JobMetrics::JobMetrics(int64 job_id,
         dataset_key_(dataset_key),
         model_metrics_(), 
         input_pipeline_metrics_(),
-        is_scaling_(true),
+        is_scaling_(is_scaling),
         target_worker_count_(1),
         same_scale_counter_(0) {
           model_metrics_ = std::make_shared<ModelMetrics>();
@@ -362,10 +363,13 @@ Status MetadataStore::CreateJob(int64 job_id, string& job_type,
   int64 dataset_id, int64 dataset_fingerprint, std::string& dataset_key,
   bool trigger_rescale) {
   auto it = fingerprint_key_metadata_.find(dataset_fingerprint);
-  if ( it == fingerprint_key_metadata_.end()){
+  if ( it == fingerprint_key_metadata_.end()) {
+    // We've never seen this input pipeline; it's expected to be a PROFILING job
+    CHECK_EQ(job_type, "PROFILE");
     std::string ds_key = dataset_key;
     auto job_metrics = std::make_shared<JobMetrics>(
-        job_id, job_type, dataset_id, dataset_fingerprint, ds_key);
+        job_id, job_type, dataset_id, dataset_fingerprint, ds_key,
+        false);
     job_metadata_.insert_or_assign(job_id, job_metrics);
 
     return Status::OK();

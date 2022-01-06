@@ -28,14 +28,6 @@ namespace {
   double worker_count_alpha_ = 0.1;
   int MAX_WORKERS_PER_JOB = 100;
 }
-/*
-Status DetermineJobTypeUpdated(const experimental::DispatcherConfig& dispatcher_config,
-                               ::tensorflow::data::CacheState& cache_state,
-                               const ::tensorflow::data::easl::MetadataStore& metadata_store,
-                               const uint64 fingerprint,
-                               const std::string& dataset_key,
-                               const int64 job_id,
-                               std::string& job_type);*/
 
 Status DoBFS(NodeDef* sink_node, GraphDef& graph_def, string prefix) {
   absl::flat_hash_set<std::string> visited;
@@ -86,7 +78,7 @@ std::string DatasetGetSourceKey(const int64 id, const uint64 fingerprint) {
 
 std::string DatasetKey(
     const int64 id, const uint64 fingerprint, const std::string& job_type){
-  if(job_type=="COMPUTE"){
+  if(job_type=="COMPUTE" || job_type == "PROFILE"){
     return absl::StrCat("id_", id, "_fp_", fingerprint);
   } else if (job_type=="GET"){
     return DatasetGetKey(id, fingerprint);
@@ -100,39 +92,86 @@ std::string DatasetKey(
   return "";
 }
 
-// TODO (damien-aymon) deprecated, left here for reference.
-/*
-Status DatasetKey(const ::tensorflow::data::easl::CacheState& cache_state,
-                  const int64 dataset_id,
-                  const uint64 fingerprint,
-                  const std::string& worker_address,
-                  const int64 task_id,
-                  std::string& dataset_key){
-  if(cache_state.IsDatasetCached(fingerprint, worker_address)){
-    dataset_key =
-        absl::StrCat("id_", dataset_id, "_fp_", fingerprint, "_get");
-    VLOG(0) << "Use get dataset for fingerprint " << fingerprint
-            << " at worker " << worker_address;
-    return Status::OK();
-  }
+  Status DetermineJobType(const experimental::DispatcherConfig& dispatcher_config,
+                          ::tensorflow::data::CacheState& cache_state,
+                          const ::tensorflow::data::easl::MetadataStore& metadata_store,
+                          const uint64 fingerprint,
+                          std::string& job_type) {
 
-  int64 caching_task;
-  TF_RETURN_IF_ERROR(cache_state.GetCachingTaskId(
-      fingerprint, worker_address, caching_task));
-  if(caching_task == task_id) {
-    dataset_key =
-        absl::StrCat("id_", dataset_id, "_fp_", fingerprint, "_put");
-    VLOG(0) << "Use put dataset for fingerprint " << fingerprint
-            << " at worker " << worker_address;
-    return Status::OK();
-  }
+    // First check if we should use a "fixed" cache policy:
+    // 1 == EASL
+    // 2 == compute
+    // 3 == full cache(put, then get from 2nd epoch)
+    // 4 == source cache(put, then get from 2nd epoch)
+    // 30 == Force cache
+    // 31 == Force read cache
+    // 40 == Force source cache
+    // 41 == Force read source cache
+    // Compute -------------------------------------------------------------------
+    if(dispatcher_config.cache_policy() == 2) {
+      job_type = "COMPUTE";
+      return Status::OK();
+      // Caching -------------------------------------------------------------------
+    } else if(dispatcher_config.cache_policy() == 3){
+      if(cache_state.IsDatasetCached(fingerprint)){
+        job_type = "GET";
+      } else {
+        job_type = "PUT";
+      }
+      return Status::OK();
+    } else if (dispatcher_config.cache_policy() == 30) {
+      job_type = "PUT";
+      return Status::OK();
+    } else if (dispatcher_config.cache_policy() == 31) {
+      job_type = "GET";
+      return Status::OK();
+      // Source Caching ------------------------------------------------------------
+    } else if(dispatcher_config.cache_policy() == 4) {
+      if (cache_state.IsDatasetSourceCached(fingerprint)) {
+        job_type = "GET_SOURCE";
+      } else {
+        job_type = "PUT_SOURCE";
+      }
+      return Status::OK();
+    } else if (dispatcher_config.cache_policy() == 40) {
+      job_type = "PUT_SOURCE";
+      return Status::OK();
+    } else if (dispatcher_config.cache_policy() == 41) {
+      job_type = "GET_SOURCE";
+      return Status::OK();
+    }
+    // -------------------------------------------------------------------------
+    // Cache policy = EASL (cache_policy==1)
+    // -------------------------------------------------------------------------
 
-  dataset_key =
-      absl::StrCat("id_", dataset_id, "_fp_", fingerprint);
-  VLOG(0) << "Use standard dataset for fingerprint " << fingerprint
-          << " at worker " << worker_address;
-  return Status::OK();
-}*/
+    // If fingerprint is cached --> just get that cache. Prefer full cache over source
+    // If fingerprint is not cached, but has metrics --> job exists, just copy over the last thing
+    //  Only issue here: When job changes type during first epoch to put / put_source make sure to still allow the epoch extension
+    // When job does not exist, set it to PROFILE
+
+    if (cache_state.IsDatasetCached(fingerprint)) {
+      job_type = "GET";
+      return Status::OK();
+    }
+
+    if (cache_state.IsDatasetSourceCached(fingerprint)) {
+      job_type = "GET_SOURCE";
+      return Status::OK();
+    }
+    std::shared_ptr<data::easl::JobMetrics> job_metrics;
+    Status s = metadata_store.GetJobMetricsByDatasetFingerprint(fingerprint,
+                                                                job_metrics);
+
+    // We've never seen this fingerprint --> PROFILE
+    if (!s.ok()) {
+      job_type = "PROFILE";
+      return Status::OK();
+    }
+
+    // We have metrics, and it can only be COMPUTE, PUT, or PUT_SOURCE
+    job_type = job_metrics->job_type_;
+    return Status::OK();
+}
 
 
 Status DetermineJobTypeUpdated(
@@ -140,32 +179,6 @@ Status DetermineJobTypeUpdated(
     ::tensorflow::data::CacheState& cache_state,
     ::tensorflow::data::easl::MetadataStore& metadata_store,
     const int64 job_id) {
-  // ---------------------------------------------------------------------------
-  // Cache policy = EASL direct throughput comparison (cache_policy==5)
-  // ---------------------------------------------------------------------------
-
-  // FIXME: These need to be moved to CreateJob
-//  if (cache_state.IsDatasetCached(fingerprint)) {
-//    metadata_store.SetJobTypeByJobId(job_id, "GET");
-//    return Status::OK();
-//  }
-
-//  if (cache_state.IsDatasetSourceCached(fingerprint)) {
-//    metadata_store.SetJobTypeByJobId(job_id, "GET_SOURCE");
-//    return Status::OK();
-//  }
-
-  // Fixme: To set a job in PROFILE mode, one needs to set it in createJob by checking if
-  //        its fingerprint has been seen; if not PROFILE. Should change in multi tenant situns
-//  std::shared_ptr<::tensorflow::data::easl::InputPipelineMetrics> job_metrics;
-//  Status s = metadata_store.GetInputPipelineMetrics(job_id, job_metrics);
-//  if(errors::IsNotFound(s)){
-//    job_type = "PROFILE";
-//    return Status::OK();
-//  } else if (!s.ok()){
-//    return s;
-//  }
-
   // Compute metrics
   using NodeMetrics = ::tensorflow::data::easl::NodeMetrics;
   std::shared_ptr<NodeMetrics> node_metrics;
