@@ -90,7 +90,7 @@ constexpr const char kBytesPerS[] = "bytes_per_s";
 constexpr const char kActiveTime[] = "active_time";
 constexpr const char kWorkingTime[] = "working_time";
 
-const uint64 kWorkerHeartbeatThreshold = 40;
+const uint64 kWorkerHeartbeatThreshold = 150;
 
 
 using Dataset = DispatcherState::Dataset;
