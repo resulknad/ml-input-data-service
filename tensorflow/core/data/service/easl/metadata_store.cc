@@ -234,7 +234,7 @@ Status InputPipelineMetrics::GetLastNodeMetrics(
 Status InputPipelineMetrics::GetLastTFNodeMetrics(
   std::shared_ptr<NodeMetrics>& metrics) {
   if (last_tf_node_name_ == "") {
-    return errors::NotFound("Last TF node was not given a name");
+    return errors::Unavailable("Last TF node was not given a name");
   }
   GetNodeMetrics(last_tf_node_name_, metrics);
   return Status::OK();
@@ -243,7 +243,7 @@ Status InputPipelineMetrics::GetLastTFNodeMetrics(
 Status InputPipelineMetrics::GetMarkerNodeMetrics(
   std::shared_ptr<NodeMetrics>& metrics) {
   if (maker_node_name_ == "") {
-    return errors::NotFound("Marker node was not given a name");
+    return errors::Unavailable("Marker node was not given a name");
   }
   GetNodeMetrics(maker_node_name_, metrics);
   return Status::OK();
@@ -646,10 +646,7 @@ Status MetadataStore::GetWorkerUpdateCounter(int64 job_id,
 }
 
 Status MetadataStore::GetNumberOfProducedElements(int64 job_id,
-  uint64 element_count) {
-  std::shared_ptr<JobMetrics> jobMetrics;
-  TF_RETURN_IF_ERROR(GetJobMetrics(job_id, jobMetrics));
-
+  uint64& element_count) {
   std::shared_ptr<NodeMetrics> last_tf_node_metrics;
   Status s = GetLastTFNodeMetrics(job_id, last_tf_node_metrics);
 
@@ -661,7 +658,8 @@ Status MetadataStore::GetNumberOfProducedElements(int64 job_id,
       element_count += e.second->num_elements();
     }
   }
-  return Status::OK();
+  // Return OK if s.ok or name of last TF node is still unknown
+  return (s.ok() || errors::IsUnavailable(s)) ? Status::OK() : s;
 }
 
 Status MetadataStore::GetSameScaleCounter(int64 job_id, uint64& counter) {
