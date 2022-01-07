@@ -90,7 +90,7 @@ constexpr const char kBytesPerS[] = "bytes_per_s";
 constexpr const char kActiveTime[] = "active_time";
 constexpr const char kWorkingTime[] = "working_time";
 
-const uint64 kWorkerHeartbeatThreshold = 2500;
+const uint64 kElementThreshold = 300;
 
 
 using Dataset = DispatcherState::Dataset;
@@ -418,13 +418,15 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
 
       // Try to see if we need to decide on the execution mode
       string job_type;
-      uint64 update_count;
       TF_RETURN_IF_ERROR(metadata_store_.GetJobTypeByJobId(job_id, job_type));
-      TF_RETURN_IF_ERROR(metadata_store_.GetWorkerUpdateCounter(job_id,
-        update_count));
-      if (job_type == "PROFILE" && update_count >= kWorkerHeartbeatThreshold) {
+
+      uint64 element_count;
+      TF_RETURN_IF_ERROR(metadata_store_.GetNumberOfProducedElements(job_id,
+         element_count));
+
+      if (job_type == "PROFILE" && element_count >= kElementThreshold) {
         VLOG(0) << "(WorkerHeartbeat) At least "
-                     << kWorkerHeartbeatThreshold << " heartbeats have passed";
+                     << kElementThreshold << " elements have been produced";
         // Will change the job_type of job with job_id to something else
         service::easl::cache_utils::DetermineJobTypeUpdated(config_,
           cache_state_, metadata_store_, job_id);
@@ -574,8 +576,6 @@ Status DataServiceDispatcherImpl::GetSplit(const GetSplitRequest* request,
     && execution_mode != "PUT_SOURCE")
     || (execution_mode != "PROFILING"
     && !metadata_store_.JobSeenBefore(job->dataset_id)))) {
-    // FIXME: Note that this might infinitely loop in the first epoch due to
-    //        async between stability period and eos
     state_.AddFutureEndedJob(job_id, provider_index);
     split_provider->Reset();
     split_provider->GetNext(&split, &end_of_splits);

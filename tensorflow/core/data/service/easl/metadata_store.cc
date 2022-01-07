@@ -645,6 +645,25 @@ Status MetadataStore::GetWorkerUpdateCounter(int64 job_id,
   return Status::OK();
 }
 
+Status MetadataStore::GetNumberOfProducedElements(int64 job_id,
+  uint64 element_count) {
+  std::shared_ptr<JobMetrics> jobMetrics;
+  TF_RETURN_IF_ERROR(GetJobMetrics(job_id, jobMetrics));
+
+  std::shared_ptr<NodeMetrics> last_tf_node_metrics;
+  Status s = GetLastTFNodeMetrics(job_id, last_tf_node_metrics);
+
+  // It might be that the metrics have been created but the first heartbeat
+  // didn't arrive. In this case, s will not be OK
+  element_count = 0;
+  if (s.ok()) {
+    for (auto& e : last_tf_node_metrics->metrics_) {
+      element_count += e.second->num_elements();
+    }
+  }
+  return Status::OK();
+}
+
 Status MetadataStore::GetSameScaleCounter(int64 job_id, uint64& counter) {
   std::shared_ptr<JobMetrics> jobMetrics;
   TF_RETURN_IF_ERROR(GetJobMetrics(job_id, jobMetrics));

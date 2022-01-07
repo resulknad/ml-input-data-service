@@ -302,6 +302,7 @@ class MetadataStore {
   bool JobSeenBefore(int64 fingerprint);
 
   Status GetWorkerUpdateCounter(int64 job_id, uint64& heartbeat_counter);
+  Status GetNumberOfProducedElements(int64 job_id, uint64 element_count);
 
   // These are required since looking up in metrics history is both expensive
   // and history can be trimmed
