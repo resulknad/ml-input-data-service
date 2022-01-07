@@ -251,9 +251,6 @@ Status DetermineJobTypeUpdated(
           << " > cache_read_time_per_row_ms: " << cache_read_time_per_row_ms << "\n"
           << " > (M) cache_read_time_total_ms: " << cache_read_time_total_ms;
 
-  VLOG(0) << "EASL (DetermineJobType) - Full cache inferred GlusterFS read time "
-          << cache_read_time_total_ms;
-
   // IO metrics
   bool has_marker_node = false;
   bool is_gcs_limited = false;
@@ -322,6 +319,11 @@ Status DetermineJobTypeUpdated(
 //    double source_cache_compute_time_total_ms =
 //        std::max(source_cache_io_time_per_row_ms, compute_working_time_total_ms);
 
+    // FIXME(Dan): The decision does not seem to be right. Here we compare the
+    //             last node's working time with the read time from cache
+    //             but we never consider the addition of the compute overhead
+    //             that comes after reading from cache
+
     VLOG(0) << "(DetermineJobTypeUpdated) Mark cache values:\n"
             << " > total_elements: " << marker_cache_total_processed_instances << "\n"
             << " > row_size: " << io_row_size << "\n"
@@ -329,12 +331,13 @@ Status DetermineJobTypeUpdated(
             << " > avg_io_time_total_ms: " << avg_io_time_total_ms << "\n"
             << " > (M) source_cache_compute_time_total_ms: " << source_cache_compute_time_total_ms << "\n"
             << " > avg_io_bytes_per_active_time_ms: " << avg_io_bytes_per_active_time_ms << "\n"
-            << " > cache_read_time_per_row_ms: " << cache_read_time_per_row_ms;
+            << " > source_cache_io_time_per_row_ms: " << source_cache_io_time_per_row_ms  << "\n"
+            << " > source_cache_io_time_total_ms: " << source_cache_io_time_total_ms << "\n"
+            << " > compute_working_time_total_ms: " << compute_working_time_total_ms;
 
     // Take a decision
-    std::vector<double> v = {has_marker_node ? source_cache_compute_time_total_ms
-    : std::numeric_limits<double>::max(), cache_read_time_total_ms,
-    compute_time_total_ms};
+    std::vector<double> v = {source_cache_compute_time_total_ms,
+                             cache_read_time_total_ms, compute_time_total_ms};
     int minElementIndex = std::min_element(v.begin(), v.end()) - v.begin();
 
     switch (minElementIndex) {
@@ -355,8 +358,6 @@ Status DetermineJobTypeUpdated(
         return errors::Unimplemented("Caching decision defaulted to last option... "
                                      "See DetermineJobType!");
     }
-
-    return Status::OK();
   } else {
     VLOG(0) << "No marker node found, choosing between put or compute";
     if (compute_time_per_row_ms < cache_read_time_per_row_ms) {
@@ -364,9 +365,8 @@ Status DetermineJobTypeUpdated(
     } else {
       metadata_store.SetJobTypeByJobId(job_id, "PUT");
     }
-
-    return Status::OK();
   }
+  return Status::OK();
 }
 
 Status AddPutOperator(const DatasetDef& dataset,
