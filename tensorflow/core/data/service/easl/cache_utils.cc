@@ -21,14 +21,6 @@ namespace service {
 namespace easl {
 namespace cache_utils {
 
-namespace {
-  // Represents an offset which is subtracted from the non-rounded up worker count
-  // This offset tries to avoid cases where a value such as 4.02 provisions 
-  // 5 workers and not 4, as woul be ideal
-  double worker_count_alpha_ = 0.1;
-  int MAX_WORKERS_PER_JOB = 100;
-}
-
 Status DoBFS(NodeDef* sink_node, GraphDef& graph_def, string prefix) {
   absl::flat_hash_set<std::string> visited;
   std::queue<NodeDef*> bfs_queue;
@@ -187,11 +179,12 @@ Status DetermineJobTypeUpdated(
   size_t num_workers = (node_metrics->metrics_).size();
   DCHECK(num_workers > 0);
 
+  double compute_time_total_ms;
+  double compute_working_time_total_ms;
+
   double compute_row_size = 0;
   double compute_time_per_row_ms = 0;
-  double compute_time_total_ms = 0;
   double compute_working_time_per_row_ms = 0;
-  double compute_working_time_total_ms = 0;
 
   double compute_total_processed_instances = 0.0;
   for(std::pair<std::string, std::shared_ptr<NodeMetrics::Metrics>> e :
@@ -252,16 +245,12 @@ Status DetermineJobTypeUpdated(
           << " > (M) cache_read_time_total_ms: " << cache_read_time_total_ms;
 
   // IO metrics
-  bool has_marker_node = false;
-  bool is_gcs_limited = false;
-  double source_cache_compute_time_ms = 0.0;
   std::shared_ptr<data::easl::InputPipelineMetrics> input_pipeline_metrics;
   metadata_store.GetInputPipelineMetrics(job_id, input_pipeline_metrics);
 
   if(!input_pipeline_metrics->GetMarkerNodeName().empty()) {
     VLOG(0) << "Found marker node name: "
                  << input_pipeline_metrics->GetMarkerNodeName();
-    has_marker_node = true;
     std::shared_ptr<data::easl::NodeMetrics> marker_node_metrics;
     metadata_store.GetMarkerNodeMetrics(job_id, marker_node_metrics);
 
