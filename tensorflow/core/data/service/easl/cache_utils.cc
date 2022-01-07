@@ -173,10 +173,11 @@ Status DetermineJobTypeUpdated(
     const int64 job_id) {
   // Compute metrics
   using NodeMetrics = ::tensorflow::data::easl::NodeMetrics;
-  std::shared_ptr<NodeMetrics> node_metrics;
-  TF_RETURN_IF_ERROR(metadata_store.GetLastNodeMetrics(job_id, node_metrics));
+  std::shared_ptr<NodeMetrics> final_node_metrics;
+  TF_RETURN_IF_ERROR(metadata_store.GetLastNodeMetrics(job_id,
+    final_node_metrics));
 
-  size_t num_workers = (node_metrics->metrics_).size();
+  size_t num_workers = (final_node_metrics->metrics_).size();
   DCHECK(num_workers > 0);
 
   double compute_time_total_ms;
@@ -188,12 +189,12 @@ Status DetermineJobTypeUpdated(
 
   double compute_total_processed_instances = 0.0;
   for(std::pair<std::string, std::shared_ptr<NodeMetrics::Metrics>> e :
-      node_metrics->metrics_) {
+      final_node_metrics->metrics_) {
     compute_total_processed_instances += e.second->num_elements();
   }
 
   for(std::pair<std::string, std::shared_ptr<NodeMetrics::Metrics>> e :
-      node_metrics->metrics_) {
+      final_node_metrics->metrics_) {
     std::shared_ptr<NodeMetrics::Metrics> worker_metrics = e.second;
     if (worker_metrics->num_elements() <= 0) {
       continue;
@@ -269,13 +270,14 @@ Status DetermineJobTypeUpdated(
       if (node_metrics->num_elements() <= 0) {
         continue;
       }
-
       double weight = node_metrics->num_elements() /
                       marker_cache_total_processed_instances;
+
       avg_io_bytes_per_s += node_metrics->bytes_per_s() * weight;
       io_row_size += weight * node_metrics->bytes_produced() /
                      node_metrics->num_elements();
       avg_io_time_total_ms += node_metrics->active_time_ms() * weight;
+
       VLOG(0) << "(DetermineJobTypeUpdated) Per worker row size marker node:\n"
               << " > bytes_produced: " << node_metrics->bytes_produced() << "\n"
               << " > num_elements: " << node_metrics->num_elements() << "\n"
@@ -296,6 +298,8 @@ Status DetermineJobTypeUpdated(
                                              marker_cache_total_processed_instances;
 
     // Derive source caching values
+    double post_maker_compute_overhead = compute_time_total_ms -
+      avg_io_time_total_ms;
     double source_cache_io_time_per_row_ms = data::cache_model::GetTimePerRow(
         io_row_size);
     double source_cache_io_time_total_ms = source_cache_io_time_per_row_ms *
@@ -303,8 +307,10 @@ Status DetermineJobTypeUpdated(
 
     // TODO(Dan): Here it was source_cache_io_time_per_row_ms instead of
     //            source_cache_io_time_total_ms; I think that was a mistake
-    double source_cache_compute_time_total_ms = std::max(
-        source_cache_io_time_total_ms, compute_working_time_total_ms);
+    double source_cache_compute_time_total_ms = post_maker_compute_overhead +
+      source_cache_io_time_total_ms;
+//    double source_cache_compute_time_total_ms = std::max(
+//        source_cache_io_time_total_ms, compute_working_time_total_ms);
 //    double source_cache_compute_time_total_ms =
 //        std::max(source_cache_io_time_per_row_ms, compute_working_time_total_ms);
 
