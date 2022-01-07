@@ -572,10 +572,8 @@ Status DataServiceDispatcherImpl::GetSplit(const GetSplitRequest* request,
   // FIXME: Make sure to keep an eye out for the 2nd part of this condition
   //        It should not block scaling for a new client's job if the data
   //        is cached; still make sure this makes sense
-  if (end_of_splits && scaling && ((execution_mode != "PUT"
-    && execution_mode != "PUT_SOURCE")
-    || (execution_mode != "PROFILING"
-    && !metadata_store_.JobSeenBefore(job->dataset_id)))) {
+  if (end_of_splits && scaling && execution_mode != "PUT"
+    && execution_mode != "PUT_SOURCE") {
     state_.AddFutureEndedJob(job_id, provider_index);
     split_provider->Reset();
     split_provider->GetNext(&split, &end_of_splits);
