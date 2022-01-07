@@ -299,6 +299,8 @@ class MetadataStore {
   Status UnsetJobIsScaling(int64 job_id);
   Status IsJobScaling(int64 job_id, bool& is_scaling);
 
+  bool JobSeenBefore(int64 fingerprint);
+
   Status GetWorkerUpdateCounter(int64 job_id, uint64& heartbeat_counter);
 
   // These are required since looking up in metrics history is both expensive

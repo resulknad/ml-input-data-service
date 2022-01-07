@@ -567,8 +567,13 @@ Status DataServiceDispatcherImpl::GetSplit(const GetSplitRequest* request,
   string execution_mode;
   TF_RETURN_IF_ERROR(metadata_store_.IsJobScaling(job_id, scaling));
   TF_RETURN_IF_ERROR(metadata_store_.GetJobTypeByJobId(job_id, execution_mode));
-  if (end_of_splits && scaling && execution_mode != "PUT"  &&
-    execution_mode != "PUT_SOURCE") {
+  // FIXME: Make sure to keep an eye out for the 2nd part of this condition
+  //        It should not block scaling for a new client's job if the data
+  //        is cached; still make sure this makes sense
+  if (end_of_splits && scaling && ((execution_mode != "PUT"
+    && execution_mode != "PUT_SOURCE")
+    || (execution_mode != "PROFILING"
+    && !metadata_store_.JobSeenBefore(job->dataset_id)))) {
     // FIXME: Note that this might infinitely loop in the first epoch due to
     //        async between stability period and eos
     state_.AddFutureEndedJob(job_id, provider_index);

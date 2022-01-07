@@ -633,6 +633,10 @@ Status MetadataStore::IsJobScaling(int64 job_id, bool& is_scaling) {
   return Status::OK();
 }
 
+bool MetadataStore::JobSeenBefore(int64 fingerprint) {
+  return fingerprint_key_metadata_.contains(fingerprint);
+}
+
 Status MetadataStore::GetWorkerUpdateCounter(int64 job_id,
   uint64& heartbeat_counter) {
   std::shared_ptr<JobMetrics> jobMetrics;
