@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/experimental/data_service_dataset_op.h"
 
+#include <fstream>
 #include <limits>
 #include <map>
 #include <memory>
@@ -320,7 +321,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
       // EASL - metrics collection
       ++num_elements_;
-      batch_timestamps_us_.push_back(Env::Default()->NowMicros());
+      uint64 time_now = Env::Default()->NowMicros();
+      batch_timestamps_us_.push_back(time_now);
+      batch_timestamps_us_duplicate_.push_back(time_now);
 
       bool hadToWait = false;
       int64 start_us = Env::Default()->NowMicros();
@@ -328,6 +331,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       while (skip) {
         uint64 wait_time = Env::Default()->NowMicros(); // EASL metrics
         result_queue_size_.push_back(results_.size()); // EASL metrics
+        result_queue_size_duplicate_.push_back(results_.size()); // EASL metrics
         while ((results_.empty() || !results_.front().ready) && !Finished() &&
                !cancelled_ && status_.ok()) {
           VLOG(1) << "Blocking in GetNext. results_.size():" << results_.size()
@@ -344,9 +348,12 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           hadToWait = true; // EASL - metrics collection.
         }
         wait_time = Env::Default()->NowMicros() - wait_time; // EASL metrics
-        wait_times_ms_.push_back((double)(wait_time) /
-                                 EnvTime::kMillisToMicros); // EASL metrics
+        double wait_time_computation = (double)(wait_time)
+          / EnvTime::kMillisToMicros;
+        wait_times_ms_.push_back(wait_time_computation); // EASL metrics
+        wait_times_ms_duplicate_.push_back(wait_time_computation); // EASL metrics
         had_to_wait_.push_back(hadToWait); // EASL metrics
+        had_to_wait_duplicate_.push_back(hadToWait); // EASL metrics
         if (cancelled_) {
           VLOG(3) << "Returning from GetNext due to cancellation";
           return errors::Cancelled("Data service iterator was cancelled");
@@ -671,6 +678,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           req.set_worker_count(tasks_.size());
 
           ClearScalabilityMetrics();
+
+          // EASL: Logging stuff
+          WriteMetrics();
         } else {
           req.set_has_scalability_metrics(false);
         }
@@ -1109,6 +1119,34 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       return dataset()->num_consumers_.has_value();
     }
 
+    void WriteMetrics() {
+      // Get the file location
+      const std::string log_location = std::getenv("CACHEW_METRICS_DUMP");
+      std::ofstream file(log_location, std::ios_base::app);
+
+      // Check if file does not exist
+      if (!file.good()) {
+        file << "batch_timestamp_us,wait_time_ms,had_to_wait,result_queue_size\n";
+      }
+
+      for (int i = 0; i < batch_timestamps_us_duplicate_.size(); ++i) {
+        file << batch_timestamps_us_duplicate_[i] << ","
+             << wait_times_ms_duplicate_[i] << ","
+             << had_to_wait_duplicate_[i] << ","
+             << result_queue_size_duplicate_[i] << "\n";
+      }
+
+      // Flush and close
+      file.flush();
+      file.close();
+
+      // Clear the metrics
+      batch_timestamps_us_duplicate_.clear();
+      wait_times_ms_duplicate_.clear();
+      result_queue_size_duplicate_.clear();
+      had_to_wait_duplicate_.clear();
+    }
+
     const int64 iterator_index_;
 
     mutable mutex mu_;
@@ -1185,6 +1223,12 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     std::vector<double> wait_times_ms_ TF_GUARDED_BY(mu_);
     std::vector<uint32> result_queue_size_ TF_GUARDED_BY(mu_);
     std::vector<bool> had_to_wait_ TF_GUARDED_BY(mu_);
+
+    // Duplicates for metric collection
+    std::vector<uint64> batch_timestamps_us_duplicate_ TF_GUARDED_BY(mu_);
+    std::vector<double> wait_times_ms_duplicate_ TF_GUARDED_BY(mu_);
+    std::vector<uint32> result_queue_size_duplicate_ TF_GUARDED_BY(mu_);
+    std::vector<bool> had_to_wait_duplicate_ TF_GUARDED_BY(mu_);
   };
 
   const int op_version_;
