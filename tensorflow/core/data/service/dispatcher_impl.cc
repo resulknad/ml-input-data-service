@@ -149,7 +149,7 @@ void RecordEvent(const int64 fingerprint, const int64 dataset_id,
   const string& additional_info = "") {
   uint64 time_now = Env::Default()->NowMicros();
 
-  std::ofstream o(kEventFileLocation);
+  std::ofstream o(kEventFileLocation, std::ios_base::app);
   if (!o.good()) {
     o << "time,fingerprint,dataset_id,job_id,event_type,additional\n";
   }
