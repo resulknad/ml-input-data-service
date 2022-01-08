@@ -58,6 +58,8 @@ limitations under the License.
 #include "tensorflow/core/protobuf/service_config.pb.h"
 #include "tensorflow/core/public/session_options.h"
 
+#include <fstream>
+
 namespace tensorflow {
 namespace data {
 
@@ -139,6 +141,26 @@ void PrepareGraph(GraphDef* graph) {
   }
   StripDevicePlacement(graph->mutable_library());
 }
+
+// EASL: Recording events
+constexpr const char kEventFileLocation[] = "events.csv";
+void RecordEvent(const int64 fingerprint, const int64 dataset_id,
+  const int64 job_id, const string& event_type,
+  const string& additional_info = "") {
+  uint64 time_now = Env::Default()->NowMicros();
+
+  std::ofstream o(kEventFileLocation);
+  if (!o.good()) {
+    o << "time,fingerprint,dataset_id,job_id,event_type,additional\n";
+  }
+
+  o << time_now << "," << fingerprint << "," << dataset_id << "," << job_id
+    << "," << event_type << "," << additional_info << "\n";
+
+  o.flush();
+  o.close();
+}
+
 }  // namespace
 
 DataServiceDispatcherImpl::DataServiceDispatcherImpl(
@@ -436,6 +458,16 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
         VLOG(0) << "(WorkerHeartbeat) Enabling scaling";
         metadata_store_.ResetSameScaleCounter(job_id);
         metadata_store_.SetJobIsScaling(job_id);
+
+        // Logging stuff
+        std::shared_ptr<const Dataset> dataset;
+        state_.DatasetFromId(task_object->job->dataset_id, dataset);
+
+        string job_type;
+        TF_RETURN_IF_ERROR(metadata_store_.GetJobTypeByJobId(job_id, job_type));
+        RecordEvent(dataset->fingerprint, dataset->dataset_id,
+          task_object->job->job_id, "execution_policy_decision",
+          job_type);
       }
     }
   }
@@ -911,6 +943,10 @@ Status DataServiceDispatcherImpl::CreateJob(
   VLOG(0) << "(CreateJob) Caching decision for dataset_key "
                << compute_dataset_key << ": " << job_type;
 
+  // EASL: Logging stuff
+  RecordEvent(dataset_fingerprint, dataset_id, job_id,
+    "execution_mode_change", job_type);
+
   // Check to see what the previous execution type for this job was
   string existing_job_type;
   Status s = metadata_store_.GetJobType(dataset_fingerprint, existing_job_type);
@@ -1203,6 +1239,14 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
         job_target_worker_count_update->set_job_id(job->job_id);
         job_target_worker_count_update->set_target_worker_count(target_worker_count);
         state_.Apply(update);
+
+        // EASL: Logging stuff
+        string scale_type = target_worker_count > metrics.worker_count() ?
+            "scale_up" : "scale_down";
+        std::shared_ptr<const Dataset> dataset;
+        TF_RETURN_IF_ERROR(state_.DatasetFromId(job->dataset_id, dataset));
+        RecordEvent(dataset->fingerprint, dataset->dataset_id, job->job_id,
+                    scale_type, std::to_string(target_worker_count));
       }
     } else if (config_.scaling_policy() == 2) {
       metadata_store_.UnsetJobIsScaling(job->job_id);
