@@ -339,6 +339,9 @@ class DataServiceDispatcherImpl {
   condition_variable log_dumps_thread_cv_;
   std::unique_ptr<Thread> log_dumps_thread_;
 
+  // EASL: Logging stuff
+  absl::flat_hash_map<int64, uint64> last_scale_;
+
   TF_DISALLOW_COPY_AND_ASSIGN(DataServiceDispatcherImpl);
 };
 

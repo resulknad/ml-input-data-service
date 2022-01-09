@@ -975,6 +975,11 @@ Status DataServiceDispatcherImpl::CreateJob(
             << compute_dataset_key << ": " << worker_count;
   }
 
+  // EASL: Logging stuff
+  last_scale_[dataset_id] = worker_count;
+  RecordEvent(dataset_fingerprint, dataset_id, job_id,
+              "starting_worker_count", std::to_string(worker_count));
+
   int64 num_split_providers = 0;
   if (processing_mode == ProcessingMode::DISTRIBUTED_EPOCH) {
     TF_RETURN_IF_ERROR(
@@ -1241,12 +1246,15 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
         state_.Apply(update);
 
         // EASL: Logging stuff
-        string scale_type = target_worker_count > metrics.worker_count() ?
-            "scale_up" : "scale_down";
-        std::shared_ptr<const Dataset> dataset;
-        TF_RETURN_IF_ERROR(state_.DatasetFromId(job->dataset_id, dataset));
-        RecordEvent(dataset->fingerprint, dataset->dataset_id, job->job_id,
-                    scale_type, std::to_string(target_worker_count));
+        if (last_scale_[job->dataset_id] != target_worker_count) {
+          string scale_type = target_worker_count > last_scale_[job->dataset_id] ?
+                              "scale_up" : "scale_down";
+          last_scale_[job->dataset_id] = target_worker_count;
+          std::shared_ptr<const Dataset> dataset;
+          TF_RETURN_IF_ERROR(state_.DatasetFromId(job->dataset_id, dataset));
+          RecordEvent(dataset->fingerprint, dataset->dataset_id, job->job_id,
+                      scale_type, std::to_string(target_worker_count));
+        }
       }
     } else if (config_.scaling_policy() == 2) {
       metadata_store_.UnsetJobIsScaling(job->job_id);
