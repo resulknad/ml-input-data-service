@@ -611,6 +611,12 @@ Status DataServiceDispatcherImpl::GetSplit(const GetSplitRequest* request,
     split_provider->GetNext(&split, &end_of_splits);
     VLOG(0) << "(GetSplit) Reached EOS while still scaling in " << job_id
                  << " at provider index " << provider_index;
+
+    // EASL: Logging stuff
+    std::shared_ptr<const Dataset> dataset;
+    state_.DatasetFromId(job->dataset_id, dataset);
+    RecordEvent(dataset->fingerprint, dataset->dataset_id, job_id,
+      "extended_epoch");
   }
 
   TF_RETURN_IF_ERROR(RecordSplitProduced(
