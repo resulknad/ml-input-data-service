@@ -985,6 +985,10 @@ Status DataServiceDispatcherImpl::CreateJob(
             << compute_dataset_key << ": " << worker_count;
   }
 
+  if (job_type == "PUT") {
+    worker_count = std::max(2.0, worker_count * 1.5);
+  }
+
   // EASL: Logging stuff
   last_scale_[dataset_id] = worker_count;
   RecordEvent(dataset_fingerprint, dataset_id, job_id,
