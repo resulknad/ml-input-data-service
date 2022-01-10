@@ -987,6 +987,7 @@ Status DataServiceDispatcherImpl::CreateJob(
 
   if (job_type == "PUT") {
     worker_count = std::max(2.0, worker_count * 1.5);
+    job_metrics->target_worker_count_ = worker_count;
   }
 
   // EASL: Logging stuff
