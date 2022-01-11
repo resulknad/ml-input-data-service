@@ -976,25 +976,21 @@ Status DataServiceDispatcherImpl::CreateJob(
   std::shared_ptr<easl::JobMetrics> job_metrics;
   s = metadata_store_.GetJobMetrics(job_id, job_metrics);
   worker_count = job_metrics->target_worker_count_;
-  if (worker_count < 0){
-    worker_count = 1; // Set default to 1 if no previous job with same dataset fingerprint.
-    if (config_.scaling_policy() == 2){
-      worker_count = 100;
-    }
-    VLOG(0) << "(CreateJob) - Initial scalability decision for dataset_key "
-            << compute_dataset_key << ": " << worker_count;
+
+  if (config_.scaling_policy() == 2) {
+    worker_count = 100;
   }
 
-  if (job_type == "PUT" || job_type == "PUT_SOURCE") {
-    std::shared_ptr<easl::JobMetrics> dataset_fingerprint_metrics;
-    s = metadata_store_.GetJobMetricsByDatasetFingerprint(
-        dataset_fingerprint, dataset_fingerprint_metrics);
-    if (s.ok()) {
-      worker_count = std::ceil(std::max(1.0,
-          dataset_fingerprint_metrics->target_worker_count_ * 1.5));
-    }
-    job_metrics->target_worker_count_ = worker_count;
-  }
+//  if (job_type == "PUT" || job_type == "PUT_SOURCE") {
+//    std::shared_ptr<easl::JobMetrics> dataset_fingerprint_metrics;
+//    s = metadata_store_.GetJobMetricsByDatasetFingerprint(
+//        dataset_fingerprint, dataset_fingerprint_metrics);
+//    if (s.ok()) {
+//      worker_count = std::ceil(std::max(1.0,
+//          dataset_fingerprint_metrics->target_worker_count_ * 1.5));
+//    }
+//    job_metrics->target_worker_count_ = worker_count;
+//  }
 
   // EASL: Logging stuff
   last_scale_[dataset_id] = worker_count;
