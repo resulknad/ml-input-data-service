@@ -359,7 +359,8 @@ void JobMetrics::DumpToStream(std::stringstream& ss){
 // Metadata store 
 MetadataStore::MetadataStore() 
   : job_metadata_(),
-    fingerprint_key_metadata_() {}
+    fingerprint_key_metadata_(),
+    fingerprint_name_metadata_() {}
 
 Status MetadataStore::CreateJob(int64 job_id, string& job_type,
   int64 dataset_id, int64 dataset_fingerprint, std::string& dataset_key,
@@ -401,7 +402,7 @@ Status MetadataStore::CreateJobName(int64 job_id, string& job_name,
   string& job_type, int64 dataset_id, int64 dataset_fingerprint,
   std::string& dataset_key, bool trigger_rescale) {
   string key = CreateFingerprintNameKey(dataset_fingerprint, job_name);
-  auto it = fingerprint_name_metadata_.find(dataset_fingerprint);
+  auto it = fingerprint_name_metadata_.find(key);
   if ( it == fingerprint_name_metadata_.end()) {
     // We've never seen this input pipeline; it's expected to be a PROFILING job
     CHECK_EQ(job_type, "PROFILE");
@@ -660,7 +661,7 @@ Status MetadataStore::SetJobType(int64 fingerprint, string job_type) {
   Status MetadataStore::SetJobType(int64 fingerprint, const string& job_name,
     string job_type) {
     string key = CreateFingerprintNameKey(fingerprint, job_name);
-    auto it = fingerprint_name_metadata_.find(fingerprint);
+    auto it = fingerprint_name_metadata_.find(key);
     if (it == fingerprint_name_metadata_.end()) {
       return errors::NotFound("Could not find the dataset");
     }
@@ -687,7 +688,7 @@ string MetadataStore::CreateFingerprintNameKey(int64 fingerprint,
 Status MetadataStore::GetJobType(int64 fingerprint, const string& job_name,
     string& job_type) {
     string key = CreateFingerprintNameKey(fingerprint, job_name);
-    auto it = fingerprint_name_metadata_.find(fingerprint);
+    auto it = fingerprint_name_metadata_.find(key);
     if (it == fingerprint_name_metadata_.end()) {
       return errors::NotFound("Could not find the dataset");
     }
