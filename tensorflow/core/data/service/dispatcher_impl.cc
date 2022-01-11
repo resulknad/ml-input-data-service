@@ -342,7 +342,7 @@ Status DataServiceDispatcherImpl::ReassignFreeWorkersAndCreateTasks() TF_LOCKS_E
       std::vector<std::shared_ptr<const Task>> tasks_for_worker;
       Status s = state_.TasksForWorker(worker->address, tasks_for_worker);
       absl::flat_hash_set<int64> assigned_job_ids;
-      if (!errors::IsNotFound(s)){
+      if (!errors::IsNotFound(s)) {
         for (const auto& task : tasks_for_worker) {
           assigned_job_ids.insert(task->job->job_id);
         }

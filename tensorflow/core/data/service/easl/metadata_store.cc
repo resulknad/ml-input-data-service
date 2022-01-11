@@ -406,10 +406,11 @@ Status MetadataStore::CreateJobName(int64 job_id, string& job_name,
   if ( it == fingerprint_name_metadata_.end()) {
     // We've never seen this input pipeline; it's expected to be a PROFILING job
 //    CHECK_EQ(job_type, "PROFILE");
+    bool is_scaing = job_type != "PROFILE";
     std::string ds_key = dataset_key;
     auto job_metrics = std::make_shared<JobMetrics>(
         job_id, job_type, dataset_id, dataset_fingerprint, ds_key,
-        false, job_name);
+        is_scaing, job_name);
     job_metadata_.insert_or_assign(job_id, job_metrics);
 
     return Status::OK();
