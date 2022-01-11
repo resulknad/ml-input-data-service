@@ -213,13 +213,15 @@ class JobMetrics {
                int64 dataset_id,
                int64 dataset_fingerprint,
                std::string& dataset_key,
-               bool is_scaling = true);
+               bool is_scaling = true,
+               const string& name = string());
 
     void DumpToFile(const std::string& path);
     void DumpToStream(std::stringstream& ss);
 
     bool is_scaling_;
     string job_type_;
+    string name_;
     uint64 same_scale_counter_;
     int64 target_worker_count_;
     int64 job_id_;
@@ -244,6 +246,15 @@ class MetadataStore {
                    std::string& dataset_key,
                    bool trigger_rescale = false);
 
+
+  Status CreateJobName(int64 job_id,
+                       string& job_name,
+                       string& job_type,
+                       int64 dataset_id,
+                       int64 dataset_fingerprint,
+                       std::string& dataset_key,
+                       bool trigger_rescale = false);
+
   // Remove job
   Status RemoveJob(int64 job_id);
 
@@ -257,6 +268,9 @@ class MetadataStore {
     std::shared_ptr<InputPipelineMetrics>& metrics) const;
 
   Status GetJobMetricsByDatasetFingerprint(const int64 dataset_fingerprint,
+    std::shared_ptr<JobMetrics>& metrics) const;
+  Status GetJobMetricsByDatasetFingerprintAndName(
+    const int64 dataset_fingerprint, const string& job_name,
     std::shared_ptr<JobMetrics>& metrics) const;
 
   Status GetModelMetricsByDatasetFingerprint(const int64 dataset_fingerprint,
@@ -290,8 +304,12 @@ class MetadataStore {
   Status UpdateNodeNames(int64 job_id, string last_node_name, 
     string last_tf_node_name, string marker_node_name);
 
+  string CreateFingerprintNameKey(int64 fingerprint, const string& job_name) const;
+
   Status SetJobType(int64 fingerprint, string job_type);
+  Status SetJobType(int64 fingerprint, const string& name, string job_type);
   Status GetJobType(int64 fingerprint, string& job_type);
+  Status GetJobType(int64 fingerprint, const string& name, string& job_type);
   Status SetJobTypeByJobId(int64 job_id, string job_type);
   Status GetJobTypeByJobId(int64 job_id, string& job_type);
 
@@ -331,6 +349,8 @@ class MetadataStore {
   absl::flat_hash_map<int64, std::shared_ptr<JobMetrics>> job_metadata_;
   // Key is fingerprint
   absl::flat_hash_map<int64, std::shared_ptr<JobMetrics>> fingerprint_key_metadata_;
+  // Key is fingerprint+job_name
+  absl::flat_hash_map<string, std::shared_ptr<JobMetrics>> fingerprint_name_metadata_;
 };
 
 // Utils function to append the missing trailing "]"

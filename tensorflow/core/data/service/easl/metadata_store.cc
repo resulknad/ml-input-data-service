@@ -313,12 +313,14 @@ JobMetrics::JobMetrics(int64 job_id,
                        int64 dataset_id,
                        int64 dataset_fingerprint,
                        std::string& dataset_key,
-                       bool is_scaling)
+                       bool is_scaling,
+                       const string& name)
       : job_id_(job_id),
         job_type_(job_type),
         dataset_id_(dataset_id),
         dataset_fingerprint_(dataset_fingerprint),
         dataset_key_(dataset_key),
+        name_(name),
         model_metrics_(), 
         input_pipeline_metrics_(),
         is_scaling_(is_scaling),
@@ -393,6 +395,43 @@ Status MetadataStore::CreateJob(int64 job_id, string& job_type,
   job_metadata_.insert_or_assign(job_id, job_metrics);
 
   return Status::OK();
+}
+
+Status MetadataStore::CreateJobName(int64 job_id, string& job_name,
+  string& job_type, int64 dataset_id, int64 dataset_fingerprint,
+  std::string& dataset_key, bool trigger_rescale) {
+  string key = CreateFingerprintNameKey(dataset_fingerprint, job_name);
+  auto it = fingerprint_name_metadata_.find(dataset_fingerprint);
+  if ( it == fingerprint_name_metadata_.end()) {
+    // We've never seen this input pipeline; it's expected to be a PROFILING job
+    CHECK_EQ(job_type, "PROFILE");
+    std::string ds_key = dataset_key;
+    auto job_metrics = std::make_shared<JobMetrics>(
+        job_id, job_type, dataset_id, dataset_fingerprint, ds_key,
+        false, job_name);
+    job_metadata_.insert_or_assign(job_id, job_metrics);
+
+    return Status::OK();
+  }
+
+    // TODO FIXME This is not a deep copy of the JobMetrics object
+    // Multiple clients could copy the same object and share it, the second client would overwrite the job_id_, .. fields.
+    std::shared_ptr<JobMetrics> job_metrics = it->second;
+    job_metrics->job_id_ = job_id;
+    job_metrics->job_type_ = job_type;
+    job_metrics->dataset_id_ = dataset_id;
+    job_metrics->dataset_key_ = dataset_key;
+
+    if (trigger_rescale) {
+      job_metrics->is_scaling_ = true;
+      job_metrics->same_scale_counter_ = 0;
+      job_metrics->target_worker_count_ = 1;
+      job_metrics->model_metrics_->metrics_history_.clear();
+    }
+
+    job_metadata_.insert_or_assign(job_id, job_metrics);
+
+    return Status::OK();
 }
 
 //Find a the job metric, delete it and add it to the dataset_key keyed metrics for persistence
@@ -509,6 +548,18 @@ Status MetadataStore::GetJobMetricsByDatasetFingerprint(
   return Status::OK();
 }
 
+Status MetadataStore::GetJobMetricsByDatasetFingerprintAndName(
+    const int64 dataset_fingerprint, const string& job_name,
+  std::shared_ptr<JobMetrics>& metrics) const {
+  string key = CreateFingerprintNameKey(dataset_fingerprint, job_name);
+  auto it = fingerprint_name_metadata_.find(key);
+  if (it == fingerprint_name_metadata_.end()) {
+    return errors::NotFound("Dataset ", key, " does not (yet) have metrics");
+  }
+  metrics = it->second;
+  return Status::OK();
+}
+
 Status MetadataStore::GetModelMetricsByDatasetFingerprint(
     const int64 dataset_fingerprint, std::shared_ptr<ModelMetrics>& metrics) const {
   std::shared_ptr<JobMetrics> job_metrics;
@@ -588,6 +639,18 @@ Status MetadataStore::SetJobType(int64 fingerprint, string job_type) {
   return Status::OK();
 }
 
+  Status MetadataStore::SetJobType(int64 fingerprint, const string& job_name,
+    string job_type) {
+    string key = CreateFingerprintNameKey(fingerprint, job_name);
+    auto it = fingerprint_name_metadata_.find(fingerprint);
+    if (it == fingerprint_name_metadata_.end()) {
+      return errors::NotFound("Could not find the dataset");
+    }
+    // it->second should be of std::shared_ptr<JobMetrics> type
+    it->second->job_type_ = job_type;
+    return Status::OK();
+  }
+
 Status MetadataStore::GetJobType(int64 fingerprint, string& job_type) {
   auto it = fingerprint_key_metadata_.find(fingerprint);
   if (it == fingerprint_key_metadata_.end()) {
@@ -597,6 +660,24 @@ Status MetadataStore::GetJobType(int64 fingerprint, string& job_type) {
   job_type = it->second->job_type_;
   return Status::OK();
 }
+
+string MetadataStore::CreateFingerprintNameKey(int64 fingerprint,
+  const string& job_name) const {
+  return std::to_string(fingerprint) + job_name;
+}
+
+Status MetadataStore::GetJobType(int64 fingerprint, const string& job_name,
+    string& job_type) {
+    string key = CreateFingerprintNameKey(fingerprint, job_name);
+    auto it = fingerprint_name_metadata_.find(fingerprint);
+    if (it == fingerprint_name_metadata_.end()) {
+      return errors::NotFound("Could not find the dataset");
+    }
+    // it->second should be of std::shared_ptr<JobMetrics> type
+    job_type = it->second->job_type_;
+    return Status::OK();
+}
+
 
 Status MetadataStore::SetJobTypeByJobId(int64 job_id, string job_type) {
   std::shared_ptr<JobMetrics> jobMetrics;
