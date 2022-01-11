@@ -605,13 +605,31 @@ Status MetadataStore::UpdateInputPipelineMetrics(int64 job_id,
   return s;
 }
 
-Status MetadataStore::UpdateFingerprintKeyJobMetrics(int64 job_id){
+Status MetadataStore::UpdateFingerprintKeyJobMetrics(int64 job_id) {
   auto it = job_metadata_.find(job_id);
   if (it == job_metadata_.end()) {
     return errors::NotFound("Job with id ", job_id, " does not have metrics");
   }
   auto job_metrics = it->second;
   fingerprint_key_metadata_.insert_or_assign(job_metrics->dataset_fingerprint_, job_metrics);
+
+  return Status::OK();
+}
+
+Status MetadataStore::UpdateFingerprintNameKeyJobMetrics(int64 job_id) {
+  auto it = job_metadata_.find(job_id);
+  if (it == job_metadata_.end()) {
+    return errors::NotFound("Job with id ", job_id, " does not have metrics");
+  }
+
+  auto job_metrics = it->second;
+  if (job_metrics->name_ == "") {
+    return errors::NotFound("Job with id ", job_id, " and name '",
+      job_metrics->name_, "' has empty name.");
+  }
+  string key = CreateFingerprintNameKey(job_metrics->dataset_fingerprint_,
+                                        job_metrics->name_);
+  fingerprint_name_metadata_.insert_or_assign(key, job_metrics);
 
   return Status::OK();
 }

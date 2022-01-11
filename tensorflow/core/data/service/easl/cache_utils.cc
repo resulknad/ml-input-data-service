@@ -88,6 +88,7 @@ std::string DatasetKey(
                           ::tensorflow::data::CacheState& cache_state,
                           const ::tensorflow::data::easl::MetadataStore& metadata_store,
                           const uint64 fingerprint,
+                          const string& job_name,
                           std::string& job_type) {
 
     // First check if we should use a "fixed" cache policy:
@@ -151,8 +152,8 @@ std::string DatasetKey(
       return Status::OK();
     }
     std::shared_ptr<data::easl::JobMetrics> job_metrics;
-    Status s = metadata_store.GetJobMetricsByDatasetFingerprint(fingerprint,
-                                                                job_metrics);
+    Status s = metadata_store.GetJobMetricsByDatasetFingerprintAndName(fingerprint,
+      job_name, job_metrics);
 
     // We've never seen this fingerprint --> PROFILE
     if (!s.ok()) {

@@ -48,6 +48,7 @@ Status DetermineJobType(
         ::tensorflow::data::CacheState& cache_state,
         const ::tensorflow::data::easl::MetadataStore& metadata_store,
         const uint64 fingerprint,
+        const string& job_name,
         std::string& job_type);
 
 Status DetermineJobTypeUpdated(

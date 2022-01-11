@@ -333,6 +333,7 @@ class MetadataStore {
 
   // Update or create the metrics for the dataset key from the given job.
   Status UpdateFingerprintKeyJobMetrics(int64 job_id);
+  Status UpdateFingerprintNameKeyJobMetrics(int64 job_id);
 
   // Dumps the job metrics in a file named after its id at the given path.
   Status DumpJobMetricsToFile(int64 job_id, const std::string& path);

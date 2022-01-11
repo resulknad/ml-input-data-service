@@ -145,7 +145,7 @@ void PrepareGraph(GraphDef* graph) {
 // EASL: Recording events
 constexpr const char kEventFileLocation[] = "events.csv";
 void RecordEvent(const int64 fingerprint, const int64 dataset_id,
-  const int64 job_id, const string& event_type,
+  const string& job_name, const int64 job_id, const string& event_type,
   const string& additional_info = "") {
   uint64 time_now = Env::Default()->NowMicros();
 
@@ -155,11 +155,11 @@ void RecordEvent(const int64 fingerprint, const int64 dataset_id,
 
   std::ofstream o(kEventFileLocation, std::ios_base::app);
   if (!file_exists) {
-    o << "time,fingerprint,dataset_id,job_id,event_type,additional\n";
+    o << "time,fingerprint,dataset_id,job_name,job_id,event_type,additional\n";
   }
 
-  o << time_now << "," << fingerprint << "," << dataset_id << "," << job_id
-    << "," << event_type << "," << additional_info << "\n";
+  o << time_now << "," << fingerprint << "," << dataset_id << "," << job_name
+      << "," << job_id << "," << event_type << "," << additional_info << "\n";
 
   o.flush();
   o.close();
@@ -468,8 +468,9 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
         state_.DatasetFromId(task_object->job->dataset_id, dataset);
 
         string job_type;
+        string job_name = task_object->job->named_job_key.value().name;
         TF_RETURN_IF_ERROR(metadata_store_.GetJobTypeByJobId(job_id, job_type));
-        RecordEvent(dataset->fingerprint, dataset->dataset_id,
+        RecordEvent(dataset->fingerprint, dataset->dataset_id, job_name,
           task_object->job->job_id, "execution_policy_decision",
           job_type);
       }
@@ -503,7 +504,7 @@ Status DataServiceDispatcherImpl::WorkerUpdate(
 
         // EASL - Set dataset as cached if this was a caching job and the job is finished.
         std::shared_ptr<Job> job = task->job;
-        if(job->job_type == "PUT" && job->finished){
+        if(job->job_type == "PUT" && job->finished) {
           std::shared_ptr<const Dataset> dataset;
           TF_RETURN_IF_ERROR(state_.DatasetFromId(task->job->dataset_id, dataset));
           cache_state_.SetDatasetCached(dataset->fingerprint);
@@ -521,7 +522,8 @@ Status DataServiceDispatcherImpl::WorkerUpdate(
         // Update metadata store directly, quicker than waiting for the GCOldJobs to run.
         if(job->finished){
           do_reassign_free_workers = true;
-          TF_RETURN_IF_ERROR(metadata_store_.UpdateFingerprintKeyJobMetrics(job->job_id));
+          TF_RETURN_IF_ERROR(metadata_store_.UpdateFingerprintNameKeyJobMetrics(
+              job->job_id));
           if(log_dumps_enabled_){
             TF_RETURN_IF_ERROR(metadata_store_.DumpJobMetricsToFile(job->job_id, config_.log_dir()));
             easl::TerminateJobMetricsAppendDumps(job->job_id, config_.log_dir());
@@ -619,7 +621,8 @@ Status DataServiceDispatcherImpl::GetSplit(const GetSplitRequest* request,
     // EASL: Logging stuff
     std::shared_ptr<const Dataset> dataset;
     state_.DatasetFromId(job->dataset_id, dataset);
-    RecordEvent(dataset->fingerprint, dataset->dataset_id, job_id,
+    string job_name = job->named_job_key.value().name;
+    RecordEvent(dataset->fingerprint, dataset->dataset_id, job_name, job_id,
       "extended_epoch");
   }
 
@@ -943,23 +946,25 @@ Status DataServiceDispatcherImpl::CreateJob(
   // EASL - Caching decision: should the job compute, write or read from cache?
   int64 worker_count;
   std::string job_type;
+  string job_name = named_job_key.value().name;
   std::shared_ptr<const Dataset> dataset;
   TF_RETURN_IF_ERROR(state_.DatasetFromId(dataset_id, dataset));
   int64 dataset_fingerprint = dataset->fingerprint;
   std::string compute_dataset_key = DatasetKey(dataset_id, dataset_fingerprint);
 
   service::easl::cache_utils::DetermineJobType(config_, cache_state_,
-    metadata_store_, dataset_fingerprint, job_type);
+    metadata_store_, dataset_fingerprint, job_name, job_type);
   VLOG(0) << "(CreateJob) Caching decision for dataset_key "
                << compute_dataset_key << ": " << job_type;
 
   // EASL: Logging stuff
-  RecordEvent(dataset_fingerprint, dataset_id, job_id,
+  RecordEvent(dataset_fingerprint, dataset_id, job_name, job_id,
     "execution_mode_change", job_type);
 
   // Check to see what the previous execution type for this job was
   string existing_job_type;
-  Status s = metadata_store_.GetJobType(dataset_fingerprint, existing_job_type);
+  Status s = metadata_store_.GetJobType(dataset_fingerprint, job_name,
+    existing_job_type);
 
   // Forcefully trigger rescale if:
   //  * we've transitioned to a new execution type
@@ -970,7 +975,7 @@ Status DataServiceDispatcherImpl::CreateJob(
   // EASL add job entry to metadata store
   std::string dataset_key = service::easl::cache_utils::DatasetKey(
     dataset->dataset_id, dataset->fingerprint, job_type);
-  TF_RETURN_IF_ERROR(metadata_store_.CreateJob(job_id, job_type,
+  TF_RETURN_IF_ERROR(metadata_store_.CreateJobName(job_id, job_name, job_type,
       dataset->dataset_id, dataset->fingerprint, dataset_key, trigger_scaling));
 
   std::shared_ptr<easl::JobMetrics> job_metrics;
@@ -994,7 +999,7 @@ Status DataServiceDispatcherImpl::CreateJob(
 
   // EASL: Logging stuff
   last_scale_[dataset_id] = worker_count;
-  RecordEvent(dataset_fingerprint, dataset_id, job_id,
+  RecordEvent(dataset_fingerprint, dataset_id, job_name, job_id,
               "starting_worker_count", std::to_string(worker_count));
 
   int64 num_split_providers = 0;
@@ -1269,8 +1274,9 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
           last_scale_[job->dataset_id] = target_worker_count;
           std::shared_ptr<const Dataset> dataset;
           TF_RETURN_IF_ERROR(state_.DatasetFromId(job->dataset_id, dataset));
-          RecordEvent(dataset->fingerprint, dataset->dataset_id, job->job_id,
-                      scale_type, std::to_string(target_worker_count));
+          RecordEvent(dataset->fingerprint, dataset->dataset_id,
+            job->named_job_key.value().name, job->job_id, scale_type,
+            std::to_string(target_worker_count));
         }
       }
     } else if (config_.scaling_policy() == 2) {
