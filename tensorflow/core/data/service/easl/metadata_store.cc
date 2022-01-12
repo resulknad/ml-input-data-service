@@ -441,7 +441,7 @@ Status MetadataStore::RemoveJob(int64 job_id) {
   // Update datasetKey indexed store with new JobMetrics.
   auto it = job_metadata_.find(job_id);
   if (it == job_metadata_.end()) {
-    return errors::NotFound("Job with id ", job_id, " does not have metrics");
+    return errors::NotFound("#1 Job with id ", job_id, " does not have metrics");
   }
   auto job_metrics = it->second;
 
@@ -454,7 +454,7 @@ Status MetadataStore::GetJobMetrics(int64 job_id,
   std::shared_ptr<JobMetrics>& metrics) const {
   auto it = job_metadata_.find(job_id);
   if (it == job_metadata_.end()) {
-    return errors::NotFound("Job with id ", job_id, " does not have metrics");
+    return errors::NotFound("#2 Job with id ", job_id, " does not have metrics");
   }
   metrics = it->second;
   return Status::OK();
@@ -610,7 +610,7 @@ Status MetadataStore::UpdateInputPipelineMetrics(int64 job_id,
 Status MetadataStore::UpdateFingerprintKeyJobMetrics(int64 job_id) {
   auto it = job_metadata_.find(job_id);
   if (it == job_metadata_.end()) {
-    return errors::NotFound("Job with id ", job_id, " does not have metrics");
+    return errors::NotFound("#3 Job with id ", job_id, " does not have metrics");
   }
   auto job_metrics = it->second;
   fingerprint_key_metadata_.insert_or_assign(job_metrics->dataset_fingerprint_, job_metrics);
@@ -621,7 +621,7 @@ Status MetadataStore::UpdateFingerprintKeyJobMetrics(int64 job_id) {
 Status MetadataStore::UpdateFingerprintNameKeyJobMetrics(int64 job_id) {
   auto it = job_metadata_.find(job_id);
   if (it == job_metadata_.end()) {
-    return errors::NotFound("Job with id ", job_id, " does not have metrics");
+    return errors::NotFound("#4 Job with id ", job_id, " does not have metrics");
   }
 
   auto job_metrics = it->second;

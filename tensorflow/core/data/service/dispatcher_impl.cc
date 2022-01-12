@@ -436,21 +436,25 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
           //         << task.mutable_nodes(j)->name();
           // node_metrics.log_metrics();
 
-          TF_RETURN_IF_ERROR(metadata_store_.UpdateInputPipelineMetrics(job_id, 
-            task.mutable_nodes(j)->name(), request->worker_address(), 
-            node_metrics));
+//          TF_RETURN_IF_ERROR(metadata_store_.UpdateInputPipelineMetrics(job_id,
+//            task.mutable_nodes(j)->name(), request->worker_address(),
+//            node_metrics));
+          metadata_store_.UpdateInputPipelineMetrics(job_id,
+            task.mutable_nodes(j)->name(), request->worker_address(),
+            node_metrics);
         }
       }
 
       // Try to see if we need to decide on the execution mode
       string job_type;
-      TF_RETURN_IF_ERROR(metadata_store_.GetJobTypeByJobId(job_id, job_type));
+      Status s1 = metadata_store_.GetJobTypeByJobId(job_id, job_type);
 
       uint64 element_count;
-      TF_RETURN_IF_ERROR(metadata_store_.GetNumberOfProducedElements(job_id,
-         element_count));
+      Status s2 = metadata_store_.GetNumberOfProducedElements(job_id,
+         element_count);
 
-      if (job_type == "PROFILE" && element_count >= kElementThreshold) {
+      if (s1.ok() && s2.ok() && job_type == "PROFILE" &&
+        element_count >= kElementThreshold) {
         VLOG(0) << "(WorkerHeartbeat) At least "
                      << kElementThreshold << " elements have been produced";
         // Will change the job_type of job with job_id to something else
@@ -469,10 +473,13 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
 
         string job_type;
         string job_name = task_object->job->named_job_key.value().name;
-        TF_RETURN_IF_ERROR(metadata_store_.GetJobTypeByJobId(job_id, job_type));
-        RecordEvent(dataset->fingerprint, dataset->dataset_id, job_name,
-          task_object->job->job_id, "execution_policy_decision",
-          job_type);
+        Status s3 = metadata_store_.GetJobTypeByJobId(job_id, job_type);
+
+        if (s3.ok()) {
+          RecordEvent(dataset->fingerprint, dataset->dataset_id, job_name,
+                      task_object->job->job_id, "execution_policy_decision",
+                      job_type);
+        }
       }
     }
   }
