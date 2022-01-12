@@ -998,7 +998,7 @@ Status DataServiceDispatcherImpl::CreateJob(
 //  }
 
   // EASL: Logging stuff
-  last_scale_[dataset_id] = worker_count;
+  last_scale_[job_name] = worker_count;
   RecordEvent(dataset_fingerprint, dataset_id, job_name, job_id,
               "starting_worker_count", std::to_string(worker_count));
 
@@ -1224,6 +1224,7 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
     // EASL: Update the client metrics
     int64 job_target_worker_count;
     string job_type;
+    string job_name = job->named_job_key.value().name;
     metadata_store_.GetJobTypeByJobId(job->job_id, job_type);
     // FIXME: Note that we're only checking the first split provider
     if (config_.scaling_policy() == 1 &&
@@ -1268,10 +1269,10 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
         state_.Apply(update);
 
         // EASL: Logging stuff
-        if (last_scale_[job->dataset_id] != target_worker_count) {
-          string scale_type = target_worker_count > last_scale_[job->dataset_id] ?
+        if (last_scale_[job_name] != target_worker_count) {
+          string scale_type = target_worker_count > last_scale_[job_name] ?
                               "scale_up" : "scale_down";
-          last_scale_[job->dataset_id] = target_worker_count;
+          last_scale_[job_name] = target_worker_count;
           std::shared_ptr<const Dataset> dataset;
           TF_RETURN_IF_ERROR(state_.DatasetFromId(job->dataset_id, dataset));
           RecordEvent(dataset->fingerprint, dataset->dataset_id,
