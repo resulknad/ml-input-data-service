@@ -25,7 +25,7 @@ namespace {
 double worker_count_alpha_ = 0.1;
 int MAX_WORKERS_PER_JOB = 100;
 
-double kMinBatchTimeRelativeImprovementUp = 0.07; // 7%
+double kMinBatchTimeRelativeImprovementUp = 0.02; // 7%
 double kMinBatchTimeRelativeImprovementDown = 0.03;
 uint32 kInStabilityBeforeScaling = 20;
 double kMinQueueSizeRelativeGrowth = 1.4; // +40%
