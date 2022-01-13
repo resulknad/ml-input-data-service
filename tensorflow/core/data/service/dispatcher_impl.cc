@@ -421,7 +421,8 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
       if(!s.ok()){
         // Ignore metrics if job has already been removed from metadata store.
         // Otherwise return status error.
-        if(!errors::IsNotFound(s)){ return s; }
+//        if(!errors::IsNotFound(s)){ return s; }
+        continue;
       } else {
         for (int j = 0; j < task.nodes_size(); ++j) {
           auto metrics = task.mutable_nodes(j)->mutable_metrics();
@@ -617,8 +618,7 @@ Status DataServiceDispatcherImpl::GetSplit(const GetSplitRequest* request,
   // FIXME: Make sure to keep an eye out for the 2nd part of this condition
   //        It should not block scaling for a new client's job if the data
   //        is cached; still make sure this makes sense
-  if (end_of_splits && scaling && execution_mode != "PUT"
-    && execution_mode != "PUT_SOURCE") {
+  if (false) {
     state_.AddFutureEndedJob(job_id, provider_index);
     split_provider->Reset();
     split_provider->GetNext(&split, &end_of_splits);
