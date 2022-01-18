@@ -370,7 +370,7 @@ Status DetermineElasticity(
 
   // Give out max number of workers
   if(dispatcher_config.scaling_policy() == 2){
-    worker_count = available_workers;
+    worker_count = 100;
     return Status::OK();
   }
 
