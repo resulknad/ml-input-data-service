@@ -37,6 +37,9 @@ add_mlir_library(ChloPasses
   DEPENDS
   MLIRhlo_opsIncGen
   MLIRChloLegalizeToHloIncGen
+  MLIRMhloPassIncGen
+  MLIRLmhloPassIncGen
+  MLIRDiscRalPassIncGen
 
   LINK_COMPONENTS
   Core
@@ -45,10 +48,13 @@ add_mlir_library(ChloPasses
   ChloDialect
   MLIRIR
   MLIRPass
+  MLIRRewrite
+  MLIRTransformUtils
 )
 
 add_mlir_library(MhloPasses
   broadcast_propagation.cc
+  expand_hlo_tuples.cc
   legalize_einsum_to_dot_general.cc
   legalize_gather_to_torch_index_select.cc
   legalize_trigonometric_to_approximation.cc
@@ -67,6 +73,7 @@ add_mlir_library(MhloPasses
   test_infer_shaped_type_pass.cc
   unfuse_batch_norm.cc
   unfuse_batch_norm_pass.cc
+  mhlo_flatten_tuple.cc
 
   DEPENDS
   MLIRDiscRalPassIncGen
@@ -78,6 +85,8 @@ add_mlir_library(MhloPasses
   Core
 
   LINK_LIBS PUBLIC
+  ChloDialect
+  MhloDialect
   MLIRIR
   MLIRMhloUtils
   MLIRPass
@@ -98,9 +107,15 @@ add_mlir_library(MhloToLhloConversion
   LINK_LIBS PUBLIC
   MhloDialect
   LmhloDialect
+  MLIRArithmetic
+  MLIRArithmeticTransforms
   MLIRIR
   MLIRPass
   MLIRMath
+  MLIRShapeOpsTransforms
+  MLIRStandardOpsTransforms
+  MLIRTransformUtils
+  MLIRTransforms
 )
 
 add_mlir_library(MhloTypeConversion
@@ -129,6 +144,8 @@ add_mlir_library(MhloToMemrefConversion
   MLIRIR
   MLIRPass
   MLIRMath
+  MLIRTransforms
+  MLIRTransformUtils
 )
 
 add_mlir_library(MhloToStandard
@@ -146,9 +163,11 @@ add_mlir_library(MhloToStandard
   Core
 
   LINK_LIBS PUBLIC
+  MhloDialect
   MLIRIR
   MLIRPass
   MLIRTensor
+  MLIRTransformUtils
 )
 
 add_mlir_library(MhloLhloToLinalg
@@ -157,16 +176,22 @@ add_mlir_library(MhloLhloToLinalg
   DEPENDS
   MLIRhlo_opsIncGen
   MLIRlhlo_opsIncGen
+  MLIRMhloPassIncGen
+  MLIRLmhloPassIncGen
+  MLIRDiscRalPassIncGen
 
   LINK_COMPONENTS
   Core
 
   LINK_LIBS PUBLIC
+  LmhloDialect
   MhloDialect
   MhloTypeConversion
   MLIRComplex
   MLIRIR
   MLIRPass
+  MLIRRewrite
+  MLIRTransformUtils
 )
 
 add_mlir_library(LmhloPasses
@@ -190,9 +215,15 @@ add_mlir_library(LmhloPasses
 
   LINK_LIBS PUBLIC
   LmhloDialect
+  MLIRComplex
+  MLIRGPUOps
+  MLIRLinalg
+  MLIRLinalgTransforms
   MLIRMhloUtils
   MLIRIR
   MLIRPass
+  MLIRRewrite
+  MLIRTransformUtils
 )
 
 add_mlir_library(DiscRalPasses
@@ -225,9 +256,15 @@ add_mlir_library(DiscRalToLLVM
 
   LINK_LIBS PUBLIC
   DiscRalDialect
+  MLIRArithmetic
+  MLIRArithmeticToLLVM
+  MLIRArithmeticTransforms
+  MLIRGPUOps
   MLIRIR
   MLIRLLVMCommonConversion
   MLIRPass
+  MLIRStandardOpsTransforms
+  MLIRStandardToLLVM
 )
 
 add_library(AllMhloPasses INTERFACE)

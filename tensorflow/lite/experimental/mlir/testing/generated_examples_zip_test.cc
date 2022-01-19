@@ -18,15 +18,18 @@ limitations under the License.
 #include <fstream>
 #include <map>
 #include <sstream>
+#include <tuple>
+#include <utility>
+
 #include <gtest/gtest.h>
 #include "re2/re2.h"
-#include "tensorflow/lite/testing/parse_testdata.h"
-#include "tensorflow/lite/testing/tflite_driver.h"
-#include "tensorflow/lite/testing/util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/subprocess.h"
 #include "tensorflow/core/util/command_line_flags.h"
+#include "tensorflow/lite/testing/parse_testdata.h"
+#include "tensorflow/lite/testing/tflite_driver.h"
+#include "tensorflow/lite/testing/util.h"
 
 namespace tflite {
 namespace testing {
@@ -53,29 +56,39 @@ bool FLAGS_ignore_unsupported_nnapi = false;
 // TensorFlow system environment for file system called.
 tensorflow::Env* env = tensorflow::Env::Default();
 
-// List of tests that are expected to fail when
+// Already known broken tests.
+// Key is a substring of the test name and value is pair of a bug number and
+// whether this test should be always ignored regardless of `ignore_known_bugs`.
+// if `always_ignore` is false, tests are expected to fail when
 //   --test_arg=--ignore_known_bugs=false
-// Key is a substring of the test name and value is a bug number.
+using BrokenTestMap =
+    std::map</* test_name */ string,
+             std::pair</* bug_number */ string, /* always_ignore */ bool>>;
 // TODO(ahentz): make sure we clean this list up frequently.
-const std::map<string, string>& GetKnownBrokenTests() {
-  static const std::map<string, string>* const kBrokenTests =
-      new std::map<string, string>({
+const BrokenTestMap& GetKnownBrokenTests() {
+  static const BrokenTestMap* const kBrokenTests = new BrokenTestMap({
+      // SpaceToBatchND only supports 4D tensors.
+      {R"(^\/space_to_batch_nd.*input_shape=\[1,4,4,4,1,1\])",
+       {"70848787", false}},
 
-          // SpaceToBatchND only supports 4D tensors.
-          {R"(^\/space_to_batch_nd.*input_shape=\[1,4,4,4,1,1\])", "70848787"},
+      // BatchToSpaceND only supports 4D tensors.
+      {R"(^\/batch_to_space_nd.*input_shape=\[8,2,2,2,1,1\])",
+       {"70848787", false}},
 
-          // BatchToSpaceND only supports 4D tensors.
-          {R"(^\/batch_to_space_nd.*input_shape=\[8,2,2,2,1,1\])", "70848787"},
+      // ResizeBilinear looks completely incompatible with Tensorflow
+      {R"(^\/resize_bilinear.*dtype=tf.int32)", {"72401107", false}},
 
-          // ResizeBilinear looks completely incompatible with Tensorflow
-          {R"(^\/resize_bilinear.*dtype=tf.int32)", "72401107"},
+      // Select kernel doesn't support broadcasting yet.
+      {R"(^\/where.*1,2,3,1)", {"134692786", false}},
 
-          // Select kernel doesn't support broadcasting yet.
-          {R"(^\/where.*1,2,3,1)", "134692786"},
-
-          {R"(^\/div.*dtype=tf\.int64)", "119126484"},
-          {R"(^\/floor_div.*dtype=tf\.int64)", "119126484"},
-      });
+      {R"(^\/div.*dtype=tf\.int64)", {"119126484", false}},
+      {R"(^\/floor_div.*dtype=tf\.int64)", {"119126484", false}},
+      // TODO(b/194364155): TF and TFLite have different behaviors when output
+      // nan values in LocalResponseNorm ops.
+      {R"(^\/local_response_norm.*alpha=-3.*beta=2)", {"194364155", true}},
+      {R"(^\/local_response_norm.*alpha=(None|2).*beta=2.*bias=-0\.1.*depth_radius=(0|1).*input_shape=\[3,15,14,3\])",
+       {"194364155", true}},
+  });
   return *kBrokenTests;
 }
 
@@ -135,7 +148,7 @@ class ArchiveEnvironment : public ::testing::Environment {
   // Delete all temporary directories on teardown.
   void TearDown() override {
     for (const auto& dir : temporary_directories_) {
-      tensorflow::int64 undeleted_dirs, undeleted_files;
+      int64_t undeleted_dirs, undeleted_files;
       TF_CHECK_OK(
           env->DeleteRecursively(dir, &undeleted_dirs, &undeleted_files));
     }
@@ -279,8 +292,10 @@ TEST_P(OpsTest, RunZipTests) {
 
   auto broken_tests = GetKnownBrokenTests();
   if (FLAGS_use_nnapi) {
-    auto kBrokenNnapiTests = GetKnownBrokenNnapiTests();
-    broken_tests.insert(kBrokenNnapiTests.begin(), kBrokenNnapiTests.end());
+    for (const auto& t : GetKnownBrokenNnapiTests()) {
+      broken_tests[t.first] =
+          std::make_pair(t.second, /* always ignore */ false);
+    }
   }
   auto quantize_broken_tests = GetKnownQuantizeBrokenTests();
 
@@ -289,9 +304,10 @@ TEST_P(OpsTest, RunZipTests) {
 
   if (!fully_quantize) {
     string bug_number;
+    bool always_ingore;
     for (const auto& p : broken_tests) {
       if (RE2::PartialMatch(test_name, p.first)) {
-        bug_number = p.second;
+        std::tie(bug_number, always_ingore) = p.second;
         break;
       }
     }
@@ -307,7 +323,7 @@ TEST_P(OpsTest, RunZipTests) {
                                 "you can mark http://b/"
                              << bug_number << " as fixed! Yay!";
       } else {
-        EXPECT_TRUE(result)
+        EXPECT_TRUE(result || always_ingore)
             << message << ": Possibly due to http://b/" << bug_number;
       }
     }
@@ -380,6 +396,11 @@ int main(int argc, char** argv) {
   if (!success || (argc == 2 && !strcmp(argv[1], "--helpfull"))) {
     fprintf(stderr, "%s", tensorflow::Flags::Usage(argv[0], flags).c_str());
     return 1;
+  }
+
+  if (!tflite::testing::TfLiteDriver::InitTestDelegateProviders(
+          &argc, const_cast<const char**>(argv))) {
+    return EXIT_FAILURE;
   }
 
   ::tflite::LogToStderr();

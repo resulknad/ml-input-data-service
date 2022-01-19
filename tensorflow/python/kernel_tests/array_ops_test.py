@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for array_ops."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import re
 import time
 import unittest
@@ -46,10 +42,12 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged.ragged_tensor import RaggedTensor
 from tensorflow.python.platform import test as test_lib
 
 
@@ -439,18 +437,18 @@ class ReverseV2Test(test_util.TensorFlowTestCase):
 
   def testReverse1DimAuto(self):
     for dtype in [
-        np.uint8, np.int8, np.uint16, np.int16, np.uint32, np.int32,
-        np.uint64, np.int64, np.bool,
-        np.float16, np.float32, np.float64, np.complex64, np.complex128,
+        np.uint8, np.int8, np.uint16, np.int16, np.uint32, np.int32, np.uint64,
+        np.int64, np.bool_, np.float16, np.float32, np.float64, np.complex64,
+        np.complex128,
         np.array(b"").dtype.type
     ]:
       self._reverse1DimAuto(dtype)
 
   def testReverse2DimAuto(self):
     for dtype in [
-        np.uint8, np.int8, np.uint16, np.int16, np.uint32, np.int32,
-        np.uint64, np.int64, np.bool,
-        np.float16, np.float32, np.float64, np.complex64, np.complex128,
+        np.uint8, np.int8, np.uint16, np.int16, np.uint32, np.int32, np.uint64,
+        np.int64, np.bool_, np.float16, np.float32, np.float64, np.complex64,
+        np.complex128,
         np.array(b"").dtype.type
     ]:
       self._reverse2DimAuto(dtype)
@@ -559,7 +557,7 @@ class StridedSliceChecker(object):
   def __init__(self, test, x, tensor_type=dtypes.int32, check_type_infer=True):
     self.x_np = np.array(x).astype(tensor_type.as_numpy_dtype)
     if tensor_type.is_bool:
-      self.x_np = np.array(x % 3).astype(np.bool)
+      self.x_np = np.array(x % 3).astype(np.bool_)
     # Give the value a non-zero imaginary component for complex types.
     if tensor_type.is_complex:
       self.x_np -= 1j * self.x_np
@@ -1368,7 +1366,7 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
 
   def testExceptions(self):
     with self.cached_session():
-      with self.assertRaisesRegex(ValueError, "maxlen must be scalar"):
+      with self.assertRaisesRegex(ValueError, "`maxlen` must be scalar"):
         array_ops.sequence_mask([10, 20], [10, 20])
 
   def testOneDimensionalWithMaxlen(self):
@@ -1445,7 +1443,7 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
 
     check_output_dtype(dtypes.bool)
     check_output_dtype("bool")
-    check_output_dtype(np.bool)
+    check_output_dtype(np.bool_)
     check_output_dtype(dtypes.int32)
     check_output_dtype("int32")
     check_output_dtype(np.int32)
@@ -1921,6 +1919,26 @@ class SortedSearchTest(test_util.TensorFlowTestCase):
                 side=side,
                 out_type=dtype), array_ops.zeros([2, 0], dtype))
 
+  def testInt64(self):
+
+    @def_function.function
+    def g():
+      x = random_ops.random_normal(shape=[int(1e10)])
+      y = array_ops.ones(shape=[int(1e10)])
+      return array_ops.searchsorted(x, y, out_type=dtypes.int64)
+
+    _ = g.get_concrete_function()
+
+  def testInt64UnspecifiedOutType(self):
+
+    @def_function.function
+    def g():
+      x = random_ops.random_normal(shape=[int(1e10)])
+      y = array_ops.ones(shape=[int(1e10)])
+      return array_ops.searchsorted(x, y)
+
+    _ = g.get_concrete_function()
+
 
 class BatchGatherNdTest(test_util.TensorFlowTestCase):
 
@@ -2178,6 +2196,35 @@ class TileVariantTest(test_util.TensorFlowTestCase):
                                                   [3, 4])
     self.assertAllEqual(t, tiled_tensor_0)
     self.assertAllEqual(t, tiled_tensor_1)
+
+
+class StopGradientTest(test_util.TensorFlowTestCase):
+
+  def testStopGradient(self):
+    x = array_ops.zeros(3)
+    y = array_ops.stop_gradient(x)
+    self.assertAllEqual(x, y)
+
+  def testStopGradientRaggedTensor(self):
+    x = RaggedTensor.from_row_splits(values=[1, 2, 3], row_splits=[0, 1, 1, 3])
+    y = array_ops.stop_gradient(x)
+    self.assertAllEqual(x, y)
+
+  def testStopGradientGradientTape(self):
+    x = array_ops.zeros(3)
+    with backprop.GradientTape() as tape:
+      y = array_ops.stop_gradient(x)
+
+    self.assertIsNone(tape.gradient(y, x))
+
+  def testStopGradientGradientTapeRaggedTensor(self):
+    x = RaggedTensor.from_row_splits(values=[1, 2, 3], row_splits=[0, 1, 1, 3])
+    with backprop.GradientTape() as tape:
+      y = array_ops.stop_gradient(x)
+
+    # TODO(b/202162002): Once GradientTape supports composiste tensors, use
+    # tape.gradient(y, x).
+    self.assertIsNone(tape.gradient(y.values, x.values))
 
 
 if __name__ == "__main__":

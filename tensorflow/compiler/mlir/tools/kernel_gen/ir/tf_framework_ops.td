@@ -67,8 +67,11 @@ class TFFramework_Op<string mnemonic, list<OpTrait> traits = []> :
 //===----------------------------------------------------------------------===//
 // TFAllocOp
 //===----------------------------------------------------------------------===//
-def TFFramework_TFAllocOp : TFFramework_Op<"alloc",
-    [MemoryEffects<[MemAlloc<DefaultResource>]>]> {
+def TFFramework_TFAllocOp : TFFramework_Op<"alloc", [
+    MemoryEffects<[MemAlloc<DefaultResource>]>,
+    DeclareOpInterfaceMethods<AllocationOpInterface,
+      ["buildDealloc", "buildClone"]>
+  ]> {
   let summary = "allocation of tensors that uses TF Framework";
   let description = [{
     Allocation of tensors during kernel execution in the Compute method.
@@ -148,7 +151,7 @@ def TFFramework_TFDeallocOp : TFFramework_Op<"dealloc",
   }];
 
   let arguments = (ins TFFramework_OpKernelContextType:$ctx,
-                   Arg<AnyMemRef, "", [MemFree]>:$memref);
+                   Arg<AnyRankedOrUnrankedMemRef, "", [MemFree]>:$memref);
   let assemblyFormat = "`(` $ctx `,` $memref `)` attr-dict `:` type($memref)";
 }
 
@@ -275,7 +278,13 @@ def TFFramework_JITCompileFromStrOp : TFFramework_Op<"jit_compile_from_str",
 
   let arguments = (ins
     Optional<TFFramework_OpKernelContextType>:$ctx,
-    StrAttr:$code
+    StrAttr:$code,
+    StrArrayAttr:$architectures,
+    I64ArrayAttr:$tileSizes,
+    I64ArrayAttr:$unrollFactors,
+    I64Attr:$maxSupportedRank,
+    BoolAttr:$enableFtz,
+    BoolAttr:$cpuCodegen
   );
   let results = (outs TFFramework_JITCallableType:$result);
 
@@ -318,7 +327,7 @@ def TFFramework_JITExecuteOp : TFFramework_Op<"jit_execute", [
   ];
 
   let assemblyFormat = [{
-    (`ctx` `=` $ctx^ `,`)? $callable `(` $operands `)` attr-dict
+    (`ctx` `(` $ctx^ `)`)? $callable `(` $operands `)` attr-dict
         `:` type($operands) `->` type($results)
   }];
 }

@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for sorting operators."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import unittest
 from absl.testing import parameterized
 import numpy as np
@@ -234,7 +230,7 @@ class XlaSortOpTest(xla_test.XLATestCase, parameterized.TestCase):
                 args,  # Pass the arguments as a tuple
                 comparator=compare_lt,
                 dimension=dimension,
-                is_stable=False)
+                is_stable=True)
 
           self._assertOpOutputMatchesExpected(
               wrap_sort, inputs, expected=inputs)

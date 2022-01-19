@@ -189,8 +189,8 @@ tf_kernel_library(
         "//tensorflow/core/data:dataset_utils",
         "//tensorflow/core/data:name_utils",
         "//tensorflow/core/data:serialization_utils",
+        "//tensorflow/core/data/service:common",
         "//tensorflow/core/data/service:common_proto_cc",
-        "//tensorflow/core/data/service:data_service",
         "//tensorflow/core/data/service:dispatcher_client",
         "//tensorflow/core/data/service:dispatcher_proto_cc",
         "//tensorflow/core/data/service:inter_arrival_time",
@@ -201,6 +201,7 @@ tf_kernel_library(
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/lib:traceme_encode",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
@@ -316,6 +317,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/data:captured_function",
+        "//tensorflow/core/data:dataset_utils",
         "//tensorflow/core/data:hash_utils",
         "//tensorflow/core/data:name_utils",
         "//tensorflow/core/data:root_dataset",
@@ -522,6 +524,20 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_kernel_library(
+    name = "random_access_ops",
+    srcs = ["random_access_ops.cc"],
+    hdrs = ["random_access_ops.h"],
+    deps = [
+        "//tensorflow/core:experimental_dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/kernels/data:iterator_ops",
+        "//tensorflow/core/platform",
     ],
 )
 
@@ -760,6 +776,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/data:dataset_utils",
     ],
 )
 
@@ -953,6 +970,7 @@ tf_kernel_library(
         ":parallel_interleave_dataset_op",
         ":parse_example_dataset_op",
         ":prefetching_kernels",
+        ":random_access_ops",
         ":random_dataset_op",
         ":rebatch_dataset_op",
         ":sampling_dataset_op",

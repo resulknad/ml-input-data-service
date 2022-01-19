@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for tensorflow.ops.parsing_ops."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
 import itertools
 
@@ -2376,7 +2372,7 @@ class DecodeRawTest(test.TestCase):
 class DecodeJSONExampleTest(test.TestCase):
 
   def _testRoundTrip(self, examples):
-    examples = np.array(examples, dtype=np.object)
+    examples = np.array(examples, dtype=np.object_)
 
     json_tensor = constant_op.constant(
         [json_format.MessageToJson(m) for m in examples.flatten()],

@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for common methods in strategy classes."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 
 from tensorflow.python.data.ops import dataset_ops
@@ -255,7 +251,7 @@ class ReduceTest(test.TestCase, parameterized.TestCase):
 class ReplicaCtxUpdateTest(test.TestCase, parameterized.TestCase):
 
   def testDenseUpdate(self, strategy, tf_function, update_fn):
-    if isinstance(strategy, tpu_strategy.TPUStrategy) and (not tf_function):
+    if strategy_test_lib.is_tpu_strategy(strategy) and (not tf_function):
       self.skipTest('Skip TPUStrategy + eager combination.')
     with strategy.scope():
       distributed_variable1 = variables.Variable(5.0)
@@ -298,7 +294,7 @@ class ReplicaCtxUpdateTest(test.TestCase, parameterized.TestCase):
 class ReplicaCtxAllReduceTest(test.TestCase, parameterized.TestCase):
 
   def testDense(self, strategy, tf_function):
-    if (isinstance(strategy, tpu_strategy.TPUStrategy) and
+    if (strategy_test_lib.is_tpu_strategy(strategy) and
         tf_function is combinations.no_tf_function):
       self.skipTest('Skip TPUStrategy + eager combination.')
 
@@ -399,7 +395,7 @@ class ReplicaCtxAllReduceTest(test.TestCase, parameterized.TestCase):
 class AllReduceTest(test.TestCase, parameterized.TestCase):
 
   def testDense(self, strategy, tf_function):
-    if (isinstance(strategy, tpu_strategy.TPUStrategy) and
+    if (strategy_test_lib.is_tpu_strategy(strategy) and
         tf_function is combinations.no_tf_function):
       self.skipTest('Skip TPUStrategy + eager combination.')
 
@@ -418,10 +414,6 @@ class AllReduceTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(got, 1.0 * strategy.num_replicas_in_sync)
 
   def testSparse(self, strategy, tf_function):
-    if isinstance(strategy,
-                  (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV2,
-                   tpu_strategy.TPUStrategyV1)):
-      self.skipTest('Skip IndexedSlices check for TPU strategy.')
     if tf_function is combinations.no_tf_function:
       self.skipTest('Skip IndexedSlices + eager combination.')
 
@@ -434,26 +426,23 @@ class AllReduceTest(test.TestCase, parameterized.TestCase):
             indices=array_ops.identity([0]),
             dense_shape=array_ops.identity([5, 1]))
         rep_ctx = ds_context.get_replica_context()
-        reduced = rep_ctx.all_reduce(reduce_util.ReduceOp.SUM, value)
+        reduced = rep_ctx.all_reduce(reduce_util.ReduceOp.MEAN, value)
         return reduced
 
       return strategy.experimental_local_results(strategy.run(replica_fn))
 
     got = fn()[0]
 
-    self.assertIsInstance(got, ops.IndexedSlices)
+    if not strategy_test_lib.is_tpu_strategy(strategy):
+      self.assertIsInstance(got, ops.IndexedSlices)
     expect = ops.IndexedSlices(
-        values=array_ops.identity([[1.0 * strategy.num_replicas_in_sync]]),
+        values=array_ops.identity([[1.0]]),
         indices=array_ops.identity([0]),
         dense_shape=array_ops.identity([5, 1]))
     self.assertAllEqual(
         ops.convert_to_tensor(got), ops.convert_to_tensor(expect))
 
   def testSparseTuple(self, strategy, tf_function):
-    if isinstance(strategy,
-                  (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV2,
-                   tpu_strategy.TPUStrategyV1)):
-      self.skipTest('Skip IndexedSlices check for TPU strategy.')
     if tf_function is combinations.no_tf_function:
       self.skipTest('Skip IndexedSlices + eager combination.')
 
@@ -477,8 +466,9 @@ class AllReduceTest(test.TestCase, parameterized.TestCase):
 
     got = fn()[0]
 
-    for g in got:
-      self.assertIsInstance(g, ops.IndexedSlices)
+    if not strategy_test_lib.is_tpu_strategy(strategy):
+      for g in got:
+        self.assertIsInstance(g, ops.IndexedSlices)
     expect = [
         ops.IndexedSlices(
             values=array_ops.identity([[1.0 * strategy.num_replicas_in_sync]]),
@@ -550,12 +540,6 @@ def _get_num_replicas_per_client(strategy):
     return max(nest.flatten(resolver.num_accelerators())[0], 1)
   else:
     return strategy.num_replicas_in_sync
-
-
-def _is_tpu_strategy(strategy):
-  return isinstance(strategy,
-                    (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1,
-                     tpu_strategy.TPUStrategyV2))
 
 
 @combinations.generate(

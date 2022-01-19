@@ -106,14 +106,14 @@ Status ReadElementsFromCheckpoint(IteratorContext* ctx,
                                   IteratorStateReader* reader,
                                   StringPiece key_prefix,
                                   std::vector<std::vector<Tensor>>* elements) {
-  int64 num_elements;
+  int64_t num_elements;
   TF_RETURN_IF_ERROR(
       reader->ReadScalar(key_prefix, kNumElements, &num_elements));
   DCHECK(elements->empty());
   elements->reserve(num_elements);
   for (int i = 0; i < num_elements; ++i) {
     std::string element_prefix = absl::StrCat(key_prefix, "::", i);
-    int64 num_components;
+    int64_t num_components;
     TF_RETURN_IF_ERROR(
         reader->ReadScalar(element_prefix, kNumComponents, &num_components));
     elements->emplace_back();
@@ -162,14 +162,15 @@ VariantTensorDataReader::VariantTensorDataReader(
   }
 }
 
-Status VariantTensorDataReader::ReadScalar(StringPiece key, int64* val) const {
+Status VariantTensorDataReader::ReadScalar(StringPiece key,
+                                           int64_t* val) const {
   string name;
   TF_RETURN_IF_ERROR(GetIteratorName(key, &name));
   return ReadScalar(name, key, val);
 }
 
 Status VariantTensorDataReader::ReadScalar(StringPiece name, StringPiece key,
-                                           int64* val) const {
+                                           int64_t* val) const {
   return ReadScalarInternal(name, key, val);
 }
 
@@ -285,14 +286,15 @@ Status VariantTensorDataReader::ReadDatasetInternal(FunctionLibraryRuntime* flr,
   return Status::OK();
 }
 
-Status VariantTensorDataWriter::WriteScalar(StringPiece key, const int64 val) {
+Status VariantTensorDataWriter::WriteScalar(StringPiece key,
+                                            const int64_t val) {
   string name;
   TF_RETURN_IF_ERROR(GetIteratorName(key, &name));
   return WriteScalar(name, key, val);
 }
 
 Status VariantTensorDataWriter::WriteScalar(StringPiece name, StringPiece key,
-                                            const int64 val) {
+                                            const int64_t val) {
   return WriteScalarInternal(name, key, val);
 }
 
@@ -415,16 +417,14 @@ Status VariantTensorDataWriter::WriteDatasetInternal(
   return Status::OK();
 }
 
-Status AsGraphDefMinimal(OpKernelContext* ctx, const DatasetBase* input,
-                         std::vector<std::pair<string, Tensor>>* input_list,
-                         GraphDef* result, string* dataset_node) {
+Status AsGraphDefForRewrite(OpKernelContext* ctx, const DatasetBase* input,
+                            std::vector<std::pair<string, Tensor>>* input_list,
+                            GraphDef* result, string* dataset_node) {
   SerializationContext::Params params(ctx);
   params.input_list = input_list;
   params.external_state_policy =
       SerializationContext::ExternalStatePolicy::kIgnore;
-  params.fail_if_unimplemented = false;
-  params.serialize_data_tensors = false;
-  params.preserve_random_seeds = false;
+  params.is_graph_rewrite = true;
   SerializationContext serialization_ctx(params);
   TF_RETURN_IF_ERROR(
       AsGraphDef(ctx, input, std::move(serialization_ctx), result));

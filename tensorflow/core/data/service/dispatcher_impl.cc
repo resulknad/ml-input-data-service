@@ -29,12 +29,13 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
+#include "absl/time/time.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/hash_utils.h"
+#include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/credentials_factory.h"
-#include "tensorflow/core/data/service/data_service.h"
 #include "tensorflow/core/data/service/dataset_store.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/dispatcher_state.h"
@@ -53,8 +54,10 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/protobuf/data_service.pb.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
 #include "tensorflow/core/public/session_options.h"
 
@@ -62,13 +65,18 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
-
 namespace {
+
+using ::tensorflow::protobuf::util::MessageDifferencer;
+
 // The name of the journal directory inside the dispatcher's working directory.
 // This name is load-bearing; do not change.
 constexpr char kJournalDir[] = "tf_data_dispatcher_journal";
 // The name of the datasets directory inside the dispatcher's working directory.
 constexpr char kDatasetsDir[] = "datasets";
+constexpr int64_t kDefaultJobGcCheckIntervalMs = 10 * 60 * 1000;  // 10 minutes.
+constexpr int64_t kDefaultJobGcTimeoutMs = 5 * 60 * 1000;         // 5 minutes.
+constexpr int64_t kDefaultClientTimeoutMs = 2 * 60 * 1000;        // 2 minutes.
 
 constexpr std::array<const char*, 8> kNodeNameSharingOps = {
     "HashTable",
@@ -95,7 +103,6 @@ constexpr const char kWorkingTime[] = "working_time";
 const uint64 kElementThreshold = 300;
 const bool kEnableEventLogging = false;
 
-
 using Dataset = DispatcherState::Dataset;
 using Worker = DispatcherState::Worker;
 using NamedJobKey = DispatcherState::NamedJobKey;
@@ -110,7 +117,7 @@ std::string DatasetsDir(const std::string& work_dir) {
   return io::JoinPath(work_dir, kDatasetsDir);
 }
 
-std::string DatasetKey(int64 id, uint64 fingerprint) {
+std::string DatasetKey(int64_t id, uint64 fingerprint) {
   return absl::StrCat("id_", id, "_fp_", fingerprint);
 }
 
@@ -166,11 +173,27 @@ void RecordEvent(const int64 fingerprint, const int64 dataset_id,
   o.close();
 }
 
+DispatcherConfig ApplyConfigDefaults(const DispatcherConfig& config) {
+  DispatcherConfig new_config(config);
+  if (new_config.job_gc_check_interval_ms() == 0) {
+    new_config.set_job_gc_check_interval_ms(kDefaultJobGcCheckIntervalMs);
+  }
+  if (new_config.job_gc_timeout_ms() == 0) {
+    new_config.set_job_gc_timeout_ms(kDefaultJobGcTimeoutMs);
+  }
+  if (new_config.client_timeout_ms() == 0) {
+    new_config.set_client_timeout_ms(kDefaultClientTimeoutMs);
+  }
+  return new_config;
+}
+
 }  // namespace
 
 DataServiceDispatcherImpl::DataServiceDispatcherImpl(
-    const experimental::DispatcherConfig& config)
-    : config_(config), env_(Env::Default()) {
+    const DispatcherConfig& config)
+    : config_(ApplyConfigDefaults(config)),
+      env_(Env::Default()),
+      state_(config_) {
   if (config_.work_dir().empty()) {
     dataset_store_ = absl::make_unique<MemoryDatasetStore>();
   } else {
@@ -238,10 +261,16 @@ Status DataServiceDispatcherImpl::Start() {
     }
   }
   for (const auto& job : state_.ListJobs()) {
-    if (job->processing_mode == ProcessingMode::DISTRIBUTED_EPOCH) {
+    if (IsDynamicShard(job->processing_mode)) {
       TF_RETURN_IF_ERROR(
           RestoreSplitProviders(*job, split_providers_[job->job_id]));
     }
+  }
+  for (const auto& client_id : state_.ListActiveClientIds()) {
+    // Conservatively pretend we just received a heartbeat from all clients, so
+    // that we don't garbage collect jobs too early.
+    latest_client_heartbeats_time_[client_id] =
+        absl::FromUnixMicros(env_->NowMicros());
   }
   // Initialize the journal writer in `Start` so that we fail fast in case it
   // can't be initialized.
@@ -250,10 +279,21 @@ Status DataServiceDispatcherImpl::Start() {
   return Status::OK();
 }
 
+size_t DataServiceDispatcherImpl::NumActiveJobs() TF_LOCKS_EXCLUDED(mu_) {
+  mutex_lock l(mu_);
+  int64 count = 0;
+  for (const auto& job : state_.ListJobs()) {
+    if (!job->finished) {
+      count++;
+    }
+  }
+  return count;
+}
+
 Status DataServiceDispatcherImpl::RestoreSplitProviders(
     const Job& job, std::vector<std::unique_ptr<SplitProvider>>& restored)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  const std::vector<int64>& indices =
+  const std::vector<int64_t>& indices =
       job.distributed_epoch_state.value().indices;
   std::vector<std::unique_ptr<SplitProvider>> split_providers;
   TF_RETURN_IF_ERROR(MakeSplitProviders(job.dataset_id, job.job_type, split_providers));
@@ -274,14 +314,14 @@ Status DataServiceDispatcherImpl::RestoreSplitProviders(
 }
 
 Status DataServiceDispatcherImpl::FindTasksToDelete(
-    const absl::flat_hash_set<int64>& current_tasks,
+    const absl::flat_hash_set<int64_t>& current_tasks,
     const std::vector<std::shared_ptr<const Task>> assigned_tasks,
     WorkerHeartbeatResponse* response) {
-  absl::flat_hash_set<int64> assigned_ids;
+  absl::flat_hash_set<int64_t> assigned_ids;
   for (const auto& assigned : assigned_tasks) {
     assigned_ids.insert(assigned->task_id);
   }
-  for (int64 current_task : current_tasks) {
+  for (int64_t current_task : current_tasks) {
     if (!assigned_ids.contains(current_task)) {
       response->add_tasks_to_delete(current_task);
     }
@@ -291,12 +331,12 @@ Status DataServiceDispatcherImpl::FindTasksToDelete(
 
 Status DataServiceDispatcherImpl::FindNewTasks(
     const std::string& worker_address,
-    const absl::flat_hash_set<int64>& current_tasks,
+    const absl::flat_hash_set<int64_t>& current_tasks,
     std::vector<std::shared_ptr<const Task>>& assigned_tasks,
     WorkerHeartbeatResponse* response) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   // Check for round-robin jobs that had tasks on the worker removed. Now that
   // the worker is back, we create a new pending task for the worker.
-  absl::flat_hash_set<int64> assigned_job_ids;
+  absl::flat_hash_set<int64_t> assigned_job_ids;
   for (const auto& task : assigned_tasks) {
     assigned_job_ids.insert(task->job->job_id);
   }
@@ -380,15 +420,18 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
       return s;
     }
     VLOG(0) << "Registering new worker at address " << worker_address;
+    TF_RETURN_IF_ERROR(state_.ValidateWorker(worker_address));
     Update update;
     update.mutable_register_worker()->set_worker_address(worker_address);
     update.mutable_register_worker()->set_transfer_address(
         request->transfer_address());
+    *update.mutable_register_worker()->mutable_worker_tags() =
+        request->worker_tags();
     TF_RETURN_IF_ERROR(Apply(update));
     TF_RETURN_IF_ERROR(CreateTasksForWorker(worker_address));
     TF_RETURN_IF_ERROR(state_.TasksForWorker(worker_address, assigned_tasks));
   }
-  absl::flat_hash_set<int64> current_tasks;
+  absl::flat_hash_set<int64_t> current_tasks;
   current_tasks.insert(request->current_tasks().cbegin(),
                        request->current_tasks().cend());
   TF_RETURN_IF_ERROR(
@@ -572,10 +615,12 @@ Status DataServiceDispatcherImpl::GetSplit(const GetSplitRequest* request,
                                            GetSplitResponse* response) {
   TF_RETURN_IF_ERROR(CheckStarted());
   mutex_lock l(mu_);
+
   int64 job_id = request->job_id();
   int64 task_id = request->task_id();
   int64 repetition = request->repetition();
   int64 provider_index = request->split_provider_index();
+
   VLOG(3) << "Received GetSplit request for job " << job_id << ", repetition "
           << repetition << ", split provider index " << provider_index;
   std::shared_ptr<const Job> job;
@@ -585,7 +630,7 @@ Status DataServiceDispatcherImpl::GetSplit(const GetSplitRequest* request,
         "Cannot get split for job ", job_id,
         ", since it is not a distributed_epoch job.");
   }
-  int64 current_repetition =
+  int64_t current_repetition =
       job->distributed_epoch_state.value().repetitions[provider_index];
   if (repetition < current_repetition) {
     response->set_end_of_splits(true);
@@ -653,7 +698,7 @@ Status DataServiceDispatcherImpl::GetSplit(const GetSplitRequest* request,
 }
 
 Status DataServiceDispatcherImpl::MakeSplitProviders(
-    int64 dataset_id,
+    int64_t dataset_id,
     const std::string& job_type,
     std::vector<std::unique_ptr<SplitProvider>>& split_providers)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
@@ -695,7 +740,7 @@ Status DataServiceDispatcherImpl::GetOrRegisterDataset(
   std::shared_ptr<const Dataset> dataset;
   Status s = state_.DatasetFromFingerprint(fingerprint, dataset);
   if (s.ok()) {
-    int64 id = dataset->dataset_id;
+    int64_t id = dataset->dataset_id;
     VLOG(3) << "Received duplicate RegisterDataset request with fingerprint "
             << fingerprint << ". Returning id " << id;
     response->set_dataset_id(id);
@@ -704,7 +749,7 @@ Status DataServiceDispatcherImpl::GetOrRegisterDataset(
     return s;
   }
 
-  int64 id;
+  int64_t id;
   TF_RETURN_IF_ERROR(RegisterDataset(fingerprint, dataset_def, id));
   if (!request->element_spec().empty()) {
     TF_RETURN_IF_ERROR(SetElementSpec(id, request->element_spec()));
@@ -718,7 +763,7 @@ Status DataServiceDispatcherImpl::GetOrRegisterDataset(
 
 Status DataServiceDispatcherImpl::RegisterDataset(uint64 fingerprint,
                                                   const DatasetDef& dataset,
-                                                  int64& dataset_id)
+                                                  int64_t& dataset_id)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   dataset_id = state_.NextAvailableDatasetId();
   Update update;
@@ -766,7 +811,7 @@ Status DataServiceDispatcherImpl::RegisterDataset(uint64 fingerprint,
 }
 
 Status DataServiceDispatcherImpl::SetElementSpec(
-    int64 dataset_id, const std::string& element_spec)
+    int64_t dataset_id, const std::string& element_spec)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   Update update;
   SetElementSpecUpdate* set_element_spec = update.mutable_set_element_spec();
@@ -781,7 +826,7 @@ Status DataServiceDispatcherImpl::GetElementSpec(
   TF_RETURN_IF_ERROR(CheckStarted());
   mutex_lock l(mu_);
   VLOG(4) << "Read the element spec.";
-  int64 dataset_id = request->dataset_id();
+  int64_t dataset_id = request->dataset_id();
 
   std::string element_spec;
   TF_RETURN_IF_ERROR(state_.GetElementSpec(dataset_id, element_spec));
@@ -800,8 +845,6 @@ Status DataServiceDispatcherImpl::GetOrCreateJob(
     key.emplace(request->job_key().job_name(),
                 request->job_key().job_name_index());
   }
-  ProcessingMode requested_processing_mode =
-      ProcessingMode(request->processing_mode());
   std::shared_ptr<const Job> job;
   std::vector<std::shared_ptr<const Task>> tasks;
   {
@@ -809,12 +852,11 @@ Status DataServiceDispatcherImpl::GetOrCreateJob(
     if (key.has_value()) {
       Status s = state_.NamedJobByKey(key.value(), job);
       if (s.ok()) {
-        TF_RETURN_IF_ERROR(ValidateMatchingJob(job, requested_processing_mode,
-                                               request->dataset_id()));
+        TF_RETURN_IF_ERROR(ValidateMatchingJob(job, *request));
         // If the matching job was already garbage-collected, we fall through to
         // re-create the job.
         if (!job->garbage_collected) {
-          int64 job_client_id;
+          int64_t job_client_id;
           TF_RETURN_IF_ERROR(AcquireJobClientId(job, job_client_id));
           response->set_job_client_id(job_client_id);
           VLOG(3) << "Found existing job for name=" << key.value().name
@@ -826,15 +868,8 @@ Status DataServiceDispatcherImpl::GetOrCreateJob(
         return s;
       }
     }
-    absl::optional<int64> num_consumers;
-    if (request->optional_num_consumers_case() ==
-        GetOrCreateJobRequest::kNumConsumers) {
-      num_consumers = request->num_consumers();
-    }
-    TF_RETURN_IF_ERROR(CreateJob(request->dataset_id(),
-                                 requested_processing_mode, key, num_consumers,
-                                 job));
-    int64 job_client_id;
+    TF_RETURN_IF_ERROR(CreateJob(*request, job));
+    int64_t job_client_id;
     TF_RETURN_IF_ERROR(AcquireJobClientId(job, job_client_id));
     response->set_job_client_id(job_client_id);
     TF_RETURN_IF_ERROR(CreateTasksForJob(job, tasks));
@@ -920,39 +955,40 @@ Status DataServiceDispatcherImpl::ReleaseJobClient(
   return Status::OK();
 }
 
-// Validates that the job matches the given processing_mode and dataset_id.
+// Validates that the job matches the requested processing mode.
 Status DataServiceDispatcherImpl::ValidateMatchingJob(
-    std::shared_ptr<const Job> job, ProcessingMode processing_mode,
-    int64 dataset_id) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    std::shared_ptr<const Job> job, const GetOrCreateJobRequest& request)
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   DCHECK(job->named_job_key.has_value());
   std::string job_name = job->named_job_key->name;
-  if (job->processing_mode != processing_mode) {
-    std::string requested = ProcessingModeToString(processing_mode);
-    std::string actual = ProcessingModeToString(job->processing_mode);
+
+  if (!MessageDifferencer::Equals(job->processing_mode,
+                                  request.processing_mode_def())) {
     return errors::FailedPrecondition(
         "Tried to create a job with name ", job_name, " and processing_mode <",
-        requested,
+        request.processing_mode_def().ShortDebugString(),
         "> but there is already an existing job with that name using "
         "processing mode <",
-        actual, ">");
+        job->processing_mode.ShortDebugString(), ">");
+  }
+
+  if (job->target_workers != request.target_workers()) {
+    return errors::InvalidArgument(
+        "Tried to create job with name ", job_name, " and target_workers <",
+        TargetWorkersToString(request.target_workers()),
+        ">, but there is already an existing job "
+        "with that name using target_workers <",
+        TargetWorkersToString(job->target_workers), ">.");
   }
   return Status::OK();
 }
 
 Status DataServiceDispatcherImpl::CreateJob(
-    int64 dataset_id, ProcessingMode processing_mode,
-    absl::optional<NamedJobKey> named_job_key,
-    absl::optional<int64> num_consumers, std::shared_ptr<const Job>& job)
+    const GetOrCreateJobRequest& request, std::shared_ptr<const Job>& job)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  switch (processing_mode) {
-    case ProcessingMode::PARALLEL_EPOCHS:
-    case ProcessingMode::DISTRIBUTED_EPOCH:
-      break;
-    default:
-      return errors::Internal(
-          absl::StrCat("ProcessingMode ", processing_mode, " not recognized"));
-  }
+  TF_RETURN_IF_ERROR(ValidateProcessingMode(request.processing_mode_def()));
   int64 job_id = state_.NextAvailableJobId();
+  int64 dataset_id = request.dataset_id();
 
   // EASL - Caching decision: should the job compute, write or read from cache?
   int64 worker_count;
@@ -1018,28 +1054,30 @@ Status DataServiceDispatcherImpl::CreateJob(
   }
 
   int64 num_split_providers = 0;
-  if (processing_mode == ProcessingMode::DISTRIBUTED_EPOCH) {
+  if (IsDynamicShard(request.processing_mode_def())) {
     TF_RETURN_IF_ERROR(
-        MakeSplitProviders(dataset_id, job_type, split_providers_[job_id]));
+        MakeSplitProviders(request.dataset_id(), job_type, split_providers_[job_id]));
     num_split_providers = split_providers_[job_id].size();
   }
 
   Update update;
   CreateJobUpdate* create_job = update.mutable_create_job();
   create_job->set_job_id(job_id);
-  create_job->set_dataset_id(dataset_id);
-  create_job->set_processing_mode(ProcessingModeDef(processing_mode));
+  create_job->set_dataset_id(request.dataset_id());
+  *create_job->mutable_processing_mode_def() = request.processing_mode_def();
   create_job->set_job_type(job_type);
-  create_job->set_num_split_providers(num_split_providers);
-  create_job->set_target_worker_count(worker_count);
-  if (named_job_key.has_value()) {
+    create_job->set_num_split_providers(num_split_providers);
+    create_job->set_worker_count(worker_count);
+  if (request.has_job_key()) {
     NamedJobKeyDef* key = create_job->mutable_named_job_key();
-    key->set_name(named_job_key->name);
-    key->set_index(named_job_key->index);
+    key->set_name(request.job_key().job_name());
+    key->set_index(request.job_key().job_name_index());
   }
-  if (num_consumers.has_value()) {
-    create_job->set_num_consumers(num_consumers.value());
+  if (request.optional_num_consumers_case() ==
+      GetOrCreateJobRequest::kNumConsumers) {
+    create_job->set_num_consumers(request.num_consumers());
   }
+  create_job->set_target_workers(request.target_workers());
   TF_RETURN_IF_ERROR(Apply(update));
   TF_RETURN_IF_ERROR(state_.JobFromId(job_id, job));
   return Status::OK();
@@ -1073,7 +1111,7 @@ Status DataServiceDispatcherImpl::CreateTasksForWorker(
 }
 
 Status DataServiceDispatcherImpl::AcquireJobClientId(
-    const std::shared_ptr<const Job>& job, int64& job_client_id)
+    const std::shared_ptr<const Job>& job, int64_t& job_client_id)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   job_client_id = state_.NextAvailableJobClientId();
   Update update;
@@ -1082,6 +1120,8 @@ Status DataServiceDispatcherImpl::AcquireJobClientId(
   acquire_job_client->set_job_client_id(job_client_id);
   acquire_job_client->set_job_id(job->job_id);
   TF_RETURN_IF_ERROR(Apply(update));
+  // Does not release clients before they start to read from the dataset.
+  latest_client_heartbeats_time_[job_client_id] = absl::InfiniteFuture();
   return Status::OK();
 }
 
@@ -1109,7 +1149,7 @@ Status DataServiceDispatcherImpl::CreateTasksForJob(
 Status DataServiceDispatcherImpl::CreatePendingTask(
     std::shared_ptr<const Job> job, const std::string& worker_address)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  int64 task_id = state_.NextAvailableTaskId();
+  int64_t task_id = state_.NextAvailableTaskId();
   Update update;
   CreatePendingTaskUpdate* create_task = update.mutable_create_pending_task();
   create_task->set_task_id(task_id);
@@ -1119,6 +1159,8 @@ Status DataServiceDispatcherImpl::CreatePendingTask(
   std::shared_ptr<const Worker> worker;
   TF_RETURN_IF_ERROR(state_.WorkerFromAddress(worker_address, worker));
   create_task->set_transfer_address(worker->transfer_address);
+  *create_task->mutable_worker_tags() = {worker->tags.begin(),
+                                         worker->tags.end()};
 
   // TODO (damien-aymon) This is not entirely valid, we do not support cache with round-robin jobs yet.
   std::shared_ptr<const Dataset> dataset;
@@ -1135,7 +1177,7 @@ Status DataServiceDispatcherImpl::CreateTask(std::shared_ptr<const Job> job,
                                              const std::string& worker_address,
                                              std::shared_ptr<const Task>& task)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  int64 task_id = state_.NextAvailableTaskId();
+  int64_t task_id = state_.NextAvailableTaskId();
   Update update;
   CreateTaskUpdate* create_task = update.mutable_create_task();
   create_task->set_task_id(task_id);
@@ -1144,6 +1186,8 @@ Status DataServiceDispatcherImpl::CreateTask(std::shared_ptr<const Job> job,
   std::shared_ptr<const Worker> worker;
   TF_RETURN_IF_ERROR(state_.WorkerFromAddress(worker_address, worker));
   create_task->set_transfer_address(worker->transfer_address);
+  *create_task->mutable_worker_tags() = {worker->tags.begin(),
+                                         worker->tags.end()};
 
   // EASL - Get the dataset_key depending on the job type:
   std::shared_ptr<const Dataset> dataset;
@@ -1208,6 +1252,13 @@ Status DataServiceDispatcherImpl::AssignTask(std::shared_ptr<const Task> task)
   TF_RETURN_IF_ERROR(GetOrCreateWorkerStub(task->worker_address, stub));
   grpc::Status s = stub->ProcessTask(&client_ctx, req, &resp);
   if (!s.ok()) {
+    if (s.error_code() == grpc::StatusCode::UNAVAILABLE ||
+        s.error_code() == grpc::StatusCode::ABORTED ||
+        s.error_code() == grpc::StatusCode::CANCELLED) {
+      // Worker is presumably preempted. We will assign the task to the worker
+      // when it reconnects.
+      return Status::OK();
+    }
     return grpc_util::WrapError(
         absl::StrCat("Failed to submit task to worker ", task->worker_address),
         s);
@@ -1379,6 +1430,8 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
     TaskInfo* task_info = response->mutable_task_info()->Add();
     task_info->set_worker_address(task->worker_address);
     task_info->set_transfer_address(task->transfer_address);
+    *task_info->mutable_worker_tags() = {task->worker_tags.begin(),
+                                         task->worker_tags.end()};
     task_info->set_task_id(task->task_id);
     task_info->set_job_id(job->job_id);
     task_info->set_starting_round(task->starting_round);
@@ -1412,7 +1465,13 @@ Status DataServiceDispatcherImpl::PopulateTaskDef(
   task_def->set_job_id(task->job->job_id);
   task_def->set_worker_address(task->worker_address);
   task_def->set_task_id(task->task_id);
-  task_def->set_processing_mode(ProcessingModeDef(task->job->processing_mode));
+  *task_def->mutable_processing_mode_def() = task->job->processing_mode;
+  if (IsStaticShard(task->job->processing_mode)) {
+    task_def->set_num_workers(config_.worker_addresses_size());
+    TF_ASSIGN_OR_RETURN(int64_t worker_index,
+                        state_.GetWorkerIndex(task->worker_address));
+    task_def->set_worker_index(worker_index);
+  }
   if (task->job->distributed_epoch_state.has_value()) {
     task_def->set_num_split_providers(
         task->job->distributed_epoch_state.value().indices.size());
@@ -1448,8 +1507,8 @@ Status DataServiceDispatcherImpl::CheckStarted() TF_LOCKS_EXCLUDED(mu_) {
 }
 
 Status DataServiceDispatcherImpl::RecordSplitProduced(
-    int64 job_id, int64 repetition, int64 split_provider_index, bool finished)
-    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    int64_t job_id, int64_t repetition, int64_t split_provider_index,
+    bool finished) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   Update update;
   ProduceSplitUpdate* produce_split = update.mutable_produce_split();
   produce_split->set_job_id(job_id);
@@ -1473,7 +1532,7 @@ Status DataServiceDispatcherImpl::Apply(const Update& update)
 }
 
 void DataServiceDispatcherImpl::JobGcThread() {
-  int64 next_check_micros = 0;
+  int64_t next_check_micros = 0;
   while (true) {
     {
       mutex_lock l(mu_);
@@ -1484,6 +1543,12 @@ void DataServiceDispatcherImpl::JobGcThread() {
       }
       if (cancelled_) {
         return;
+      }
+      {
+        Status s = ReleaseMissingClients();
+        if (!s.ok()) {
+          LOG(WARNING) << "Error releasing missing clients: " << s;
+        }
       }
       Status s = GcOldJobs();
       if (!s.ok()) {
@@ -1499,9 +1564,28 @@ void DataServiceDispatcherImpl::JobGcThread() {
   }
 }
 
+Status DataServiceDispatcherImpl::ReleaseMissingClients()
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  int64_t now = env_->NowMicros();
+  for (const auto& client_id : state_.ListActiveClientIds()) {
+    if (absl::FromUnixMicros(now) >
+        latest_client_heartbeats_time_[client_id] +
+            absl::Milliseconds(config_.client_timeout_ms())) {
+      LOG(INFO) << "Releasing timed-out client with id " << client_id;
+      Update update;
+      ReleaseJobClientUpdate* release_client =
+          update.mutable_release_job_client();
+      release_client->set_job_client_id(client_id);
+      release_client->set_time_micros(now);
+      TF_RETURN_IF_ERROR(Apply(update));
+    }
+  }
+  return Status::OK();
+}
+
 Status DataServiceDispatcherImpl::GcOldJobs() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   std::vector<std::shared_ptr<const Job>> jobs = state_.ListJobs();
-  int64 now = env_->NowMicros();
+  int64_t now = env_->NowMicros();
   for (const auto& job : jobs) {
     if (job->finished || job->num_clients > 0 ||
         job->last_client_released_micros < 0 ||
@@ -1568,7 +1652,7 @@ void DataServiceDispatcherImpl::LogDumpsThread() {
 
 /* EASL - never used
 Status DataServiceDispatcherImpl::GetDatasetDef(
-    int64 dataset_id, std::shared_ptr<const DatasetDef>& dataset_def)
+    int64_t dataset_id, std::shared_ptr<const DatasetDef>& dataset_def)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   std::shared_ptr<const Dataset> dataset;
   TF_RETURN_IF_ERROR(state_.DatasetFromId(dataset_id, dataset));

@@ -27,9 +27,9 @@ limitations under the License.
 #include "tensorflow/core/platform/subprocess.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
-#include "tensorflow/stream_executor/gpu/gpu_asm_opts.h"
 #include "tensorflow/stream_executor/kernel_spec.h"
 
 namespace xla {
@@ -52,7 +52,7 @@ using tensorflow::AutotuneResult;
 // ConvolutionDimensionNumbers doesn't explicitly say which dimension is `k`,
 // but we can infer it by finding the first dnum that isn't otherwise mentioned
 // in the dnums.
-int64 FindMissingDnum(absl::Span<const int64> vals) {
+int64_t FindMissingDnum(absl::Span<const int64_t> vals) {
   for (int i = 0; i < vals.size(); i++) {
     if (!absl::c_linear_search(vals, i)) {
       return i;
@@ -61,13 +61,32 @@ int64 FindMissingDnum(absl::Span<const int64> vals) {
   return vals.size();
 }
 
+// Returns a mutex that can be used to lock the given stream executor.
+tensorflow::mutex& GetGpuMutex(const se::StreamExecutor* stream_exec) {
+  static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
+  // se::Platform*s are global singletons guaranteed to live forever.
+  static auto* mutexes =
+      new std::map<std::pair<const se::Platform*, /*device_ordinal*/ int64_t>,
+                   tensorflow::mutex>();
+
+  tensorflow::mutex_lock global_lock(mu);
+  auto it = mutexes
+                ->emplace(std::piecewise_construct,
+                          std::make_tuple(stream_exec->platform(),
+                                          stream_exec->device_ordinal()),
+                          std::make_tuple())
+                .first;
+
+  return it->second;
+}
+
 }  // anonymous namespace
 
 StatusOr<std::tuple<Layout, Layout, Layout>>
 StreamExecutorConvLayoutsToXlaLayouts(const ConvolutionDimensionNumbers& dnums,
                                       DataLayout input, FilterLayout filter,
                                       DataLayout output) {
-  std::vector<int64> input_layout;
+  std::vector<int64_t> input_layout;
   switch (input) {
     case DataLayout::kBatchDepthYX:  // NCHW
       input_layout.push_back(dnums.input_batch_dimension());
@@ -98,7 +117,7 @@ StreamExecutorConvLayoutsToXlaLayouts(const ConvolutionDimensionNumbers& dnums,
                            ConvolutionDimensionNumbersToString(dnums));
   }
 
-  std::vector<int64> filter_layout;
+  std::vector<int64_t> filter_layout;
   switch (filter) {
     case FilterLayout::kOutputInputYX:  // OIHW
       filter_layout.push_back(dnums.kernel_output_feature_dimension());
@@ -129,7 +148,7 @@ StreamExecutorConvLayoutsToXlaLayouts(const ConvolutionDimensionNumbers& dnums,
                            ConvolutionDimensionNumbersToString(dnums));
   }
 
-  std::vector<int64> output_layout;
+  std::vector<int64_t> output_layout;
   switch (output) {
     case DataLayout::kBatchDepthYX:  // NCHW
       output_layout.push_back(dnums.output_batch_dimension());
@@ -278,9 +297,9 @@ XlaConvShapesToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
 // When D is the set of dimensions in a ConvolutionDimensionNumbers, this finds
 // the dimension number that corresponds to the vectorized-features dimension in
 // the convolution.
-static absl::optional<int64> FindVectorizedDim(int64_t rank, int64_t d0,
-                                               int64_t d1,
-                                               absl::Span<const int64> ds) {
+static absl::optional<int64_t> FindVectorizedDim(int64_t rank, int64_t d0,
+                                                 int64_t d1,
+                                                 absl::Span<const int64_t> ds) {
   for (int64_t i = 0; i < rank; i++) {
     if (i == d0 || i == d1 || absl::c_linear_search(ds, i)) {
       continue;
@@ -290,7 +309,8 @@ static absl::optional<int64> FindVectorizedDim(int64_t rank, int64_t d0,
   return absl::nullopt;
 }
 
-std::tuple<absl::optional<int64>, absl::optional<int64>, absl::optional<int64>>
+std::tuple<absl::optional<int64_t>, absl::optional<int64_t>,
+           absl::optional<int64_t>>
 FindVectorizedFeatureDims(const ConvolutionDimensionNumbers& dnums,
                           const Shape& input, const Shape& filter,
                           const Shape& output) {
@@ -309,20 +329,14 @@ FindVectorizedFeatureDims(const ConvolutionDimensionNumbers& dnums,
 }
 
 tensorflow::mutex_lock LockGpu(const se::StreamExecutor* stream_exec) {
-  static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
-  // se::Platform*s are global singletons guaranteed to live forever.
-  static auto* mutexes =
-      new std::map<std::pair<const se::Platform*, /*device_ordinal*/ int64>,
-                   tensorflow::mutex>();
+  tensorflow::mutex& mu = GetGpuMutex(stream_exec);
+  return tensorflow::mutex_lock{mu};
+}
 
-  tensorflow::mutex_lock global_lock(mu);
-  auto it = mutexes
-                ->emplace(std::piecewise_construct,
-                          std::make_tuple(stream_exec->platform(),
-                                          stream_exec->device_ordinal()),
-                          std::make_tuple())
-                .first;
-  return tensorflow::mutex_lock{it->second};
+tensorflow::tf_shared_lock LockGpuShared(
+    const se::StreamExecutor* stream_exec) {
+  tensorflow::mutex& mu = GetGpuMutex(stream_exec);
+  return tensorflow::tf_shared_lock{mu};
 }
 
 StatusOr<std::unique_ptr<se::KernelBase>> CreateKernel(
@@ -357,16 +371,6 @@ Status ExecuteKernelOnStream(const se::KernelBase& kernel,
       *kernel_args);
 }
 
-se::GpuAsmOpts PtxOptsFromConfig(const HloModuleConfig& hlo_module_config) {
-  string extra_string =
-      hlo_module_config.debug_options().xla_gpu_asm_extra_flags();
-  std::vector<std::string> extra_flags;
-  extra_flags = absl::StrSplit(extra_string, ',', absl::SkipEmpty());
-  return se::GpuAsmOpts(
-      hlo_module_config.debug_options().xla_gpu_disable_gpuasm_optimizations(),
-      hlo_module_config.debug_options().xla_gpu_cuda_data_dir(), extra_flags);
-}
-
 // Unimplemented for integers yet.
 template <typename T, typename Generator>
 typename std::enable_if<std::is_integral<T>::value,
@@ -384,7 +388,7 @@ typename std::enable_if<std::is_floating_point<T>::value,
 template <typename T>
 static void InitializeTypedBuffer(se::Stream* stream,
                                   se::DeviceMemoryBase buffer,
-                                  int64* rng_state) {
+                                  int64_t* rng_state) {
   // Accesses to static variables are not locked, since the caller is already
   // in a critical section.
   static std::vector<T>* host_buffer = [] {
@@ -414,7 +418,7 @@ static void InitializeTypedBuffer(se::Stream* stream,
     return ret;
   }();
 
-  int64& host_index = *rng_state;
+  int64_t& host_index = *rng_state;
 
   char* current_addr = static_cast<char*>(buffer.opaque());
   CHECK_EQ(0, buffer.size() % sizeof(T));
@@ -425,7 +429,7 @@ static void InitializeTypedBuffer(se::Stream* stream,
       host_index = 0;
     }
     int64_t elements_copied =
-        std::min<int64>(host_buffer->size() - host_index, elements_left);
+        std::min<int64_t>(host_buffer->size() - host_index, elements_left);
     se::DeviceMemoryBase mem(current_addr, elements_copied * sizeof(T));
     stream->ThenMemcpy(&mem, host_buffer->data() + host_index,
                        elements_copied * sizeof(T));
@@ -436,7 +440,7 @@ static void InitializeTypedBuffer(se::Stream* stream,
 }
 
 void InitializeBuffer(se::Stream* stream, PrimitiveType buffer_type,
-                      int64* rng_state, se::DeviceMemoryBase buffer) {
+                      int64_t* rng_state, se::DeviceMemoryBase buffer) {
   switch (buffer_type) {
     case xla::F16:
     case xla::BF16:
@@ -469,6 +473,8 @@ StatusOr<se::dnn::ConvolutionKind> GetDNNConvKindFromCudnnConvKind(
       return se::dnn::BACKWARD_DATA;
     case CudnnConvKind::kForward:
       return se::dnn::FORWARD;
+    case CudnnConvKind::kForwardActivation:
+      return se::dnn::FORWARD_BIAS_ACTIVATION;
     default:
       break;
   }
@@ -492,17 +498,14 @@ StatusOr<se::dnn::DataType> GetDNNDataTypeFromPrimitiveType(
 
 bool RequireDeterminism(const HloModuleConfig& config) {
   static bool require_cudnn_determinism = [] {
-    bool deterministic_ops = false;
-    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_DETERMINISTIC_OPS",
-                                               /*default_val=*/false,
-                                               &deterministic_ops));
+    // TODO(reedwm): Remove the TF_CUDNN_DETERMINISTIC env var.
     bool cudnn_deterministic = false;
     TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_CUDNN_DETERMINISTIC",
                                                /*default_val=*/false,
                                                &cudnn_deterministic));
-    return deterministic_ops || cudnn_deterministic;
+    return cudnn_deterministic;
   }();
-  return require_cudnn_determinism ||
+  return tensorflow::OpDeterminismRequired() || require_cudnn_determinism ||
          config.debug_options().xla_gpu_deterministic_ops();
 }
 
@@ -523,10 +526,13 @@ StatusOr<AutotuneResult> PickBestResult(
       });
 
   if (filtered_results.empty()) {
-    return InternalError(
-        "All algorithms tried for %s failed. Falling back to "
-        "default algorithm. ",
-        instr.ToString());
+    std::ostringstream msg;
+    msg << "All algorithms tried for " << instr.ToString()
+        << " failed. Falling back to default algorithm.  Per-algorithm errors:";
+    for (const auto& result : profile_results) {
+      msg << "\n  " << result.failure().msg();
+    }
+    return InternalError("%s", msg.str());
   }
 
   auto selected_result = filtered_results.begin();

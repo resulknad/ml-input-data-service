@@ -50,7 +50,7 @@ class CollectiveOpsTest : public HloTestBase {
 
  protected:
   std::unique_ptr<HloModule> MakeCrsModule(
-      const Shape& shape, std::vector<std::vector<int64>> replica_groups,
+      const Shape& shape, std::vector<std::vector<int64_t>> replica_groups,
       const HloModuleConfig& config, std::string op = "add",
       std::string datatype = "f32") {
     std::string hlo_template = R"(
@@ -71,6 +71,7 @@ class CollectiveOpsTest : public HloTestBase {
       }
     )";
     std::vector<string> replica_group_strs;
+    replica_group_strs.reserve(replica_groups.size());
     for (const auto& g : replica_groups) {
       replica_group_strs.push_back(
           absl::StrFormat("{%s}", absl::StrJoin(g, ",")));
@@ -144,8 +145,8 @@ class CollectiveOpsTest : public HloTestBase {
 
 // Returns the non-empty subsets of {0, 1, ..., n}.  For example,
 // PowerSetOfIota(3) = {{0}, {1}, {2}, {0,1}, {0,2}, {1,2}, {0,1,2}}.
-std::vector<std::vector<int64>> PowerSetOfIota(int64_t n) {
-  std::vector<std::vector<int64>> power_set;
+std::vector<std::vector<int64_t>> PowerSetOfIota(int64_t n) {
+  std::vector<std::vector<int64_t>> power_set;
   for (int64_t i = 1; i < (1 << n); ++i) {
     power_set.emplace_back();
     for (int64_t j = 0; j < n; ++j) {
@@ -158,7 +159,7 @@ std::vector<std::vector<int64>> PowerSetOfIota(int64_t n) {
 }
 
 // Makes a DeviceAssignment assigning replica-id i to devices[i].
-DeviceAssignment MakeDeviceAssn(std::vector<int64> devices) {
+DeviceAssignment MakeDeviceAssn(std::vector<int64_t> devices) {
   DeviceAssignment assn(/*replica_count=*/devices.size(),
                         /*computation_count=*/1);
   for (int64_t i = 0; i < devices.size(); ++i) {
@@ -208,11 +209,11 @@ XLA_TEST_F(CollectiveOpsTest, AllReduceTwoReplicasOneOperand_int32) {
 }
 
 XLA_TEST_F(CollectiveOpsTest, AllReduceTwoReplicasOneOperand_int64) {
-  TestAllOpsForReduce<int64>();
+  TestAllOpsForReduce<int64_t>();
 }
 
 XLA_TEST_F(CollectiveOpsTest, AllReduceTwoReplicasOneOperand_uint64) {
-  TestAllOpsForReduce<uint64>();
+  TestAllOpsForReduce<uint64_t>();
 }
 
 XLA_TEST_F(CollectiveOpsTest, AllReduceTwoReplicasOneOperand_float32) {
@@ -331,10 +332,10 @@ XLA_TEST_F(CollectiveOpsTest, AllReduceOr_Pred) {
 // Tries all-to-all operations across all 2^kNumDevices - 1 combinations of
 // devices in sequence.
 XLA_TEST_F(CollectiveOpsTest, AllReduce_AllCombinations) {
-  const int64 kNumDevices = 4;
-  const int64 kNumElems = 1024;
+  const int64_t kNumDevices = 4;
+  const int64_t kNumElems = 1024;
 
-  for (std::vector<int64> devices : PowerSetOfIota(kNumDevices)) {
+  for (std::vector<int64_t> devices : PowerSetOfIota(kNumDevices)) {
     SCOPED_TRACE(absl::StrFormat("Running on devices {%s}",
                                  absl::StrJoin(devices, ", ")));
 
@@ -362,7 +363,7 @@ XLA_TEST_F(CollectiveOpsTest, AllReduce_AllCombinations) {
 // Check that the NCCL data structures in our all-reduce implementation are
 // cached as we expect.
 XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllReduce_NcclChannelCaching)) {
-  const int64 kNumElems = 1024;
+  const int64_t kNumElems = 1024;
 
   std::vector<float> input_vec(kNumElems);
   absl::c_iota(input_vec, 0);
@@ -375,8 +376,10 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllReduce_NcclChannelCaching)) {
     HloRunner::ReplicatedExecuteOptions opts;
   };
   std::vector<ExecutableInfo> executables;
-  for (const auto& devices :
-       std::vector<std::vector<int64>>{{0, 1}, {1, 2}, {0, 1, 2}}) {
+  const auto devices_vec =
+      std::vector<std::vector<int64_t>>{{0, 1}, {1, 2}, {0, 1, 2}};
+  executables.reserve(devices_vec.size());
+  for (const auto& devices : devices_vec) {
     executables.emplace_back();
     auto& e = executables.back();
 
@@ -433,9 +436,9 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllReduce_NcclChannelCaching)) {
 // Runs the same executable many times concurrently.  The all-reduces should not
 // conflict with one another.
 XLA_TEST_F(CollectiveOpsTest, AllReduce_ManyConcurrentAllReduces) {
-  const int64 kNumElems = 1024;
-  const int64 kNumThreads = 200;
-  const int64 kRunsPerThread = 10;
+  const int64_t kNumElems = 1024;
+  const int64_t kNumThreads = 200;
+  const int64_t kRunsPerThread = 10;
 
   std::vector<float> input_vec(kNumElems);
   absl::c_iota(input_vec, 0);
@@ -449,7 +452,7 @@ XLA_TEST_F(CollectiveOpsTest, AllReduce_ManyConcurrentAllReduces) {
                                           /*replica_groups=*/{}, config),
                             /*run_hlo_passes=*/true)
           .ValueOrDie();
-  std::vector<int64> devices = {0, 1};
+  std::vector<int64_t> devices = {0, 1};
   auto device_assn = MakeDeviceAssn(devices);
 
   HloRunner::ReplicatedExecuteOptions opts;
@@ -526,7 +529,7 @@ XLA_TEST_F(CollectiveOpsTest, AllReduce_CombinableAllReduces) {
 // 2 actually exchange data with each other.
 XLA_TEST_F(CollectiveOpsTest, AllReduce_ThreeReplicaGroups) {
   // Test a prime number so it's not all powers of 2.
-  const int64 kNumElems = 137;
+  const int64_t kNumElems = 137;
 
   auto config = GetModuleConfigForTest();
   config.set_replica_count(4);
@@ -545,6 +548,7 @@ XLA_TEST_F(CollectiveOpsTest, AllReduce_ThreeReplicaGroups) {
   ASSERT_EQ(results.size(), 4);
 
   std::vector<float> input_vec_doubled;
+  input_vec_doubled.reserve(input_vec.size());
   for (float n : input_vec) {
     input_vec_doubled.push_back(n * 2);
   }
@@ -599,7 +603,7 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AsyncAllReduce)) {
 
       ENTRY test_computation {
         id = u32[] replica-id()
-        start = (u32[], u32[]) all-reduce-start(id), to_apply=apply_op
+        start = u32[] all-reduce-start(id), to_apply=apply_op
         ROOT done = u32[] all-reduce-done(start)
       }
     )";
@@ -632,7 +636,7 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AsyncAllReduceTwoOperands)) {
       ENTRY test_computation {
         id = u32[] replica-id()
         id2 = u32[] multiply(id, id)
-        start = ((u32[], u32[]), (u32[], u32[])) all-reduce-start(id, id2), to_apply=apply_op
+        start = (u32[], u32[]) all-reduce-start(id, id2), to_apply=apply_op
         ROOT done = (u32[], u32[]) all-reduce-done(start)
       }
     )";
@@ -663,7 +667,7 @@ XLA_TEST_F(CollectiveOpsTest, ReplicaId) {
     ROOT out = u32[] copy(id)
   }
   )";
-  const int64 kNumReplicas = 4;
+  const int64_t kNumReplicas = 4;
 
   auto config = GetModuleConfigForTest();
   config.set_replica_count(kNumReplicas);
@@ -692,7 +696,7 @@ XLA_TEST_F(CollectiveOpsTest, CollectivePermute_Simple) {
     ROOT copy = u32[2] copy(permute)
   }
   )";
-  const int64 kNumReplicas = 4;
+  const int64_t kNumReplicas = 4;
 
   auto config = GetModuleConfigForTest();
   config.set_replica_count(kNumReplicas);
@@ -726,7 +730,7 @@ XLA_TEST_F(CollectiveOpsTest, CollectivePermute_Degnerate) {
     ROOT copy = u32[2] copy(permute)
   }
   )";
-  const int64 kNumReplicas = 4;
+  const int64_t kNumReplicas = 4;
 
   auto config = GetModuleConfigForTest();
   config.set_replica_count(kNumReplicas);
@@ -759,7 +763,7 @@ XLA_TEST_F(CollectiveOpsTest, CollectivePermute_NoDegnerate) {
     ROOT copy = u32[2] copy(permute)
   }
   )";
-  const int64 kNumReplicas = 4;
+  const int64_t kNumReplicas = 4;
 
   auto config = GetModuleConfigForTest();
   config.set_replica_count(kNumReplicas);
@@ -793,7 +797,7 @@ XLA_TEST_F(CollectiveOpsTest, CollectivePermute_Rotate) {
     ROOT copy = u32[2] copy(permute)
   }
   )";
-  const int64 kNumReplicas = 4;
+  const int64_t kNumReplicas = 4;
 
   auto config = GetModuleConfigForTest();
   config.set_replica_count(kNumReplicas);
@@ -836,7 +840,7 @@ XLA_TEST_F(CollectiveOpsTest, AllToAll_EmptyReplicaGroups) {
     ROOT out = u32[8] concatenate(a_prime, b_prime, c_prime, d_prime), dimensions={0}
   }
   )";
-  const int64 kNumReplicas = 4;
+  const int64_t kNumReplicas = 4;
   auto config = GetModuleConfigForTest(kNumReplicas);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
@@ -877,7 +881,7 @@ XLA_TEST_F(CollectiveOpsTest, AllToAll_OrderedReplicaGroups) {
     ROOT out = u32[8] concatenate(a_prime, b_prime, c_prime, d_prime), dimensions={0}
   }
   )";
-  const int64 kNumReplicas = 4;
+  const int64_t kNumReplicas = 4;
   auto config = GetModuleConfigForTest(kNumReplicas);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
@@ -912,7 +916,7 @@ XLA_TEST_F(CollectiveOpsTest, AllToAll_TwoReplicaGroups) {
     ROOT out = u32[4] concatenate(a_prime, b_prime), dimensions={0}
   }
   )";
-  const int64 kNumReplicas = 4;
+  const int64_t kNumReplicas = 4;
   auto config = GetModuleConfigForTest(kNumReplicas);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
@@ -939,7 +943,7 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllToAll_SplitDimension)) {
     ROOT out = u32[8] reshape(all2all)
   }
   )";
-  const int64 kNumReplicas = 4;
+  const int64_t kNumReplicas = 4;
   auto config = GetModuleConfigForTest(kNumReplicas);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
@@ -970,7 +974,7 @@ XLA_TEST_F(CollectiveOpsTest, AllGather_Dim0) {
     ROOT out = u32[8] reshape(allgather)
   }
   )";
-  const int64 kNumReplicas = 4;
+  const int64_t kNumReplicas = 4;
   auto config = GetModuleConfigForTest(kNumReplicas);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
@@ -998,7 +1002,7 @@ XLA_TEST_F(CollectiveOpsTest, AllGather_Dim1) {
     ROOT out = u32[8] reshape(allgather)
   }
   )";
-  const int64 kNumReplicas = 4;
+  const int64_t kNumReplicas = 4;
   auto config = GetModuleConfigForTest(kNumReplicas);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
@@ -1076,7 +1080,7 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllGatherMixedTypes)) {
     ROOT out = (u32[4], f32[4]) tuple(r0, r1)
   }
   )";
-  const int64 kNumReplicas = 2;
+  const int64_t kNumReplicas = 2;
   auto config = GetModuleConfigForTest(kNumReplicas);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
@@ -1116,7 +1120,7 @@ XLA_TEST_F(CollectiveOpsTest, ReduceScatter) {
   }
   )";
 
-  const int64 kNumReplicas = 2;
+  const int64_t kNumReplicas = 2;
   auto config = GetModuleConfigForTest(kNumReplicas);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
@@ -1154,7 +1158,7 @@ XLA_TEST_F(CollectiveOpsTest, ReduceScatter_Dim1) {
   }
   )";
 
-  const int64 kNumReplicas = 2;
+  const int64_t kNumReplicas = 2;
   auto config = GetModuleConfigForTest(kNumReplicas);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
@@ -1195,7 +1199,7 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllReduceReassociate)) {
     ROOT add = f32[8] add(ar0, ar1)
   }
   )";
-  const int64 kNumReplicas = 2;
+  const int64_t kNumReplicas = 2;
   auto config = GetModuleConfigForTest(kNumReplicas);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
@@ -1230,7 +1234,7 @@ XLA_TEST_F(CollectiveOpsTest,
   }
   )";
 
-  const int64 kNumReplicas = 2;
+  const int64_t kNumReplicas = 2;
   auto config = GetModuleConfigForTest(kNumReplicas);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
@@ -1271,7 +1275,7 @@ XLA_TEST_F(CollectiveOpsTest,
   }
   )";
 
-  const int64 kNumReplicas = 2;
+  const int64_t kNumReplicas = 2;
   auto config = GetModuleConfigForTest(kNumReplicas);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));

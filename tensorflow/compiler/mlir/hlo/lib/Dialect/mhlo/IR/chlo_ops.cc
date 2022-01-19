@@ -95,7 +95,8 @@ static Type GetBroadcastType(Type x, Type y, Type element_type,
   llvm::SmallVector<int64_t, 4> broadcast_dimensions;
   if (broadcast_dimensions_attr) {
     // Explicit broadcast dimensions.
-    for (const APInt& int_value : broadcast_dimensions_attr.getIntValues()) {
+    for (const APInt& int_value :
+         broadcast_dimensions_attr.getValues<APInt>()) {
       broadcast_dimensions.push_back(int_value.getSExtValue());
     }
     if (broadcast_dimensions.size() != shape_small.size()) {
@@ -190,7 +191,7 @@ LogicalResult ReifyBroadcastBinaryOpReturnTypeShapes(
 //===----------------------------------------------------------------------===//
 
 LogicalResult BroadcastComplexOp::inferReturnTypeComponents(
-    MLIRContext* context, Optional<Location> location, ValueRange operands,
+    MLIRContext* context, Optional<Location> location, ValueShapeRange operands,
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {
   ShapedType lhs_type = operands[0].getType().dyn_cast<ShapedType>();
@@ -225,7 +226,7 @@ void BroadcastCompareOp::build(OpBuilder& builder, OperationState& result,
 }
 
 LogicalResult BroadcastCompareOp::inferReturnTypeComponents(
-    MLIRContext* context, Optional<Location> location, ValueRange operands,
+    MLIRContext* context, Optional<Location> location, ValueShapeRange operands,
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {
   Type element_type = IntegerType::get(context, 1);
@@ -284,20 +285,21 @@ LogicalResult IsPosInfOp::inferReturnTypes(
 // Macros for method definitions that are common to most broadcasting ops.
 //===----------------------------------------------------------------------===//
 
-#define BROADCAST_INFER_SHAPE_TYPE_OP_DEFS(Op)                                \
-  LogicalResult Op::inferReturnTypeComponents(                                \
-      MLIRContext* context, Optional<Location> location, ValueRange operands, \
-      DictionaryAttr attributes, RegionRange regions,                         \
-      SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {           \
-    return InferBroadcastBinaryOpReturnTypeComponents(                        \
-        context, location, operands, attributes, /*element_type=*/nullptr,    \
-        inferedReturnShapes);                                                 \
-  }                                                                           \
-  LogicalResult Op::reifyReturnTypeShapes(                                    \
-      OpBuilder& builder, ValueRange operands,                                \
-      SmallVectorImpl<Value>& reifiedReturnShapes) {                          \
-    return ReifyBroadcastBinaryOpReturnTypeShapes(                            \
-        builder, getOperation(), operands, reifiedReturnShapes);              \
+#define BROADCAST_INFER_SHAPE_TYPE_OP_DEFS(Op)                             \
+  LogicalResult Op::inferReturnTypeComponents(                             \
+      MLIRContext* context, Optional<Location> location,                   \
+      ValueShapeRange operands, DictionaryAttr attributes,                 \
+      RegionRange regions,                                                 \
+      SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {        \
+    return InferBroadcastBinaryOpReturnTypeComponents(                     \
+        context, location, operands, attributes, /*element_type=*/nullptr, \
+        inferedReturnShapes);                                              \
+  }                                                                        \
+  LogicalResult Op::reifyReturnTypeShapes(                                 \
+      OpBuilder& builder, ValueRange operands,                             \
+      SmallVectorImpl<Value>& reifiedReturnShapes) {                       \
+    return ReifyBroadcastBinaryOpReturnTypeShapes(                         \
+        builder, getOperation(), operands, reifiedReturnShapes);           \
   }
 
 #define BROADCAST_BINARY_OP_DEFS(Op)                                           \
@@ -360,7 +362,7 @@ static LogicalResult Verify(MinimumBroadcastShapesOp op) {
 }
 
 LogicalResult ConstantLikeOp::inferReturnTypeComponents(
-    MLIRContext* context, Optional<Location> location, ValueRange operands,
+    MLIRContext* context, Optional<Location> location, ValueShapeRange operands,
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {
   ConstantLikeOp::Adaptor op(operands, attributes);
@@ -403,10 +405,10 @@ void ConstantLikeOp::getCanonicalizationPatterns(
 }
 
 LogicalResult BroadcastSelectOp::inferReturnTypeComponents(
-    MLIRContext*, Optional<Location> location, ValueRange operands,
+    MLIRContext*, Optional<Location> location, ValueShapeRange operands,
     DictionaryAttr, RegionRange,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
-  BroadcastSelectOp::Adaptor op(operands);
+  BroadcastSelectOp::Adaptor op(operands.getValues());
   auto pred_type = op.pred().getType().dyn_cast<ShapedType>();
   auto on_true_type = op.on_true().getType().dyn_cast<ShapedType>();
   auto on_false_type = op.on_false().getType().dyn_cast<ShapedType>();

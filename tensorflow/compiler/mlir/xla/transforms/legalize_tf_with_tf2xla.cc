@@ -39,6 +39,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
@@ -46,6 +47,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
 #include "tensorflow/compiler/mlir/xla/ir/mlir_hlo_builder.h"
+#include "tensorflow/compiler/mlir/xla/transforms/xla_passes_detail.h"
 #include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/tf2xla/xla_expression.h"
@@ -76,6 +78,7 @@ limitations under the License.
 namespace mlir {
 namespace mhlo {
 
+// LINT.IfChange
 bool IsOpAllowedTf2XlaFallback(Operation* op) {
   // Allowlisted TensorFlow ops are known to have well behaved tf2xla kernels
   // building valid MLIR using MlirHloBuilder.
@@ -144,7 +147,6 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::FakeQuantWithMinMaxVarsGradientOp>(),
     TypeID::get<TF::FloorDivOp>(),
     TypeID::get<TF::FloorModOp>(),
-    TypeID::get<TF::GatherNdOp>(),
     TypeID::get<TF::GreaterOp>(),
     TypeID::get<TF::HSVToRGBOp>(),
     TypeID::get<TF::IFFT2DOp>(),
@@ -263,14 +265,10 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::XlaBroadcastHelperOp>(),
     TypeID::get<TF::XlaConvOp>(),
     TypeID::get<TF::XlaConvV2Op>(),
-    TypeID::get<TF::XlaDotOp>(),
-    TypeID::get<TF::XlaDotV2Op>(),
     TypeID::get<TF::XlaDynamicSliceOp>(),
     TypeID::get<TF::XlaDynamicUpdateSliceOp>(),
-    TypeID::get<TF::XlaEinsumOp>(),
     TypeID::get<TF::XlaKeyValueSortOp>(),
     TypeID::get<TF::XlaPadOp>(),
-    TypeID::get<TF::XlaSortOp>(),
     TypeID::get<TF::XlaSvdOp>(),
   };
   // clang-format on
@@ -279,10 +277,12 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
   if (!abstractOp) return false;
   return ops->count(abstractOp->typeID);
 }
+// LINT.ThenChange(:Tf2XlaPreferred)
 
 /// List of ops that should use XlaOpKernel legalization only in the case of
 /// prefer_tf2xla. All other ops not in this list should use MLIR legalization
 /// only or not be legalized by the new bridge.
+// LINT.IfChange(Tf2XlaPreferred)
 bool IsOpAllowedTf2XlaPreferred(Operation* op) {
   // Use a pointer for the static set, so the set is not destructed upon thread
   // end, which would not be thread safe.
@@ -292,7 +292,6 @@ bool IsOpAllowedTf2XlaPreferred(Operation* op) {
     TypeID::get<TF::AllOp>(),
     TypeID::get<TF::AllToAllOp>(),
     TypeID::get<TF::AnyOp>(),
-    TypeID::get<TF::AssertOp>(),
     TypeID::get<TF::AvgPoolOp>(),
     TypeID::get<TF::AvgPool3DGradOp>(),
     TypeID::get<TF::AvgPoolGradOp>(),
@@ -312,9 +311,9 @@ bool IsOpAllowedTf2XlaPreferred(Operation* op) {
     TypeID::get<TF::CumsumOp>(),
     TypeID::get<TF::DepthwiseConv2dNativeOp>(),
     TypeID::get<TF::DynamicStitchOp>(),
+    TypeID::get<TF::_EagerConstOp>(),
     TypeID::get<TF::EmptyOp>(),
     TypeID::get<TF::ExpandDimsOp>(),
-    TypeID::get<TF::FakeQuantWithMinMaxVarsOp>(),
     TypeID::get<TF::FillOp>(),
     TypeID::get<TF::FusedBatchNormOp>(),
     TypeID::get<TF::FusedBatchNormGradOp>(),
@@ -322,10 +321,10 @@ bool IsOpAllowedTf2XlaPreferred(Operation* op) {
     TypeID::get<TF::FusedBatchNormGradV3Op>(),
     TypeID::get<TF::FusedBatchNormV2Op>(),
     TypeID::get<TF::FusedBatchNormV3Op>(),
+    TypeID::get<TF::GatherNdOp>(),
     TypeID::get<TF::GatherV2Op>(),
     TypeID::get<TF::IdentityOp>(),
     TypeID::get<TF::IdentityNOp>(),
-    TypeID::get<TF::InfeedDequeueTupleOp>(),
     TypeID::get<TF::InplaceUpdateOp>(),
     TypeID::get<TF::InvertPermutationOp>(),
     TypeID::get<TF::IRFFTOp>(),
@@ -359,6 +358,7 @@ bool IsOpAllowedTf2XlaPreferred(Operation* op) {
     TypeID::get<TF::RsqrtGradOp>(),
     TypeID::get<TF::ScatterNdOp>(),
     TypeID::get<TF::ShapeOp>(),
+    TypeID::get<TF::SinhOp>(),
     TypeID::get<TF::SizeOp>(),
     TypeID::get<TF::SliceOp>(),
     TypeID::get<TF::SoftmaxCrossEntropyWithLogitsOp>(),
@@ -385,15 +385,19 @@ bool IsOpAllowedTf2XlaPreferred(Operation* op) {
     TypeID::get<TF::XlaAllReduceOp>(),
     TypeID::get<TF::XlaGatherOp>(),
     TypeID::get<TF::XlaReplicaIdOp>(),
-    TypeID::get<TF::XlaShardingOp>(),
     TypeID::get<TF::Xlog1pyOp>(),
     TypeID::get<TF::ZerosLikeOp>(),
+
+    // XlaOpKernel makes use of compiler options which we don't feed in the
+    // fallback.
+    // TypeID::get<TF::FakeQuantWithMinMaxVarsOp>(),
   };
   // clang-format on
   auto* abstractOp = op->getAbstractOperation();
   if (!abstractOp) return false;
   return ops->count(abstractOp->typeID);
 }
+// LINT.ThenChange()
 
 bool IsOpAllowedForTesting(Operation* op) {
   // clang-format off
@@ -727,21 +731,15 @@ class Tf2XlaRewritePattern : public RewritePattern {
   bool legalize_test_only_ops_;
 };
 
-class LegalizeTF : public PassWrapper<LegalizeTF, FunctionPass> {
+class LegalizeTF : public LegalizeTFPassBase<LegalizeTF> {
  public:
   LegalizeTF() = default;
-
   explicit LegalizeTF(llvm::StringRef device_type, bool prefer_tf2xla) {
     device_type_ = device_type.str();
     prefer_tf2xla_ = prefer_tf2xla;
   }
 
   LegalizeTF(const LegalizeTF&) {}
-
-  StringRef getArgument() const final { return "xla-legalize-tf-with-tf2xla"; }
-  StringRef getDescription() const final {
-    return "Legalize from TensorFlow to the HLO dialect using tf2xla kernels";
-  }
 
   void runOnFunction() override {
     OwningRewritePatternList patterns(&getContext());
@@ -753,26 +751,7 @@ class LegalizeTF : public PassWrapper<LegalizeTF, FunctionPass> {
   }
 
  private:
-  // TODO(hinsu): Support finer grained device type assignment instead of a
-  // global device type for all TensorFlow ops.
-  Option<std::string> device_type_{
-      *this, "device-type",
-      llvm::cl::desc("XLA device type for execution of TensorFlow ops.")};
-  Option<bool> prefer_tf2xla_{
-      *this,
-      "prefer-tf2xla",
-      llvm::cl::desc("Enable legalization when it is not in the list of "
-                     "MLIR-legalized ops."),
-  };
-  Option<bool> legalize_test_only_ops_{
-      *this,
-      "legalize-test-only-ops",
-      llvm::cl::desc("Enable tf2xla legalizations for some ops that are "
-                     "enabled only for testing."),
-  };
 };
-
-static PassRegistration<LegalizeTF> pass;
 
 }  // end namespace
 
