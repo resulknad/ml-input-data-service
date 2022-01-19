@@ -907,11 +907,13 @@ Status DataServiceDispatcherImpl::CreateJob(
   VLOG(0) << "EASL - Scalability decision for dataset_key "
           << compute_dataset_key << ": " << worker_count;
 
-  bool if_use_local_workers = false;
-  TF_RETURN_IF_ERROR(service::easl::local_decision::DecideIfLocal(
-          config_, metadata_store_, compute_dataset_key, if_use_local_workers
-          ));
-  VLOG(0) << "EASL-MUYU (CreateJob) - Check Local Worker Policy: " << if_use_local_workers;
+  bool if_use_local_workers = true;
+  VLOG(0) << "EASL-DSL (CreateJob) - Local Worker Policy was manually set to " << if_use_local_workers;
+
+//  TF_RETURN_IF_ERROR(service::easl::local_decision::DecideIfLocal(
+//          config_, metadata_store_, compute_dataset_key, if_use_local_workers
+//          ));
+//  VLOG(0) << "EASL-MUYU (CreateJob) - Check Local Worker Policy: " << if_use_local_workers;
 
   // EASL add job entry to metadata store
   std::string dataset_key = service::easl::cache_utils::DatasetKey(
