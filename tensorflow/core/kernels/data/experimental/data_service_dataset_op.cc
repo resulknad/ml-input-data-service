@@ -323,7 +323,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       ++num_elements_;
       uint64 time_now = Env::Default()->NowMicros();
       batch_timestamps_us_.push_back(time_now);
-      batch_timestamps_us_duplicate_.push_back(time_now);
+//      batch_timestamps_us_duplicate_.push_back(time_now);
 
       bool hadToWait = false;
       int64 start_us = Env::Default()->NowMicros();
@@ -331,7 +331,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       while (skip) {
         uint64 wait_time = Env::Default()->NowMicros(); // EASL metrics
         result_queue_size_.push_back(results_.size()); // EASL metrics
-        result_queue_size_duplicate_.push_back(results_.size()); // EASL metrics
+//        result_queue_size_duplicate_.push_back(results_.size()); // EASL metrics
         while ((results_.empty() || !results_.front().ready) && !Finished() &&
                !cancelled_ && status_.ok()) {
           VLOG(1) << "Blocking in GetNext. results_.size():" << results_.size()
@@ -351,9 +351,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         double wait_time_computation = (double)(wait_time)
           / EnvTime::kMillisToMicros;
         wait_times_ms_.push_back(wait_time_computation); // EASL metrics
-        wait_times_ms_duplicate_.push_back(wait_time_computation); // EASL metrics
+//        wait_times_ms_duplicate_.push_back(wait_time_computation); // EASL metrics
         had_to_wait_.push_back(hadToWait); // EASL metrics
-        had_to_wait_duplicate_.push_back(hadToWait); // EASL metrics
+//        had_to_wait_duplicate_.push_back(hadToWait); // EASL metrics
         if (cancelled_) {
           VLOG(3) << "Returning from GetNext due to cancellation";
           return errors::Cancelled("Data service iterator was cancelled");
@@ -680,7 +680,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           ClearScalabilityMetrics();
 
           // EASL: Logging stuff
-          WriteMetrics();
+//          WriteMetrics();
         } else {
           req.set_has_scalability_metrics(false);
         }
@@ -1228,7 +1228,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     std::vector<uint32> result_queue_size_ TF_GUARDED_BY(mu_);
     std::vector<bool> had_to_wait_ TF_GUARDED_BY(mu_);
 
-    // Duplicates for metric collection
+    // Duplicates for metric collection and logging
     std::vector<uint64> batch_timestamps_us_duplicate_ TF_GUARDED_BY(mu_);
     std::vector<double> wait_times_ms_duplicate_ TF_GUARDED_BY(mu_);
     std::vector<uint32> result_queue_size_duplicate_ TF_GUARDED_BY(mu_);

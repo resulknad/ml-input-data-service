@@ -93,6 +93,7 @@ constexpr const char kActiveTime[] = "active_time";
 constexpr const char kWorkingTime[] = "working_time";
 
 const uint64 kElementThreshold = 300;
+const bool kEnableEventLogging = false;
 
 
 using Dataset = DispatcherState::Dataset;
@@ -447,9 +448,8 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
 
       // Try to see if we need to decide on the execution mode
       string job_type;
-      Status s1 = metadata_store_.GetJobTypeByJobId(job_id, job_type);
-
       uint64 element_count;
+      Status s1 = metadata_store_.GetJobTypeByJobId(job_id, job_type);
       Status s2 = metadata_store_.GetNumberOfProducedElements(job_id,
          element_count);
 
@@ -468,17 +468,19 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
         metadata_store_.SetJobIsScaling(job_id);
 
         // Logging stuff
-        std::shared_ptr<const Dataset> dataset;
-        state_.DatasetFromId(task_object->job->dataset_id, dataset);
+        if (kEnableEventLogging) {
+          std::shared_ptr<const Dataset> dataset;
+          state_.DatasetFromId(task_object->job->dataset_id, dataset);
 
-        string job_type;
-        string job_name = task_object->job->named_job_key.value().name;
-        Status s3 = metadata_store_.GetJobTypeByJobId(job_id, job_type);
+          string job_type;
+          string job_name = task_object->job->named_job_key.value().name;
+          Status s3 = metadata_store_.GetJobTypeByJobId(job_id, job_type);
 
-        if (s3.ok()) {
-          RecordEvent(dataset->fingerprint, dataset->dataset_id, job_name,
-                      task_object->job->job_id, "execution_policy_decision",
-                      job_type);
+          if (s3.ok()) {
+            RecordEvent(dataset->fingerprint, dataset->dataset_id, job_name,
+                        task_object->job->job_id, "execution_policy_decision",
+                        job_type);
+          }
         }
       }
     }
@@ -626,11 +628,13 @@ Status DataServiceDispatcherImpl::GetSplit(const GetSplitRequest* request,
                  << " at provider index " << provider_index;
 
     // EASL: Logging stuff
-    std::shared_ptr<const Dataset> dataset;
-    state_.DatasetFromId(job->dataset_id, dataset);
-    string job_name = job->named_job_key.value().name;
-    RecordEvent(dataset->fingerprint, dataset->dataset_id, job_name, job_id,
-      "extended_epoch");
+    if (kEnableEventLogging) {
+      std::shared_ptr<const Dataset> dataset;
+      state_.DatasetFromId(job->dataset_id, dataset);
+      string job_name = job->named_job_key.value().name;
+      RecordEvent(dataset->fingerprint, dataset->dataset_id, job_name, job_id,
+                  "extended_epoch");
+    }
   }
 
   TF_RETURN_IF_ERROR(RecordSplitProduced(
@@ -965,8 +969,10 @@ Status DataServiceDispatcherImpl::CreateJob(
                << compute_dataset_key << ": " << job_type;
 
   // EASL: Logging stuff
-  RecordEvent(dataset_fingerprint, dataset_id, job_name, job_id,
-    "execution_mode_change", job_type);
+  if (kEnableEventLogging) {
+    RecordEvent(dataset_fingerprint, dataset_id, job_name, job_id,
+                "execution_mode_change", job_type);
+  }
 
   // Check to see what the previous execution type for this job was
   string existing_job_type;
@@ -1005,9 +1011,11 @@ Status DataServiceDispatcherImpl::CreateJob(
   }
 
   // EASL: Logging stuff
-  last_scale_[job_name] = worker_count;
-  RecordEvent(dataset_fingerprint, dataset_id, job_name, job_id,
-              "starting_worker_count", std::to_string(worker_count));
+  if (kEnableEventLogging) {
+    last_scale_[job_name] = worker_count;
+    RecordEvent(dataset_fingerprint, dataset_id, job_name, job_id,
+                "starting_worker_count", std::to_string(worker_count));
+  }
 
   int64 num_split_providers = 0;
   if (processing_mode == ProcessingMode::DISTRIBUTED_EPOCH) {
@@ -1276,7 +1284,8 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
         state_.Apply(update);
 
         // EASL: Logging stuff
-        if (last_scale_[job_name] != target_worker_count) {
+        if (kEnableEventLogging &&
+          last_scale_[job_name] != target_worker_count) {
           string scale_type = target_worker_count > last_scale_[job_name] ?
                               "scale_up" : "scale_down";
           last_scale_[job_name] = target_worker_count;
