@@ -947,7 +947,6 @@ cc_library(
     deps = [
         ":cache_model",
         ":common_proto_cc",
-        ":data_service",
         ":dispatcher_cache_state",
         ":dispatcher_state",
         ":metadata_store",

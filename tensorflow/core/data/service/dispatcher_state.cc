@@ -192,9 +192,9 @@ void DispatcherState::ReleaseJobClient(
 void DispatcherState::GarbageCollectJob(
     const GarbageCollectJobUpdate& garbage_collect_job) {
   int64_t job_id = garbage_collect_job.job_id();
-  for (auto& task : tasks_by_job_[job_id]) {
-    task->finished = true;
-    tasks_by_worker_[task->worker_address].erase(task->task_id);
+  for(auto it=tasks_by_job_[job_id].begin(); it!=tasks_by_job_[job_id].end(); it++){
+    it->second->finished = true;
+    tasks_by_worker_[it->second->worker_address].erase(it->second->task_id);
   }
   jobs_[job_id]->finished = true;
   jobs_[job_id]->garbage_collected = true;

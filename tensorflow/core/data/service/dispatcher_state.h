@@ -348,8 +348,7 @@ class DispatcherState {
   // Tasks, keyed by task ids.
   TasksById tasks_;
   // List of tasks associated with each job.
-  absl::flat_hash_map<int64_t, std::vector<std::shared_ptr<Task>>>
-      tasks_by_job_;
+  absl::flat_hash_map<int64_t, TasksById> tasks_by_job_;
   // Tasks, keyed by worker addresses. The values are a map from task id to
   // task.
   absl::flat_hash_map<std::string, TasksById> tasks_by_worker_;
@@ -360,7 +359,7 @@ class DispatcherState {
 
   // EASL - List of tasks for which the splitProvider should return eos, keyed by jobId.
   // The values are a map from task id to task.
-  absl::flat_hash_map<int64, TasksById> ending_tasks_by_job_;
+  absl::flat_hash_map<int64_t, TasksById> ending_tasks_by_job_;
   // Split providers to be terminated after the scaling is done
   // Key to this data structure is: `<job_id>_<split_provider_index>`
   std::set<std::string> future_terminated_split_providers_;
