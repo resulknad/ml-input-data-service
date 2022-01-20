@@ -103,6 +103,7 @@ constexpr const char kWorkingTime[] = "working_time";
 const uint64 kElementThreshold = 300;
 const bool kEnableEventLogging = false;
 
+using DispatcherConfig = experimental::DispatcherConfig;
 using Dataset = DispatcherState::Dataset;
 using Worker = DispatcherState::Worker;
 using NamedJobKey = DispatcherState::NamedJobKey;
@@ -993,7 +994,7 @@ Status DataServiceDispatcherImpl::CreateJob(
   // EASL - Caching decision: should the job compute, write or read from cache?
   int64 worker_count;
   std::string job_type;
-  string job_name = named_job_key.value().name;
+  string job_name = job->named_job_key.value().name;
   std::shared_ptr<const Dataset> dataset;
   TF_RETURN_IF_ERROR(state_.DatasetFromId(dataset_id, dataset));
   int64 dataset_fingerprint = dataset->fingerprint;
@@ -1066,8 +1067,8 @@ Status DataServiceDispatcherImpl::CreateJob(
   create_job->set_dataset_id(request.dataset_id());
   *create_job->mutable_processing_mode_def() = request.processing_mode_def();
   create_job->set_job_type(job_type);
-    create_job->set_num_split_providers(num_split_providers);
-    create_job->set_worker_count(worker_count);
+  create_job->set_num_split_providers(num_split_providers);
+  create_job->set_target_worker_count(worker_count);
   if (request.has_job_key()) {
     NamedJobKeyDef* key = create_job->mutable_named_job_key();
     key->set_name(request.job_key().job_name());
