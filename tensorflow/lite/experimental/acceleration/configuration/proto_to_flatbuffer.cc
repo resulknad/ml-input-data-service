@@ -197,7 +197,9 @@ Offset<NNAPISettings> ConvertNNAPISettings(const proto::NNAPISettings& settings,
       /*allow_fp16_precision_for_fp32=*/
       settings.allow_fp16_precision_for_fp32(),
       /*use_burst_computation=*/
-      settings.use_burst_computation());
+      settings.use_burst_computation(),
+      /*support_library_handle=*/
+      settings.support_library_handle());
 }
 
 Offset<GPUSettings> ConvertGPUSettings(const proto::GPUSettings& settings,
@@ -296,7 +298,8 @@ Offset<EdgeTpuSettings> ConvertEdgeTpuSettings(
       inactive_power_configs, settings.inference_priority(),
       edgetpu_device_spec, model_token,
       static_cast<tflite::EdgeTpuSettings_::FloatTruncationType>(
-          settings.float_truncation_type()));
+          settings.float_truncation_type()),
+      static_cast<tflite::EdgeTpuSettings_::QosClass>(settings.qos_class()));
 }
 
 Offset<CoralSettings> ConvertCoralSettings(const proto::CoralSettings& settings,

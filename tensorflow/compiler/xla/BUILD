@@ -17,6 +17,7 @@ package_group(
     packages = [
         "//tensorflow/compiler/...",
         "//tensorflow/python/tpu/...",
+        "//third_party/auroraml/...",
         "//third_party/iree/...",
         "//third_party/mlir_edge/model_curriculum/...",
         "//third_party/py/jax/...",
@@ -153,8 +154,6 @@ cc_library(
     hdrs = ["types.h"],
     visibility = [":friends"],
     deps = [
-        "//tensorflow/core/framework:numeric_types",
-        "//tensorflow/core/platform:types",
         "//third_party/eigen3",
     ],
 )
@@ -247,6 +246,7 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/hash",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:optional",
@@ -351,10 +351,26 @@ cc_library(
         "//tensorflow/core/platform:regexp",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/hash",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "sharding_op_util",
+    srcs = ["sharding_op_util.cc"],
+    hdrs = ["sharding_op_util.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":status_macros",
+        ":util",
+        "//tensorflow/compiler/xla/service:hlo_lexer",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -468,7 +484,7 @@ cc_library(
         ":xla_data_proto_cc",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/base",
-        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/hash",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -550,6 +566,7 @@ cc_library(
     deps = [
         ":util",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
     ],
@@ -570,6 +587,7 @@ cc_library(
     name = "array",
     srcs = ["array.cc"],
     hdrs = ["array.h"],
+    visibility = [":friends"],
     deps = [
         ":status",
         ":types",
@@ -895,6 +913,7 @@ cc_library(
             ":types",
             "//tensorflow/core:framework_internal",
             "//tensorflow/core:lib",
+            "@com_google_absl//absl/container:flat_hash_map",
             "@com_google_absl//absl/strings",
             "@com_google_absl//absl/strings:str_format",
             "@com_google_absl//absl/types:span",
@@ -962,6 +981,7 @@ tf_cc_test(
             "//tensorflow/core:framework_internal",
             "//tensorflow/core:lib",
             "//tensorflow/core:test",
+            "@com_google_absl//absl/container:flat_hash_map",
             "@com_google_absl//absl/strings",
             "@com_google_absl//absl/strings:str_format",
         ],

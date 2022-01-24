@@ -68,7 +68,7 @@ struct MarkForCompilationPassFlags {
 
   // "Compiler fuel" for clustering.  Only this many ops will be marked as
   // eligible for clustering.
-  int64 tf_xla_clustering_fuel;
+  int64_t tf_xla_clustering_fuel;
 
   // If tf_xla_disable_deadness_safety_checks_for_debugging is set to true then
   // we do not do deadness related safety checks.  This is unsound in general,
@@ -80,6 +80,10 @@ struct MarkForCompilationPassFlags {
   // variable concurrency semantics.  This is unsound in general, but can be
   // used as a debugging aid.
   bool tf_xla_disable_resource_variable_safety_checks_for_debugging;
+
+  // If true names of clustered operations will be computed deterministically
+  // so that they remain stable from run to run of auto clusteing.
+  bool tf_xla_deterministic_cluster_names;
 };
 
 // Flags associated with the XLA bridge's xla_device module.
@@ -143,6 +147,12 @@ struct MlirCommonFlags {
   ConfigProto::Experimental::MlirBridgeRollout tf_mlir_enable_mlir_bridge;
 
   bool tf_mlir_enable_merge_control_flow_pass;
+  bool tf_mlir_enable_convert_control_to_data_outputs_pass;
+};
+
+// Flags for the JitRt pipeline -- see tf_jitrt_pipeline.h for details.
+struct JitRtFlags {
+  bool vectorize;
 };
 
 // Return a pointer to the DumpGraphFlags struct;
@@ -161,6 +171,10 @@ const IntroduceFloatingPointJitterPassFlags&
 GetIntroduceFloatingPointJitterPassFlags();
 
 MlirCommonFlags* GetMlirCommonFlags();
+
+void ResetJitCompilerFlags();
+
+const JitRtFlags& GetJitRtFlags();
 
 // Returns the effective MLIR bridge rollout state based on the flags and the
 // optional configuration.

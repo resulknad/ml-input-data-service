@@ -22,8 +22,8 @@ import warnings
 import weakref
 
 from tensorflow.python.autograph.lang import directives
-from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import values as ds_values
@@ -87,11 +87,6 @@ try:
   import h5py
 except ImportError:
   h5py = None
-
-try:
-  import yaml
-except ImportError:
-  yaml = None
 # pylint: enable=g-import-not-at-top
 
 
@@ -1704,8 +1699,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       if (self._in_multi_worker_mode() or _is_tpu_multi_host(
           self.distribute_strategy)) and isinstance(x, dataset_types):
         try:
-          options = dataset_ops.Options()
-          data_option = distribute_options.AutoShardPolicy.DATA
+          options = options_lib.Options()
+          data_option = options_lib.AutoShardPolicy.DATA
           options.experimental_distribute.auto_shard_policy = data_option
           x = x.with_options(options)
         except ValueError:
@@ -2416,6 +2411,9 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
   def to_yaml(self, **kwargs):
     """Returns a yaml string containing the network configuration.
 
+    Note: Since TF 2.6, this method is no longer supported and will raise a
+    RuntimeError.
+
     To load a network from a yaml save file, use
     `keras.models.model_from_yaml(yaml_string, custom_objects={})`.
 
@@ -2431,12 +2429,12 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         A YAML string.
 
     Raises:
-        ImportError: if yaml module is not found.
+        RuntimeError: announces that the method poses a security risk
     """
-    if yaml is None:
-      raise ImportError(
-          'Requires yaml module installed (`pip install pyyaml`).')
-    return yaml.dump(self._updated_config(), **kwargs)
+    raise RuntimeError(
+        'Method `model.to_yaml()` has been removed due to security risk of '
+        'arbitrary code execution. Please use `model.to_json()` instead.'
+    )
 
   def reset_states(self):
     for layer in self.layers:
@@ -2736,23 +2734,27 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
   def _trackable_saved_model_saver(self):
     return model_serialization.ModelSavedModelSaver(self)
 
-  def _list_functions_for_serialization(self, serialization_cache):
-    # SavedModel needs to ignore the execution functions.
-    train_function = self.train_function
-    test_function = self.test_function
-    predict_function = self.predict_function
-    train_tf_function = self.train_tf_function
-    self.train_function = None
-    self.test_function = None
-    self.predict_function = None
-    self.train_tf_function = None
-    functions = super(
-        Model, self)._list_functions_for_serialization(serialization_cache)
-    self.train_function = train_function
-    self.test_function = test_function
-    self.predict_function = predict_function
-    self.train_tf_function = train_tf_function
-    return functions
+  def _trackable_children(self, save_type='checkpoint', **kwargs):
+    if save_type == 'savedmodel':
+      # SavedModel needs to ignore the execution functions.
+      train_function = self.train_function
+      test_function = self.test_function
+      predict_function = self.predict_function
+      train_tf_function = self.train_tf_function
+      self.train_function = None
+      self.test_function = None
+      self.predict_function = None
+      self.train_tf_function = None
+
+    children = super(Model, self)._trackable_children(save_type, **kwargs)
+
+    if save_type == 'savedmodel':
+      self.train_function = train_function
+      self.test_function = test_function
+      self.predict_function = predict_function
+      self.train_tf_function = train_tf_function
+
+    return children
 
   def _should_eval(self, epoch, validation_freq):
     epoch = epoch + 1  # one-index the user-facing epoch.

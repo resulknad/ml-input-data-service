@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/stream_executor/gpu/gpu_stream.h"
 
 namespace xla {
 namespace gpu {
@@ -46,8 +47,7 @@ Status RunAllReduce(const NcclAllReduceConfig& config,
 
   ncclRedOp_t reduce_op = ToNcclReduction(config.reduction_kind);
 
-  cudaStream_t* cu_stream = reinterpret_cast<cudaStream_t*>(
-      stream.implementation()->GpuStreamMemberHack());
+  se::gpu::GpuStreamHandle gpu_stream = se::gpu::AsGpuStreamValue(&stream);
 
   XLA_CUDA_RETURN_IF_ERROR(ncclGroupStart());
   for (size_t i = 0; i < buffers.size(); ++i) {
@@ -67,11 +67,11 @@ Status RunAllReduce(const NcclAllReduceConfig& config,
         "Calling ncclAllReduce(send_buffer=%p, recv_buffer=%p, count=%d, "
         "comm=%p, stream=%p)",
         send_buffer, recv_buffer, element_count, static_cast<const void*>(comm),
-        cu_stream);
+        gpu_stream);
 
     XLA_CUDA_RETURN_IF_ERROR(ncclAllReduce(send_buffer, recv_buffer,
                                            element_count, dtype, reduce_op,
-                                           comm, *cu_stream));
+                                           comm, gpu_stream));
   }
   return XLA_CUDA_STATUS(ncclGroupEnd());
 #else   // XLA_ENABLE_XCCL
@@ -133,7 +133,44 @@ StatusOr<mlir::Operation*> FindReductionOp(mlir::Block& block) {
   return reduction_op;
 }
 
-absl::optional<ReductionKind> MatchAllReduceComputation(
+}  // namespace
+
+namespace impl {
+
+template <typename OpT>
+bool CanImplement(OpT op) {
+  return absl::c_all_of(op.operands(), IsValidOperand) &&
+         NcclAllReduceThunkBase::MatchAllReduceComputation(op.computation())
+             .has_value();
+}
+
+template <typename OpT>
+NcclAllReduceConfig GetNcclAllReduceConfig(OpT op) {
+  absl::optional<ReductionKind> reduction_kind =
+      NcclAllReduceThunkBase::MatchAllReduceComputation(op.computation());
+  CHECK(reduction_kind.has_value());
+
+  NcclAllReduceConfig config;
+  config.config =
+      GetNcclCollectiveConfigForMlir(op, op.use_global_device_ids());
+  config.reduction_kind = *reduction_kind;
+  return config;
+}
+
+template <typename OpT>
+bool IsDegenerate(OpT op, int64_t replica_count, int64_t partition_count) {
+  return GetNcclCollectiveConfigForMlir(op, op.use_global_device_ids())
+      .IsDegenerate(replica_count, partition_count);
+}
+
+template <typename OpT>
+CollectiveOpGroupMode GetGroupMode(OpT op) {
+  return GetNcclAllReduceConfig(op).config.group_mode;
+}
+
+}  // namespace impl
+
+absl::optional<ReductionKind> NcclAllReduceThunkBase::MatchAllReduceComputation(
     mlir::Region& computation) {
   mlir::Block& block = computation.front();
   StatusOr<mlir::Operation*> reduction_op = FindReductionOp(block);
@@ -175,42 +212,6 @@ absl::optional<ReductionKind> MatchAllReduceComputation(
     }
   }
 }
-
-}  // namespace
-
-namespace impl {
-
-template <typename OpT>
-bool CanImplement(OpT op) {
-  return absl::c_all_of(op.operands(), IsValidOperand) &&
-         MatchAllReduceComputation(op.computation()).has_value();
-}
-
-template <typename OpT>
-NcclAllReduceConfig GetNcclAllReduceConfig(OpT op) {
-  absl::optional<ReductionKind> reduction_kind =
-      MatchAllReduceComputation(op.computation());
-  CHECK(reduction_kind.has_value());
-
-  NcclAllReduceConfig config;
-  config.config =
-      GetNcclCollectiveConfigForMlir(op, op.use_global_device_ids());
-  config.reduction_kind = *reduction_kind;
-  return config;
-}
-
-template <typename OpT>
-bool IsDegenerate(OpT op, int64_t replica_count, int64_t partition_count) {
-  return GetNcclCollectiveConfigForMlir(op, op.use_global_device_ids())
-      .IsDegenerate(replica_count, partition_count);
-}
-
-template <typename OpT>
-CollectiveOpGroupMode GetGroupMode(OpT op) {
-  return GetNcclAllReduceConfig(op).config.group_mode;
-}
-
-}  // namespace impl
 
 NcclAllReduceThunkBase::NcclAllReduceThunkBase(Thunk::Kind kind,
                                                ThunkInfo thunk_info,
@@ -356,8 +357,8 @@ Status NcclReduceScatterThunk::RunNcclCollective(const ExecuteParams& params,
 
   ncclRedOp_t reduce_op = ToNcclReduction(config_.reduction_kind);
 
-  cudaStream_t* cu_stream = reinterpret_cast<cudaStream_t*>(
-      params.stream->implementation()->GpuStreamMemberHack());
+  se::gpu::GpuStreamHandle gpu_stream =
+      se::gpu::AsGpuStreamValue(params.stream);
 
   int num_participants = 0;
   XLA_CUDA_RETURN_IF_ERROR(ncclCommCount(comm, &num_participants));
@@ -390,10 +391,10 @@ Status NcclReduceScatterThunk::RunNcclCollective(const ExecuteParams& params,
         "recvcount=%d, "
         "comm=%p, stream=%p)",
         send_buffer, recv_buffer, recv_count, static_cast<const void*>(comm),
-        cu_stream);
+        gpu_stream);
     XLA_CUDA_RETURN_IF_ERROR(ncclReduceScatter(send_buffer, recv_buffer,
                                                recv_count, dtype, reduce_op,
-                                               comm, *cu_stream));
+                                               comm, gpu_stream));
   }
   XLA_CUDA_RETURN_IF_ERROR(ncclGroupEnd());
 

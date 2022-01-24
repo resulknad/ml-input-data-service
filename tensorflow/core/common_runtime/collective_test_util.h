@@ -75,6 +75,7 @@ struct CollectiveTestEnv {
   int num_workers;
   int num_devices_per_worker;
   DeviceType device_type;
+  std::unique_ptr<ParamResolverInterface> param_resolver;
   std::unique_ptr<TestCollectiveExecutorMgr> col_exec_mgr;
   std::shared_ptr<UnboundedWorkQueue> work_queue;
   std::unique_ptr<tensorflow::DeviceMgr> device_mgr;
@@ -90,7 +91,8 @@ std::unique_ptr<CollectiveTestEnv> CreateCollectiveTestEnv(
 
 core::RefCountPtr<CollectiveParams> CreateCollectiveParams(
     const CollectiveTestEnv& test_env, int rank, const string& collective_name,
-    CollectiveType collective_type, DataType dtype, const TensorShape& shape);
+    CollectiveType collective_type, DataType dtype, const TensorShape& shape,
+    const std::vector<std::vector<int>> user_specified_rank_per_worker = {{}});
 
 std::vector<int> GenerateEvenSubdivOffsets(int num_devices_per_worker,
                                            int num_subdivs);

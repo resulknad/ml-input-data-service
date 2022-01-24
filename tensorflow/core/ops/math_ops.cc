@@ -226,6 +226,14 @@ REGISTER_OP("ComplexAbs")
           "complex64, complex128}")                                        \
       .SetShapeFn(shape_inference::UnchangedShape)
 
+#define UNARY_UNSIGNED()                                                   \
+  Input("x: T")                                                            \
+      .Output("y: T")                                                      \
+      .Attr(                                                               \
+          "T: {bfloat16, half, float, double, int8, int16, int32, int64, " \
+          "uint8, uint16, uint32, uint64, complex64, complex128}")         \
+      .SetShapeFn(shape_inference::UnchangedShape)
+
 #define UNARY_REAL()                              \
   Input("x: T")                                   \
       .Output("y: T")                             \
@@ -255,7 +263,7 @@ REGISTER_OP("Reciprocal").UNARY();
 
 REGISTER_OP("ReciprocalGrad").UNARY_GRADIENT_COMPLEX();
 
-REGISTER_OP("Square").UNARY();
+REGISTER_OP("Square").UNARY_UNSIGNED();
 
 REGISTER_OP("Sqrt").UNARY_COMPLEX();
 
@@ -840,8 +848,8 @@ REGISTER_OP("Select")
 
       // rank of shape and data is known.
 
-      const int32 cond_rank = c->Rank(cond);
-      const int32 data_rank = c->Rank(data);
+      const int32_t cond_rank = c->Rank(cond);
+      const int32_t data_rank = c->Rank(data);
 
       if (cond_rank == 0) {
         // The rank of 'cond' is a scalar.
@@ -1072,7 +1080,7 @@ Status ArgOpShape(shape_inference::InferenceContext* c) {
     return shape_inference::UnknownShape(c);
   }
 
-  const int32 input_rank = c->Rank(input_shape);
+  const int32_t input_rank = c->Rank(input_shape);
   if (input_rank <= 1) {
     // Reducing a scalar/vector must return a scalar.
     return shape_inference::ScalarShape(c);
@@ -1096,7 +1104,7 @@ Status ArgOpShape(shape_inference::InferenceContext* c) {
   if (dim_t->dtype() == DT_INT32) {
     dimension_val = dim_t->scalar<int32>()();
   } else {
-    dimension_val = dim_t->scalar<int64>()();
+    dimension_val = dim_t->scalar<int64_t>()();
   }
 
   int64_t axis = dimension_val < 0 ? dimension_val + input_rank : dimension_val;
@@ -1481,7 +1489,14 @@ Status RangeSize(const Tensor* start_t, const Tensor* limit_t,
                       Eigen::numext::abs(delta))
                    : (Eigen::numext::ceil(
                          Eigen::numext::abs((limit - start) / delta))));
-  c->set_output(0, c->Vector(static_cast<int64>(size)));
+
+  // Undefined behaviour if size will not fit into int64_t
+  if (size > std::numeric_limits<int64_t>::max()) {
+    return errors::InvalidArgument("Requires ((limit - start) / delta) <= ",
+                                   std::numeric_limits<int64_t>::max());
+  }
+
+  c->set_output(0, c->Vector(static_cast<int64_t>(size)));
   return Status::OK();
 }
 
@@ -1520,7 +1535,7 @@ REGISTER_OP("Range")
       } else if (dtype == DT_INT8) {
         return RangeSize<int8>(start_t, limit_t, delta_t, c);
       } else if (dtype == DT_INT64) {
-        return RangeSize<int64>(start_t, limit_t, delta_t, c);
+        return RangeSize<int64_t>(start_t, limit_t, delta_t, c);
       } else if (dtype == DT_UINT32) {
         return RangeSize<uint32>(start_t, limit_t, delta_t, c);
       } else if (dtype == DT_FLOAT) {
@@ -1560,7 +1575,7 @@ REGISTER_OP("LinSpace")
       if (num_t->dtype() == DT_INT32) {
         num = num_t->scalar<int32>()();
       } else {
-        num = num_t->scalar<int64>()();
+        num = num_t->scalar<int64_t>()();
       }
       if (num <= 0) return errors::InvalidArgument("Requires num > 0: ", num);
       c->set_output(0, c->Vector(num));
@@ -1691,8 +1706,13 @@ REGISTER_OP("Bincount")
         return Status::OK();
       }
 
+      if (size_tensor->dims() != 0) {
+        return errors::InvalidArgument("Shape must be rank 0 but is rank ",
+                                       size_tensor->dims());
+      }
+
       // Return `[size]` shape if size is known.
-      int32 size_val = size_tensor->scalar<int32>()();
+      int32_t size_val = size_tensor->scalar<int32>()();
       if (size_val < 0) {
         return errors::InvalidArgument("size (", size_val,
                                        ") must be non-negative");
@@ -1722,14 +1742,18 @@ REGISTER_OP("DenseBincount")
         c->set_output(0, c->UnknownShape());
         return Status::OK();
       }
+      if (size_tensor->dims() != 0) {
+        return errors::InvalidArgument("Shape must be rank 0 but is rank ",
+                                       size_tensor->dims());
+      }
 
       int64_t size_val;
       DataType dtype;
       TF_RETURN_IF_ERROR(c->GetAttr("Tidx", &dtype));
       if (dtype == DT_INT32) {
-        size_val = static_cast<int64>(size_tensor->scalar<int32>()());
+        size_val = static_cast<int64_t>(size_tensor->scalar<int32>()());
       } else if (dtype == DT_INT64) {
-        size_val = size_tensor->scalar<int64>()();
+        size_val = size_tensor->scalar<int64_t>()();
       } else {
         return errors::InvalidArgument("size dtype must be int32 or int64");
       }
@@ -1763,14 +1787,18 @@ REGISTER_OP("SparseBincount")
         c->set_output(0, c->UnknownShape());
         return Status::OK();
       }
+      if (size_tensor->dims() != 0) {
+        return errors::InvalidArgument("Shape must be rank 0 but is rank ",
+                                       size_tensor->dims());
+      }
 
       int64_t size_val;
       DataType dtype;
       TF_RETURN_IF_ERROR(c->GetAttr("Tidx", &dtype));
       if (dtype == DT_INT32) {
-        size_val = static_cast<int64>(size_tensor->scalar<int32>()());
+        size_val = static_cast<int64_t>(size_tensor->scalar<int32>()());
       } else if (dtype == DT_INT64) {
-        size_val = size_tensor->scalar<int64>()();
+        size_val = size_tensor->scalar<int64_t>()();
       } else {
         return errors::InvalidArgument("size dtype must be int32 or int64");
       }
@@ -1789,8 +1817,8 @@ REGISTER_OP("SparseBincount")
       if (shape_tensor->NumElements() == 1) {
         c->set_output(0, c->MakeShape({size_val}));
       } else if (shape_tensor->NumElements() == 2) {
-        c->set_output(0,
-                      c->MakeShape({shape_tensor->flat<int64>()(0), size_val}));
+        c->set_output(
+            0, c->MakeShape({shape_tensor->flat<int64_t>()(0), size_val}));
       } else {
         return errors::InvalidArgument("Input must be less than rank 2");
       }
@@ -2083,12 +2111,12 @@ REGISTER_OP("SobolSample")
       const Tensor* dim_t = c->input_tensor(0);
       const Tensor* num_results_t = c->input_tensor(1);
 
-      int32 dim = dim_t == nullptr ? InferenceContext::kUnknownDim
-                                   : dim_t->scalar<int32>()();
+      int32_t dim = dim_t == nullptr ? InferenceContext::kUnknownDim
+                                     : dim_t->scalar<int32>()();
 
-      int32 num_results = num_results_t == nullptr
-                              ? InferenceContext::kUnknownDim
-                              : num_results_t->scalar<int32>()();
+      int32_t num_results = num_results_t == nullptr
+                                ? InferenceContext::kUnknownDim
+                                : num_results_t->scalar<int32>()();
 
       c->set_output(0, c->Matrix(num_results, dim));
       return Status::OK();

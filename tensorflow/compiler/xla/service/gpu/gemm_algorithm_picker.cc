@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_comparator.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_asm_opts_util.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -65,15 +66,19 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoUncachedGemmAutotune(
   }
 
   const HloModuleConfig& hlo_module_config = gemm->GetModule()->config();
-  const int32 cublas_autotune_level =
+  const int32_t cublas_autotune_level =
       gemm->GetModule()->config().debug_options().xla_gpu_autotune_level();
   const bool init_cublas_data = cublas_autotune_level >= 2;
   const bool reinit_cublas_data = cublas_autotune_level >= 3;
   const bool check_cublas = cublas_autotune_level >= 4;
 
+  const int64_t redzone_size =
+      check_cublas ? se::RedzoneAllocator::kDefaultRedzoneSize : 0;
   se::RedzoneAllocator input_output_allocator(
-      stream, allocator, PtxOptsFromConfig(hlo_module_config),
-      /*memory_limit=*/std::numeric_limits<int64>::max());
+      stream, allocator,
+      PtxOptsFromDebugOptions(hlo_module_config.debug_options()),
+      /*memory_limit=*/std::numeric_limits<int64_t>::max(),
+      /*redzone_size=*/redzone_size);
 
   BufferComparator comparator(gemm->shape(), hlo_module_config);
 
@@ -134,7 +139,6 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoUncachedGemmAutotune(
     Status st = RunGemm(config, lhs_buffer, rhs_buffer, output_buffer, stream,
                         /*implements_whole_instruction=*/true,
                         /*profile_index=*/-1,
-                        /*profiler=*/nullptr,
                         /*profile_result=*/&profile_result, algorithm);
     CHECK(st.ok()) << st.ToString();
 
@@ -243,6 +247,16 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
   cache_misses++;
   VLOG(4) << "Autotuning cache miss";
 
+  // Make sure any previous activity on this executor is done. We don't want
+  // other work still running on the GPU to interfere with autotuning.
+  if (!stream->parent()->SynchronizeAllActivity()) {
+    auto options = HloPrintOptions::Canonical();
+    options.set_print_backend_config(true);
+    return InternalError(
+        "Failed to synchronize GPU for autotuning gemm instruction: %s",
+        instr->ToString(options));
+  }
+
   TF_ASSIGN_OR_RETURN(absl::optional<se::blas::AlgorithmType> result,
                       DoUncachedGemmAutotune(instr, stream, allocator));
 
@@ -269,6 +283,8 @@ static StatusOr<bool> RunOnInstruction(HloInstruction* instr,
   // a different API is used, which does not require specifying an algorithm.
   GemmBackendConfig updated_config = gemm_config;
   if (gemm_algorithm) {
+    VLOG(4) << "GEMM autotuning picked algorithm " << *gemm_algorithm << " for "
+            << instr->name();
     updated_config.set_selected_algorithm(*gemm_algorithm);
   }
   TF_RETURN_IF_ERROR(instr->set_backend_config(updated_config));

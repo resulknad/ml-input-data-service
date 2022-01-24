@@ -2,7 +2,10 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 
 package(
-    default_visibility = ["//tensorflow/compiler/tf2xla:internal"],
+    default_visibility = [
+        "//tensorflow/compiler/tf2xla:internal",
+        "//third_party/cloud_tpu/inference_converter:__subpackages__",
+    ],
     licenses = ["notice"],
 )
 
@@ -101,6 +104,7 @@ tf_kernel_library(
         "shape_op.cc",
         "shape_util.cc",
         "sharding_op.cc",
+        "sharding_util_ops.cc",
         "slice_op.cc",
         "softmax_op.cc",
         "sort_ops.cc",
@@ -117,6 +121,7 @@ tf_kernel_library(
         "tensor_array_ops.cc",
         "tensor_list_ops.cc",
         "tile_ops.cc",
+        "to_bool_op.cc",
         "topk_op.cc",
         "training_ops.cc",
         "transpose_op.cc",
@@ -170,6 +175,7 @@ tf_kernel_library(
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:sharding_op_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
@@ -180,6 +186,7 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client/lib:arithmetic",
         "//tensorflow/compiler/xla/client/lib:comparators",
         "//tensorflow/compiler/xla/client/lib:constants",
+        "//tensorflow/compiler/xla/client/lib:dynamic_shaped_ops",
         "//tensorflow/compiler/xla/client/lib:loops",
         "//tensorflow/compiler/xla/client/lib:math",
         "//tensorflow/compiler/xla/client/lib:matrix",
@@ -195,6 +202,8 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/kernels:resource_variable_util",
+        "//tensorflow/core/kernels:scatter_nd_util",
         "//tensorflow/core/kernels:stateful_random_ops_header",
         "//tensorflow/core/kernels:stateless_random_ops_v2_header",
         "//tensorflow/core/tpu:tpu_defs",
@@ -215,6 +224,7 @@ tf_kernel_library(
 cc_library(
     name = "resampler_ops",
     srcs = ["resampler_ops.cc"],
+    hdrs = ["resampler_ops.h"],
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/tf2xla:common",
@@ -229,6 +239,21 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+    ],
+    alwayslink = 1,
+)
+
+# See note on resampler_ops target for why this is also a seprate op.
+cc_library(
+    name = "resampler_addon_ops",
+    srcs = ["resampler_addon_ops.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":resampler_ops",
+        "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla:xla_helpers",
+        "//tensorflow/compiler/tf2xla:xla_op_registry",
     ],
     alwayslink = 1,
 )
@@ -325,6 +350,7 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client/lib:dynamic_shaped_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -346,6 +372,7 @@ tf_kernel_library(
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:constants",
+        "//tensorflow/compiler/xla/client/lib:dynamic_shaped_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",

@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/flatbuffer_import.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
+#include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
@@ -54,11 +55,11 @@ TfLiteStatus QuantizeModel(
     flatbuffers::FlatBufferBuilder* builder,
     tflite::ErrorReporter* error_reporter, bool verify_numeric,
     bool whole_model_verify, bool legacy_float_scale,
-    const StringSet& blocklisted_ops, const StringSet& blocklisted_nodes) {
+    const StringSet& denylisted_ops, const StringSet& denylisted_nodes) {
   // Translate TFLite names to mlir op names.
-  StringSet blocklisted_mlir_op_names;
-  for (const auto& entry : blocklisted_ops) {
-    blocklisted_mlir_op_names.insert(TfLiteToMlir(entry));
+  StringSet denylisted_mlir_op_names;
+  for (const auto& entry : denylisted_ops) {
+    denylisted_mlir_op_names.insert(TfLiteToMlir(entry));
   }
 
   DialectRegistry registry;
@@ -93,6 +94,8 @@ TfLiteStatus QuantizeModel(
   quant_specs.verify_numeric = verify_numeric;
   quant_specs.whole_model_verify = whole_model_verify;
   quant_specs.legacy_float_scale = legacy_float_scale;
+  quant_specs.ops_blocklist = denylisted_mlir_op_names;
+  quant_specs.nodes_blocklist = denylisted_nodes;
 
   llvm::dbgs() << "fully_quantize: " << fully_quantize
                << ", inference_type: " << quant_specs.inference_type
@@ -109,17 +112,10 @@ TfLiteStatus QuantizeModel(
     output_mlir_type = input_mlir_type;
   }
 
-  pm.addPass(TFL::CreatePrepareQuantizePass(quant_specs));
-  pm.addPass(TFL::CreateQuantizePass(
-      verify_numeric, whole_model_verify, legacy_float_scale,
-      blocklisted_mlir_op_names, blocklisted_nodes));
-  pm.addPass(TFL::CreatePostQuantizePass(/*emit_quant_adaptor_ops=*/true));
-  pm.addPass(TFL::CreateOptimizeOpOrderPass());
+  tensorflow::AddQuantizationPasses(quant_specs, pm);
   pm.addPass(TFL::CreateModifyIONodesPass(input_mlir_type, output_mlir_type));
-  if (!blocklisted_ops.empty() || !blocklisted_nodes.empty()) {
-    // If the first or final ops are not quantized, remove QDQ.
-    pm.addPass(TFL::CreatePostQuantizeRemoveQDQPass());
-  }
+  // If the first or final ops are not quantized, remove QDQ.
+  pm.addPass(TFL::CreatePostQuantizeRemoveQDQPass());
   if (failed(pm.run(module.get()))) {
     const std::string& err = statusHandler.ConsumeStatus().error_message();
     error_reporter->Report("Failed to quantize: %s", err.c_str());
@@ -129,9 +125,9 @@ TfLiteStatus QuantizeModel(
   // Export the results to the builder
   std::string result;
   tflite::FlatbufferExportOptions options;
-  options.emit_builtin_tflite_ops = true;
-  options.emit_select_tf_ops = true;
-  options.emit_custom_ops = true;
+  options.toco_flags.set_force_select_tf_ops(false);
+  options.toco_flags.set_enable_select_tf_ops(true);
+  options.toco_flags.set_allow_custom_ops(true);
   if (!tflite::MlirToFlatBufferTranslateFunction(module.get(), options,
                                                  &result)) {
     error_reporter->Report("Failed to export MLIR to flatbuffer.");

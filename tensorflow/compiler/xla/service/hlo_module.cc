@@ -19,8 +19,6 @@ limitations under the License.
 #include <iterator>
 #include <set>
 #include <sstream>
-#include <unordered_map>
-#include <unordered_set>
 #include <utility>
 
 #include "absl/algorithm/container.h"
@@ -29,21 +27,22 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/map_util.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_schedule.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/stacktrace.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
-HloModule::HloModule(const string& name, HloModuleConfig config)
+HloModule::HloModule(const std::string& name, HloModuleConfig config)
     : name_(NameUniquer::GetSanitizedName(name)),
       config_(std::move(config)),
       unique_id_(next_unique_module_id_++),
@@ -235,7 +234,7 @@ void HloModule::ReplaceComputations(
   computations_ = std::move(new_computations);
 }
 
-string HloModule::ToString(const HloPrintOptions& options) const {
+std::string HloModule::ToString(const HloPrintOptions& options) const {
   std::ostringstream s;
   // When print_ids() is false, exclude module's name because it includes and
   // leads to non-deterministic fingerprint.
@@ -248,6 +247,12 @@ string HloModule::ToString(const HloPrintOptions& options) const {
   std::string serialized_aliasing = input_output_alias_config().ToShortString();
   if (!serialized_aliasing.empty()) {
     s << absl::StrFormat(", input_output_alias={ %s }", serialized_aliasing);
+  }
+  if (config_.alias_passthrough_params()) {
+    s << ", alias_passthrough_params=true";
+  }
+  if (config_.allow_spmd_sharding_propagation_to_output()) {
+    s << ", allow_spmd_sharding_propagation_to_output=true";
   }
   s << "\n\n";
   const auto& computations = options.canonicalize_computations()
@@ -299,13 +304,23 @@ HloModuleProto HloModule::ToProto() const {
     }
   }
   proto.set_is_dynamic(is_dynamic_);
+  if (has_spmd_output_sharding()) {
+    *proto.mutable_spmd_output_sharding() = spmd_output_sharding().ToProto();
+  }
+
+  for (const HloModuleProto::ProfileInfo& profile_info : profile_info_list_) {
+    HloModuleProto::ProfileInfo& profile_info_proto =
+        *proto.mutable_profile_info()->Add();
+    profile_info_proto.set_profile_type(profile_info.profile_type());
+    profile_info_proto.set_relative_speedup(profile_info.relative_speedup());
+  }
   return proto;
 }
 
 Status HloModule::CheckUniqueNamesAndIdsForComputationsAndInstructions() const {
-  absl::flat_hash_set<string> computation_names;
+  absl::flat_hash_set<std::string> computation_names;
   absl::flat_hash_set<int> computation_ids;
-  absl::flat_hash_set<string> instruction_names;
+  absl::flat_hash_set<std::string> instruction_names;
   absl::flat_hash_set<int> instruction_ids;
 
   for (const HloComputation* computation : computations()) {
@@ -364,8 +379,8 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
       << ShapeUtil::HumanStringWithLayout(expected_program_shape.result())
       << ", actual: " << ShapeUtil::HumanStringWithLayout(result_shape);
 
-  absl::flat_hash_map<int64, HloComputation*> computation_map;
-  absl::flat_hash_map<HloComputation*, int64> to_proto_id;
+  absl::flat_hash_map<int64_t, HloComputation*> computation_map;
+  absl::flat_hash_map<HloComputation*, int64_t> to_proto_id;
   std::vector<std::unique_ptr<HloComputation>> computations;
   HloComputation* entry = nullptr;
   for (const HloComputationProto& computation_proto : proto.computations()) {
@@ -374,7 +389,7 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
         HloComputation::CreateFromProto(computation_proto, computation_map,
                                         prohibit_empty_literal));
     CHECK_NE(computation.get(), nullptr);
-    int64 computation_id = computation_proto.id();
+    int64_t computation_id = computation_proto.id();
     TF_RET_CHECK(computation_id != -1);
     TF_RET_CHECK(!ContainsKey(computation_map, computation_id));
     computation_map[computation_id] = computation.get();
@@ -434,6 +449,11 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
 
   module->set_is_dynamic(proto.is_dynamic());
 
+  if (proto.has_spmd_output_sharding()) {
+    TF_ASSIGN_OR_RETURN(HloSharding hlo_sharding,
+                        HloSharding::FromProto(proto.spmd_output_sharding()));
+    module->set_spmd_output_sharding(hlo_sharding);
+  }
   return std::move(module);
 }
 
@@ -453,6 +473,8 @@ StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromShape(
     module_config.set_use_spmd_partitioning(
         execution_options->use_spmd_partitioning());
     module_config.set_deduplicate_hlo(execution_options->deduplicate_hlo());
+    module_config.set_allow_spmd_sharding_propagation_to_output(
+        execution_options->allow_spmd_sharding_propagation_to_output());
     if (execution_options->has_device_assignment()) {
       TF_ASSIGN_OR_RETURN(std::unique_ptr<DeviceAssignment> device_assignment,
                           DeviceAssignment::Deserialize(
@@ -473,7 +495,7 @@ StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromShape(
   // passed in via the ProgramShape. Set the layouts to the appropriate values.
   ComputationLayout* entry_layout =
       module_config.mutable_entry_computation_layout();
-  for (int64 i = 0; i < entry_layout->parameter_count(); ++i) {
+  for (int64_t i = 0; i < entry_layout->parameter_count(); ++i) {
     TF_RETURN_IF_ERROR(
         entry_layout->mutable_parameter_layout(i)->CopyLayoutFromShape(
             program_shape.parameters(i)));
@@ -509,7 +531,7 @@ bool IsUsedOutsideSubcomputation(const HloInstruction& hlo,
 
 HloInstruction* HloModule::OutlineExpressionFromComputation(
     absl::Span<HloInstruction* const> instructions_to_outline,
-    const string& outlined_computation_name, HloComputation* computation) {
+    const std::string& outlined_computation_name, HloComputation* computation) {
   auto builder = HloComputation::Builder(outlined_computation_name);
 
   // A map from original instructions to their counterparts in the new outlined
@@ -520,14 +542,14 @@ HloInstruction* HloModule::OutlineExpressionFromComputation(
       instructions_to_outline.begin(), instructions_to_outline.end());
   std::vector<HloInstruction*> arguments;
   std::vector<HloInstruction*> outputs;
-  int64 parameter_count = 0;
+  int64_t parameter_count = 0;
   for (HloInstruction* instruction_to_outline : instructions_to_outline) {
     // Clone the original instruction.
     HloInstruction* outlined_instruction =
         builder.AddInstruction(instruction_to_outline->Clone());
 
     // Replace its operands to their counterparts in the new function.
-    for (int64 operand_num = 0;
+    for (int64_t operand_num = 0;
          operand_num < outlined_instruction->operand_count(); ++operand_num) {
       HloInstruction* old_operand =
           outlined_instruction->mutable_operand(operand_num);
@@ -562,7 +584,7 @@ HloInstruction* HloModule::OutlineExpressionFromComputation(
   }
 
   if (outputs.size() != 1) {
-    string error_message =
+    std::string error_message =
         "The subcomputation to outline has multiple outputs:\n";
     for (HloInstruction* output : outputs) {
       absl::StrAppend(&error_message, output->ToString(), "\n");
@@ -593,8 +615,8 @@ HloInstruction* HloModule::OutlineExpressionFromComputation(
   return call;
 }
 
-int64 HloModule::instruction_count() const {
-  int64 n = 0;
+int64_t HloModule::instruction_count() const {
+  int64_t n = 0;
   for (const auto& computation : computations_) {
     n += computation->instruction_count();
   }
@@ -618,10 +640,14 @@ std::vector<HloComputation*> HloModule::MakeComputationPostOrder(
 }
 
 std::vector<HloComputation*> HloModule::MakeComputationPostOrder() const {
+  if (computations_.empty()) {
+    return {};
+  }
   // First determine all root computations by building a set of nonroot
   // computations (computations which are called by an instruction in the
   // module).
   absl::flat_hash_set<HloComputation*> nonroot_computations;
+  nonroot_computations.reserve(computations_.size() - 1);
   for (auto& computation : computations_) {
     for (auto* instruction : computation->instructions()) {
       for (HloComputation* called_computation :
@@ -636,20 +662,23 @@ std::vector<HloComputation*> HloModule::MakeComputationPostOrder() const {
   // from two different root computations.
   absl::flat_hash_set<HloComputation*> added_computations;
   std::vector<HloComputation*> post_order;
+  added_computations.reserve(computations_.size());
+  post_order.reserve(computations_.size());
   for (auto& computation : computations_) {
-    if (!nonroot_computations.contains(computation.get())) {
-      for (HloComputation* embedded_computation :
-           computation->MakeEmbeddedComputationsList()) {
-        if (!added_computations.contains(embedded_computation)) {
-          post_order.push_back(embedded_computation);
-          added_computations.insert(embedded_computation);
-        }
-      }
-      // Root computations should only be encountered once.
-      CHECK(!added_computations.contains(computation.get()));
-      post_order.push_back(computation.get());
-      added_computations.insert(computation.get());
+    if (nonroot_computations.contains(computation.get())) {
+      continue;
     }
+    for (HloComputation* embedded_computation :
+         computation->MakeEmbeddedComputationsList()) {
+      if (!added_computations.contains(embedded_computation)) {
+        post_order.push_back(embedded_computation);
+        added_computations.insert(embedded_computation);
+      }
+    }
+    // Root computations should only be encountered once.
+    CHECK(!added_computations.contains(computation.get()));
+    post_order.push_back(computation.get());
+    added_computations.insert(computation.get());
   }
   if (post_order.size() != computations_.size()) {
     for (HloComputation* computation : post_order) {
@@ -676,8 +705,31 @@ bool CompareComputationsByContent(const HloComputation* a,
          b->ToString(HloPrintOptions::Fingerprint());
 }
 
+uint64_t GetFingerprint(
+    absl::flat_hash_map<const HloComputation*, uint64_t>& fingerprint_map,
+    const HloComputation* computation) {
+  auto it = fingerprint_map.find(computation);
+  if (it != fingerprint_map.end()) {
+    return it->second;
+  } else {
+    const uint64_t fingerprint = tensorflow::Fingerprint64(
+        computation->ToString(HloPrintOptions::Fingerprint()));
+    fingerprint_map[computation] = fingerprint;
+    return fingerprint;
+  }
+}
+
 void SortComputationsByContent(std::vector<HloComputation*>* computations) {
-  absl::c_sort(*computations, CompareComputationsByContent);
+  absl::flat_hash_map<const HloComputation*, uint64_t> fingerprint_map;
+  auto cmp = [&fingerprint_map](const HloComputation* a,
+                                const HloComputation* b) {
+    if (a->instruction_count() != b->instruction_count()) {
+      return a->instruction_count() < b->instruction_count();
+    }
+    return GetFingerprint(fingerprint_map, a) <
+           GetFingerprint(fingerprint_map, b);
+  };
+  absl::c_sort(*computations, cmp);
 }
 
 }  // anonymous namespace
@@ -708,12 +760,12 @@ std::vector<HloComputation*> HloModule::MakeNonfusionComputationsSorted()
   return result;
 }
 
-std::unique_ptr<HloModule> HloModule::Clone(const string& suffix) const {
+std::unique_ptr<HloModule> HloModule::Clone(const std::string& suffix) const {
   return Clone(config(), suffix);
 }
 
 std::unique_ptr<HloModule> HloModule::Clone(const HloModuleConfig& config,
-                                            const string& suffix) const {
+                                            const std::string& suffix) const {
   VLOG(1) << "Cloning module :" << name_ << " --> " << suffix << "\n";
   auto module = absl::make_unique<HloModule>(
       absl::StrCat(name_, suffix.empty() ? "" : "-", suffix), config);
@@ -785,7 +837,7 @@ HloComputation* HloModule::DeepCloneComputation(HloComputation* computation,
   return new_computation;
 }
 
-uint64 HloModule::RandomNew64() const {
+uint64_t HloModule::RandomNew64() const {
   tensorflow::mutex_lock l(rng_mutex_);
   return rng_();
 }
@@ -798,8 +850,8 @@ HloComputation* HloModule::GetComputationWithName(absl::string_view name) {
   return it == computations_in_module.end() ? nullptr : *it;
 }
 
-uint64 HloModule::Hash() const {
-  uint64 result = entry_computation_layout().Hash();
+uint64_t HloModule::Hash() const {
+  uint64_t result = entry_computation_layout().Hash();
   // Use MakeComputationSorted() instead of MakeComputationPostOrder()
   // because naming may affect the order of MakeComputationPostOrder() but not
   // MakeComputationSorted().

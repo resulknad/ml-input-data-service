@@ -14,10 +14,6 @@
 # ==============================================================================
 """Special-cased checkpointing for variables on a parallel device."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import contextlib
 import functools
 import six
@@ -75,6 +71,12 @@ class ParallelVariable(
   def __init__(self, parallel_device, wrapped_variable):
     self._self_parallel_device = parallel_device
     super(ParallelVariable, self).__init__(wrapped_variable)
+
+  def __repr__(self):
+    return repr(self.__wrapped__)
+
+  def __str__(self):
+    return str(self.__wrapped__)
 
   # TODO(allenl): Consider either adding a boolean argument for
   # save-primary-only or looking at synchronization/aggregation properties.

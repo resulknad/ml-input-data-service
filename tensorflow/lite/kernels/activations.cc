@@ -26,9 +26,11 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/cppmath.h"
+#include "tensorflow/lite/kernels/internal/optimized/integer_ops/leaky_relu.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/binary_function.h"
+#include "tensorflow/lite/kernels/internal/reference/gelu.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/log_softmax.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/logistic.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/tanh.h"
@@ -75,7 +77,7 @@ struct SoftmaxOpData {
   uint8_t uint8_table1[256];
   uint8_t uint8_table2[256];
 #endif
-  static constexpr int kInt16LUTArraySize = 513;
+  static constexpr int kInt16LUTArraySize = lut_size<int16_t>();
   int16_t exp_lut[kInt16LUTArraySize];  // int16 LUT for exp(x), where x uniform
                                         // distributed between [-10.0 , 0.0]
   int16_t one_over_one_plus_x_lut[kInt16LUTArraySize];  // int16 LUT for 1 /
@@ -390,7 +392,7 @@ TfLiteStatus TanhPrepare(TfLiteContext* context, TfLiteNode* node) {
 
       const double q =
           std::frexp(input_real_multiplier, &data->input_left_shift);
-      auto q_fixed = static_cast<int32_t>(TfLiteRound(q * (1ll << 15)));
+      auto q_fixed = static_cast<int32_t>(TfLiteRound(q * (1LL << 15)));
       data->input_multiplier = static_cast<int16_t>(q_fixed);
 
       int16_t input_range_radius =
@@ -495,7 +497,7 @@ TfLiteStatus SigmoidPrepare(TfLiteContext* context, TfLiteNode* node) {
 
       const double q =
           std::frexp(input_real_multiplier, &data->input_left_shift);
-      auto q_fixed = static_cast<int32_t>(TfLiteRound(q * (1ll << 15)));
+      auto q_fixed = static_cast<int32_t>(TfLiteRound(q * (1LL << 15)));
       data->input_multiplier = static_cast<int16_t>(q_fixed);
 
       int16_t input_range_radius =
@@ -633,11 +635,13 @@ TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
     data->params.exp_lut = data->exp_lut;
     // exp LUT only used on nagative values
     // we consider exp(-10.0) is insignificant to accumulation
-    gen_lut([](double value) { return std::exp(value); }, -10.0, 0.0,
-            data->params.exp_lut, data->kInt16LUTArraySize);
+    gen_lut<double, int16_t, int16_t>(
+        [](double value) { return std::exp(value); }, -10.0, 0.0, -1.0, 1.0,
+        data->params.exp_lut);
     data->params.one_over_one_plus_x_lut = data->one_over_one_plus_x_lut;
-    gen_lut([](double value) { return 1.0 / (1.0 + value); }, 0.0, 1.0,
-            data->params.one_over_one_plus_x_lut, data->kInt16LUTArraySize);
+    gen_lut<double, int16_t, int16_t>(
+        [](double value) { return 1.0 / (1.0 + value); }, 0.0, 1.0, -1.0, 1.0,
+        data->params.one_over_one_plus_x_lut);
     data->params.zero_point = output->params.zero_point;
     data->params.scale = output->params.scale;
 
@@ -1403,7 +1407,7 @@ TfLiteStatus PreluEval(TfLiteContext* context, TfLiteNode* node) {
   }
 }
 
-template <typename T>
+template <KernelType kernel_type, typename T>
 void QuantizeLeakyRelu(const TfLiteTensor* input, TfLiteTensor* output,
                        const LeakyReluOpData* data) {
   LeakyReluParams op_params;
@@ -1414,11 +1418,18 @@ void QuantizeLeakyRelu(const TfLiteTensor* input, TfLiteTensor* output,
   op_params.output_shift_alpha = data->output_shift_alpha;
   op_params.output_multiplier_identity = data->output_multiplier_identity;
   op_params.output_shift_identity = data->output_shift_identity;
-  reference_ops::QuantizeLeakyRelu(
-      op_params, GetTensorShape(input), GetTensorData<T>(input),
-      GetTensorShape(output), GetTensorData<T>(output));
+  if (kernel_type != KernelType::kReference && input->type == kTfLiteInt16) {
+    optimized_integer_ops::QuantizeLeakyRelu(
+        op_params, GetTensorShape(input), GetTensorData<int16>(input),
+        GetTensorShape(output), GetTensorData<int16>(output));
+  } else {
+    reference_ops::QuantizeLeakyRelu(
+        op_params, GetTensorShape(input), GetTensorData<T>(input),
+        GetTensorShape(output), GetTensorData<T>(output));
+  }
 }
 
+template <KernelType kernel_type>
 TfLiteStatus LeakyReluEval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input;
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &input));
@@ -1439,15 +1450,15 @@ TfLiteStatus LeakyReluEval(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteOk;
     }
     case kTfLiteUInt8: {
-      QuantizeLeakyRelu<uint8_t>(input, output, data);
+      QuantizeLeakyRelu<kernel_type, uint8_t>(input, output, data);
       return kTfLiteOk;
     }
     case kTfLiteInt8: {
-      QuantizeLeakyRelu<int8_t>(input, output, data);
+      QuantizeLeakyRelu<kernel_type, int8_t>(input, output, data);
       return kTfLiteOk;
     }
     case kTfLiteInt16: {
-      QuantizeLeakyRelu<int16_t>(input, output, data);
+      QuantizeLeakyRelu<kernel_type, int16_t>(input, output, data);
       return kTfLiteOk;
     }
     default:
@@ -1469,7 +1480,7 @@ TfLiteStatus EluPrepare(TfLiteContext* context, TfLiteNode* node) {
   // Use LUT to handle quantized elu path.
   if (input->type == kTfLiteInt8) {
     PopulateLookupTable<int8_t>(data, input, output, [](float value) {
-      return value < 0.0 ? std::exp(value) - 1.0f : value;
+      return value < 0.0f ? std::expm1(value) : value;
     });
   }
   return GenericPrepare(context, node);
@@ -1497,6 +1508,53 @@ TfLiteStatus EluEval(TfLiteContext* context, TfLiteNode* node) {
           TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
+}
+
+TfLiteStatus GeluPrepare(TfLiteContext* context, TfLiteNode* node) {
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &input));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
+  OpData* data = reinterpret_cast<OpData*>(node->user_data);
+  auto* params = reinterpret_cast<TfLiteGeluParams*>(node->builtin_data);
+
+  if (input->type == kTfLiteInt8) {
+    PopulateLookupTable<int8_t>(
+        data, input, output, reference_ops::GeluTransform(params->approximate));
+  } else if (input->type == kTfLiteUInt8) {
+    PopulateLookupTable<uint8_t>(
+        data, input, output, reference_ops::GeluTransform(params->approximate));
+  }
+  return GenericPrepare(context, node);
+}
+
+TfLiteStatus GeluEval(TfLiteContext* context, TfLiteNode* node) {
+  auto* params = reinterpret_cast<TfLiteGeluParams*>(node->builtin_data);
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &input));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
+
+  switch (input->type) {
+    case kTfLiteFloat32: {
+      reference_ops::Gelu(GetTensorShape(input), GetTensorData<float>(input),
+                          params->approximate, GetTensorShape(output),
+                          GetTensorData<float>(output));
+      return kTfLiteOk;
+    }
+    case kTfLiteInt8:
+    case kTfLiteUInt8: {
+      OpData* data = reinterpret_cast<OpData*>(node->user_data);
+      EvalUsingLookupTable(data, input, output);
+      return kTfLiteOk;
+    }
+    default:
+      TF_LITE_KERNEL_LOG(
+          context, "Only float32, int8 and uint8 supported currently, got %s.",
+          TfLiteTypeGetName(input->type));
+      return kTfLiteError;
+  }
+  return kTfLiteOk;
 }
 
 }  // namespace activations
@@ -1636,10 +1694,19 @@ TfLiteRegistration* Register_PRELU() {
   return &r;
 }
 
+TfLiteRegistration* Register_LEAKY_RELU_REF() {
+  static TfLiteRegistration r = {
+      activations::LeakyReluInit, activations::LeakyReluFree,
+      activations::LeakyReluPrepare,
+      activations::LeakyReluEval<activations::kReference>};
+  return &r;
+}
+
 TfLiteRegistration* Register_LEAKY_RELU() {
   static TfLiteRegistration r = {
       activations::LeakyReluInit, activations::LeakyReluFree,
-      activations::LeakyReluPrepare, activations::LeakyReluEval};
+      activations::LeakyReluPrepare,
+      activations::LeakyReluEval<activations::kGenericOptimized>};
   return &r;
 }
 
@@ -1656,6 +1723,13 @@ TfLiteRegistration* Register_HARD_SWISH_REF() {
       activations::HardSwishInit, activations::HardSwishFree,
       activations::HardSwishPrepare,
       activations::HardSwishEval<activations::kReference>};
+  return &r;
+}
+
+TfLiteRegistration* Register_GELU() {
+  static TfLiteRegistration r = {activations::Init, activations::Free,
+                                 activations::GeluPrepare,
+                                 activations::GeluEval};
   return &r;
 }
 

@@ -23,7 +23,9 @@ limitations under the License.
 #include <string>
 #include <tuple>
 #include <type_traits>
+#include <utility>
 
+#include "absl/strings/str_cat.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -46,7 +48,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
-#include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
@@ -67,18 +68,13 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_side_effects.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/core/common_runtime/inline_function_utils.h"
 #include "tensorflow/core/common_runtime/lower_function_call_inline_policy.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/tensor_format.h"
-
-// These are currently aliases and the alias will be removed, verified
-// equivalent until then.
-// TODO(b/178519687): Remove once addressed.
-static_assert(std::is_same<tensorflow::int64, std::int64_t>::value,
-              "tensorflow::int64 is expected to match std::int64_t");
 
 namespace mlir {
 namespace TF {
@@ -115,7 +111,7 @@ void MultiDeviceProcessInlinedCallBlocks(
 
   // Duplicate of the logic in MultiDeviceFunctionBodyPlacer::BodyNodeDevice
   // LINT.IfChange
-  auto device_id = Identifier::get("device", call->getContext());
+  auto device_id = StringAttr::get(call->getContext(), "device");
   auto caller_device = call->getAttrOfType<StringAttr>(device_id);
   if (!caller_device) return;
 
@@ -159,8 +155,15 @@ struct TFInlinerInterface : public DialectInlinerInterface {
   // a TF operation.
   bool isLegalToInline(Operation *call, Operation *callable,
                        bool wouldBeCloned) const final {
-    // Check that the TF call operation is one that is legal to inline.
-    return !isa<TPUPartitionedCallOp>(call);
+    // Skip inlining for TPUPartitionedCalls.
+    if (isa<TPUPartitionedCallOp>(call)) return false;
+    // Maintain inlining for  `tf.function`s with jit_compile option.
+    if (callable->hasAttr("tf._XlaMustCompile")) return true;
+    auto noinline_attr_name = absl::StrCat("tf.", tensorflow::kNoInlineAttr);
+    if (auto noinline_attr =
+            callable->getAttrOfType<BoolAttr>(noinline_attr_name))
+      return !noinline_attr.getValue();
+    return true;
   }
 
   // Returns if its legal to inline 'src' region into the 'dest' region
@@ -262,7 +265,7 @@ void *TensorFlowDialect::getRegisteredInterfaceForOp(
     mlir::TypeID interface, mlir::OperationName opName) {
   if (interface == TypeID::get<mlir::MemoryEffectOpInterface>()) {
     // Don't use fallback for modelled ops.
-    if (opName.getAbstractOperation()) return nullptr;
+    if (opName.isRegistered()) return nullptr;
 
     // Only use fallback interface for known not-stateful ops.
     const tensorflow::OpRegistrationData *op_reg_data = nullptr;
@@ -293,11 +296,18 @@ bool TensorFlowDialect::CanHaveSideEffects(Operation *op) {
   return true;
 }
 
-std::vector<TensorFlowDialect::AdditionalOpFunction>
-    *TensorFlowDialect::GetAdditionalOperationHooks() {
-  static auto *const additional_operation_hooks =
-      new std::vector<TensorFlowDialect::AdditionalOpFunction>();
-  return additional_operation_hooks;
+// Hook functions which may add additional operations to the dialect.
+// These are invoked at construction time.
+static DenseMap<TypeID, TensorFlowDialect::AdditionalOpFunction>
+    &GetAdditionalOperationHooks() {
+  static auto *additional_operation_hooks =
+      new DenseMap<TypeID, TensorFlowDialect::AdditionalOpFunction>();
+  return *additional_operation_hooks;
+}
+
+void TensorFlowDialect::RegisterAdditionalOperationHook(
+    TypeID id, AdditionalOpFunction fn) {
+  GetAdditionalOperationHooks().try_emplace(id, std::move(fn));
 }
 
 TensorFlowDialect::ConstantFoldHook TensorFlowDialect::constant_fold_hook_;
@@ -305,6 +315,7 @@ TensorFlowDialect::DecodeConstantHook TensorFlowDialect::decode_constant_hook_;
 
 TensorFlowDialect::TensorFlowDialect(MLIRContext *context)
     : Dialect(/*name=*/"tf", context, TypeID::get<TensorFlowDialect>()) {
+  context->getOrLoadDialect<::mlir::tf_type::TFTypeDialect>();
   addOperations<
 #define GET_OP_LIST
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_all_ops.cc.inc"
@@ -313,19 +324,17 @@ TensorFlowDialect::TensorFlowDialect(MLIRContext *context)
 #define GET_OP_LIST
 #include "tensorflow/compiler/mlir/tensorflow/ir/tfrt_ops.cc.inc"
       >();
-  registerTypes();
   addInterfaces<TFInlinerInterface, TFDecodeAttributesInterface,
                 TFConstantFoldInterface>();
   fallback_effect_op_interface_ =
       new TensorFlowRegistryEffectInterfaceFallback();
-  registerAttributes();
 
   // Support unknown operations because not all TensorFlow operations are
   // registered.
   allowUnknownOperations();
 
-  for (const auto &hook : *GetAdditionalOperationHooks()) {
-    hook(*this);
+  for (auto &hook : GetAdditionalOperationHooks()) {
+    hook.second(*this);
   }
 }
 
@@ -333,107 +342,21 @@ TensorFlowDialect::~TensorFlowDialect() {
   delete fallback_effect_op_interface_;
 }
 
-// Parses a type registered to this dialect.
 Type TensorFlowDialect::parseType(DialectAsmParser &parser) const {
-  StringRef data;
-  if (parser.parseKeyword(&data)) return Type();
-
-#define HANDLE_TF_TYPE(tftype, enumerant, name) \
-  if (data == name) return tftype##Type::get(getContext());
-// Custom TensorFlow types are handled separately at the end as they do partial
-// match.
-#define HANDLE_CUSTOM_TF_TYPE(tftype, enumerant, name)
-// NOLINTNEXTLINE
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.def"
-
-  llvm::SMLoc loc = parser.getNameLoc();
-  if (data.startswith("resource")) {
-    Type ret = ParseResourceType(parser);
-    if (!ret) parser.emitError(loc, "invalid resource type");
-    return ret;
-  }
-  if (data.startswith("variant")) {
-    Type ret = ParseVariantType(parser);
-    if (!ret) parser.emitError(loc, "invalid variant type");
-    return ret;
-  }
-  return (parser.emitError(loc, "unknown TensorFlow type: " + data), nullptr);
+  StringRef spec = parser.getFullSymbolSpec();
+  llvm::SMLoc loc = parser.getCurrentLocation();
+  parser.emitError(
+      loc, "tf dialect has no types, potentially meant !tf_type." + spec);
+  return nullptr;
 }
 
-// Prints a type registered to this dialect.
-void TensorFlowDialect::printType(Type ty, DialectAsmPrinter &os) const {
-  assert(ty.isa<TensorFlowType>());
-#define HANDLE_TF_TYPE(tftype, enumerant, name)        \
-  if (auto derived_ty = ty.dyn_cast<tftype##Type>()) { \
-    os << name;                                        \
-    return;                                            \
-  }
-#define HANDLE_CUSTOM_TF_TYPE(tftype, enumerant, name) \
-  if (auto derived_ty = ty.dyn_cast<tftype##Type>()) { \
-    Print##tftype##Type(derived_ty, os);               \
-    return;                                            \
-  }
-// NOLINTNEXTLINE
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.def"
-
-  llvm_unreachable("unexpected tensorflow type kind");
-}
-
-namespace {
-template <typename TypeWithSubtype>
-Type ParseTypeWithSubtype(MLIRContext *context, DialectAsmParser &parser) {
-  // Default type without inferred subtypes.
-  if (failed(parser.parseOptionalLess())) return TypeWithSubtype::get(context);
-
-  // Most types with subtypes have only one subtype.
-  SmallVector<TensorType, 1> subtypes;
-  do {
-    TensorType tensor_ty;
-    if (parser.parseType(tensor_ty)) return Type();
-
-    // Each of the subtypes should be a valid TensorFlow type.
-    // TODO(jpienaar): Remove duplication.
-    if (!IsValidTFTensorType(tensor_ty)) {
-      parser.emitError(parser.getNameLoc()) << "invalid subtype: " << tensor_ty;
-      return Type();
-    }
-    subtypes.push_back(tensor_ty);
-  } while (succeeded(parser.parseOptionalComma()));
-
-  if (parser.parseGreater()) return Type();
-
-  return TypeWithSubtype::get(subtypes, context);
-}
-
-template <typename TypeWithSubtype>
-void PrintTypeWithSubtype(StringRef type, TypeWithSubtype ty,
-                          DialectAsmPrinter &os) {
-  os << type;
-  ArrayRef<TensorType> subtypes = ty.getSubtypes();
-  if (subtypes.empty()) return;
-
-  os << "<";
-  interleaveComma(subtypes, os);
-  os << ">";
-}
-}  // anonymous namespace
-
-Type TensorFlowDialect::ParseResourceType(DialectAsmParser &parser) const {
-  return ParseTypeWithSubtype<ResourceType>(getContext(), parser);
-}
-
-void TensorFlowDialect::PrintResourceType(ResourceType ty,
-                                          DialectAsmPrinter &os) const {
-  return PrintTypeWithSubtype("resource", ty, os);
-}
-
-Type TensorFlowDialect::ParseVariantType(DialectAsmParser &parser) const {
-  return ParseTypeWithSubtype<VariantType>(getContext(), parser);
-}
-
-void TensorFlowDialect::PrintVariantType(VariantType ty,
-                                         DialectAsmPrinter &os) const {
-  return PrintTypeWithSubtype("variant", ty, os);
+Attribute TensorFlowDialect::parseAttribute(DialectAsmParser &parser,
+                                            Type type) const {
+  StringRef spec = parser.getFullSymbolSpec();
+  llvm::SMLoc loc = parser.getCurrentLocation();
+  parser.emitError(
+      loc, "tf dialect has no attributes, potentially meant #tf_type." + spec);
+  return nullptr;
 }
 
 Operation *TensorFlowDialect::materializeConstant(OpBuilder &builder,

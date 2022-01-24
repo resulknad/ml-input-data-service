@@ -32,7 +32,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
-#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
@@ -83,8 +82,8 @@ template <typename T>
 StatusOr<ElementsAttr> ConvertFlatTensor(const Tensor& input_tensor,
                                          ShapedType type) {
   auto arr = input_tensor.flat<T>();
-  return mlir::DenseElementsAttr::get(
-      type, llvm::makeArrayRef(arr.data(), arr.size()));
+  return ElementsAttr(mlir::DenseElementsAttr::get(
+      type, llvm::makeArrayRef(arr.data(), arr.size())));
 }
 
 ElementsAttr ConvertBf16Tensor(const Tensor& input_tensor,
@@ -115,7 +114,7 @@ StatusOr<ElementsAttr> ConvertStringTensor(const Tensor& input_tensor,
     string_refs.push_back({val.data(), val.size()});
   }
 
-  return DenseStringElementsAttr::get(type, string_refs);
+  return ElementsAttr(DenseStringElementsAttr::get(type, string_refs));
 }
 
 StatusOr<ElementsAttr> ConvertTensor(const Tensor& input_tensor,
@@ -132,7 +131,7 @@ StatusOr<ElementsAttr> ConvertTensor(const Tensor& input_tensor,
   case DTYPE:                      \
     return ConvertFlatTensor<CTYPE>(input_tensor, type);
 
-  // TODO(fengliuai): customize the conversions for quantized and string types.
+  // TODO(fengliuai): customize the conversions for quantized types.
   switch (input_dtype) {
     CONVERT_FLAT(DT_BOOL, bool)
     CONVERT_FLAT(DT_FLOAT, float)
@@ -140,7 +139,7 @@ StatusOr<ElementsAttr> ConvertTensor(const Tensor& input_tensor,
     CONVERT_FLAT(DT_INT8, int8)
     CONVERT_FLAT(DT_INT16, int16)
     CONVERT_FLAT(DT_INT32, int32)
-    CONVERT_FLAT(DT_INT64, int64)
+    CONVERT_FLAT(DT_INT64, int64_t)
     CONVERT_FLAT(DT_UINT8, uint8)
     CONVERT_FLAT(DT_UINT16, uint16)
     CONVERT_FLAT(DT_UINT32, uint32)
@@ -154,15 +153,14 @@ StatusOr<ElementsAttr> ConvertTensor(const Tensor& input_tensor,
       return ConvertBf16Tensor(input_tensor, type);
     case DT_HALF:
       return ConvertHalfTensor(input_tensor, type);
-
     case DT_STRING:
       return ConvertStringTensor(input_tensor, type);
-
     default:
       // TODO(shpeisman): restructure code to reuse dialect pointer across
       // calls.
       auto* dialect = builder->getContext()->getLoadedDialect("tf");
-      return OpaqueElementsAttr::get(dialect, type, MangleTensor(input_tensor));
+      return ElementsAttr(
+          OpaqueElementsAttr::get(dialect, type, MangleTensor(input_tensor)));
   }
 
 #undef CONVERT_FLAT
@@ -228,11 +226,11 @@ StatusOr<ElementsAttr> ConvertTensorProto(const TensorProto& input_tensor,
     TF_ASSIGN_OR_RETURN(ElementsAttr single_attr,
                         ConvertTensorProto(tensor_copy, builder));
 
-    std::vector<int64_t> original_dimensions;
+    llvm::SmallVector<int64_t> original_dimensions;
     for (auto dim : input_tensor_shape) original_dimensions.push_back(dim.size);
-    return mlir::SplatElementsAttr::get(
+    return ElementsAttr(mlir::SplatElementsAttr::get(
         single_attr.getType().clone(original_dimensions),
-        single_attr.getValue({0}));
+        single_attr.getValues<mlir::Attribute>()[0]));
   }
 
   Tensor t;

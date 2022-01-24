@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests that the system configuration methods work properly."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 
 from tensorflow.core.protobuf import cluster_pb2
@@ -46,15 +42,18 @@ def reset_eager(fn):
       return fn(*args, **kwargs)
     finally:
       # Reset the context.
-      context._context = None
+      context._reset_jit_compiler_flags()
+      context._reset_context()
       ops.enable_eager_execution_internal()
       assert context._context is not None
 
   return wrapper
 
 
+@test_util.with_eager_op_as_function
 class ConfigTest(test.TestCase, parameterized.TestCase):
 
+  @test_util.disable_eager_op_as_function('b/204320409')
   @test_util.run_gpu_only
   @reset_eager
   def testDevicePolicy(self):
@@ -159,33 +158,31 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
     else:
       self.assertFalse(config.get_soft_device_placement())
 
-    def mod():
+    def test_attr():
       with ops.device('/device:GPU:0'):
-        a = constant_op.constant(1.0)
-        b = constant_op.constant(1.0)
-        return math_ops.mod(a, b)
+        return test_ops.test_attr(T=dtypes.float32, name='test_attr')
 
     config.set_soft_device_placement(True)
     self.assertEqual(config.get_soft_device_placement(), True)
     self.assertEqual(config.get_soft_device_placement(),
                      context.context().soft_device_placement)
 
-    # Since soft placement is enabled, the mod operation should fallback to CPU
-    # with pure eager execution as well as functions
-    mod()
-    def_function.function(mod)()
+    # Since soft placement is enabled, the test_attr operation should fallback
+    # to CPU with pure eager execution as well as functions
+    test_attr()
+    def_function.function(test_attr)()
 
     config.set_soft_device_placement(False)
     self.assertEqual(config.get_soft_device_placement(), False)
     self.assertEqual(config.get_soft_device_placement(),
                      context.context().soft_device_placement)
 
-    # Since soft placement is disabled, the mod operation should fail on GPU
-    # with pure eager execution as well as functions
+    # Since soft placement is disabled, the test_attr operation should fail on
+    # GPU with pure eager execution as well as functions
     with self.assertRaises(errors.InvalidArgumentError):
-      mod()
+      test_attr()
     with self.assertRaises(errors.InvalidArgumentError):
-      def_function.function(mod)()
+      def_function.function(test_attr)()
 
   @reset_eager
   def testLogDevicePlacement(self):
@@ -227,6 +224,14 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(
         context.context().config.experimental.mlir_bridge_rollout,
         config_pb2.ConfigProto.Experimental.MLIR_BRIDGE_ROLLOUT_DISABLED)
+
+  @reset_eager
+  def testResetMlirFlags(self):
+    # Default value of enable_mlir_bridge is false.
+    self.assertFalse(context.context().config.experimental.enable_mlir_bridge)
+    self.assertEqual(
+        context.context().config.experimental.mlir_bridge_rollout,
+        config_pb2.ConfigProto.Experimental.MLIR_BRIDGE_ROLLOUT_UNSPECIFIED)
 
   @reset_eager
   def testEnableMlirGraphOptimization(self):
@@ -851,21 +856,42 @@ class DeviceTest(test.TestCase):
     self.assertEqual(['CollectiveReduce'],
                      new_rewrite_options.scoped_allocator_opts.enable_op)
 
+  def testDeterminism(self):
+    # This does not test any ops are deterministic, because that is tested by
+    # many kernel tests.
+    try:
+      config.disable_op_determinism()
+      self.assertFalse(config.is_op_determinism_enabled())
+      config.enable_op_determinism()
+      self.assertTrue(config.is_op_determinism_enabled())
+    finally:
+      config.disable_op_determinism()
+
 
 class TensorFloat32Test(test.TestCase):
-
-  def setUp(self):
-    super(TensorFloat32Test, self).setUp()
-    if not test_util.is_gpu_available(
-        cuda_only=True, min_cuda_compute_capability=(8, 0)):
-      self.skipTest('TensorFloat-32 requires an NVIDIA GPU with compute '
-                    'capability of at least 8.0')
 
   def tearDown(self):
     super(TensorFloat32Test, self).tearDown()
     config.enable_tensor_float_32_execution(True)
 
+  def test_tensor_float_32_global_variable(self):
+    self.assertTrue(config.tensor_float_32_execution_enabled())
+    self.assertTrue(test_ops.is_tensor_float32_enabled())
+    config.enable_tensor_float_32_execution(False)
+    self.assertFalse(config.tensor_float_32_execution_enabled())
+    self.assertFalse(test_ops.is_tensor_float32_enabled())
+    config.enable_tensor_float_32_execution(True)
+    self.assertTrue(config.tensor_float_32_execution_enabled())
+    self.assertTrue(test_ops.is_tensor_float32_enabled())
+
+  def _skip_if_tensor_float_32_unsupported(self):
+    if not test_util.is_gpu_available(
+        cuda_only=True, min_cuda_compute_capability=(8, 0)):
+      self.skipTest('TensorFloat-32 requires an NVIDIA GPU with compute '
+                    'capability of at least 8.0')
+
   def test_tensor_float_32_enabled(self):
+    self._skip_if_tensor_float_32_unsupported()
     self.assertTrue(config.tensor_float_32_execution_enabled())
 
     x = array_ops.fill((8, 8), 1 + 2**-20)
@@ -877,6 +903,7 @@ class TensorFloat32Test(test.TestCase):
     self.assertAllEqual(out, expected)
 
   def test_tensor_float_32_disabled(self):
+    self._skip_if_tensor_float_32_unsupported()
     self.assertTrue(config.tensor_float_32_execution_enabled())
     config.enable_tensor_float_32_execution(False)
     self.assertFalse(config.tensor_float_32_execution_enabled())

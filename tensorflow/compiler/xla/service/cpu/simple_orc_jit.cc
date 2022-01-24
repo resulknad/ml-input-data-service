@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
 #include "llvm/ExecutionEngine/JITSymbol.h"
+#include "llvm/ExecutionEngine/Orc/ExecutorProcessControl.h"
 #include "llvm/ExecutionEngine/SectionMemoryManager.h"
 #include "llvm/IR/Mangler.h"
 #include "llvm/IR/Operator.h"
@@ -34,6 +35,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/orc_jit_memory_mapper.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_conv2d.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_conv2d_mkl.h"
+#include "tensorflow/compiler/xla/service/cpu/runtime_conv3d.h"
+#include "tensorflow/compiler/xla/service/cpu/runtime_custom_call_status.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_fft.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_fork_join.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_fp16.h"
@@ -42,6 +45,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/runtime_matmul_mkl.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_pow.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_conv2d.h"
+#include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_conv3d.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_fft.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_matmul.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_topk.h"
@@ -171,7 +175,8 @@ llvm::Expected<std::unique_ptr<SimpleOrcJIT>> SimpleOrcJIT::Create(
     return target_process_control.takeError();
   }
 
-  auto execution_session = std::make_unique<llvm::orc::ExecutionSession>();
+  auto execution_session = std::make_unique<llvm::orc::ExecutionSession>(
+      std::make_unique<llvm::orc::UnsupportedExecutorProcessControl>());
   return std::make_unique<SimpleOrcJIT>(
       std::move(*target_process_control), std::move(execution_session),
       target_options, opt_level, optimize_for_size, disable_expensive_passes,
@@ -263,9 +268,11 @@ bool RegisterKnownJITSymbols() {
   REGISTER_CPU_RUNTIME_SYMBOL(CollectivePermute);
   REGISTER_CPU_RUNTIME_SYMBOL(AllToAll);
   REGISTER_CPU_RUNTIME_SYMBOL(ReplicaId);
-  REGISTER_CPU_RUNTIME_SYMBOL(MKLConvF32);
-  REGISTER_CPU_RUNTIME_SYMBOL(EigenConvF16);
-  REGISTER_CPU_RUNTIME_SYMBOL(EigenConvF32);
+  REGISTER_CPU_RUNTIME_SYMBOL(MKLConv2DF32);
+  REGISTER_CPU_RUNTIME_SYMBOL(EigenConv2DF16);
+  REGISTER_CPU_RUNTIME_SYMBOL(EigenConv2DF32);
+  REGISTER_CPU_RUNTIME_SYMBOL(EigenConv3DF16);
+  REGISTER_CPU_RUNTIME_SYMBOL(EigenConv3DF32);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenFft);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenMatMulF16);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenMatMulF32);
@@ -277,8 +284,10 @@ bool RegisterKnownJITSymbols() {
   REGISTER_CPU_RUNTIME_SYMBOL(MKLMatMulF64);
   REGISTER_CPU_RUNTIME_SYMBOL(MKLSingleThreadedMatMulF32);
   REGISTER_CPU_RUNTIME_SYMBOL(MKLSingleThreadedMatMulF64);
-  REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedConvF16);
-  REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedConvF32);
+  REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedConv2DF16);
+  REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedConv2DF32);
+  REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedConv3DF16);
+  REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedConv3DF32);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedFft);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulF16);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulF32);
@@ -290,6 +299,7 @@ bool RegisterKnownJITSymbols() {
   REGISTER_CPU_RUNTIME_SYMBOL(PrintfToStderr);
   REGISTER_CPU_RUNTIME_SYMBOL(ReleaseInfeedBufferAfterDequeue);
   REGISTER_CPU_RUNTIME_SYMBOL(ReleaseOutfeedBufferAfterPopulation);
+  REGISTER_CPU_RUNTIME_SYMBOL(StatusIsSuccess);
   REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSort);
   REGISTER_CPU_RUNTIME_SYMBOL(TopKF32);
   REGISTER_CPU_RUNTIME_SYMBOL(TracingStart);

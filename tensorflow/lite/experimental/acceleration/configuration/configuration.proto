@@ -151,6 +151,10 @@ message NNAPISettings {
   // would significantly reduce overhead especially if the same delegate
   // instance is to be used for multiple inferences.
   optional bool use_burst_computation = 11;
+
+  // Optional handle to NNAPI Support Library which can be used to construct the
+  // NNAPI delegate.
+  optional int64 support_library_handle = 12;
 }
 
 // Which GPU backend to select. Default behaviour on Android is to try OpenCL
@@ -328,6 +332,12 @@ message EdgeTpuSettings {
     HALF = 3;
   }
 
+  enum QosClass {
+    QOS_UNDEFINED = 0;
+    BEST_EFFORT = 1;
+    REALTIME = 2;
+  }
+
   // Target inference power state for running the model.
   optional EdgeTpuPowerState inference_power_state = 1;
 
@@ -345,6 +355,9 @@ message EdgeTpuSettings {
 
   // Float truncation type for EdgeTPU.
   optional FloatTruncationType float_truncation_type = 6;
+
+  // QoS class to determine chunking size for PRO onward.
+  optional QosClass qos_class = 7 [default = QOS_UNDEFINED];
 }
 
 // Coral Dev Board / USB accelerator delegate settings.

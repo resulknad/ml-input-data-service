@@ -37,6 +37,28 @@ namespace tflite {
 namespace tensor_utils {
 namespace {
 
+#if defined(__SSE2__)
+// Note: this part is copied from XNNPACK/src/xnnpack/intrinsics-polyfill.h
+// w.r.t the defition of '_mm_loadu_si32' intrinsic.
+// GCC any, Clang pre-8, Android NDK Clang pre-8.0.7, Apple Clang pre-11, and
+// ICC pre-16
+#if (defined(__GNUC__) && !defined(__clang__) &&                             \
+     !defined(__INTEL_COMPILER)) ||                                          \
+    (defined(__clang__) && !defined(__apple_build_version__) &&              \
+     (__clang_major__ < 8)) ||                                               \
+    (defined(__clang__) && defined(__ANDROID__) && (__clang_major__ == 8) && \
+     (__clang_minor__ == 0) && (__clang_patchlevel__ < 7)) ||                \
+    (defined(__clang__) && defined(__apple_build_version__) &&               \
+     (__apple_build_version__ < 11000000)) ||                                \
+    (defined(__INTEL_COMPILER) && (__INTEL_COMPILER < 1600))
+
+static inline __m128i _mm_loadu_si32(const void* address) {
+  return _mm_cvtsi32_si128(*((const int*)address));
+}
+#endif  // GCC any, Clang pre-8, Android NDK Clang pre-8.0.7, Apple Clang pre-11
+        // and ICC pre-16
+#endif  // __SSE2__
+
 // Dot product of four int8 vectors of 4 elements packed into a XMM register.
 // Result is four int32 scalars packed into a XMM register.
 // int8x4x4 · int8x4x4 => int32x4
@@ -116,7 +138,6 @@ float GetFloatVectorElement(__m128 v) {
 
 #ifdef __AVX2__
 constexpr int kFloatValuesPerAvx2Vector = 8;
-constexpr int kFloatValuesPerSseVector = 4;
 template <int PerVectorSize>
 inline int RoundDownVectors(int size) {
   return size & ~(PerVectorSize - 1);
@@ -210,9 +231,9 @@ void SseMatrixBatchVectorMultiplyAccumulateImpl(
       // Postamble for 4x 8-bit inputs.
       if (col < (m_cols & ~3)) {
         const __m128i vec_32x4 = _mm_cvtepi8_epi32(
-            _mm_loadl_epi64(reinterpret_cast<const __m128i*>(vectors + col)));
+            _mm_loadu_si32(reinterpret_cast<const __m128i*>(vectors + col)));
         const __m128i row_32x4 = _mm_cvtepi8_epi32(
-            _mm_loadl_epi64(reinterpret_cast<const __m128i*>(row_ptr + col)));
+            _mm_loadu_si32(reinterpret_cast<const __m128i*>(row_ptr + col)));
         // dotprod += vec · row
         dotprod_32x4 =
             _mm_add_epi32(dotprod_32x4, _mm_mullo_epi32(vec_32x4, row_32x4));
@@ -431,10 +452,10 @@ inline void SseSparseMatrix4VectorsMultiplyAccumulate(
           _mm_loadu_si128(reinterpret_cast<const __m128i*>(matrix));
       // dp += vec · row
       // dpN are for different batches
-      dp0_32x4 = _mm_add_epi32(dp0_32x4, DotProdInt8x4x4(row_8x16, vec0_8x16));
-      dp1_32x4 = _mm_add_epi32(dp1_32x4, DotProdInt8x4x4(row_8x16, vec1_8x16));
-      dp2_32x4 = _mm_add_epi32(dp2_32x4, DotProdInt8x4x4(row_8x16, vec2_8x16));
-      dp3_32x4 = _mm_add_epi32(dp3_32x4, DotProdInt8x4x4(row_8x16, vec3_8x16));
+      dp0_32x4 = _mm_add_epi32(dp0_32x4, DotProdInt8x4x4(vec0_8x16, row_8x16));
+      dp1_32x4 = _mm_add_epi32(dp1_32x4, DotProdInt8x4x4(vec1_8x16, row_8x16));
+      dp2_32x4 = _mm_add_epi32(dp2_32x4, DotProdInt8x4x4(vec2_8x16, row_8x16));
+      dp3_32x4 = _mm_add_epi32(dp3_32x4, DotProdInt8x4x4(vec3_8x16, row_8x16));
       matrix += kBlockSize;
     }  // for col
 

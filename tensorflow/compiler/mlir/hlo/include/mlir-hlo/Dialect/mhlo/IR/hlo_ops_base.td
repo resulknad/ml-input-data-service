@@ -21,8 +21,13 @@ include "mlir/IR/OpBase.td"
 def HLO_Dialect : Dialect {
   let name = "mhlo";
   let cppNamespace = "::mlir::mhlo";
+
+  let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
+  let useDefaultAttributePrinterParser = 0;
+  let useDefaultTypePrinterParser = 0;
 }
 
+include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.td"
 include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.td"
 include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_structs.td"
 
@@ -68,6 +73,8 @@ def HLO_Tuple : NestedTupleOf<[HLO_Tensor, HLO_Token]>;
 
 def HLO_TensorOrTuple : AnyTypeOf<[HLO_Tensor, HLO_Tuple]>;
 
+def HLO_TensorOrToken : AnyTypeOf<[HLO_Tensor, HLO_Token]>;
+
 def HLO_TensorOrTokenOrTuple : AnyTypeOf<[HLO_Tensor, HLO_Token, HLO_Tuple]>;
 
 def HLO_DimensionValue : AnyTypeOf<[Index, HLO_Pred, HLO_Int]>;
@@ -110,6 +117,18 @@ def HLO_LayoutAttr : Attr<
   let convertFromStorage = IndexElementsAttr.convertFromStorage;
 }
 
+// An array of layout (1D tensor) attributes.
+def HLO_ArrayOfLayoutAttr : TypedArrayAttrBase<HLO_LayoutAttr,
+    "Array of layout (1D tensor of index type) attributes">;
+
+// An array of FlatSymbolRef attributes that can be used as a default valued
+// attribute.
+def HLO_FlatSymbolRefArrayAttr :
+  TypedArrayAttrBase<FlatSymbolRefAttr, "flat symbol ref array attribute"> {
+  let constBuilderCall = "::mlir::ArrayAttr::get($_builder.getContext(), $0)";
+}
+
+
 //===----------------------------------------------------------------------===//
 // Common convolution attributes
 //===----------------------------------------------------------------------===//
@@ -149,9 +168,6 @@ def ConvolutionAttributes {
   );
 }
 
-class BASE_HLO_ConvOp {
-}
-
 //===----------------------------------------------------------------------===//
 // Common traits
 //===----------------------------------------------------------------------===//
@@ -163,5 +179,12 @@ class HLO_NativeOpTrait<string name> : NativeOpTrait<name> {
 // An operation that is essentially element-wise but may implement broadcasting
 // semantics.
 def HLO_BroadcastingElementwise : HLO_NativeOpTrait<"BroadcastingElementwise">;
+
+// Op has pairwise operand and result type matching: the number of operands
+// must be equal to the number of results and the type of ith operand must
+// match the type of ith result.
+// TODO(b/195086460) Promote this to be an mlir trait and remove it here.
+def HLO_PairwiseSameOperandAndResultType :
+  HLO_NativeOpTrait<"PairwiseSameOperandAndResultType">;
 
 #endif // HLO_OPS_BASE

@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {
@@ -57,7 +56,7 @@ TEST_F(InfeedTest, SingleInfeedR0Bool) {
 }
 
 TEST_F(InfeedTest, SingleInfeedR1U32) {
-  TestInfeedRoundTrip(LiteralUtil::CreateR1<uint32>({1, 2, 3}));
+  TestInfeedRoundTrip(LiteralUtil::CreateR1<uint32_t>({1, 2, 3}));
 }
 
 TEST_F(InfeedTest, SingleInfeedR2F32) {
@@ -100,7 +99,7 @@ TEST_F(InfeedTest, LargeInfeed) {
 
 TEST_F(InfeedTest, SingleInfeedTuple) {
   TestInfeedRoundTrip(LiteralUtil::MakeTupleFromSlices(
-      {LiteralUtil::CreateR1<uint32>({1, 2, 3}),
+      {LiteralUtil::CreateR1<uint32_t>({1, 2, 3}),
        LiteralUtil::CreateR0<bool>(false)}));
 }
 
@@ -114,7 +113,7 @@ TEST_F(InfeedTest, SingleInfeedLargeTuple) {
   array.FillIota(1.0f);
   TestInfeedRoundTrip(LiteralUtil::MakeTupleFromSlices(
       {LiteralUtil::CreateR4FromArray4D<float>(array),
-       LiteralUtil::CreateR0<int32>(5)}));
+       LiteralUtil::CreateR0<int32_t>(5)}));
 }
 
 class BlockingInfeedTest : public ClientLibraryTestBase {};
@@ -124,8 +123,9 @@ TEST_F(BlockingInfeedTest, TestNoOoms) {
   array.FillIota(1.0f);
   auto literal = LiteralUtil::CreateR3FromArray3D<float>(array);
 
-  int64 kMemoryPressure = 32ul * 1024 * 1024 * 1024;
-  int64 infeed_count = kMemoryPressure / (array.num_elements() * sizeof(float));
+  int64_t kMemoryPressure = 32ul * 1024 * 1024 * 1024;
+  int64_t infeed_count =
+      kMemoryPressure / (array.num_elements() * sizeof(float));
 
   auto transfer_infeeds = [&] {
     for (int i = 0; i < infeed_count; i++) {

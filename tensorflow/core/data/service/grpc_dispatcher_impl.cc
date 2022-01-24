@@ -34,6 +34,8 @@ GrpcDispatcherImpl::GrpcDispatcherImpl(
 
 Status GrpcDispatcherImpl::Start() { return impl_.Start(); }
 
+size_t GrpcDispatcherImpl::NumActiveJobs() { return impl_.NumActiveJobs(); }
+
 #define HANDLER(method)                                                   \
   grpc::Status GrpcDispatcherImpl::method(ServerContext* context,         \
                                           const method##Request* request, \
@@ -53,6 +55,8 @@ HANDLER(ClientHeartbeat);
 HANDLER(GetWorkers);
 // HANDLER(UpdateMetadata);
 HANDLER(GetElementSpec);
+HANDLER(GetDataServiceMetadata);
+HANDLER(GetDataServiceConfig);
 #undef HANDLER
 
 }  // namespace data

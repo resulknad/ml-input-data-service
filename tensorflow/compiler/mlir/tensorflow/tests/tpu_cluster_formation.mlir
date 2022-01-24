@@ -58,7 +58,7 @@ func @ops_in_func_body(%arg0 : tensor<i1>) -> (tensor<i1>, tensor<i1>, tensor<i1
 
 // CHECK:      "tf.opB"
 // CHECK:      "tf.opE"
-// CHECK:      %[[CLUSTER:[0-9]*]]:3 = "tf_device.cluster"() ( {
+// CHECK:      %[[CLUSTER:[0-9]*]]:3 = "tf_device.cluster"() ({
 // CHECK-NEXT:   %[[OP_A:[0-9]*]] = "tf.opA"(%[[ARG_0]])
 // CHECK-NEXT:   %[[OP_C:[0-9]*]] = "tf.opC"(%[[OP_A]])
 // CHECK-NEXT:   %[[OP_D:[0-9]*]] = "tf.opD"(%[[OP_C]])
@@ -76,7 +76,7 @@ func @ops_in_func_body(%arg0 : tensor<i1>) -> (tensor<i1>, tensor<i1>, tensor<i1
 // CHECK-SAME: (%[[ARG_0:[a-z0-9]*]]: tensor<i1>)
 func @nested_cluster_op_user(%arg0 : tensor<i1>) -> (tensor<i1>) {
   %0 = "tf.opA"(%arg0) {_tpu_replicate = "replicate"} : (tensor<i1>) -> tensor<i1>
-  %1 = "tf_device.launch"() ( {
+  %1 = "tf_device.launch"() ({
     tf_device.return %0 : tensor<i1>
   }) {device = "device"} : () -> tensor<i1>
   %2 = "tf.opB"(%0) {_tpu_replicate = "replicate"} : (tensor<i1>) -> tensor<i1>
@@ -84,7 +84,7 @@ func @nested_cluster_op_user(%arg0 : tensor<i1>) -> (tensor<i1>) {
   return %2 : tensor<i1>
 }
 
-// CHECK:      %[[CLUSTER:[0-9]*]]:2 = "tf_device.cluster"() ( {
+// CHECK:      %[[CLUSTER:[0-9]*]]:2 = "tf_device.cluster"() ({
 // CHECK-NEXT:   %[[OP_A:[0-9]*]] = "tf.opA"(%[[ARG_0]])
 // CHECK-NEXT:   %[[OP_B:[0-9]*]] = "tf.opB"(%[[OP_A]])
 // CHECK-NEXT:   tf_device.return %[[OP_A]], %[[OP_B]]
@@ -102,16 +102,16 @@ func @nested_cluster_op_user(%arg0 : tensor<i1>) -> (tensor<i1>) {
 // CHECK-SAME: (%[[ARG_0:[a-z0-9]*]]: tensor<i1>)
 func @nested_cluster_op(%arg0 : tensor<i1>) -> (tensor<i1>) {
   %0 = "tf.opA"(%arg0) {_tpu_replicate = "replicate"} : (tensor<i1>) -> tensor<i1>
-  %1 = "tf.opB"() ( {
+  %1 = "tf.opB"() ({
     "tf.opC"(%0) : (tensor<i1>) -> tensor<i1>
   }) {_tpu_replicate = "replicate"} : () -> tensor<i1>
   "tf.TPUReplicateMetadata"() {_tpu_replicate = "replicate", device = "device", num_replicas = 1, topology = "topology"} : () -> ()
   return %1 : tensor<i1>
 }
 
-// CHECK:      %[[CLUSTER:[0-9]*]] = "tf_device.cluster"() ( {
+// CHECK:      %[[CLUSTER:[0-9]*]] = "tf_device.cluster"() ({
 // CHECK-NEXT:   %[[OP_A:[0-9]*]] = "tf.opA"(%[[ARG_0]])
-// CHECK-NEXT:   %[[OP_B:[0-9]*]] = "tf.opB"() ( {
+// CHECK-NEXT:   %[[OP_B:[0-9]*]] = "tf.opB"() ({
 // CHECK-NEXT:     "tf.opC"(%[[OP_A]])
 // CHECK:        tf_device.return %[[OP_B]]
 // CHECK-NEXT: _tpu_replicate = "replicate"
@@ -133,14 +133,14 @@ func @interleaved_clusters(%arg0 : tensor<i1>) -> (tensor<i1>, tensor<i1>) {
   return %2, %3 : tensor<i1>, tensor<i1>
 }
 
-// CHECK:      %[[CLUSTER_0:[0-9]*]] = "tf_device.cluster"() ( {
+// CHECK:      %[[CLUSTER_0:[0-9]*]] = "tf_device.cluster"() ({
 // CHECK-NEXT:   %[[OP_A:[0-9]*]] = "tf.opA"(%[[ARG_0]])
 // CHECK-NEXT:   %[[OP_C:[0-9]*]] = "tf.opC"(%[[OP_A]])
 // CHECK-NEXT:   tf_device.return %[[OP_C]]
 // CHECK-NEXT: _tpu_replicate = "replicate_0"
 // CHECK-SAME: device = "device_0"
 // CHECK-SAME: topology = "topology_0"
-// CHECK:      %[[CLUSTER_1:[0-9]*]] = "tf_device.cluster"() ( {
+// CHECK:      %[[CLUSTER_1:[0-9]*]] = "tf_device.cluster"() ({
 // CHECK-NEXT:   %[[OP_B:[0-9]*]] = "tf.opB"(%[[ARG_0]])
 // CHECK-NEXT:   %[[OP_D:[0-9]*]] = "tf.opD"(%[[OP_B]])
 // CHECK-NEXT:   tf_device.return %[[OP_D]]
@@ -167,7 +167,7 @@ func @interleaved_cluster_operands_results() {
 
 // CHECK:      %[[OP_C:[0-9]*]] = "tf.opC"
 // CHECK:      %[[OP_E:[0-9]*]] = "tf.opE"(%[[OP_C]])
-// CHECK:      %[[CLUSTER:[0-9]*]] = "tf_device.cluster"() ( {
+// CHECK:      %[[CLUSTER:[0-9]*]] = "tf_device.cluster"() ({
 // CHECK-NEXT:   %[[OP_A:[0-9]*]] = "tf.opA"
 // CHECK-NEXT:   "tf.opF"(%[[OP_E]])
 // CHECK-NEXT:   tf_device.return %[[OP_A]]
@@ -197,7 +197,7 @@ func @one_replica(%arg0: tensor<i1>) -> tensor<i1> {
 
 // CHECK:      %[[OP_C:[0-9]*]] = "tf.opC"
 // CHECK:      %[[OP_E:[0-9]*]] = "tf.opE"(%[[OP_C]])
-// CHECK:      %[[CLUSTER:[0-9]*]]:2 = "tf_device.cluster"() ( {
+// CHECK:      %[[CLUSTER:[0-9]*]]:2 = "tf_device.cluster"() ({
 // CHECK-NEXT:   %[[OP_A:[0-9]*]] = "tf.opA"(%[[ARG_0]])
 // CHECK-NEXT:   %[[OP_F:[0-9]*]] = "tf.opF"(%[[OP_E]])
 // CHECK-NEXT:   tf_device.return %[[OP_A]], %[[OP_F]]
@@ -239,7 +239,7 @@ func @replication(%arg0: tensor<i1>, %arg1: tensor<i32>, %arg2: tensor<f32>) -> 
 // CHECK-DAG:  [%[[OP_B]], %[[ARG_1]]] as %[[RI_1:[a-z0-9]*]]: tensor<i32>
 // CHECK-NOT:  _replicated_input_indices
 // CHECK-SAME: n = 2 : i32
-// CHECK-NEXT:   %[[CLUSTER:[0-9]*]]:2 = "tf_device.cluster"() ( {
+// CHECK-NEXT:   %[[CLUSTER:[0-9]*]]:2 = "tf_device.cluster"() ({
 // CHECK:          %[[OP_D:[0-9]*]] = "tf.opD"(%[[RI_0]], %[[RI_1]], %[[ARG_2]], %[[OP_C]])
 // CHECK:          %[[OP_E:[0-9]*]] = "tf.opE"(%[[OP_D]], %[[RI_0]], %[[RI_1]], %[[ARG_2]], %[[OP_C]])
 // CHECK:          tf_device.return %[[OP_D]], %[[OP_E]]
@@ -258,8 +258,8 @@ func @replication(%arg0: tensor<i1>, %arg1: tensor<i32>, %arg2: tensor<f32>) -> 
 // TPUReplicatedInput and TPUReplicatedOutput nodes will be replaced by the
 // replicate operands and results.
 // CHECK-LABEL: func @replication_with_model_parallelism
-// CHECK-SAME: (%[[ARG_0:[a-z0-9]*]]: tensor<!tf.resource<tensor<10x3xf32>>>, %[[ARG_1:[a-z0-9]*]]: tensor<!tf.resource<tensor<10x3xf32>>>, %[[ARG_2:[a-z0-9]*]]: tensor<!tf.resource<tensor<10x3xf32>>>, %[[ARG_3:[a-z0-9]*]]: tensor<!tf.resource<tensor<10x3xf32>>>)
-!rtype = type tensor<!tf.resource<tensor<10x3xf32>>>
+// CHECK-SAME: (%[[ARG_0:[a-z0-9]*]]: tensor<!tf_type.resource<tensor<10x3xf32>>>, %[[ARG_1:[a-z0-9]*]]: tensor<!tf_type.resource<tensor<10x3xf32>>>, %[[ARG_2:[a-z0-9]*]]: tensor<!tf_type.resource<tensor<10x3xf32>>>, %[[ARG_3:[a-z0-9]*]]: tensor<!tf_type.resource<tensor<10x3xf32>>>)
+!rtype = type tensor<!tf_type.resource<tensor<10x3xf32>>>
 
 func @replication_with_model_parallelism(%arg0: !rtype, %arg1: !rtype, %arg2: !rtype, %arg3: !rtype) -> (tensor<10x3xf32>, tensor<f32>) {
   %0 = "tf.opA"() : () -> tensor<i32>
@@ -279,13 +279,13 @@ func @replication_with_model_parallelism(%arg0: !rtype, %arg1: !rtype, %arg2: !r
 // CHECK:      %[[OP_A:[0-9]*]] = "tf.opA"
 // CHECK:      %[[OP_B:[0-9]*]] = "tf.opB"
 // CHECK:      %[[REPLICATE:[0-9]*]]:4 = tf_device.replicate
-// CHECK-DAG:  [%[[ARG_0]], %[[ARG_2]]] as %[[RI_0:[a-z0-9]*]]: tensor<!tf.resource<tensor<10x3xf32>>>
-// CHECK-DAG:  [%[[ARG_1]], %[[ARG_3]]] as %[[RI_1:[a-z0-9]*]]: tensor<!tf.resource<tensor<10x3xf32>>>
+// CHECK-DAG:  [%[[ARG_0]], %[[ARG_2]]] as %[[RI_0:[a-z0-9]*]]: tensor<!tf_type.resource<tensor<10x3xf32>>>
+// CHECK-DAG:  [%[[ARG_1]], %[[ARG_3]]] as %[[RI_1:[a-z0-9]*]]: tensor<!tf_type.resource<tensor<10x3xf32>>>
 // CHECK-DAG:  [%[[OP_A]], %[[OP_B]]] as %[[RI_2:[a-z0-9]*]]: tensor<i32>
 // CHECK-NOT:  _replicated_input_indices
 // CHECK-SAME: n = 2 : i32
 // CHECK:        %[[PI:[0-9]*]] = "tf.TPUPartitionedInput"(%[[RI_0]], %[[RI_1]])
-// CHECK-NEXT:   %[[CLUSTER:[0-9]*]]:2 = "tf_device.cluster"() ( {
+// CHECK-NEXT:   %[[CLUSTER:[0-9]*]]:2 = "tf_device.cluster"() ({
 // CHECK:          %[[OP_C:[0-9]*]] = "tf.opC"(%[[PI]])
 // CHECK:          %[[OP_D:[0-9]*]] = "tf.opD"(%[[RI_2]])
 // CHECK:          tf_device.return %[[OP_C]], %[[OP_D]]
@@ -361,12 +361,12 @@ func @non_contigous_indices(%arg0: tensor<i1>, %arg1: tensor<i1>, %arg2: tensor<
 // Test that the `is_mirrored_variable` attribute is preserved in the
 // tf_device.replicate op.
 // CHECK-LABEL: func @mirrored_variables
-// CHECK-SAME: (%[[ARG_0:.*]]: tensor<!tf.resource<tensor<32xf32>>>, %[[ARG_1:.*]]: tensor<!tf.resource<tensor<32xf32>>>, %[[ARG_2:.*]]: tensor<!tf.resource<tensor<32xf32>>>, %[[ARG_3:.*]]: tensor<!tf.resource<tensor<32xf32>>>, %[[ARG_4:.*]]: tensor<!tf.resource<tensor<32xf32>>>)
-func @mirrored_variables(%arg0: tensor<!tf.resource<tensor<32xf32>>>, %arg1: tensor<!tf.resource<tensor<32xf32>>>, %arg2: tensor<!tf.resource<tensor<32xf32>>>, %arg3: tensor<!tf.resource<tensor<32xf32>>>, %arg4: tensor<!tf.resource<tensor<32xf32>>>) {
-  %0 = "tf.TPUReplicatedInput"(%arg0, %arg1) {index = 0 : i64} : (tensor<!tf.resource<tensor<32xf32>>>, tensor<!tf.resource<tensor<32xf32>>>) -> tensor<!tf.resource<tensor<32xf32>>>
-  %1 = "tf.TPUReplicatedInput"(%arg2, %arg3) {index = 1 : i64, is_mirrored_variable = true} : (tensor<!tf.resource<tensor<32xf32>>>, tensor<!tf.resource<tensor<32xf32>>>) -> tensor<!tf.resource<tensor<32xf32>>>
-  %2 = "tf.TPUReplicatedInput"(%arg4) {index = 2 : i64, is_mirrored_variable = true, is_packed = true} : (tensor<!tf.resource<tensor<32xf32>>>) -> tensor<!tf.resource<tensor<32xf32>>>
-  "tf.opA"(%0, %1, %2) {_tpu_replicate = "replicate", device = "device"} : (tensor<!tf.resource<tensor<32xf32>>>, tensor<!tf.resource<tensor<32xf32>>>, tensor<!tf.resource<tensor<32xf32>>>) -> ()
+// CHECK-SAME: (%[[ARG_0:.*]]: tensor<!tf_type.resource<tensor<32xf32>>>, %[[ARG_1:.*]]: tensor<!tf_type.resource<tensor<32xf32>>>, %[[ARG_2:.*]]: tensor<!tf_type.resource<tensor<32xf32>>>, %[[ARG_3:.*]]: tensor<!tf_type.resource<tensor<32xf32>>>, %[[ARG_4:.*]]: tensor<!tf_type.resource<tensor<32xf32>>>)
+func @mirrored_variables(%arg0: tensor<!tf_type.resource<tensor<32xf32>>>, %arg1: tensor<!tf_type.resource<tensor<32xf32>>>, %arg2: tensor<!tf_type.resource<tensor<32xf32>>>, %arg3: tensor<!tf_type.resource<tensor<32xf32>>>, %arg4: tensor<!tf_type.resource<tensor<32xf32>>>) {
+  %0 = "tf.TPUReplicatedInput"(%arg0, %arg1) {index = 0 : i64} : (tensor<!tf_type.resource<tensor<32xf32>>>, tensor<!tf_type.resource<tensor<32xf32>>>) -> tensor<!tf_type.resource<tensor<32xf32>>>
+  %1 = "tf.TPUReplicatedInput"(%arg2, %arg3) {index = 1 : i64, is_mirrored_variable = true} : (tensor<!tf_type.resource<tensor<32xf32>>>, tensor<!tf_type.resource<tensor<32xf32>>>) -> tensor<!tf_type.resource<tensor<32xf32>>>
+  %2 = "tf.TPUReplicatedInput"(%arg4) {index = 2 : i64, is_mirrored_variable = true, is_packed = true} : (tensor<!tf_type.resource<tensor<32xf32>>>) -> tensor<!tf_type.resource<tensor<32xf32>>>
+  "tf.opA"(%0, %1, %2) {_tpu_replicate = "replicate", device = "device"} : (tensor<!tf_type.resource<tensor<32xf32>>>, tensor<!tf_type.resource<tensor<32xf32>>>, tensor<!tf_type.resource<tensor<32xf32>>>) -> ()
   "tf.TPUReplicateMetadata"() {_tpu_replicate = "replicate", device = "device", num_replicas = 2, topology = "topology"} : () -> ()
   return
 }
@@ -381,8 +381,8 @@ func @mirrored_variables(%arg0: tensor<!tf.resource<tensor<32xf32>>>, %arg1: ten
 // Test resource usage after resource use in cluster is moved to after the
 // cluster.
 // CHECK-LABEL: func @resource_after_cluster
-// CHECK-SAME:  ([[USED_RESOURCE:%.*]]: tensor<*x!tf.resource<tensor<f32>>>, [[UNUSED_RESOURCE:%.*]]: tensor<*x!tf.resource<tensor<f32>>>)
-func @resource_after_cluster(%arg0: tensor<*x!tf.resource<tensor<f32>>>, %arg1: tensor<*x!tf.resource<tensor<f32>>>) {
+// CHECK-SAME:  ([[USED_RESOURCE:%.*]]: tensor<*x!tf_type.resource<tensor<f32>>>, [[UNUSED_RESOURCE:%.*]]: tensor<*x!tf_type.resource<tensor<f32>>>)
+func @resource_after_cluster(%arg0: tensor<*x!tf_type.resource<tensor<f32>>>, %arg1: tensor<*x!tf_type.resource<tensor<f32>>>) {
   // CHECK-NEXT: [[CONST:%.*]] = "tf.Const"
   %0 = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
 
@@ -393,12 +393,12 @@ func @resource_after_cluster(%arg0: tensor<*x!tf.resource<tensor<f32>>>, %arg1: 
   // CHECK-NEXT:   "tf.NoOp"
   // CHECK-NEXT:   tf_device.return
   "tf.TPUReplicateMetadata"() {_tpu_replicate = "cluster_test_fn", allow_soft_placement = false, computation_shape = [], device_assignment = [], host_compute_core = [], num_cores_per_replica = 1 : i64, num_replicas = 1 : i64, step_marker_location = "STEP_MARK_AT_ENTRY", topology = "", use_spmd_for_xla_partitioning = false, use_tpu = true} : () -> ()
-  %1 = "tf.ReadVariableOp"(%arg0) {_tpu_replicate = "cluster_test_fn"} : (tensor<*x!tf.resource<tensor<f32>>>) -> tensor<f32>
+  %1 = "tf.ReadVariableOp"(%arg0) {_tpu_replicate = "cluster_test_fn"} : (tensor<*x!tf_type.resource<tensor<f32>>>) -> tensor<f32>
 
-  "tf.AssignSubVariableOp"(%arg1, %0) : (tensor<*x!tf.resource<tensor<f32>>>, tensor<f32>) -> ()
+  "tf.AssignSubVariableOp"(%arg1, %0) : (tensor<*x!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
 
   // CHECK:       "tf.AssignAddVariableOp"([[USED_RESOURCE]], [[CONST]])
-  "tf.AssignAddVariableOp"(%arg0, %0) : (tensor<*x!tf.resource<tensor<f32>>>, tensor<f32>) -> ()
+  "tf.AssignAddVariableOp"(%arg0, %0) : (tensor<*x!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
 
   "tf.NoOp"() {_tpu_replicate = "cluster_test_fn"} : () -> ()
   return
@@ -419,8 +419,8 @@ func @resource_before_cluster() {
   // CHECK-NEXT:   tf_device.return
   "tf.TPUReplicateMetadata"() {_tpu_replicate = "cluster_test_fn", allow_soft_placement = false, computation_shape = [], device_assignment = [], host_compute_core = [], num_cores_per_replica = 1 : i64, num_replicas = 1 : i64, step_marker_location = "STEP_MARK_AT_ENTRY", topology = "", use_spmd_for_xla_partitioning = false, use_tpu = true} : () -> ()
 
-  %1 = "tf.VarHandleOp"() {container = "", shape = #tf.shape<>, shared_name = "x"} : () -> tensor<*x!tf.resource<tensor<f32>>>
-  "tf.AssignAddVariableOp"(%1, %0) : (tensor<*x!tf.resource<tensor<f32>>>, tensor<f32>) -> ()
+  %1 = "tf.VarHandleOp"() {container = "", shape = #tf_type.shape<>, shared_name = "x"} : () -> tensor<*x!tf_type.resource<tensor<f32>>>
+  "tf.AssignAddVariableOp"(%1, %0) : (tensor<*x!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
 
   "tf.NoOp"() {_tpu_replicate = "cluster_test_fn"} : () -> ()
   return
@@ -439,7 +439,7 @@ func @cluster_ops_with_regions() {
   return
 }
 
-// CHECK:      "tf.opA"() ( {
+// CHECK:      "tf.opA"() ({
 // CHECK-NEXT: "tf.opB"
 // CHECK-NOT: _tpu_replicate = "replicate"
 // CHECK-NOT:  device = "device"
@@ -463,19 +463,19 @@ func @cluster_nested_op_using_other_op() {
   return
 }
 
-// CHECK: [[CLUSTER:%.*]] = "tf_device.cluster"() ( {
+// CHECK: [[CLUSTER:%.*]] = "tf_device.cluster"() ({
 // CHECK:    [[OPA:%.*]] = "tf.opA"() : () -> tensor<i32>
-// CHECK:    "tf.opB"() ( {
+// CHECK:    "tf.opB"() ({
 // CHECK:      "tf.opC"([[OPA]])
 // CHECK:    tf_device.return [[OPA]]
 // CHECK:    "tf.opD"([[CLUSTER]])
 
 // Preceding user is using resource updated by a nested op.
-!tf_res = type tensor<*x!tf.resource<tensor<f32>>>
+!tf_res = type tensor<*x!tf_type.resource<tensor<f32>>>
 // CHECK-LABEL: func @cluster_nested_op_updating_resource
 func @cluster_nested_op_updating_resource() {
   %0 = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
-  %1 = "tf.VarHandleOp"() {container = "", shape = #tf.shape<>, shared_name = "x"} : () -> !tf_res
+  %1 = "tf.VarHandleOp"() {container = "", shape = #tf_type.shape<>, shared_name = "x"} : () -> !tf_res
 
   "tf.opA"() ({
     "tf.AssignAddVariableOp"(%1, %0) : (!tf_res, tensor<f32>) -> ()
@@ -489,8 +489,8 @@ func @cluster_nested_op_updating_resource() {
 
 // CHECK: [[CONST:%.*]] = "tf.Const"
 // CHECK: [[VAR:%.*]] = "tf.VarHandleOp"
-// CHECK: "tf_device.cluster"() ( {
-// CHECK:   "tf.opA"() ( {
+// CHECK: "tf_device.cluster"() ({
+// CHECK:   "tf.opA"() ({
 // CHECK:     "tf.AssignAddVariableOp"([[VAR]], [[CONST]])
 // CHECK:    })
 // CHECK:    "tf.opB"()
@@ -505,7 +505,7 @@ func @cluster_nested_op_updating_resource() {
 // CHECK-LABEL: func @cluster_nested_op_using_resource
 func @cluster_nested_op_using_resource() {
   %0 = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
-  %1 = "tf.VarHandleOp"() {container = "", shape = #tf.shape<>, shared_name = "x"} : () -> !tf_res
+  %1 = "tf.VarHandleOp"() {container = "", shape = #tf_type.shape<>, shared_name = "x"} : () -> !tf_res
   "tf.AssignAddVariableOp"(%1, %0) { _tpu_replicate = "foo" } : (!tf_res, tensor<f32>) -> ()
   "tf.opA"() ({
     "tf.AssignAddVariableOp"(%1, %0) : (!tf_res, tensor<f32>) -> ()
@@ -518,20 +518,20 @@ func @cluster_nested_op_using_resource() {
 
 // CHECK: [[CONST:%.*]] = "tf.Const"
 // CHECK: [[VAR:%.*]] = "tf.VarHandleOp"
-// CHECK: "tf_device.cluster"() ( {
+// CHECK: "tf_device.cluster"() ({
 // CHECK:   "tf.AssignAddVariableOp"([[VAR]], [[CONST]])
 // CHECK:    "tf.opB"()
 // CHECK:    tf_device.return
 // CHECK:  })
 // CHECK-SAME: _tpu_replicate = "foo"
-// CHECK:  "tf.opA"() ( {
+// CHECK:  "tf.opA"() ({
 // CHECK:   "tf.AssignAddVariableOp"([[VAR]], [[CONST]])
 
 
 // -----
 
 
-!tf_res = type tensor<*x!tf.resource<tensor<f32>>>
+!tf_res = type tensor<*x!tf_type.resource<tensor<f32>>>
 
 // Test multiple replicated clusters interleaved and uses resource variables.
 // CHECK-LABEL: func @multiple_replicated_interleaved
@@ -600,7 +600,7 @@ func @bad_num_replicas() {
 // -----
 
 // Test cluster with bad `num_cores_per_replica` attribute.
-!rtype = type tensor<!tf.resource<tensor<10x3xf32>>>
+!rtype = type tensor<!tf_type.resource<tensor<10x3xf32>>>
 func @replication_with_model_parallelism(%arg0: !rtype, %arg1: !rtype, %arg2: !rtype, %arg3: !rtype) -> (tensor<10x3xf32>) {
   %2 = "tf.TPUReplicatedInput"(%arg0, %arg2) : (!rtype, !rtype) -> !rtype
   %3 = "tf.TPUReplicatedInput"(%arg1, %arg3) : (!rtype, !rtype) -> !rtype

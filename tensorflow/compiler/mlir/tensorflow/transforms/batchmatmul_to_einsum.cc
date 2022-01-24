@@ -23,7 +23,7 @@ limitations under the License.
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
-#include "mlir/Analysis/LoopAnalysis.h"  // from @llvm-project
+#include "mlir/Dialect/Affine/Analysis/LoopAnalysis.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -34,6 +34,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/core/util/matmul_bcast.h"
 
 namespace mlir {
@@ -83,13 +84,7 @@ class ConvertTFBatchMatMulToEinsumOp
 };
 
 struct BatchMatMulToEinsumPass
-    : public PassWrapper<BatchMatMulToEinsumPass, FunctionPass> {
-  StringRef getArgument() const final { return "tf-batch-matmul-to-tf-einsum"; }
-
-  StringRef getDescription() const final {
-    return "Replace TF BatchMatMul op by TF Einsum op.";
-  }
-
+    : public BatchMatMulToEinsumPassBase<BatchMatMulToEinsumPass> {
   void runOnFunction() override;
 };
 
@@ -103,7 +98,6 @@ void BatchMatMulToEinsumPass::runOnFunction() {
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 
-PassRegistration<BatchMatMulToEinsumPass> pass;
 }  // namespace
 
 std::unique_ptr<OperationPass<FuncOp>> CreateBatchMatMulToEinsumPass() {

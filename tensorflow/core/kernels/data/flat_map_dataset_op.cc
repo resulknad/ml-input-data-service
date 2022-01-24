@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
+#include "tensorflow/core/data/captured_function.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/serialization_utils.h"
@@ -144,7 +145,7 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
           // next subelement.
           bool end_of_element;
           TF_RETURN_IF_ERROR(current_element_iterator_->GetNext(
-              ctx, out_tensors, &end_of_element));
+              MakeNestedIteratorContext(ctx), out_tensors, &end_of_element));
           if (!end_of_element) {
             // Produce the subelement as output.
             *end_of_sequence = false;
@@ -195,8 +196,8 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
         bool end_of_element;
         int last_num_skipped;
         TF_RETURN_IF_ERROR(current_element_iterator_->Skip(
-            ctx, num_to_skip - *num_skipped, &end_of_element,
-            &last_num_skipped));
+            MakeNestedIteratorContext(ctx), num_to_skip - *num_skipped,
+            &end_of_element, &last_num_skipped));
         *num_skipped += last_num_skipped;
         if (end_of_element) {
           // We have reached the end of the current element, so maybe move on
@@ -253,7 +254,7 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
             dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_));
         TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
         {
-          int64 temp;
+          int64_t temp;
           TF_RETURN_IF_ERROR(
               reader->ReadScalar(full_name(kElementIndex), &temp));
           element_index_ = temp;
@@ -262,7 +263,7 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
                 full_name(kCurrentElementIteratorUninitialized))) {
           size_t inputs_size;
           {
-            int64 temp;
+            int64_t temp;
             TF_RETURN_IF_ERROR(
                 reader->ReadScalar(full_name(kInputsSize), &temp));
             inputs_size = static_cast<size_t>(temp);

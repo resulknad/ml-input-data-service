@@ -14,16 +14,13 @@
 # ==============================================================================
 """Tests for XLA op wrappers."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 
 from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.compiler.tests import xla_test
+from tensorflow.compiler.tf2xla.ops import gen_xla_ops
 from tensorflow.compiler.tf2xla.python import xla
 from tensorflow.compiler.xla import xla_data_pb2
 from tensorflow.python.eager import def_function
@@ -34,6 +31,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.platform import googletest
 
 
@@ -55,6 +53,8 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
       equality_fn(result, expected, rtol=1e-3)
 
   def testAdd(self):
+    if xla_test.test.is_built_with_rocm():
+      self.skipTest('Broken with rocm')
     for dtype in self.numeric_types:
       self._assertOpOutputMatchesExpected(
           xla.add,
@@ -316,7 +316,25 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
               [[7, 7, 1, 7], [7, 7, 7, 7], [7, 7, 4, 7], [7, 7, 7, 7]],
               dtype=dtype))
 
-  @test_util.disable_mlir_bridge('Not supported yet')
+  @parameterized.parameters(stateless_random_ops.Algorithm.THREEFRY,
+                            stateless_random_ops.Algorithm.PHILOX,
+                            stateless_random_ops.Algorithm.AUTO_SELECT)
+  def testRngBitGeneratorIsDeterministic(self, algorithm):
+    dtype = np.uint32
+    key = np.array([1, 2], dtype=np.uint64)
+    shape = (10, 12)
+
+    def rng_fun_is_deterministic(k):
+      res1 = xla.rng_bit_generator(algorithm, k, shape, dtype=dtype)
+      res2 = xla.rng_bit_generator(algorithm, k, shape, dtype=dtype)
+      return (res1[0] - res2[0], res1[1] - res2[1])
+
+    self._assertOpOutputMatchesExpected(
+        rng_fun_is_deterministic,
+        args=(key,),
+        expected=(np.zeros(key.shape, dtype=key.dtype),
+                  np.zeros(shape, dtype=dtype)))
+
   def testReduce(self):
     for dtype in set(self.numeric_types).intersection(
         set([dtypes.bfloat16.as_numpy_dtype, np.float32])):
@@ -367,8 +385,10 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
           args=(np.arange(12, dtype=np.int32).astype(dtype).reshape([3, 4]),),
           expected=np.array([0, 45, 120, 231], dtype=dtype))
 
-  @test_util.disable_mlir_bridge('Not supported yet')
-  def testVariadicReduceKahanSum(self):
+  IS_XLA_VARIADIC_REDUCE_V2 = [True, False]
+
+  @parameterized.parameters(IS_XLA_VARIADIC_REDUCE_V2)
+  def testVariadicReduceKahanSum(self, is_v2):
     for dtype in set(self.numeric_types).intersection(
         set([np.float32, np.complex64])):
 
@@ -388,57 +408,72 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
           reducer = kahan_sum_reducer.get_concrete_function(
               (arg, arg), (arg, arg))
 
-          return xla.variadic_reduce((x, array_ops.zeros_like(x)),
-                                     init_values=(arg, arg),
-                                     dimensions_to_reduce=dims,
-                                     reducer=reducer)[output_idx]
+          if is_v2:
+            return xla.variadic_reduce((x, array_ops.zeros_like(x)),
+                                       init_values=(arg, arg),
+                                       dimensions_to_reduce=dims,
+                                       reducer=reducer)[output_idx]
+          else:
+            return gen_xla_ops.xla_variadic_reduce((x, array_ops.zeros_like(x)),
+                                                   init_value=(arg, arg),
+                                                   dimensions_to_reduce=dims,
+                                                   reducer=reducer)[output_idx]
+
         return fn
 
       xs = np.array([1e5, np.pi, -1e5, np.exp(1.)])
       xs = np.array([xs, xs[::-1] / 3, xs / 7], dtype)
       self._assertOpOutputMatchesExpected(
-          kahan_sum_reduction(dims=[], output_idx=0),
-          args=(xs,), expected=xs)
+          kahan_sum_reduction(dims=[], output_idx=0), args=(xs,), expected=xs)
       self._assertOpOutputMatchesExpected(
           kahan_sum_reduction(dims=[], output_idx=1),
-          args=(xs,), expected=np.zeros_like(xs))
+          args=(xs,),
+          expected=np.zeros_like(xs))
       shuffle_indices = np.argsort(np.random.randn(xs.shape[0]))
       self._assertOpOutputMatchesExpected(
           kahan_sum_reduction(dims=[0], output_idx=0),
           args=(xs[shuffle_indices],),
-          expected=np.array([np.exp(1) / 3 + 1e5 * 8 / 7,
-                             np.pi * 8 / 7 - 1e5 / 3,
-                             -1e5 * 8 / 7 + np.pi / 3,
-                             np.exp(1) * 8 / 7 + 1e5 / 3], dtype=dtype))
+          expected=np.array([
+              np.exp(1) / 3 + 1e5 * 8 / 7, np.pi * 8 / 7 - 1e5 / 3,
+              -1e5 * 8 / 7 + np.pi / 3,
+              np.exp(1) * 8 / 7 + 1e5 / 3
+          ],
+                            dtype=dtype))
       error_term_equality = functools.partial(self.assertAllClose, atol=.005)
       self._assertOpOutputMatchesExpected(
           kahan_sum_reduction(dims=[0], output_idx=1),
-          args=(xs[shuffle_indices],), expected=np.zeros_like(xs[0]),
+          args=(xs[shuffle_indices],),
+          expected=np.zeros_like(xs[0]),
           equality_fn=error_term_equality)
       shuffle_indices = np.argsort(np.random.randn(xs.shape[1]))
       self._assertOpOutputMatchesExpected(
           kahan_sum_reduction(dims=[1], output_idx=0),
           args=(xs[:, shuffle_indices],),
-          expected=np.array([np.pi + np.exp(1.),
-                             (np.pi + np.exp(1.)) / 3,
-                             (np.pi + np.exp(1.)) / 7], dtype=dtype))
+          expected=np.array([
+              np.pi + np.exp(1.), (np.pi + np.exp(1.)) / 3,
+              (np.pi + np.exp(1.)) / 7
+          ],
+                            dtype=dtype))
       self._assertOpOutputMatchesExpected(
           kahan_sum_reduction(dims=[1], output_idx=1),
-          args=(xs[:, shuffle_indices],), expected=np.zeros_like(xs[:, 0]),
+          args=(xs[:, shuffle_indices],),
+          expected=np.zeros_like(xs[:, 0]),
           equality_fn=error_term_equality)
       # Now, shuffle both dims.
       xs = xs[np.argsort(np.random.randn(xs.shape[0]))]
       xs = xs[:, np.argsort(np.random.randn(xs.shape[1]))]
       self._assertOpOutputMatchesExpected(
           kahan_sum_reduction(dims=[0, 1], output_idx=0),
-          args=(xs,), expected=dtype((np.pi + np.exp(1.)) * 31 / 21))
+          args=(xs,),
+          expected=dtype((np.pi + np.exp(1.)) * 31 / 21))
       self._assertOpOutputMatchesExpected(
           kahan_sum_reduction(dims=[0, 1], output_idx=1),
-          args=(xs,), expected=dtype(0),
+          args=(xs,),
+          expected=dtype(0),
           equality_fn=error_term_equality)
 
-  @test_util.disable_mlir_bridge('Not supported yet')
-  def testVariadicReduceV2SingleOp(self):
+  @parameterized.parameters(IS_XLA_VARIADIC_REDUCE_V2)
+  def testVariadicReduceSingleOp(self, is_v2):
 
     @def_function.function
     def reducer_add(op_element, acc_val):
@@ -451,9 +486,19 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
       reducer_func = reducer_add.get_concrete_function(arg_spec, arg_spec)
 
       def reduce(values, *, dimensions_to_reduce):
-        return xla.variadic_reduce((values,), (init_val,),  # pylint: disable=cell-var-from-loop
-                                   dimensions_to_reduce=dimensions_to_reduce,
-                                   reducer=reducer_func)[0]  # pylint: disable=cell-var-from-loop
+        if is_v2:
+          return xla.variadic_reduce(
+              (values,),
+              (init_val,),  # pylint: disable=cell-var-from-loop
+              dimensions_to_reduce=dimensions_to_reduce,
+              reducer=reducer_func)[0]  # pylint: disable=cell-var-from-loop
+        else:
+          return gen_xla_ops.xla_variadic_reduce(
+              (values,),
+              (init_val,),  # pylint: disable=cell-var-from-loop
+              dimensions_to_reduce=dimensions_to_reduce,
+              reducer=reducer_func)[0]  # pylint: disable=cell-var-from-loop
+
       # Reduce dimension 0
       self._assertOpOutputMatchesExpected(
           functools.partial(reduce, dimensions_to_reduce=(0,)),
@@ -472,7 +517,6 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
           args=(values,),
           expected=np.array(27, dtype=dtype))
 
-  @test_util.disable_mlir_bridge('Not supported yet')
   def testVariadicReduceV2DifferentTypes(self):
     # Two ops, with different dtypes
     @def_function.function
@@ -492,9 +536,14 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
                                                        arg_spec_1, arg_spec_2)  # pylint: disable=cell-var-from-loop
 
       def reduce(*values, dimensions_to_reduce):
-        return xla.variadic_reduce(values, (init_val_1, init_val_2,),  # pylint: disable=cell-var-from-loop
-                                   dimensions_to_reduce=dimensions_to_reduce,
-                                   reducer=reducer_func)  # pylint: disable=cell-var-from-loop
+        return xla.variadic_reduce(
+            values,
+            (
+                init_val_1,  # pylint: disable=cell-var-from-loop
+                init_val_2,  # pylint: disable=cell-var-from-loop
+            ),
+            dimensions_to_reduce=dimensions_to_reduce,
+            reducer=reducer_func)  # pylint: disable=cell-var-from-loop
 
       # Reduce dimension 0
       self._assertOpOutputMatchesExpected(
@@ -523,7 +572,6 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
           args=(values_1, values_2),
           expected=(values_1, values_2))
 
-  @test_util.disable_mlir_bridge('Not supported yet')
   def testSelectAndScatter(self):
     for dtype in set(self.numeric_types).intersection(
         set([dtypes.bfloat16.as_numpy_dtype, np.float32])):
@@ -577,7 +625,6 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
                         [[673, 674], [683, 684], [693, 694]]]),
               dtype=dtype))
 
-  @test_util.disable_mlir_bridge('Error handling')
   def testDynamicSliceWithIncorrectStartIndicesShape(self):
     with self.session() as session:
       with self.test_scope():
@@ -588,10 +635,9 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
         session.run(output)
       self.assertRegex(
           invalid_arg_error.exception.message,
-          (r'start_indices must be a vector with length equal to input rank, '
-           r'but input rank is 3 and start_indices has shape \[2\].*'))
+          (r'op has mismatched number of slice sizes \(3\) and number of start'
+           r' indices \(2\)'))
 
-  @test_util.disable_mlir_bridge('Error handling')
   def testDynamicSliceWithIncorrectSizeIndicesShape(self):
     with self.session() as session:
       with self.test_scope():
@@ -602,8 +648,8 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
         session.run(output)
       self.assertRegex(
           invalid_arg_error.exception.message,
-          (r'size_indices must be a vector with length equal to input rank, '
-           r'but input rank is 3 and size_indices has shape \[2\].*'))
+          (r'op has mismatched number of slice sizes \(2\) and number of start'
+           r' indices \(3\)'))
 
 
 class XlaOpsShapeInferenceTest(xla_test.XLATestCase, parameterized.TestCase):
@@ -967,6 +1013,41 @@ class XlaOpsShapeInferenceTest(xla_test.XLATestCase, parameterized.TestCase):
     with self.assertRaisesRegex(ValueError,
                                 'All inputs must have the same shape'):
       reduce_with_shapes((None, 4, 5), (3, None, 5), (13, 4, 5))
+
+  @parameterized.parameters(stateless_random_ops.Algorithm.THREEFRY,
+                            stateless_random_ops.Algorithm.PHILOX,
+                            stateless_random_ops.Algorithm.AUTO_SELECT)
+  def testRngBitGenerator(self, algorithm):
+    dtype = np.uint64
+    initial_state = array_ops.placeholder(np.uint64, shape=(2,))
+    shape = (2, 3)
+    res = xla.rng_bit_generator(algorithm, initial_state, shape, dtype=dtype)
+
+    self.assertEqual(res[0].shape, initial_state.shape)
+    self.assertEqual(res[1].shape, shape)
+
+    # The initial_state has unknown dimension size
+    initial_state = array_ops.placeholder(np.uint64, shape=(None,))
+    shape = (2, 3)
+    res = xla.rng_bit_generator(algorithm, initial_state, shape, dtype=dtype)
+
+    self.assertEqual(res[0].shape.as_list(), initial_state.shape.as_list())
+    self.assertEqual(res[1].shape, shape)
+
+    # The initial_state has unknown rank
+    initial_state = array_ops.placeholder(np.uint64, shape=None)
+    shape = (2, 3)
+    res = xla.rng_bit_generator(algorithm, initial_state, shape, dtype=dtype)
+
+    self.assertEqual(res[0].shape.as_list(), [None])
+    self.assertEqual(res[1].shape, shape)
+
+    # The output shape has unknown dimension
+    initial_state = array_ops.placeholder(np.uint64, shape=(None,))
+    shape = (None, 3)
+    with self.assertRaisesRegex(TypeError,
+                                'Failed to convert elements .* to Tensor'):
+      res = xla.rng_bit_generator(algorithm, initial_state, shape, dtype=dtype)
 
 
 if __name__ == '__main__':

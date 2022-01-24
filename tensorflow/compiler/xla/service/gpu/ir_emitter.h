@@ -44,7 +44,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace gpu {
@@ -164,6 +163,14 @@ class IrEmitter : public DfsHloVisitorWithDefault,
                      std::placeholders::_1, std::placeholders::_2);
   }
 
+  StatusOr<std::vector<llvm::Value*>> ComputeNestedElement(
+      const HloComputation& computation,
+      absl::Span<llvm::Value* const> parameter_elements);
+
+  StatusOr<std::vector<llvm::Value*>> ComputeNestedElementFromAddrs(
+      const HloComputation& computation,
+      absl::Span<llvm::Value* const> parameter_elements_addrs);
+
   IrEmitterContext* ir_emitter_context_;
   llvm::Module* module_;
 
@@ -177,7 +184,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // Hlo configuration data used during code generation.
   const HloModuleConfig& hlo_module_config_;
 
- protected:
   // Bind all argument IrArrays of `fusion` to `fused_emitter`.
   void BindFusionArguments(const HloInstruction* fusion,
                            FusedIrEmitter* fused_emitter);
@@ -205,10 +211,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
                        const llvm_ir::IrArray::Index& keys_index,
                        const llvm_ir::IrArray::Index& compare_keys_index,
                        const llvm_ir::IrArray& keys_array);
-
-  StatusOr<std::vector<llvm::Value*>> ComputeNestedElement(
-      const HloComputation& computation,
-      absl::Span<llvm::Value* const> parameter_elements);
 
   // Emits an atomic operation that implements `nested_computation` in the
   // sequentially consistent memory model. `output_address` and `source_address`

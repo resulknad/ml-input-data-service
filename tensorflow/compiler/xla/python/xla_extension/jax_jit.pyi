@@ -13,40 +13,27 @@
 # limitations under the License.
 # ==============================================================================
 
-import inspect
-from typing import Any, Callable, Sequence, Tuple
+from typing import Any, Callable, Optional, Sequence, Tuple
 
 import numpy as np
 from tensorflow.compiler.xla.python import xla_extension
 
 Client = xla_extension.Client
+Device = xla_extension.Device
 
-class CompiledFunctionCache:
-  def __init__(self, capacity): ...
-  def size(self) -> int: ...
-  def capacity(self) -> int: ...
-  def clear(self): ...
+CompiledFunctionCache = xla_extension.CompiledFunctionCache
+CompiledFunction = xla_extension.CompiledFunction
 
-class CompiledFunction:
-  def __call__(self, *args, **kwargs) -> Any: ...
-  __signature__: inspect.Signature
-  def _cache_size(self) -> int: ...
-  def _clear_cache(self) -> None: ...
-
-class GlobalJitState:
-  disable_jit: bool
-  enable_x64: bool
+class JitState:
+  disable_jit: Optional[bool]
+  enable_x64: Optional[bool]
   extra_jit_context: Any
+  post_hook: Optional[Callable]
 
-class ThreadLocalJitState:
-  disable_jit: bool
-  enable_x64: bool
-  extra_jit_context: Any
+def global_state() -> JitState: ...
+def thread_local_state() -> JitState: ...
 
-def global_state() -> GlobalJitState: ...
-def thread_local_state() -> ThreadLocalJitState: ...
-
-def jit_is_enabled() -> bool: ...
+def jit_is_disabled() -> bool: ...
 def get_enable_x64() -> bool: ...
 
 def set_disable_jit_cpp_flag(__arg: bool) -> None: ...
@@ -67,6 +54,7 @@ def jit(fun: Callable[..., Any],
         static_argnums: Sequence[int],
         static_argnames: Sequence[str] = ...,
         donate_argnums: Sequence[int] = ...,
+        jit_device: Optional[Device] = ...,
         cache: Optional[CompiledFunctionCache] = ...) -> CompiledFunction: ...
 
 def device_put(

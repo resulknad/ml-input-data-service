@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/grappler_item.h"
@@ -35,7 +36,7 @@ using ConfigMap =
     std::map<string, tensorflow::RewriterConfig_CustomGraphOptimizer>;
 
 // tf.data optimizations, in the order we want to perform them.
-constexpr std::array<const char*, 21> kTFDataOptimizations = {
+constexpr std::array<const char*, 22> kTFDataOptimizations = {
     "noop_elimination",
     "disable_intra_op_parallelism",
     "use_private_thread_pool",
@@ -50,13 +51,16 @@ constexpr std::array<const char*, 21> kTFDataOptimizations = {
     "parallel_batch",
     "slack",
     "autotune_buffer_sizes",
+    "inject_prefetch_eligible",
+    "inject_prefetch",
     "disable_prefetch_legacy_autotune",
     "enable_gradient_descent",
     "append_forty_two",
     "add_put_op",
     "add_get_op",
     "add_put_op_at_marker",
-    "add_get_op_at_marker"};
+    "add_get_op_at_marker",
+    "make_deterministic"};
 
 // Parses a list of string optimizer configurations into a map from
 // optimizer name -> rewriter config for that optimizer.
@@ -104,8 +108,12 @@ Status TFDataMetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
 
   // Perform optimizations in a meaningful order.
   for (const auto& optimization : kTFDataOptimizations) {
-    TF_RETURN_IF_ERROR(
-        ApplyOptimization(optimization, cluster, &optimized_item));
+    tensorflow::metrics::ScopedCounter<2> timings(
+        tensorflow::metrics::GetGraphOptimizationCounter(),
+        {"TFData", optimization});
+    Status status = ApplyOptimization(optimization, cluster, &optimized_item);
+    timings.ReportAndStop();
+    if (!status.ok()) return status;
   }
 
   // Store the final result of all the optimizations in `output`.

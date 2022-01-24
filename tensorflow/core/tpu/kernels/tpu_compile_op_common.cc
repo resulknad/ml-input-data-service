@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/cleanup/cleanup.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/jit/flags.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_interface.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_metrics.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_options.h"
+#include "tensorflow/core/tpu/kernels/tpu_fingerprint_lookup.h"
 #include "tensorflow/core/tpu/kernels/tpu_op_consts.h"
 #include "tensorflow/core/tpu/kernels/tpu_op_util.h"
 #include "tensorflow/core/tpu/kernels/tpu_program_group_interface.h"
@@ -118,7 +120,7 @@ void TpuCompileOpKernelCommon::Compute(OpKernelContext* ctx) {
   // doesn't hurt to also deregister the callback in the failure case; the
   // CancellationManager ensures that already-registered callbacks will be run
   // once cancellation has started.
-  auto cancellation_cleanup = xla::MakeCleanup([ctx, token, done] {
+  auto cancellation_cleanup = absl::MakeCleanup([ctx, token, done] {
     ctx->cancellation_manager()->DeregisterCallback(token);
     done->store(true);
   });
@@ -127,14 +129,16 @@ void TpuCompileOpKernelCommon::Compute(OpKernelContext* ctx) {
   string status_payload;
   // Construct payload if compile_status is not ok and there's no payload for
   // compilation yet.
-  if (!compile_status.ok() &&
-      compile_status.GetPayload(TpuCompileInterface::kTpuCompileErrorPayloadKey)
-          .empty()) {
+  if (!compile_status
+           .GetPayload(TpuCompileInterface::kTpuCompileErrorPayloadKey)
+           .has_value()) {
     tpu::CompilationResultProto proto;
     proto.set_status_code(compile_status.code());
     proto.set_status_error_message(compile_status.error_message());
     status_payload = proto.SerializeAsString();
   }
+  metrics::UpdateTpuErrorCounter("TpuCompileOp",
+                                 error_name(compile_status.code()));
   OP_REQUIRES_OK_OR_SET_PAYLOAD(ctx,
                                 TpuCompileInterface::kTpuCompileErrorPayloadKey,
                                 status_payload, compile_status);
@@ -178,8 +182,6 @@ Status TpuCompileOpKernelCommon::CompileLocallyAndFillHostCache(
   tpu_program_group->LogProgramMemorySummary();
   metrics::UpdateXlaCompilationTime(absl::ToInt64Microseconds(duration));
   TpuCompilationMetrics::IncrementCompilationCount(session_name);
-
-  TF_RETURN_IF_ERROR(tpu_program_group->LogCompilationStats(key, duration));
 
   return compile_status;
 }
@@ -317,6 +319,10 @@ Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
   if (proto_key.size() == 1) {
     // SPMD produces 1 program for all cores.
     num_cores_with_compiled_programs = metadata_.num_cores_per_replica();
+    if (may_modify_variables.size() == 1) {
+      may_modify_variables.resize(metadata_.num_cores_per_replica(),
+                                  may_modify_variables[0]);
+    }
   }
   if (status.ok() &&
       num_cores_with_compiled_programs +
@@ -344,7 +350,8 @@ Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
       ctx->frame_iter().frame_id, ":", ctx->frame_iter().iter_id, ":");
 
   // Return compilation status.
-  {
+  if (!status.GetPayload(TpuCompileInterface::kTpuCompileErrorPayloadKey)
+           .has_value()) {
     Tensor output(DT_STRING, TensorShape({}));
     tpu::CompilationResultProto proto;
     proto.set_status_code(status.code());
@@ -417,6 +424,33 @@ Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
     }
   }
   return status;
+}
+
+Status TpuCompileOpKernelCommon::RegisterXLAFingerprints(
+    const std::vector<TensorShape>& arg_shapes,
+    TpuProgramGroupInterface* tpu_program_group, uint64 fingerprint) {
+  // TODO(chiachenc): Support only one program for now.
+  if (tpu_program_group->program_count() != 1) {
+    LOG(INFO) << "Found " << tpu_program_group->program_count()
+              << " programs. Skip fingerprint registration.";
+  } else {
+    ResourceMgr* rm = GetTPUConfigResourceMgr();
+    tpu::TpuFingerprintLookup* fingerprint_lookup;
+    TF_RETURN_IF_ERROR(rm->LookupOrCreate<tpu::TpuFingerprintLookup>(
+        rm->default_container(), tpu::kFingerprintLookupResourceName,
+        &fingerprint_lookup, [&](tpu::TpuFingerprintLookup** new_lookup) {
+          *new_lookup = tpu::TpuFingerprintLookup::Create();
+          return Status::OK();
+        }));
+    uint64 tf_fingerprint =
+        tpu::CreateFingerprintWithNameAndShapes(fingerprint, arg_shapes);
+    std::string xla_fingerprint = tpu_program_group->fingerprint(0);
+    VLOG(1) << "Registering TF fingerprint: " << tf_fingerprint
+            << " with XLA fingerprint: " << xla_fingerprint;
+    fingerprint_lookup->RegisterIntermediateAndValuePair(
+        tf_fingerprint, std::move(xla_fingerprint));
+  }
+  return Status::OK();
 }
 }  // namespace tpu
 }  // namespace tensorflow

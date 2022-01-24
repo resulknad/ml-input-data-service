@@ -29,20 +29,23 @@ class RootDataset : public DatasetBase {
   struct Params {
     bool autotune = true;
     model::AutotuneAlgorithm autotune_algorithm;
-    int64 autotune_cpu_budget = 0;
-    int64 autotune_ram_budget = 0;
-    int64 max_intra_op_parallelism = 1;
-    int64 private_threadpool_size = 0;
+    int64_t autotune_cpu_budget = 0;
+    int64_t autotune_ram_budget = 0;
+    int64_t max_intra_op_parallelism = 1;
+    int64_t private_threadpool_size = 0;
   };
 
-  static Status FromOptions(DatasetBase* input, DatasetBase** output);
+  static Status FromOptions(const DatasetBase* input, DatasetBase** output);
 
   ~RootDataset() override;
 
   const DataTypeVector& output_dtypes() const override;
   const std::vector<PartialTensorShape>& output_shapes() const override;
 
-  int64 Cardinality() const override;
+  int64_t CardinalityInternal() const override;
+  int64_t CardinalityInternal(CardinalityOptions options) const override;
+  Status Get(OpKernelContext* ctx, int64 index,
+             std::vector<Tensor>* out_tensors) const override;
   Status CheckExternalState() const override;
   string DebugString() const override;
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override;
@@ -68,7 +71,7 @@ class RootDataset : public DatasetBase {
 // dataset is about to be iterated. This can for instance apply static graph
 // optimizations or inject internal tf.data transformations responsible for
 // autotuning or threading configuration.
-Status FinalizeDataset(OpKernelContext* ctx, DatasetBase* input,
+Status FinalizeDataset(OpKernelContext* ctx, const DatasetBase* input,
                        DatasetBase** output);
 
 }  // namespace data

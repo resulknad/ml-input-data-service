@@ -145,12 +145,12 @@ func @check_sharding_after_read_variable(%arg0: tensor<*xi32>, %arg1: tensor<*xi
 }
 
 // CHECK-LABEL: func @func_with_sharding_after_read_variable
-// CHECK-SAME: (%{{[a-z0-9]+}}: tensor<*x!tf.resource<tensor<32xf32>>> {mhlo.sharding = "\01\02\03"}, %{{[a-z0-9]+}}: tensor<*x!tf.resource<tensor<32xf32>>> {mhlo.sharding = "\04\05\06"})
+// CHECK-SAME: (%{{[a-z0-9]+}}: tensor<*x!tf_type.resource<tensor<32xf32>>> {mhlo.sharding = "\01\02\03"}, %{{[a-z0-9]+}}: tensor<*x!tf_type.resource<tensor<32xf32>>> {mhlo.sharding = "\04\05\06"})
 // CHECK-SAME: -> (tensor<*xi32> {mhlo.sharding = "\0A\0B\0C"}, tensor<*xi1> {mhlo.sharding = "\0D\0E\0F"})
-func @func_with_sharding_after_read_variable(%arg0: tensor<*x!tf.resource<tensor<32xf32>>>, %arg1: tensor<*x!tf.resource<tensor<32xf32>>>) -> (tensor<*xi32>, tensor<*xi1>) {
-  %0 = "tf.ReadVariableOp"(%arg0) : (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
+func @func_with_sharding_after_read_variable(%arg0: tensor<*x!tf_type.resource<tensor<32xf32>>>, %arg1: tensor<*x!tf_type.resource<tensor<32xf32>>>) -> (tensor<*xi32>, tensor<*xi1>) {
+  %0 = "tf.ReadVariableOp"(%arg0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
   %1 = "tf.XlaSharding"(%0) { _XlaSharding = "\01\02\03", sharding = "\01\02\03" } : (tensor<32xf32>) -> tensor<32xf32>
-  %2 = "tf.ReadVariableOp"(%arg1) : (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
+  %2 = "tf.ReadVariableOp"(%arg1) : (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
   %3 = "tf.Identity"(%2) : (tensor<32xf32>) -> tensor<32xf32>
   %4 = "tf.XlaSharding"(%3) { _XlaSharding = "\04\05\06", sharding = "\04\05\06" } : (tensor<32xf32>) -> tensor<32xf32>
   %5, %6 = "tf.A"(%1, %3) : (tensor<32xf32>, tensor<32xf32>) -> (tensor<*xi32>, tensor<*xi1>)
@@ -282,9 +282,9 @@ func @cluster_func(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>) -> (tensor<*xi32>
 // Tests partitioned variables (via XLA SPMD) propagates shardings correctly.
 
 // CHECK-LABEL: func @partitioned_variable
-func @partitioned_variable(%arg0: tensor<!tf.resource<tensor<*xf32>>>) {
-  %0 = "tf.TPUPartitionedInput"(%arg0) {_XlaSharding = "\01\02\03", partition_dim = -1 : i64} : (tensor<!tf.resource<tensor<*xf32>>>) -> tensor<!tf.resource<tensor<*xf32>>>
-  %1 = "tf.ReadVariableOp"(%0) : (tensor<!tf.resource<tensor<*xf32>>>) -> tensor<*xf32>
+func @partitioned_variable(%arg0: tensor<!tf_type.resource<tensor<*xf32>>>) {
+  %0 = "tf.TPUPartitionedInput"(%arg0) {_XlaSharding = "\01\02\03", partition_dim = -1 : i64} : (tensor<!tf_type.resource<tensor<*xf32>>>) -> tensor<!tf_type.resource<tensor<*xf32>>>
+  %1 = "tf.ReadVariableOp"(%0) : (tensor<!tf_type.resource<tensor<*xf32>>>) -> tensor<*xf32>
   // CHECK:      tf_device.cluster_func
   // CHECK-SAME: input_sharding_configuration = ["\01\02\03"]
   // CHECK-SAME: output_sharding_configuration = []
@@ -294,6 +294,57 @@ func @partitioned_variable(%arg0: tensor<!tf.resource<tensor<*xf32>>>) {
 
 // CHECK-LABEL: func @cluster_func
 // CHECK-SAME: ({{.+}}: tensor<*xf32> {mhlo.sharding = "\01\02\03"})
+func @cluster_func(%arg0: tensor<*xf32>) {
+  return
+}
+
+// -----
+
+// Tests that device variable sharding defaults to xla.OpSharding
+// { type : MAXIMAL
+//   tile_assignment_dimensions: [ 1 ]
+//   tile_assignment_devices   : [ 0 ]
+// }
+
+// CHECK-LABEL: func @maximal_device_variable
+func @maximal_device_variable(%arg0: tensor<*x!tf_type.resource<tensor<*xf32>>>) {
+   tf_device.replicate(%arg0 as %arg1: tensor<*x!tf_type.resource<tensor<*xf32>>>)
+     {_mirrored_variable_indices = [0], _replicated_input_indices = [-1], n = 2 : i32} {
+     %0 = "tf.ReadVariableOp"(%arg1) : (tensor<*x!tf_type.resource<tensor<*xf32>>>) -> tensor<*xf32>
+     // CHECK:      tf_device.cluster_func
+     // CHECK-SAME: input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"]
+     "tf_device.cluster_func"(%0) {func = @cluster_func, use_spmd_for_xla_partitioning = true} : (tensor<*xf32>) -> ()
+     tf_device.return
+  }
+  return
+}
+
+// CHECK-LABEL: func @cluster_func
+// CHECK-SAME: ({{.+}}: tensor<*xf32> {mhlo.sharding = "\08\01\1A\01\01\22\01\00"})
+func @cluster_func(%arg0: tensor<*xf32>) {
+  return
+}
+
+// -----
+
+// Tests that device variable sharding for an implicitly capture device variable
+// defaults to REPLICATE.
+
+// CHECK-LABEL: func @replicated_device_variable
+func @replicated_device_variable(%arg0: tensor<*x!tf_type.resource<tensor<*xf32>>>) {
+   %0 = "tf.ReadVariableOp"(%arg0) : (tensor<*x!tf_type.resource<tensor<*xf32>>>) -> tensor<*xf32>
+   tf_device.replicate()
+     {n = 2 : i32} {
+     // CHECK:      tf_device.cluster_func
+     // CHECK-SAME: input_sharding_configuration = [""]
+     "tf_device.cluster_func"(%0) {func = @cluster_func, use_spmd_for_xla_partitioning = true} : (tensor<*xf32>) -> ()
+     tf_device.return
+  }
+  return
+}
+
+// CHECK-LABEL: func @cluster_func
+// CHECK-SAME: ({{.+}}: tensor<*xf32> {mhlo.sharding = ""})
 func @cluster_func(%arg0: tensor<*xf32>) {
   return
 }
@@ -327,13 +378,13 @@ func @cluster_func(%arg0: tensor<*xi32>) -> tensor<*xi32> {
 // as unpartitioned resource.
 
 // CHECK-LABEL: func @partitioned_input_output
-func @partitioned_input_output(%arg0: tensor<!tf.resource<tensor<f32>>>) {
-  %0 = "tf.TPUPartitionedInput"(%arg0) {_XlaSharding = "\01\02\03", partition_dim = -1 : i64} : (tensor<!tf.resource<tensor<f32>>>) -> tensor<!tf.resource<tensor<f32>>>
+func @partitioned_input_output(%arg0: tensor<!tf_type.resource<tensor<f32>>>) {
+  %0 = "tf.TPUPartitionedInput"(%arg0) {_XlaSharding = "\01\02\03", partition_dim = -1 : i64} : (tensor<!tf_type.resource<tensor<f32>>>) -> tensor<!tf_type.resource<tensor<f32>>>
   // CHECK:      tf_device.cluster_func
   // CHECK-SAME: input_sharding_configuration = []
   // CHECK-SAME: output_sharding_configuration = ["\01\02\03"]
   %1 = "tf_device.cluster_func"() {func = @cluster_func, use_spmd_for_xla_partitioning = true} : () -> tensor<f32>
-  "tf.AssignVariableOp"(%0, %1) : (tensor<!tf.resource<tensor<f32>>>, tensor<f32>) -> ()
+  "tf.AssignVariableOp"(%0, %1) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
   return
 }
 
@@ -388,4 +439,137 @@ func @partitioned_output_maximal_sharding_revert_mpmd(%arg0: tensor<*xi32>, %arg
 // CHECK-SAME: -> (tensor<*xi32> {mhlo.sharding = "\08\01\1A\01\01\22\01\00"}, tensor<*xi32> {mhlo.sharding = "\08\01\1A\01\01\22\01\00"})
 func @cluster_func(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi32>) {
   return %arg0, %arg1 : tensor<*xi32>, tensor<*xi32>
+}
+
+// -----
+
+// CHECK-LABEL: func @check_propagation_downwards_with_alias
+func @check_propagation_downwards_with_alias(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>) {
+  // CHECK:      tf_device.cluster_func
+  // CHECK-SAME: input_sharding_configuration = ["\01\02\03", "\04\05\06"]
+  // CHECK-SAME: output_sharding_configuration = ["\04\05\06", "\01\02\03"]
+  "tf_device.cluster_func"(%arg0, %arg1) {
+      func = @func,
+      use_spmd_for_xla_partitioning = false
+  } : (tensor<*xi32>, tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi32>)
+  return
+}
+
+// CHECK-LABEL: func @func
+// CHECK-SAME: %arg0: tensor<*xi32> {mhlo.sharding = "\01\02\03"
+// CHECK-SAME: %arg1: tensor<*xi32> {mhlo.sharding = "\04\05\06"
+// CHECK-SAME: ->{{.*}}mhlo.sharding = "\04\05\06"{{.*}}mhlo.sharding = "\01\02\03"
+func @func(%arg0: tensor<*xi32> {tf.aliasing_output = 1 : i64},
+           %arg1: tensor<*xi32> {tf.aliasing_output = 0 : i64}) -> (tensor<*xi32>, tensor<*xi32>) {
+  %0 = "tf.XlaSharding"(%arg0) { _XlaSharding = "\01\02\03"} : (tensor<*xi32>) -> tensor<*xi32>
+  %1 = "tf.XlaSharding"(%arg1) { _XlaSharding = "\04\05\06"} : (tensor<*xi32>) -> tensor<*xi32>
+  // flip order
+  %2 = "tf.A"(%1) : (tensor<*xi32>) -> (tensor<*xi32>)
+  %3 = "tf.B"(%0) : (tensor<*xi32>) -> (tensor<*xi32>)
+  return %2, %3 : tensor<*xi32>, tensor<*xi32>
+}
+
+// -----
+
+// CHECK-LABEL: func @check_arg_sharding_errors
+func @check_arg_sharding_errors(%arg0: tensor<1x2x3xi32>) {
+  // CHECK:      tf_device.cluster_func
+  // CHECK-SAME: input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"]
+  // CHECK-SAME: use_spmd_for_xla_partitioning = false
+  "tf_device.cluster_func"(%arg0) {func = @func} : (tensor<1x2x3xi32>) -> tensor<1x2x3xi32>
+  return
+}
+
+func @func(%arg0: tensor<1x2x3xi32>) -> tensor<1x2x3xi32> {
+  // Use a four dimension sharding (devices=[1,1,1,1]0)
+  // Since the input tensor only has three dimensions, we expect this to fail.
+  %0 = "tf.XlaSharding"(%arg0) { _XlaSharding = "\08\03\1A\04\01\01\01\01\22\01\00" } : (tensor<1x2x3xi32>) -> tensor<1x2x3xi32>
+  %1 = "tf.A"(%0) : (tensor<1x2x3xi32>) -> (tensor<1x2x3xi32>)
+  return %1: tensor<1x2x3xi32>
+}
+
+// -----
+
+// CHECK-LABEL: func @check_retval_sharding_errors
+func @check_retval_sharding_errors(%arg0: tensor<1x2x3xi32>) {
+  // CHECK:      tf_device.cluster_func
+  // CHECK-SAME: output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"]
+  // CHECK-SAME: use_spmd_for_xla_partitioning = false
+  "tf_device.cluster_func"(%arg0) {func = @func} : (tensor<1x2x3xi32>) -> tensor<1x2x3xi32>
+  return
+}
+
+func @func(%arg0: tensor<1x2x3xi32>) -> tensor<1x2x3xi32> {
+  %0 = "tf.A"(%arg0) : (tensor<1x2x3xi32>) -> (tensor<1x2x3xi32>)
+  // Use a four dimension sharding (devices=[1,1,1,1]0)
+  // Since the output tensor only has three dimensions, we expect this to fail.
+  %1 = "tf.XlaSharding"(%0) { _XlaSharding = "\08\03\1A\04\01\01\01\01\22\01\00" } : (tensor<1x2x3xi32>) -> tensor<1x2x3xi32>
+  return %1: tensor<1x2x3xi32>
+}
+
+// -----
+
+// CHECK-LABEL: func @check_propagation_upwards_when_spmd_for_xla_is_true
+func @check_propagation_upwards_when_spmd_for_xla_is_true(%arg0: tensor<*xi32>) {
+  // CHECK:      tf_device.cluster_func
+  // CHECK-SAME: input_sharding_configuration = ["\01\02\03"]
+  // CHECK-SAME: output_sharding_configuration = [""]
+  "tf_device.cluster_func"(%arg0) {
+      func = @func,
+      use_spmd_for_xla_partitioning = true
+  } : (tensor<*xi32>) -> tensor<*xi32>
+  return
+}
+
+func @func(%arg0: tensor<*xi32>) -> tensor<*xi32> {
+  %0 = "tf.XlaSharding"(%arg0) { _XlaSharding = "\01\02\03"} : (tensor<*xi32>) -> tensor<*xi32>
+  %1 = "tf.A"(%0) : (tensor<*xi32>) -> (tensor<*xi32>)
+  return %1 : tensor<*xi32>
+}
+
+// -----
+
+// CHECK-LABEL: func @check_propagation_downwards_when_spmd_for_xla_is_true
+func @check_propagation_downwards_when_spmd_for_xla_is_true(%arg0: tensor<*xi32>) {
+  // CHECK:      tf_device.cluster_func
+  // CHECK-SAME: input_sharding_configuration = [""]
+  // CHECK-SAME: output_sharding_configuration = ["\01\02\03"]
+  "tf_device.cluster_func"(%arg0) {
+      func = @func,
+      use_spmd_for_xla_partitioning = true
+  } : (tensor<*xi32>) -> tensor<*xi32>
+  return
+}
+
+func @func(%arg0: tensor<*xi32>) -> tensor<*xi32> {
+  %0 = "tf.A"(%arg0) : (tensor<*xi32>) -> (tensor<*xi32>)
+  %1 = "tf.XlaSharding"(%0) { _XlaSharding = "\01\02\03"} : (tensor<*xi32>) -> tensor<*xi32>
+  return %1 : tensor<*xi32>
+}
+
+// -----
+
+// CHECK-LABEL: func @check_propagation_downwards_through_ops
+func @check_propagation_downwards_through_ops(%arg0: tensor<4xf32>) {
+  // CHECK:      tf_device.cluster_func
+  // CHECK-SAME: output_sharding_configuration = ["\01\02\03"]
+  "tf_device.cluster_func"(%arg0) {
+      func = @func,
+      use_spmd_for_xla_partitioning = false
+  } : (tensor<4xf32>) -> tensor<4xf32>
+  return
+}
+
+// CHECK-LABEL: func @func
+// CHECK-SAME: ->{{.*}}mhlo.sharding = "\01\02\03"
+func @func(%arg0: tensor<4xf32>) -> tensor<4xf32> {
+  %cst = "tf.Const"() {value = dense<23.0> : tensor<4xf32>} : () -> tensor<4xf32>
+  %0 = "tf.XlaSharding"(%arg0) { _XlaSharding = "\01\02\03"} : (tensor<4xf32>) -> tensor<4xf32>
+  %1 = "tf.AddV2"(%0, %cst) : (tensor<4xf32>, tensor<4xf32>) -> (tensor<4xf32>)
+  %2 = "tf.AddV2"(%cst, %1) : (tensor<4xf32>, tensor<4xf32>) -> (tensor<4xf32>)
+  %3 = "tf.Mul"(%2, %cst) : (tensor<4xf32>, tensor<4xf32>) -> (tensor<4xf32>)
+  %4 = "tf.Mul"(%cst, %3) : (tensor<4xf32>, tensor<4xf32>) -> (tensor<4xf32>)
+  %5 = "tf.Sub"(%4, %cst) : (tensor<4xf32>, tensor<4xf32>) -> (tensor<4xf32>)
+  %6 = "tf.Sub"(%cst, %5) : (tensor<4xf32>, tensor<4xf32>) -> (tensor<4xf32>)
+  return %6 : tensor<4xf32>
 }

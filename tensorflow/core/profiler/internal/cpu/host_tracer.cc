@@ -12,6 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/profiler/internal/cpu/host_tracer.h"
+
 #include <memory>
 #include <string>
 #include <utility>
@@ -22,14 +24,11 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/internal/cpu/host_tracer_utils.h"
 #include "tensorflow/core/profiler/internal/cpu/traceme_recorder.h"
-#include "tensorflow/core/profiler/lib/profiler_factory.h"
 #include "tensorflow/core/profiler/lib/profiler_interface.h"
-#include "tensorflow/core/profiler/profiler_options.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/time_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
-#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -46,8 +45,6 @@ class HostTracer : public ProfilerInterface {
   Status Start() override;
 
   Status Stop() override;
-
-  Status CollectData(RunMetadata* run_metadata) override;
 
   Status CollectData(XSpace* space) override;
 
@@ -95,15 +92,13 @@ Status HostTracer::Stop() {
   return Status::OK();
 }
 
-Status HostTracer::CollectData(RunMetadata* run_metadata) {
-  return errors::Unimplemented(
-      "CollectData to RunMetadata not supported in HostTracer");
-}
-
 Status HostTracer::CollectData(XSpace* space) {
   VLOG(2) << "Collecting data to XSpace from HostTracer.";
   if (recording_) {
     return errors::Internal("TraceMeRecorder not stopped");
+  }
+  if (events_.empty()) {
+    return Status::OK();
   }
   XPlane* plane = FindOrAddMutablePlaneWithName(space, kHostThreadsPlaneName);
   ConvertCompleteEventsToXPlane(start_timestamp_ns_, std::exchange(events_, {}),
@@ -113,17 +108,11 @@ Status HostTracer::CollectData(XSpace* space) {
 
 }  // namespace
 
-// Not in anonymous namespace for testing purposes.
 std::unique_ptr<ProfilerInterface> CreateHostTracer(
-    const ProfileOptions& options) {
-  if (options.host_tracer_level() == 0) return nullptr;
-  return absl::make_unique<HostTracer>(options.host_tracer_level());
+    const HostTracerOptions& options) {
+  if (options.trace_level == 0) return nullptr;
+  return absl::make_unique<HostTracer>(options.trace_level);
 }
-
-auto register_host_tracer_factory = [] {
-  RegisterProfilerFactory(&CreateHostTracer);
-  return 0;
-}();
 
 }  // namespace profiler
 }  // namespace tensorflow

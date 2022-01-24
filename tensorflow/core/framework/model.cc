@@ -19,17 +19,48 @@ limitations under the License.
 
 #include "absl/time/clock.h"
 #include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/model.pb.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/host_info.h"
+#include "tensorflow/core/platform/mem.h"
 
 namespace tensorflow {
 namespace data {
 namespace model {
 
-constexpr int64 Model::kOptimizationPeriodMinMs;
-constexpr int64 Model::kOptimizationPeriodMaxMs;
+constexpr int64_t Model::kOptimizationPeriodMinMs;
+constexpr int64_t Model::kOptimizationPeriodMaxMs;
 
 namespace {
+
+// Returns true if all parameters have reached their max values.
+bool AreAllParametersMax(const Model::ModelParameters& parameters) {
+  for (const auto& pair : parameters) {
+    if (pair.second->value < pair.second->max) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// Records the ram usage of hill climbing algorithm.
+void RecordAutotuneRamUsage(int64 ram_budget, double max_buffered_bytes) {
+  if (ram_budget == 0) {
+    return;
+  }
+  const auto memory_info = port::GetMemoryInfo();
+  // Records ratio of memory used since RootDataset was created over the ram
+  // budget.
+  const auto original_free_memory = ram_budget / kRamBudgetShare;
+  const auto current_free_memory = memory_info.free;
+  metrics::RecordTFDataAutotuneUsedRamBudgetRatio(
+      (original_free_memory - current_free_memory) / ram_budget);
+  // Records ratio of maximum buffer bytes tf.data could use over the ram
+  // budget.
+  metrics::RecordTFDataAutotuneMaxBufferBudgetRatio(
+      max_buffered_bytes / static_cast<double>(ram_budget));
+}
 
 // Helper function for node traversal that doesn't skip any nodes.
 inline bool IsAnyNode(const std::shared_ptr<Node> node) { return true; }
@@ -146,7 +177,7 @@ Status ModelFromProtoHelper(ModelProto model, std::shared_ptr<Node>* output) {
   while (!to_restore_inputs.empty()) {
     std::shared_ptr<Node> node = to_restore_inputs.front();
     to_restore_inputs.pop_front();
-    for (int64 input_id : model.nodes().at(node->id()).inputs()) {
+    for (int64_t input_id : model.nodes().at(node->id()).inputs()) {
       std::shared_ptr<Node> input;
       TF_RETURN_IF_ERROR(
           Node::FromProto(model.nodes().at(input_id), node, &input));
@@ -926,7 +957,7 @@ class Unknown : public Node {
 
 }  // namespace
 
-thread_local int64 Node::work_start_;
+thread_local int64_t Node::work_start_;
 
 std::shared_ptr<Parameter> MakeParameter(const string& name,
                                          std::shared_ptr<SharedState> state,
@@ -1345,7 +1376,7 @@ double Node::TotalProcessingTimeForInputs(
     if (input->autotune()) {
       double input_processing_time =
           total_processing_times.at(input->long_name());
-      int64 num_elements = input->num_elements();
+      int64_t num_elements = input->num_elements();
       if (num_elements < kNumElementsThreshold) {
         if (input_processing_time_count_ < kCountThreshold) {
           sum += input_processing_time;
@@ -1558,7 +1589,7 @@ Status Node::FromProtoHelper(ModelProto::Node node_proto,
   node->record_metrics_.store(node_proto.record_metrics());
 
   // Restore parameters.
-  int64 num_parameters = node_proto.parameters_size();
+  int64_t num_parameters = node_proto.parameters_size();
   for (int i = 0; i < num_parameters; i++) {
     const ModelProto::Node::Parameter& parameter_proto =
         node_proto.parameters(i);
@@ -1610,18 +1641,17 @@ Status Node::FromProto(ModelProto::Node node_proto,
   return FromProtoHelper(node_proto, *node);
 }
 
-Model::Model()
-    : collect_resource_usage_(false),
-      optimization_period_ms_(kOptimizationPeriodMinMs) {
+Model::Model() : optimization_period_ms_(kOptimizationPeriodMinMs) {
   model_gauge_cell_ = metrics::GetTFDataModelGauge(
       strings::StrCat(reinterpret_cast<uint64>(this)));
   model_gauge_cell_->Set([&]() { return DebugString(); });
 }
 
 Model::~Model() {
-  // Before the model is destroyed, we record its final state in the gauge.
-  auto result = DebugString();
-  model_gauge_cell_->Set([result]() { return result; });
+  // Before the model is destroyed, we record an empty string in the gauge to
+  // prevent race condition where the gauge callback is called after the Model
+  // is destroyed.
+  model_gauge_cell_->Set([]() { return std::string(); });
 }
 
 void Model::AddNode(Node::Factory factory, const string& name,
@@ -1642,8 +1672,6 @@ void Model::AddNode(Node::Factory factory, const string& name,
   } else {
     VLOG(3) << "Adding " << node->long_name();
   }
-  collect_resource_usage_ =
-      collect_resource_usage_ || node->has_tunable_parameters();
   *out_node = std::move(node);
   // TODO(jsimsa): Reset the optimization period when a node is added so that
   // autotuning adapts to changes to the input pipeline faster. Initial attempt
@@ -1684,12 +1712,12 @@ void Model::PrintMetrics() {
 
 // TODO(DanGraur): Add const and references to make this safe and efficient
 Model::ModelMetrics Model::CollectMetrics() {
-  ModelMetrics metrics = 
-    std::make_shared<absl::flat_hash_map<string, Node::MetricDump>>(); 
+  ModelMetrics metrics =
+    std::make_shared<absl::flat_hash_map<string, Node::MetricDump>>();
   std::deque<std::shared_ptr<Node>> queue;
   std::deque<std::shared_ptr<Node>> stack;
   // This is the name of the last user node
-  std::string last_node_name = ""; 
+  std::string last_node_name = "";
   // This is the name of the last node (after the user node) added by tf
   std::string last_tf_node_name = "";
   // This is the name of the marker node (note that it might not exist)
@@ -1731,13 +1759,13 @@ Model::ModelMetrics Model::CollectMetrics() {
 
     // prefix_times[node->long_name()] = node->TotalProcessingTime(nullptr);
     auto node_metrics = node->SnapshotCurrentMetrics();
-    node_metrics.set_in_node_time(node_times[node->long_name()] / 
+    node_metrics.set_in_node_time(node_times[node->long_name()] /
       EnvTime::kMillisToNanos);
     node_metrics.set_last_node_name(last_node_name);
     node_metrics.set_last_tf_node_name(last_tf_node_name);
 
-    // Try to compute the bytes_per_s since the beginning of activity; 
-    // if activity_start_ms has not been recorded yet (< 0), then we set this 
+    // Try to compute the bytes_per_s since the beginning of activity;
+    // if activity_start_ms has not been recorded yet (< 0), then we set this
     // to 1, such that it does not appear as a bottleneck
     int64 time_now_ns = EnvTime::NowNanos();
     double bytes_per_s = 0;
@@ -1754,7 +1782,7 @@ Model::ModelMetrics Model::CollectMetrics() {
       bytes_per_s = 1.0;
     }
 
-    // VLOG(0) << "(CollectMetrics) Printing bytes per ms computation\n"  
+    // VLOG(0) << "(CollectMetrics) Printing bytes per ms computation\n"
     //         << " > activity_start_ns = " << node->activity_start_ns() << "\n"
     //         << " > bytes_produced = " << node_metrics.bytes_produced() << "\n"
     //         << " > time_now_ns = " << time_now_ns << "\n"
@@ -1779,14 +1807,14 @@ Model::ModelMetrics Model::CollectMetrics() {
     stack.pop_front();
 
     if (node->output()) {
-      final_times[node->output()->long_name()] += 
+      final_times[node->output()->long_name()] +=
         final_times[node->long_name()];
-    }  
+    }
   }
 
   // Update the prefix times in the metrics data structure and the marker node
   for (auto& entry : *metrics) {
-    entry.second.set_in_prefix_time(final_times[entry.first] / 
+    entry.second.set_in_prefix_time(final_times[entry.first] /
       EnvTime::kMillisToNanos);
     entry.second.set_marker_node_name(marker_node_name);
   }
@@ -1803,18 +1831,26 @@ void Model::Optimize(AutotuneAlgorithm algorithm, int64 cpu_budget,
     tf_shared_lock l(mu_);
     snapshot = output_->Snapshot();
   }
+  if (!port::JobName().empty()) {
+    RecordAutotuneRamUsage(ram_budget, TotalMaximumBufferedBytes(snapshot));
+  }
   OptimizationParams optimization_params;
   optimization_params.set_algorithm(algorithm);
   optimization_params.set_cpu_budget(cpu_budget);
   optimization_params.set_ram_budget(ram_budget);
   optimization_params.set_model_input_time(model_input_time);
   switch (algorithm) {
+    case AutotuneAlgorithm::DEFAULT:
     case AutotuneAlgorithm::HILL_CLIMB:
       OptimizeHillClimb(snapshot, optimization_params, cancellation_manager);
       break;
     case AutotuneAlgorithm::GRADIENT_DESCENT:
       OptimizeGradientDescent(snapshot, optimization_params,
                               cancellation_manager);
+      break;
+    case AutotuneAlgorithm::MAX_PARALLELISM:
+      OptimizeMaxParallelism(snapshot, optimization_params,
+                             cancellation_manager);
       break;
     default:
       VLOG(2) << "Autotuning algorithm was not recognized. Aborting "
@@ -1838,7 +1874,7 @@ Model::ModelParameters Model::CollectTunableParameters(
   return node->CollectTunableParameters();
 }
 
-bool Model::ShouldStop(int64 cpu_budget, int64 ram_budget,
+bool Model::ShouldStop(int64_t cpu_budget, int64_t ram_budget,
                        const Model::ModelParameters& parameters,
                        const Model::ModelParameters& parallelism_parameters,
                        const Model::ModelParameters& buffer_size_parameters,
@@ -1848,21 +1884,15 @@ bool Model::ShouldStop(int64 cpu_budget, int64 ram_budget,
     // If those essential transformations' parallelism reaches the CPU
     // budget, we will only tune the buffer size parameters in future
     // iterations.
-    int64 model_parallelism = 0;
+    int64_t model_parallelism = 0;
     for (auto& pair : parallelism_parameters) {
       model_parallelism += std::round(pair.second->value);
     }
     *cpu_budget_reached = (model_parallelism > cpu_budget);
   }
 
-  bool all_max = true;
-  for (auto& pair :
-       (*cpu_budget_reached ? buffer_size_parameters : parameters)) {
-    if (std::round(pair.second->value) < pair.second->max) {
-      all_max = false;
-      break;
-    }
-  }
+  bool all_max = AreAllParametersMax(
+      *cpu_budget_reached ? buffer_size_parameters : parameters);
 
   // If all parameters have reached their maximum values or RAM budget is
   // reached, we stop the iterations.
@@ -1870,8 +1900,8 @@ bool Model::ShouldStop(int64 cpu_budget, int64 ram_budget,
 }
 
 // TODO(jsimsa): Add support for tracking and using the model input time.
-Status Model::OptimizeLoop(AutotuneAlgorithm algorithm, int64 cpu_budget,
-                           int64 ram_budget,
+Status Model::OptimizeLoop(AutotuneAlgorithm algorithm, int64_t cpu_budget,
+                           int64_t ram_budget,
                            CancellationManager* cancellation_manager) {
   std::function<void()> unused;
   TF_RETURN_IF_ERROR(RegisterCancellationCallback(
@@ -1882,8 +1912,8 @@ Status Model::OptimizeLoop(AutotuneAlgorithm algorithm, int64 cpu_budget,
       },
       /*deregister_fn=*/&unused));
 
-  int64 last_optimization_ms = 0;
-  int64 current_time_ms = EnvTime::NowMicros() / EnvTime::kMillisToMicros;
+  int64_t last_optimization_ms = 0;
+  int64_t current_time_ms = EnvTime::NowMicros() / EnvTime::kMillisToMicros;
   while (true) {
     {
       mutex_lock l(mu_);
@@ -1900,10 +1930,10 @@ Status Model::OptimizeLoop(AutotuneAlgorithm algorithm, int64 cpu_budget,
       }
     }
 
-    int64 start_ms = EnvTime::NowMicros() / EnvTime::kMillisToMicros;
+    int64_t start_ms = EnvTime::NowMicros() / EnvTime::kMillisToMicros;
     Optimize(algorithm, cpu_budget, ram_budget, /*model_input_time=*/0,
              cancellation_manager);
-    int64 end_ms = EnvTime::NowMicros() / EnvTime::kMillisToMicros;
+    int64_t end_ms = EnvTime::NowMicros() / EnvTime::kMillisToMicros;
     VLOG(2) << "Optimized for " << end_ms - start_ms << " ms.";
 
     // Exponentially increase the period of running the optimization
@@ -1949,7 +1979,7 @@ void Model::OptimizeGradientDescent(
   constexpr double kOptimizationPrecision = 100.0L;
 
   // Maximum number of iterations for optimization.
-  constexpr int64 kMaxIterations = 1000;
+  constexpr int64_t kMaxIterations = 1000;
 
   double output_time = 0;
   double new_output_time;
@@ -1986,15 +2016,15 @@ void Model::OptimizeGradientDescent(
   UpdateStateValues(&parameters);
 }
 
-void Model::OptimizeHillClimb(std::shared_ptr<Node> snapshot,
-                              const OptimizationParams& optimization_params,
-                              CancellationManager* cancellation_manager) {
+void Model::OptimizeHillClimbHelper(
+    std::shared_ptr<Node> snapshot,
+    const OptimizationParams& optimization_params,
+    CancellationManager* cancellation_manager, StopPredicate should_stop) {
   VLOG(2) << "Starting optimization of tunable parameters with Hill Climb.";
   const double processing_time = TotalProcessingTime(snapshot);
   auto parameters = CollectTunableParameters(snapshot);
   if (parameters.empty()) {
-    VLOG(2) << "The Hill Climb optimization is terminated since no node with "
-               "tunable parameters has recorded elements.";
+    VLOG(2) << "There are no tunable parameters.";
     return;
   }
   VLOG(2) << "Number of tunable parameters: " << parameters.size();
@@ -2011,19 +2041,11 @@ void Model::OptimizeHillClimb(std::shared_ptr<Node> snapshot,
     const double output_time =
         OutputTime(snapshot, optimization_params.model_input_time(),
                    /*gradients=*/nullptr);
-    bool all_max = true;
-    for (auto& pair : parameters) {
-      if (pair.second->value < pair.second->max) {
-        all_max = false;
-        break;
-      }
-    }
-    if (output_time < processing_time / optimization_params.cpu_budget() ||
-        all_max ||
-        TotalMaximumBufferedBytes(snapshot) >
-            optimization_params.ram_budget()) {
+    if (should_stop(parameters, processing_time, output_time,
+                    TotalMaximumBufferedBytes(snapshot))) {
       break;
     }
+
     double best_delta = -1.0L;
     Parameter* best_parameter = nullptr;
     for (auto& pair : parameters) {
@@ -2044,14 +2066,64 @@ void Model::OptimizeHillClimb(std::shared_ptr<Node> snapshot,
     }
     if (!best_parameter) {
       VLOG(2) << "Failed to find a tunable parameter that would further "
-                 "decrease the output time. This means that the autotuning "
+                 "decrease the output time. This suggests that the hill-climb "
                  "optimization got stuck in a local maximum. The optimization "
-                 "attempt will terminate early.";
+                 "attempt will stop now.";
       break;
     }
     best_parameter->value++;
   }
   UpdateStateValues(&parameters);
+}
+
+void Model::OptimizeHillClimb(std::shared_ptr<Node> snapshot,
+                              const OptimizationParams& optimization_params,
+                              CancellationManager* cancellation_manager) {
+  auto should_stop = [&optimization_params](const ModelParameters& parameters,
+                                            double processing_time,
+                                            double output_time,
+                                            double buffered_bytes) {
+    const bool all_max = AreAllParametersMax(parameters);
+    const bool output_time_budget_exceeded =
+        output_time < processing_time / optimization_params.cpu_budget();
+    const bool ram_budget_exceeded =
+        buffered_bytes > optimization_params.ram_budget();
+    if (all_max) {
+      metrics::RecordTFDataAutotuneStoppingCriteria("all_max");
+    }
+    if (output_time_budget_exceeded) {
+      metrics::RecordTFDataAutotuneStoppingCriteria("output_time");
+    }
+    if (ram_budget_exceeded) {
+      metrics::RecordTFDataAutotuneStoppingCriteria("max_buffered_bytes");
+    }
+    return all_max || output_time_budget_exceeded || ram_budget_exceeded;
+  };
+  OptimizeHillClimbHelper(snapshot, optimization_params, cancellation_manager,
+                          should_stop);
+}
+
+void Model::OptimizeMaxParallelism(
+    std::shared_ptr<Node> snapshot,
+    const OptimizationParams& optimization_params,
+    CancellationManager* cancellation_manager) {
+  auto should_stop = [&optimization_params](const ModelParameters& parameters,
+                                            double processing_time,
+                                            double output_time,
+                                            double buffered_bytes) {
+    const bool all_max = AreAllParametersMax(parameters);
+    const bool ram_budget_exceeded =
+        buffered_bytes > optimization_params.ram_budget();
+    if (all_max) {
+      metrics::RecordTFDataAutotuneStoppingCriteria("all_max");
+    }
+    if (ram_budget_exceeded) {
+      metrics::RecordTFDataAutotuneStoppingCriteria("max_buffered_bytes");
+    }
+    return all_max || ram_budget_exceeded;
+  };
+  OptimizeHillClimbHelper(snapshot, optimization_params, cancellation_manager,
+                          should_stop);
 }
 
 double Model::OutputTime(std::shared_ptr<Node> node, double model_input_time,
@@ -2084,7 +2156,6 @@ double Model::TotalProcessingTime(std::shared_ptr<Node> node) {
 Status Model::ToProto(ModelProto* model_proto) {
   tf_shared_lock l(mu_);
   model_proto->set_id_counter(id_counter_);
-  model_proto->set_collect_resource_usage(collect_resource_usage_);
   return ModelToProtoHelper(output_, model_proto);
 }
 
@@ -2094,8 +2165,6 @@ Status Model::FromProto(ModelProto model_proto, std::unique_ptr<Model>* model) {
   TF_RETURN_IF_ERROR(
       ModelFromProtoHelper(model_proto, &restored_model->output_));
   restored_model->id_counter_ = model_proto.id_counter();
-  restored_model->collect_resource_usage_.store(
-      model_proto.collect_resource_usage());
   *model = std::move(restored_model);
   return Status::OK();
 }
@@ -2108,7 +2177,6 @@ Status Model::Save(const string& fname, std::shared_ptr<Node> snapshot,
     mutex_lock l(model_snapshot->mu_);
     model_snapshot->output_ = std::move(snapshot);
     model_snapshot->id_counter_ = id_counter_;
-    model_snapshot->collect_resource_usage_.store(collect_resource_usage_);
   }
   TF_RETURN_IF_ERROR(model_snapshot->ToProto(&model_proto));
   OptimizationParams* saved_optimization_params =
@@ -2120,7 +2188,8 @@ Status Model::Save(const string& fname, std::shared_ptr<Node> snapshot,
 Status Model::Load(const string& fname, std::unique_ptr<Model>* model,
                    OptimizationParams* optimization_params) {
   ModelProto model_proto;
-  TF_RETURN_IF_ERROR(ReadBinaryProto(Env::Default(), fname, &model_proto));
+  TF_RETURN_IF_ERROR(
+      ReadTextOrBinaryProto(Env::Default(), fname, &model_proto));
   TF_RETURN_IF_ERROR(FromProto(model_proto, model));
   const OptimizationParams restored_optimization_params =
       model_proto.optimization_params();
@@ -2129,7 +2198,7 @@ Status Model::Load(const string& fname, std::unique_ptr<Model>* model,
 }
 
 std::string Model::DebugString() {
-  constexpr int64 kMinSecondsBetweenCalls = 30;
+  constexpr int64_t kMinSecondsBetweenCalls = 30;
   if (absl::Now() < cache_until_) return cached_debug_string_;
   std::shared_ptr<Node> snapshot;
   {

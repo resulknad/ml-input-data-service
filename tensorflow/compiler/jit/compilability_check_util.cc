@@ -97,6 +97,7 @@ StatusOr<std::vector<NodeDef>> MakeCallNodesFromAttribute(
   TF_RETURN_IF_ERROR(GetNodeAttr(node.attrs(), attr_name, &attr_lists));
 
   std::vector<NodeDef> out;
+  out.reserve(attr_lists.size());
   for (int i = 0; i < attr_lists.size(); i++) {
     out.emplace_back();
     NodeDef& inserted = out.back();
@@ -490,6 +491,14 @@ bool RecursiveCompilabilityChecker::IsCompilableNode(
     return false;
   }
 
+  if (!op_filter_.allow_unique_op && node.type_string() == "Unique") {
+    absl::string_view uncompilable_reason = "Unique op";
+    MaybeMarkUncompilableNode(uncompilable_reason, *stack_trace,
+                              encapsulating_function, uncompilable_nodes);
+    LogNotCompilable(node, uncompilable_reason);
+    return false;
+  }
+
   if (!op_filter_.allow_ops_producing_or_consuming_variant &&
       OpProducesOrConsumesVariant(node)) {
     absl::string_view uncompilable_reason = "DT_VARIANT producer/consumer";
@@ -705,6 +714,7 @@ static auto const ops_triggering_xla_compilation =
                                          "XlaReduce",
                                          "XlaReduceWindow",
                                          "XlaReplicaId",
+                                         "XlaRngBitGenerator",
                                          "XlaScatter",
                                          "XlaSelectAndScatter",
                                          "XlaSelfAdjointEig",
@@ -714,6 +724,8 @@ static auto const ops_triggering_xla_compilation =
                                          "XlaSpmdFullToShardShape",
                                          "XlaSpmdShardToFullShape",
                                          "XlaSvd",
+                                         "XlaVariadicReduceV2",
+                                         "XlaVariadicSort",
                                          "XlaWhile"};
 
 static bool NodeCanTriggerXlaCompilation(const NodeDef& node) {

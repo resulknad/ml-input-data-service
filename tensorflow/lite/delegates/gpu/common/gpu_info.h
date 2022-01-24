@@ -105,6 +105,11 @@ struct AMDInfo {
 };
 
 struct AdrenoInfo {
+  struct OpenClCompilerVersion {
+    int major = 0;
+    int minor = 0;
+    int patch = 0;
+  };
   AdrenoInfo() = default;
   explicit AdrenoInfo(const std::string& device_version);
 
@@ -132,11 +137,15 @@ struct AdrenoInfo {
 
   int GetWaveSize(bool full_wave) const;
 
+  int GetComputeUnitsCount() const;
+
   // Not supported on some Adreno devices with specific driver version.
   // b/131099086
   bool support_one_layer_texture_array = true;
 
   bool compiler_bugs_in_a6xx = false;
+
+  OpenClCompilerVersion cl_compiler_version;
 };
 
 enum class AppleGpu {
@@ -154,6 +163,7 @@ enum class AppleGpu {
   kA12Z,
   kA13,
   kA14,
+  kA15,
 };
 
 struct AppleInfo {
@@ -161,6 +171,8 @@ struct AppleInfo {
   explicit AppleInfo(const std::string& gpu_description);
   AppleGpu gpu_type;
 
+  bool IsA7GenerationGpu() const;
+  bool IsA8GenerationGpu() const;
   bool IsLocalMemoryPreferredOverGlobal() const;
 
   bool IsBionic() const;
@@ -169,6 +181,12 @@ struct AppleInfo {
   bool IsRoundToNearestSupported() const;
 
   int GetComputeUnitsCount() const;
+
+  // do not use, for internal usage
+  void SetComputeUnits(int compute_units_count);
+
+ private:
+  int compute_units = -1;
 };
 
 enum class MaliGpu {
@@ -195,6 +213,10 @@ enum class MaliGpu {
   kG77,
   kG68,
   kG78,
+  kG310,
+  kG510,
+  kG610,
+  kG710,
 };
 
 struct MaliInfo {
@@ -210,6 +232,9 @@ struct MaliInfo {
   bool IsBifrostGen2() const;
   bool IsBifrostGen3() const;
   bool IsBifrost() const;
+  bool IsValhallGen1() const;
+  bool IsValhallGen2() const;
+  bool IsValhallGen3() const;
   bool IsValhall() const;
 };
 
@@ -237,6 +262,8 @@ struct OpenGlInfo {
   int max_compute_work_group_size_x;
   int max_compute_work_group_size_y;
   int max_compute_work_group_size_z;
+
+  bool SupportsExplicitFp16() const;
 };
 
 struct VulkanInfo {
@@ -248,8 +275,14 @@ struct VulkanInfo {
 
   int max_per_stage_descriptor_sampled_images = 0;
   uint32_t max_compute_work_group_invocations;
+  uint32_t max_image_dimension_1d;
   uint32_t max_image_dimension_2d;
+  uint32_t max_image_dimension_3d;
   uint32_t max_image_array_layers;
+  uint64_t max_texel_buffer_elements;
+  uint64_t max_uniform_buffer_range;
+  uint64_t max_storage_buffer_range;
+  uint64_t max_push_constants_size;
 
   uint32_t subgroup_size = 0;
   bool supports_subgroup_arithmetic = false;
@@ -258,6 +291,8 @@ struct VulkanInfo {
   int max_compute_work_group_size_x;
   int max_compute_work_group_size_y;
   int max_compute_work_group_size_z;
+
+  bool SupportsExplicitFp16() const;
 };
 
 enum class OpenClVersion {
@@ -277,6 +312,7 @@ struct OpenClInfo {
   std::string vendor_name;
   std::string opencl_c_version;
   std::string platform_version;
+  std::string driver_version;
 
   OpenClVersion cl_version;
 
@@ -298,6 +334,9 @@ struct OpenClInfo {
   int max_work_group_size_y;
   int max_work_group_size_z;
   int max_work_group_total_size;
+
+  // The row pitch alignment size in pixels for 2D images created from a buffer.
+  // The value returned must be a power of 2.
   uint64_t image_pitch_alignment;
   uint64_t base_addr_align_in_bits;
 
@@ -341,6 +380,13 @@ struct MetalInfo {
   int max_work_group_size_z;
 
   uint64_t buffer_max_size;
+
+  uint64_t image2d_max_width;
+  uint64_t image2d_max_height;
+  uint64_t image_array_max_layers;
+  uint64_t image3d_max_width;
+  uint64_t image3d_max_height;
+  uint64_t image3d_max_depth;
 };
 
 struct GpuInfo {
@@ -353,6 +399,7 @@ struct GpuInfo {
   bool IsIntel() const;
 
   bool IsGlsl() const;
+  bool IsGlslSupportsExplicitFp16() const;
 
   // floating point rounding mode
   bool IsRoundToNearestSupported() const;

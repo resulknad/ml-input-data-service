@@ -16,7 +16,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/traceback.h"
 
 #include <stdexcept>
+#include <string>
+#include <utility>
 
+#include "absl/hash/hash.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "pybind11/pytypes.h"
@@ -80,50 +83,15 @@ std::shared_ptr<Traceback> Traceback::Get() {
 
 void Traceback::SetEnabled(bool enabled) { enabled_ = enabled; }
 
-#if PY_VERSION_HEX < 0x03070000
-
-// Traceback objects cannot be constructed from the type in Python 3.6.
-static py::object MakePythonTraceback(py::object tb_next, py::object tb_frame,
-                                      int tb_lasti, int tb_lineno) {
-  PyTracebackObject* tb;
-  if (tb_next.ptr() && tb_next != Py_None &&
-      !PyTraceBack_Check(tb_next.ptr())) {
-    throw std::runtime_error("tb_next argument must be a traceback");
-  }
-  if (!tb_frame.ptr() || !PyFrame_Check(tb_frame.ptr())) {
-    throw std::runtime_error("tb_frame argument must be a frame");
-  }
-  tb = PyObject_GC_New(PyTracebackObject, &PyTraceBack_Type);
-  if (tb) {
-    tb->tb_next =
-        tb_next == Py_None
-            ? nullptr
-            : reinterpret_cast<PyTracebackObject*>(tb_next.release().ptr());
-    tb->tb_frame = reinterpret_cast<PyFrameObject*>(tb_frame.release().ptr());
-    tb->tb_lasti = tb_lasti;
-    tb->tb_lineno = tb_lineno;
-    PyObject_GC_Track(tb);
-  }
-  return py::reinterpret_steal<py::object>(reinterpret_cast<PyObject*>(tb));
-}
-#else
-
-static py::object MakePythonTraceback(py::object tb_next, py::object tb_frame,
-                                      int tb_lasti, int tb_lineno) {
-  py::handle traceback_type(reinterpret_cast<PyObject*>(&PyTraceBack_Type));
-  return traceback_type(tb_next, tb_frame, tb_lasti, tb_lineno);
-}
-
-#endif  // PY_VERSION_HEX < 0x3070000
-
 py::object Traceback::AsPythonTraceback() const {
   py::object traceback = py::none();
   py::dict globals;
+  py::handle traceback_type(reinterpret_cast<PyObject*>(&PyTraceBack_Type));
   for (const std::pair<PyCodeObject*, int>& frame : frames_) {
     PyFrameObject* py_frame = PyFrame_New(PyThreadState_Get(), frame.first,
                                           globals.ptr(), /*locals=*/nullptr);
 
-    traceback = MakePythonTraceback(
+    traceback = traceback_type(
         /*tb_next=*/std::move(traceback),
         /*tb_frame=*/
         py::reinterpret_steal<py::object>(
@@ -164,40 +132,43 @@ void BuildTracebackSubmodule(py::module& m) {
     collection is disabled, returns ``None``.
     )doc");
   traceback.def_property_readonly("frames", &Traceback::Frames);
+  traceback.def("raw_frames", [](const Traceback& tb) -> py::list {
+    py::list out(tb.raw_frames().size());
+    for (size_t i = 0; i < tb.raw_frames().size(); ++i) {
+      const auto& frame = tb.raw_frames()[i];
+      out[i] = py::make_tuple(py::reinterpret_borrow<py::object>(
+                                  reinterpret_cast<PyObject*>(frame.first)),
+                              py::int_(frame.second));
+    }
+    return out;
+  });
   traceback.def("__str__", &Traceback::ToString);
+  traceback.def("__eq__",
+                [](const Traceback& a, const Traceback& b) { return a == b; });
+  traceback.def("__hash__", [](const Traceback& tb) {
+    return absl::Hash<Traceback>()(tb);
+  });
   traceback.def("as_python_traceback", &Traceback::AsPythonTraceback);
 
-#if PY_VERSION_HEX < 0x03070000
-  m.def("make_python_traceback", &MakePythonTraceback, py::arg("tb_next"),
-        py::arg("tb_frame"), py::arg("tb_lasti"), py::arg("tb_lineno"));
-#endif  // PY_VERSION_HEX < 0x3070000
+  traceback.def_static(
+      "code_addr2line",
+      [](py::handle code, int lasti) {
+        if (!PyCode_Check(code.ptr())) {
+          throw std::runtime_error("code argument must be a code object");
+        }
+        return PyCode_Addr2Line(reinterpret_cast<PyCodeObject*>(code.ptr()),
+                                lasti);
+      },
+      "Python wrapper around the Python C API function PyCode_Addr2Line");
 
   // This function replaces the exception traceback associated with the current
   // Python thread.
-#if PY_VERSION_HEX < 0x03070000
   m.def(
       "replace_thread_exc_traceback",
       [](py::object tb) {
-        if (!PyTraceBack_Check(tb.ptr())) {
-          throw std::runtime_error("argument must be a traceback object");
-        }
-        PyThreadState* thread_state = PyThreadState_Get();
-        if (!thread_state->exc_traceback) {
+        if (!tb.is_none() && !PyTraceBack_Check(tb.ptr())) {
           throw std::runtime_error(
-              "Current thread does not have an active "
-              "exception traceback");
-        }
-        PyObject* old_exc_traceback = thread_state->exc_traceback;
-        thread_state->exc_traceback = tb.release().ptr();
-        Py_XDECREF(old_exc_traceback);
-      },
-      py::arg("traceback"));
-#else   // PY_VERSION_HEX < 0x3070000
-  m.def(
-      "replace_thread_exc_traceback",
-      [](py::object tb) {
-        if (!PyTraceBack_Check(tb.ptr())) {
-          throw std::runtime_error("argument must be a traceback object");
+              "argument must be a traceback object or None");
         }
         PyThreadState* thread_state = PyThreadState_Get();
         if (!thread_state->exc_info->exc_traceback) {
@@ -206,11 +177,11 @@ void BuildTracebackSubmodule(py::module& m) {
               "exception traceback");
         }
         PyObject* old_exc_traceback = thread_state->exc_info->exc_traceback;
-        thread_state->exc_info->exc_traceback = tb.release().ptr();
+        PyObject* new_tb = tb.is_none() ? nullptr : tb.release().ptr();
+        thread_state->exc_info->exc_traceback = new_tb;
         Py_XDECREF(old_exc_traceback);
       },
       py::arg("traceback"));
-#endif  // PY_VERSION_HEX < 0x3070000
 }
 
 }  // namespace xla

@@ -14,10 +14,6 @@
 # ==============================================================================
 """Unit tests for tfdbg v2 dumping callback."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import os
 import shutil
@@ -396,8 +392,8 @@ class DumpingCallbackTest(
     def func(x, y):
       return math_ops.logical_not(math_ops.logical_and(x, y))
 
-    x = np.array([[False, False], [True, True]], dtype=np.bool)
-    y = np.array([[False, True], [False, True]], dtype=np.bool)
+    x = np.array([[False, False], [True, True]], dtype=np.bool_)
+    y = np.array([[False, True], [False, True]], dtype=np.bool_)
     self.assertAllEqual(
         self.evaluate(func(x, y)), [[True, True], [True, False]])
 

@@ -87,10 +87,8 @@ struct ConvertToSignlessPass
     RewritePatternSet patterns(&getContext());
     patterns.insert<ConvertToSignless>(converter, &context);
     // FuncOp is special as it has type encoding via attributes.
-    populateFunctionLikeTypeConversionPattern<FuncOp>(patterns, converter);
-    // Add canonicalizer for conversion cast to remove pairs created during the
-    // conversion.
-    UnrealizedConversionCastOp::getCanonicalizationPatterns(patterns, &context);
+    populateFunctionOpInterfaceTypeConversionPattern<FuncOp>(patterns,
+                                                             converter);
 
     auto module = getOperation();
     if (failed(applyFullConversion(module, target, std::move(patterns)))) {

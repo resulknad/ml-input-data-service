@@ -1,4 +1,6 @@
 load("//tensorflow/core/platform:build_config.bzl", "tf_platform_alias")
+load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
+load("//tensorflow:tensorflow.bzl", "workspace_root")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -27,7 +29,6 @@ exports_files(
         "custom_parsers.h",
         "custom_transformations.h",
     ],
-    visibility = ["//tensorflow/lite/delegates/gpu/common:__subpackages__"],
 )
 
 cc_library(
@@ -46,6 +47,42 @@ cc_library(
 )
 
 cc_library(
+    name = "gpu_model",
+    srcs = ["gpu_model.cc"],
+    hdrs = ["gpu_model.h"],
+    deps = [
+        ":model",
+        ":model_hints",
+        ":operations",
+        ":status",
+        "//tensorflow/lite/delegates/gpu/common:gpu_model_cc_fbs",
+        "//tensorflow/lite/delegates/gpu/common/selectors:operation_selector",
+        "//tensorflow/lite/delegates/gpu/common/selectors:special_selector",
+        "//tensorflow/lite/delegates/gpu/common/selectors:subgraph",
+        "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
+        "//tensorflow/lite/delegates/gpu/common/task:serialization_base",
+        "//tensorflow/lite/delegates/gpu/common/task:storage_type_util",
+        "//tensorflow/lite/delegates/gpu/common/transformations:add_bias",
+        "//tensorflow/lite/delegates/gpu/common/transformations:global_pooling_to_reduce_op",
+        "//tensorflow/lite/delegates/gpu/common/transformations:merge_padding_with",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+flatbuffer_cc_library(
+    name = "gpu_model_cc_fbs",
+    srcs = ["gpu_model.fbs"],
+    flatc_args = [
+        "--scoped-enums",
+        "-I " + workspace_root,
+    ],
+    includes = [
+        "//tensorflow/lite/delegates/gpu/common/task:serialization_base_cc_fbs_includes",
+    ],
+)
+
+cc_library(
     name = "kernel_info",
     hdrs = ["kernel_info.h"],
 )
@@ -54,6 +91,15 @@ cc_library(
     name = "data_type",
     srcs = ["data_type.cc"],
     hdrs = ["data_type.h"],
+)
+
+cc_library(
+    name = "flops_util",
+    srcs = ["flops_util.cc"],
+    hdrs = ["flops_util.h"],
+    deps = [
+        ":shape",
+    ],
 )
 
 cc_library(
@@ -161,6 +207,7 @@ cc_library(
         ":tensor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "//tensorflow/lite/core/api",
@@ -183,12 +230,12 @@ cc_test(
     deps = [
         ":data_type",
         ":model_builder",
-        ":operation_parser",
         ":shape",
         ":tensor",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite/c:common",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
     ],
@@ -246,7 +293,7 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/delegates:utils",
         "//tensorflow/lite/kernels:kernel_util",
-        "//tensorflow/lite/tools/optimize/sparsity:format_converter",
+        "//tensorflow/lite/kernels/internal/utils:sparsity_format_converter",
         "@FP16",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
@@ -325,7 +372,10 @@ cc_test(
 cc_library(
     name = "status",
     hdrs = ["status.h"],
-    deps = ["@com_google_absl//absl/status"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common/google:status_macros",
+        "@com_google_absl//absl/status",
+    ],
 )
 
 cc_library(
@@ -396,6 +446,18 @@ cc_library(
         "//tensorflow/lite/c:common",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "unimplemented_operation_parser",
+    hdrs = ["unimplemented_operation_parser.h"],
+    deps = [
+        ":operation_parser",
+        ":status",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:any",
     ],
 )
 

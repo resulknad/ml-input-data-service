@@ -16,8 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PJRT_PJRT_STREAM_EXECUTOR_CLIENT_H_
 #define TENSORFLOW_COMPILER_XLA_PJRT_PJRT_STREAM_EXECUTOR_CLIENT_H_
 
+#include <functional>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -36,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/local_device_state.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/tracked_device_buffer.h"
+#include "tensorflow/compiler/xla/pjrt/transpose.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
@@ -51,7 +54,6 @@ limitations under the License.
 #include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/thread_annotations.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/stream_executor/stream.h"
 
 namespace xla {
@@ -170,6 +172,8 @@ class PjRtStreamExecutorClient : public PjRtClient {
 
   StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       const XlaComputation& computation, CompileOptions options) override;
+  StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+      mlir::ModuleOp mlir_module, CompileOptions options) override;
 
   StatusOr<absl::optional<std::string>> ExecutableFingerprint(
       const PjRtExecutable& executable) const override {
@@ -183,8 +187,7 @@ class PjRtStreamExecutorClient : public PjRtClient {
   }
 
   StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
-      absl::string_view serialized, std::unique_ptr<HloModule> hlo_module,
-      CompileOptions options) override {
+      absl::string_view serialized, CompileOptions options) override {
     return Unimplemented("DeserializeExecutable not implemented on %s",
                          platform_name());
   }
@@ -208,7 +211,8 @@ class PjRtStreamExecutorClient : public PjRtClient {
   };
 
   StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
-      const void* data, const Shape& shape,
+      const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
+      absl::optional<absl::Span<int64_t const>> byte_strides,
       HostBufferSemantics host_buffer_semantics,
       std::function<void()> on_done_with_host_buffer,
       PjRtDevice* device) override;
@@ -274,19 +278,27 @@ class PjRtStreamExecutorClient : public PjRtClient {
     notifier(Unimplemented("Cross host receives not implemented."));
   }
 
-  virtual Status CopyToRemoteDevice(
-      PjRtBuffer* buffer, absl::string_view serialized_descriptor) const {
-    return Unimplemented("Cross host sends not implemented.");
+  virtual void CopyToRemoteDevice(
+      PjRtBuffer* buffer, absl::string_view serialized_descriptor,
+      PjRtBuffer::RemoteSendCallback on_done) const {
+    on_done(Unimplemented("Cross host sends not implemented."),
+            /*sends_were_enqueued=*/false);
   }
 
-  virtual Status CopyToRemoteDeviceScattered(
-      PjRtBuffer* buffer, absl::Span<const std::string> serialized_descriptors,
+  virtual void CopyToRemoteDeviceScattered(
+      PjRtBuffer* buffer,
+      absl::Span<const std::pair<std::string, PjRtBuffer::RemoteSendCallback>>
+          serialized_descriptors_and_callbacks,
       const PjRtBuffer::ScatterDetails& scatter_details) const {
-    return Unimplemented("Scattered cross host sends not implemented.");
+    for (const auto& d_and_cb : serialized_descriptors_and_callbacks) {
+      d_and_cb.second(
+          Unimplemented("Scattered cross host sends not implemented."),
+          /*sends_were_enqueued=*/false);
+    }
   }
 
   virtual Status CopyRawSubBufferToHost(PjRtBuffer* buffer, void* dst,
-                                        int64 offset, int64 transfer_size,
+                                        int64_t offset, int64_t transfer_size,
                                         std::function<void(Status)> on_ready) {
     return Unimplemented("Raw copies to host not implemented.");
   }
@@ -332,6 +344,9 @@ class PjRtStreamExecutorClient : public PjRtClient {
   std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options_;
 
   tensorflow::thread::ThreadPool thread_pool_;
+
+  absl::Mutex transpose_mu_;
+  TransposePlanCache transpose_cache_ ABSL_GUARDED_BY(transpose_mu_);
 };
 
 // Converts a 2D set of Device objects indexed by [replica][partition] into an
@@ -548,7 +563,7 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
 
   StatusOr<size_t> GetOnDeviceSizeInBytes() const override;
 
-  Status CopyRawToHost(void* dst, int64 offset, int64 transfer_size,
+  Status CopyRawToHost(void* dst, int64_t offset, int64_t transfer_size,
                        std::function<void(Status)> on_ready) override;
 
   // Drops the buffer's reference to its associated device memory, leaving the
@@ -581,10 +596,12 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
   StatusOr<std::unique_ptr<PjRtBuffer>> CopyToDevice(
       PjRtDevice* dst_device) override;
 
-  Status CopyToRemoteDevice(absl::string_view serialized_descriptor) override;
+  void CopyToRemoteDevice(absl::string_view serialized_descriptor,
+                          RemoteSendCallback on_done) override;
 
-  Status CopyToRemoteDeviceScattered(
-      absl::Span<const std::string> serialized_descriptors,
+  void CopyToRemoteDeviceScattered(
+      absl::Span<const std::pair<std::string, RemoteSendCallback>>
+          serialized_descriptors_and_callbacks,
       const ScatterDetails& scatter_details) override;
 
   Status BlockHostUntilReady() override;
@@ -691,8 +708,8 @@ class PjRtStreamExecutorExecutable : public PjRtExecutable {
     return executables_[0]->build_options().num_partitions();
   }
 
-  int64 SizeOfGeneratedCodeInBytes() const override {
-    int64 size = 0;
+  int64_t SizeOfGeneratedCodeInBytes() const override {
+    int64_t size = 0;
     for (auto& executable : executables_) {
       size += executable->executable()->SizeOfGeneratedCodeInBytes();
     }

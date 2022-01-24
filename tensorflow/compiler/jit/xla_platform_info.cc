@@ -28,7 +28,7 @@ xla::StatusOr<absl::optional<std::set<int>>> ParseVisibleDeviceList(
   const std::vector<string> visible_devices =
       absl::StrSplit(visible_device_list, ',');
   for (const string& platform_device_id_str : visible_devices) {
-    int32 platform_device_id;
+    int32_t platform_device_id;
     if (!absl::SimpleAtoi(platform_device_id_str, &platform_device_id)) {
       return errors::InvalidArgument(
           "Could not parse entry in 'visible_device_list': '",
@@ -82,11 +82,13 @@ Status BuildXlaCompilationCache(DeviceBase* device, FunctionLibraryRuntime* flr,
   client_options.set_intra_op_parallelism_threads(
       device->tensorflow_cpu_worker_threads()->num_threads);
 
-  string allowed_gpus =
-      flr->config_proto()->gpu_options().visible_device_list();
-  TF_ASSIGN_OR_RETURN(absl::optional<std::set<int>> gpu_ids,
-                      ParseVisibleDeviceList(allowed_gpus));
-  client_options.set_allowed_devices(gpu_ids);
+  if (flr->config_proto()) {
+    string allowed_gpus =
+        flr->config_proto()->gpu_options().visible_device_list();
+    TF_ASSIGN_OR_RETURN(absl::optional<std::set<int>> gpu_ids,
+                        ParseVisibleDeviceList(allowed_gpus));
+    client_options.set_allowed_devices(gpu_ids);
+  }
 
   auto client = xla::ClientLibrary::GetOrCreateLocalClient(client_options);
   if (!client.ok()) {
@@ -170,8 +172,8 @@ XlaCompiler::Options GenerateCompilerOptions(
       (platform_info.platform_id() == se::host::kHostPlatformId);
   options.device_allocator = GetAllocator(device, stream, platform_info);
   if (platform_info.xla_device_metadata()) {
-    options.shape_representation_fn =
-        platform_info.xla_device_metadata()->shape_representation_fn();
+    options.shape_determination_fns =
+        platform_info.xla_device_metadata()->default_shape_determination_fns();
   }
   // If reference variables are not present in the graph, we can safely alias
   // passthrough parameters without performing a copy.

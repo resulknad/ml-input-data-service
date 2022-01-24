@@ -41,6 +41,25 @@ def RewriteTFFrameworkAssert : Pass<"rewrite-tf-framework-assert", "ModuleOp"> {
 def TFToJITInvocationPass : FunctionPass<"tf-to-jit-invocation"> {
   let summary = "Pass to rewrite all TF operations to JIT invocations";
   let constructor = "transforms::CreateTFToJITInvocationPass()";
+  let options = [
+      ListOption<"tile_sizes_", "tile-sizes", "int64_t", "Tiling sizes",
+                 "llvm::cl::ZeroOrMore, llvm::cl::MiscFlags::CommaSeparated">,
+      ListOption<"unroll_factors_", "unroll-factors", "int64_t",
+                 "Unrolling in each tile dimension", "llvm::cl::ZeroOrMore, "
+                 "llvm::cl::MiscFlags::CommaSeparated">,
+      Option<"max_supported_rank_", "max-supported-rank", "int64_t",
+             /*default=*/"", "Max rank that this kernel supports">,
+      Option<"enable_ftz_", "enable-ftz", "bool", /*default=*/"",
+             "Enable the denormal flush to zero mode when generating code">,
+      Option<"index_64bit_", "index_64bit", "bool", /*default=*/"",
+             "Enable the 64 bit indexing for GPU kernels">,
+      Option<"cpu_codegen_", "cpu-codegen", "bool", /*default=*/"",
+             "CPU codegen (false implies GPU)">,
+      Option<"jit_i64_indexed_for_large_tensors_",
+             "jit_i64_indexed_for_large_tensors", "bool", /*default=*/"false",
+             "Enable JIT compilation of i64-indexed kernels for large input "
+             "tensors.">,
+  ];
 }
 
 def BufferReusePass : FunctionPass<"buffer-reuse"> {
@@ -57,6 +76,11 @@ def ComputeOpAndFuncBufferizePass : Pass<"computeop-and-func-bufferize", "Module
   let summary = "Pass to transform compute operations (hlo and linalg) on "
                 "values to buffer based ones.";
   let constructor = "transforms::CreateComputeOpAndFuncBufferizePass()";
+}
+
+def TiledLoopBufferizePass : FunctionPass<"tiled-loop-bufferize"> {
+  let summary = "Pass to bufferize linalg.tiled_loop with the ops inside it.";
+  let constructor = "transforms::CreateTiledLoopBufferizePass()";
 }
 
 def FinalBufferizePass : Pass<"final-bufferize", "ModuleOp"> {
@@ -167,6 +191,17 @@ def VectorizationCleanupPass : FunctionPass<"vectorization-cleanup"> {
     VectorizationPass creates some memory transfers that are unneeded but cannot
     be safely removed by current generic infrastructure. This removes the
     specific operations.
+  }];
+}
+
+def CopyCleanupPass : FunctionPass<"copy-cleanup"> {
+  let summary = "Pass to remove copies which are consumed by a GenericOp.";
+  let constructor = "transforms::CreateCopyCleanupPass()";
+  let description = [{
+    We can have GenericOps which have operands that are a copy, but the copy is
+    not used by any other op. In this case, the GenericOp can just use the
+    buffer which is the source of the copy, and we can remove the Alloc and the
+    copy.
   }];
 }
 

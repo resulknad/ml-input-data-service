@@ -21,13 +21,14 @@ cc_library(
     hdrs = ["device_profiler_session.h"],
     visibility = ["//tensorflow:internal"],
     deps = [
-        ":profiler_session",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform",
         "//tensorflow/core/profiler:profiler_options_proto_cc",
-        "@com_google_absl//absl/memory",
-    ],
+    ] + if_not_android([
+        ":profiler_session",
+        "//tensorflow/core/profiler/convert:xplane_to_step_stats",
+    ]),
 )
 
 tf_profiler_pybind_cc_library_wrapper(
@@ -41,12 +42,14 @@ cc_library(
     hdrs = ["profiler_session.h"],
     visibility = ["//tensorflow:internal"],
     deps = [
-        ":profiler_interface",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core/profiler:profiler_options_proto_cc",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-    ] + if_static([
+        "//tensorflow/core/platform",
+    ] + if_not_android([
+        ":profiler_interface",
+        ":profiler_lock",
+    ]) + if_static([
         ":profiler_session_impl",
     ]),
 )
@@ -65,13 +68,13 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core/platform",
-        ":profiler_interface",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core/profiler:profiler_options_proto_cc",
         "@com_google_absl//absl/memory",
-        "//tensorflow/core:protos_all_cc",
     ] + if_not_android([
+        ":profiler_interface",
         ":profiler_factory",
+        ":profiler_collection",
         ":profiler_lock",
         "//tensorflow/core/profiler/convert:post_process_single_host_xplane",
         "//tensorflow/core/profiler/utils:time_utils",
@@ -101,6 +104,7 @@ cc_library(
         "//tensorflow/core/profiler:__pkg__",
     ],
     deps = [
+        ":profiler_controller",
         ":profiler_interface",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler:profiler_options_proto_cc",
@@ -108,13 +112,53 @@ cc_library(
     alwayslink = True,
 )
 
+tf_cc_test(
+    name = "profiler_factory_test",
+    srcs = ["profiler_factory_test.cc"],
+    deps = [
+        ":profiler_factory",
+        ":profiler_interface",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "@com_google_absl//absl/memory",
+    ],
+)
+
 cc_library(
     name = "profiler_interface",
     hdrs = ["profiler_interface.h"],
     copts = tf_profiler_copts(),
+    visibility = [
+        "//tensorflow:internal",
+        "//tensorflow/core/profiler:internal",
+    ],
     deps = [
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+    ],
+)
+
+cc_library(
+    name = "profiler_collection",
+    srcs = ["profiler_collection.cc"],
+    hdrs = ["profiler_collection.h"],
+    deps = [
+        ":profiler_interface",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+    ],
+)
+
+cc_library(
+    name = "profiler_controller",
+    srcs = ["profiler_controller.cc"],
+    hdrs = ["profiler_controller.h"],
+    deps = [
+        ":profiler_interface",
+        "//tensorflow/core:lib",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
     ],
 )
@@ -208,6 +252,15 @@ cc_library(
 )
 
 cc_library(
+    name = "scoped_memory_debug_annotation",
+    srcs = ["scoped_memory_debug_annotation.cc"],
+    hdrs = ["scoped_memory_debug_annotation.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+    ],
+)
+
+cc_library(
     name = "scoped_annotation",
     hdrs = ["scoped_annotation.h"],
     visibility = ["//visibility:public"],
@@ -247,16 +300,46 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "profiler_lock_test",
+    srcs = ["profiler_lock_test.cc"],
+    deps = [
+        ":profiler_lock",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "profiler_disabled_test",
+    srcs = ["profiler_disabled_test.cc"],
+    deps = [
+        ":profiler_lock",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 filegroup(
-    name = "mobile_srcs",
+    name = "mobile_srcs_no_runtime",
+    srcs = [
+        "scoped_annotation.h",
+        "scoped_memory_debug_annotation.cc",
+        "scoped_memory_debug_annotation.h",
+        "traceme.h",
+        "traceme_encode.h",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "mobile_srcs_only_runtime",
     srcs = [
         "annotated_traceme.h",
         "connected_traceme.h",
         "device_profiler_session.h",
         "profiler_interface.h",
-        "scoped_annotation.h",
-        "traceme.h",
-        "traceme_encode.h",
     ],
     visibility = ["//visibility:public"],
 )

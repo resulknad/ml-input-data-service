@@ -26,29 +26,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/types.h"
-
-// Common place for all collective thunks to source nccl/rccl headers.
-// Also, all the RunNcclCollective() functions for various thunks should
-// use XLA_ENABLE_XCCL to guard use NCCL/RCCL usage (and not use GOOGLE_XCCL).
-#if GOOGLE_XCCL
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#define XLA_ENABLE_XCCL 1
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#endif  // GOOGLE_XCCL
 
 #if XLA_ENABLE_XCCL
-#if GOOGLE_CUDA
-#include "third_party/nccl/nccl.h"
-#elif TENSORFLOW_USE_ROCM
-#include "rocm/include/rccl/rccl.h"
-#else
-#error "Neither CUDA nor ROCm enabled but NCCL/RCCL enabled"
-#endif
-
-// Also include this file required by all collective thunks.
 #include "tensorflow/compiler/xla/service/gpu/nccl_utils.h"
-
 #endif  // XLA_ENABLE_XCCL
 
 struct ncclComm;
@@ -66,11 +46,11 @@ struct NcclCollectiveConfig {
 
   NcclCollectiveConfig& operator=(NcclCollectiveConfig&&);
 
-  int64 operand_count;
+  int64_t operand_count;
   std::vector<PrimitiveType> operand_element_type;
   std::vector<ReplicaGroup> replica_groups;
   RendezvousKey::CollectiveOpKind collective_op_kind;
-  int64 op_id;
+  int64_t op_id;
   CollectiveOpGroupMode group_mode;
 
   template <typename OpT>
@@ -82,13 +62,13 @@ template <typename OpT>
 void NcclCollectiveConfig::SetCollectiveOpKindAndID(OpT op) {
   if (op.channel_id()) {
     collective_op_kind = RendezvousKey::kCrossModule;
-    op_id = static_cast<int64>(op.channel_id()->handle().getInt());
+    op_id = static_cast<int64_t>(op.channel_id()->handle().getInt());
   } else {
     collective_op_kind = RendezvousKey::kCrossReplica;
     mlir::ModuleOp parent = op->template getParentOfType<mlir::ModuleOp>();
     mlir::IntegerAttr unique_id =
         parent->getAttrOfType<mlir::IntegerAttr>("hlo.unique_id");
-    op_id = static_cast<int64>(unique_id.getInt());
+    op_id = static_cast<int64_t>(unique_id.getInt());
   }
 }
 
@@ -117,7 +97,7 @@ class NcclCollectiveThunk : public Thunk {
   using Thunk::Thunk;
 
   struct Buffer {
-    int64 element_count;
+    int64_t element_count;
     BufferAllocation::Slice source_buffer;
     BufferAllocation::Slice destination_buffer;
   };

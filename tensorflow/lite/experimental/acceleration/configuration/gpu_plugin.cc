@@ -21,6 +21,16 @@ limitations under the License.
 
 namespace tflite {
 namespace delegates {
+
+int GpuPlugin::GetDelegateErrno(TfLiteDelegate* from_delegate) { return 0; }
+
+std::unique_ptr<DelegatePluginInterface> GpuPlugin::New(
+    const TFLiteSettings& acceleration) {
+  return absl::make_unique<GpuPlugin>(acceleration);
+}
+
+#if TFLITE_SUPPORTS_GPU_DELEGATE
+
 namespace {
 
 TfLiteGpuInferencePriority ConvertInferencePriority(
@@ -42,13 +52,6 @@ TfLiteGpuInferencePriority ConvertInferencePriority(
 TfLiteDelegatePtr GpuPlugin::Create() {
   return TfLiteDelegatePtr(TfLiteGpuDelegateV2Create(&options_),
                            TfLiteGpuDelegateV2Delete);
-}
-
-int GpuPlugin::GetDelegateErrno(TfLiteDelegate* from_delegate) { return 0; }
-
-std::unique_ptr<DelegatePluginInterface> GpuPlugin::New(
-    const TFLiteSettings& acceleration) {
-  return absl::make_unique<GpuPlugin>(acceleration);
 }
 
 GpuPlugin::GpuPlugin(const TFLiteSettings& tflite_settings)
@@ -89,8 +92,8 @@ GpuPlugin::GpuPlugin(const TFLiteSettings& tflite_settings)
   if (gpu_settings->cache_directory() &&
       gpu_settings->cache_directory()->size() > 0 &&
       gpu_settings->model_token() && gpu_settings->model_token()->size()) {
-    cache_dir_ = gpu_settings->cache_directory()->string_view();
-    model_token_ = gpu_settings->model_token()->string_view();
+    cache_dir_ = gpu_settings->cache_directory()->str();
+    model_token_ = gpu_settings->model_token()->str();
     options_.serialization_dir = cache_dir_.c_str();
     options_.model_token = model_token_.c_str();
     options_.experimental_flags |=
@@ -98,7 +101,33 @@ GpuPlugin::GpuPlugin(const TFLiteSettings& tflite_settings)
   }
 }
 
-const TfLiteGpuDelegateOptionsV2& GpuPlugin::Options() { return options_; }
+#elif defined(REAL_IPHONE_DEVICE)
+
+TfLiteDelegatePtr GpuPlugin::Create() {
+  return TfLiteDelegatePtr(TFLGpuDelegateCreate(&options_),
+                           &TFLGpuDelegateDelete);
+}
+
+GpuPlugin::GpuPlugin(const TFLiteSettings& tflite_settings) {
+  options_ = {0};
+  const auto* gpu_settings = tflite_settings.gpu_settings();
+  if (!gpu_settings) return;
+
+  options_.allow_precision_loss = gpu_settings->is_precision_loss_allowed();
+  options_.enable_quantization = gpu_settings->enable_quantized_inference();
+}
+
+#else
+
+TfLiteDelegatePtr GpuPlugin::Create() {
+  return TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
+}
+
+// In case GPU acceleration is not supported for this platform, we still need to
+// construct an empty object so that Create() can later be called on it.
+GpuPlugin::GpuPlugin(const TFLiteSettings& tflite_settings) {}
+
+#endif
 
 TFLITE_REGISTER_DELEGATE_FACTORY_FUNCTION(GpuPlugin, GpuPlugin::New);
 

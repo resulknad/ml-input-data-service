@@ -28,7 +28,9 @@ limitations under the License.
 
 #include "absl/base/attributes.h"
 #include "absl/strings/numbers.h"
+#include "absl/strings/str_split.h"
 #include "ruy/profiler/profiler.h"  // from @ruy
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
@@ -42,6 +44,7 @@ limitations under the License.
 #include "tensorflow/lite/tools/benchmark/profiling_listener.h"
 #include "tensorflow/lite/tools/delegates/delegate_provider.h"
 #include "tensorflow/lite/tools/logging.h"
+#include "tensorflow/lite/tools/utils.h"
 
 void RegisterSelectedOps(::tflite::MutableOpResolver* resolver);
 
@@ -54,12 +57,14 @@ RegisterSelectedOps(::tflite::MutableOpResolver* resolver) {}
 namespace tflite {
 namespace benchmark {
 namespace {
+using utils::InputTensorData;
+using utils::VoidUniquePtr;
 
 // Backward compat with previous approach to enabling op profiling.
 #if defined(TFLITE_PROFILING_ENABLED)
-constexpr int kOpProfilingEnabledDefault = true;
+constexpr bool kOpProfilingEnabledDefault = true;
 #else
-constexpr int kOpProfilingEnabledDefault = false;
+constexpr bool kOpProfilingEnabledDefault = false;
 #endif
 
 // Dumps ruy profiling events if the ruy profiler is enabled.
@@ -113,11 +118,10 @@ class InterpreterStatePrinter : public BenchmarkListener {
 };
 
 std::vector<std::string> Split(const std::string& str, const char delim) {
-  std::vector<std::string> results;
-  if (!util::SplitAndParse(str, delim, &results)) {
-    results.clear();
+  if (str.empty()) {
+    return {};
   }
-  return results;
+  return absl::StrSplit(str, delim);
 }
 
 int GetNumElements(const TfLiteIntArray* dim_array) {
@@ -292,6 +296,8 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
                           BenchmarkParam::Create<bool>(false));
   default_params.AddParam("print_postinvoke_state",
                           BenchmarkParam::Create<bool>(false));
+  default_params.AddParam("release_dynamic_tensors",
+                          BenchmarkParam::Create<bool>(false));
 
   tools::ProvidedDelegateList delegate_providers(&default_params);
   delegate_providers.AddAllDelegateParams();
@@ -359,12 +365,15 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
           "print_postinvoke_state", &params_,
           "print out the interpreter internals just before benchmark completes "
           "(i.e. after all repeated Invoke calls complete). The internals will "
-          "include allocated memory size of each tensor etc.")};
+          "include allocated memory size of each tensor etc."),
+      CreateFlag<bool>("release_dynamic_tensors", &params_,
+                       "Ensure dynamic tensor's memory is released when they "
+                       "are not used.")};
 
   flags.insert(flags.end(), specific_flags.begin(), specific_flags.end());
 
   tools::ProvidedDelegateList delegate_providers(&params_);
-  delegate_providers.AppendCmdlineFlags(&flags);
+  delegate_providers.AppendCmdlineFlags(flags);
 
   return flags;
 }
@@ -395,6 +404,8 @@ void BenchmarkTfLiteModel::LogParams() {
                       "Print pre-invoke interpreter state", verbose);
   LOG_BENCHMARK_PARAM(bool, "print_postinvoke_state",
                       "Print post-invoke interpreter state", verbose);
+  LOG_BENCHMARK_PARAM(bool, "release_dynamic_tensors",
+                      "Release dynamic tensor memory", verbose);
 
   for (const auto& delegate_provider :
        tools::GetRegisteredDelegateProviders()) {
@@ -403,6 +414,8 @@ void BenchmarkTfLiteModel::LogParams() {
 }
 
 TfLiteStatus BenchmarkTfLiteModel::ValidateParams() {
+  TF_LITE_ENSURE_STATUS(BenchmarkModel::ValidateParams());
+
   if (params_.Get<std::string>("graph").empty()) {
     TFLITE_LOG(ERROR)
         << "Please specify the name of your TF Lite input file with --graph";
@@ -432,7 +445,7 @@ int64_t BenchmarkTfLiteModel::MayGetModelFileSize() {
   return in_file.tellg();
 }
 
-BenchmarkTfLiteModel::InputTensorData BenchmarkTfLiteModel::LoadInputTensorData(
+InputTensorData BenchmarkTfLiteModel::LoadInputTensorData(
     const TfLiteTensor& t, const std::string& input_file_path) {
   std::ifstream value_file(input_file_path, std::ios::binary);
   if (!value_file.good()) {
@@ -476,104 +489,17 @@ BenchmarkTfLiteModel::InputTensorData BenchmarkTfLiteModel::LoadInputTensorData(
   return t_data;
 }
 
-BenchmarkTfLiteModel::InputTensorData
-BenchmarkTfLiteModel::CreateRandomTensorData(const TfLiteTensor& t,
-                                             const InputLayerInfo* layer_info) {
-  bool has_value_range = false;
-  int low_range = 0;
-  int high_range = 0;
-  if (layer_info) {
-    has_value_range = layer_info->has_value_range;
+InputTensorData BenchmarkTfLiteModel::CreateRandomTensorData(
+    const TfLiteTensor& t, const InputLayerInfo* layer_info) {
+  float low_range = 0;
+  float high_range = 0;
+  if (layer_info && layer_info->has_value_range) {
     low_range = layer_info->low;
     high_range = layer_info->high;
+  } else {
+    utils::GetDataRangesForType(t.type, &low_range, &high_range);
   }
-  int num_elements = GetNumElements(t.dims);
-  switch (t.type) {
-    case kTfLiteFloat32: {
-      return CreateInputTensorData<float>(
-          num_elements, std::uniform_real_distribution<float>(-0.5f, 0.5f));
-    }
-    case kTfLiteFloat16: {
-      // TODO(b/138843274): Remove this preprocessor guard when bug is fixed.
-#if TFLITE_ENABLE_FP16_CPU_BENCHMARKS
-#if __GNUC__ && \
-    (__clang__ || __ARM_FP16_FORMAT_IEEE || __ARM_FP16_FORMAT_ALTERNATIVE)
-      // __fp16 is available on Clang or when __ARM_FP16_FORMAT_* is defined.
-      return CreateInputTensorData<__fp16>(
-          num_elements, std::uniform_real_distribution<float>(-0.5f, 0.5f));
-#else
-      TFLITE_LOG(FATAL) << "Don't know how to populate tensor " << t->name
-                        << " of type FLOAT16 on this platform.";
-#endif
-#else
-      // You need to build with -DTFLITE_ENABLE_FP16_CPU_BENCHMARKS=1 using a
-      // compiler that supports __fp16 type. Note: when using Clang and *not*
-      // linking with compiler-rt, a definition of __gnu_h2f_ieee and
-      // __gnu_f2h_ieee must be supplied.
-      TFLITE_LOG(FATAL) << "Populating the tensor " << t.name
-                        << " of type FLOAT16 is disabled.";
-#endif  // TFLITE_ENABLE_FP16_CPU_BENCHMARKS
-      break;
-    }
-    case kTfLiteFloat64: {
-      return CreateInputTensorData<double>(
-          num_elements, std::uniform_real_distribution<double>(-0.5, 0.5));
-    }
-    case kTfLiteInt64: {
-      int low = has_value_range ? low_range : 0;
-      int high = has_value_range ? high_range : 99;
-      return CreateInputTensorData<int64_t>(
-          num_elements, std::uniform_int_distribution<int64_t>(low, high));
-    }
-    case kTfLiteInt32: {
-      int low = has_value_range ? low_range : 0;
-      int high = has_value_range ? high_range : 99;
-      return CreateInputTensorData<int32_t>(
-          num_elements, std::uniform_int_distribution<int32_t>(low, high));
-    }
-    case kTfLiteUInt32: {
-      int low = has_value_range ? low_range : 0;
-      int high = has_value_range ? high_range : 99;
-      return CreateInputTensorData<uint32_t>(
-          num_elements, std::uniform_int_distribution<uint32_t>(low, high));
-    }
-    case kTfLiteInt16: {
-      int low = has_value_range ? low_range : 0;
-      int high = has_value_range ? high_range : 99;
-      return CreateInputTensorData<int16_t>(
-          num_elements, std::uniform_int_distribution<int16_t>(low, high));
-    }
-    case kTfLiteUInt8: {
-      int low = has_value_range ? low_range : 0;
-      int high = has_value_range ? high_range : 254;
-      // std::uniform_int_distribution is specified not to support char types.
-      return CreateInputTensorData<uint8_t>(
-          num_elements, std::uniform_int_distribution<uint32_t>(low, high));
-    }
-    case kTfLiteInt8: {
-      int low = has_value_range ? low_range : -127;
-      int high = has_value_range ? high_range : 127;
-      // std::uniform_int_distribution is specified not to support char types.
-      return CreateInputTensorData<int8_t>(
-          num_elements, std::uniform_int_distribution<int32_t>(low, high));
-    }
-    case kTfLiteString: {
-      // Don't populate input for string. Instead, return a default-initialized
-      // `InputTensorData` object directly.
-      break;
-    }
-    case kTfLiteBool: {
-      // According to std::uniform_int_distribution specification, non-int type
-      // is not supported.
-      return CreateInputTensorData<bool>(
-          num_elements, std::uniform_int_distribution<uint32_t>(0, 1));
-    }
-    default: {
-      TFLITE_LOG(FATAL) << "Don't know how to populate tensor " << t.name
-                        << " of type " << t.type;
-    }
-  }
-  return InputTensorData();
+  return utils::CreateRandomTensorData(t, low_range, high_range);
 }
 
 TfLiteStatus BenchmarkTfLiteModel::PrepareInputData() {
@@ -582,7 +508,7 @@ TfLiteStatus BenchmarkTfLiteModel::PrepareInputData() {
   // Note the corresponding relation between 'interpreter_inputs' and 'inputs_'
   // (i.e. the specified input layer info) has been checked in
   // BenchmarkTfLiteModel::Init() before calling this function. So, we simply
-  // use the corresponding input layer info to initializethe input data value
+  // use the corresponding input layer info to initialize the input data value
   // properly.
   auto interpreter_inputs = interpreter_->inputs();
   for (int i = 0; i < interpreter_inputs.size(); ++i) {
@@ -635,7 +561,14 @@ TfLiteStatus BenchmarkTfLiteModel::InitInterpreter() {
   auto resolver = GetOpResolver();
   const int32_t num_threads = params_.Get<int32_t>("num_threads");
   const bool use_caching = params_.Get<bool>("use_caching");
-  tflite::InterpreterBuilder(*model_, *resolver)(&interpreter_, num_threads);
+
+  tflite::InterpreterBuilder builder(*model_, *resolver);
+  if (builder.SetNumThreads(num_threads) != kTfLiteOk) {
+    TFLITE_LOG(ERROR) << "Failed to set thread number";
+    return kTfLiteError;
+  }
+
+  builder(&interpreter_);
   if (!interpreter_) {
     TFLITE_LOG(ERROR) << "Failed to initialize the interpreter";
     return kTfLiteError;
@@ -675,14 +608,16 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
     params_.Set<int32_t>("max_profiling_buffer_entries",
                          total_nodes + kProfilingBufferHeadrooms);
   }
-  profiling_listener_ = MayCreateProfilingListener();
-  if (profiling_listener_) AddListener(profiling_listener_.get());
 
-  interpreter_state_printer_ = std::unique_ptr<BenchmarkListener>(
-      new InterpreterStatePrinter(interpreter_.get()));
-  AddListener(interpreter_state_printer_.get());
+  AddOwnedListener(MayCreateProfilingListener());
+  AddOwnedListener(std::unique_ptr<BenchmarkListener>(
+      new InterpreterStatePrinter(interpreter_.get())));
 
   interpreter_->SetAllowFp16PrecisionForFp32(params_.Get<bool>("allow_fp16"));
+
+  if (params_.Get<bool>("release_dynamic_tensors")) {
+    interpreter_->EnsureDynamicTensorsAreReleased();
+  }
 
   owned_delegates_.clear();
 
@@ -793,8 +728,8 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
     return kTfLiteError;
   }
 
-  ruy_profiling_listener_.reset(new RuyProfileListener());
-  AddListener(ruy_profiling_listener_.get());
+  AddOwnedListener(
+      std::unique_ptr<BenchmarkListener>(new RuyProfileListener()));
 
   return kTfLiteOk;
 }

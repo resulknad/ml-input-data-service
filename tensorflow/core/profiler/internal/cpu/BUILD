@@ -13,7 +13,6 @@ cc_library(
     srcs = ["host_tracer_utils.cc"],
     hdrs = ["host_tracer_utils.h"],
     copts = tf_profiler_copts(),
-    visibility = ["//tensorflow/core/profiler:friends"],
     deps = [
         ":traceme_recorder",
         "//tensorflow/core:lib",
@@ -28,30 +27,38 @@ cc_library(
 
 cc_library(
     name = "host_tracer",
+    srcs = ["host_tracer_factory.cc"],
+    deps = [
+        ":host_tracer_impl",
+        "//tensorflow/core/profiler:profiler_options_proto_cc",
+        "//tensorflow/core/profiler/lib:profiler_factory",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
+    name = "host_tracer_impl",
     srcs = ["host_tracer.cc"],
+    hdrs = ["host_tracer.h"],
     copts = tf_profiler_copts(),
+    visibility = ["//tensorflow/core/profiler:internal"],
     deps = [
         ":host_tracer_utils",
         ":traceme_recorder",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/profiler:profiler_options_proto_cc",
-        "//tensorflow/core/profiler/lib:profiler_factory",
         "//tensorflow/core/profiler/lib:profiler_interface",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core/profiler/utils:time_utils",
         "//tensorflow/core/profiler/utils:xplane_schema",
         "//tensorflow/core/profiler/utils:xplane_utils",
-        "@com_google_absl//absl/strings",
     ],
-    alwayslink = True,
 )
 
 tf_cc_test(
     name = "host_tracer_test",
     srcs = ["host_tracer_test.cc"],
     deps = [
-        ":host_tracer",
+        ":host_tracer_impl",
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -144,19 +151,28 @@ cc_library(
 
 cc_library(
     name = "python_tracer",
-    srcs = ["python_tracer.cc"],
-    copts = tf_profiler_copts() + ["-fexceptions"],
-    features = ["-use_header_modules"],
+    srcs = ["python_tracer_factory.cc"],
     deps = [
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        ":python_tracer_impl",
         "//tensorflow/core/profiler:profiler_options_proto_cc",
         "//tensorflow/core/profiler/lib:profiler_factory",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
+    name = "python_tracer_impl",
+    srcs = ["python_tracer.cc"],
+    hdrs = ["python_tracer.h"],
+    copts = tf_profiler_copts() + ["-fexceptions"],
+    features = ["-use_header_modules"],
+    visibility = ["//tensorflow/core/profiler:internal"],
+    deps = [
+        "//tensorflow/core:lib",
         "//tensorflow/core/profiler/lib:profiler_interface",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/python/profiler/internal:python_hooks",
     ],
-    alwayslink = True,
 )
 
 cc_library(
@@ -167,7 +183,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/compiler/xla/service:xla_debug_info_manager",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/profiler:profiler_options_proto_cc",
         "//tensorflow/core/profiler/lib:profiler_factory",
         "//tensorflow/core/profiler/lib:profiler_interface",

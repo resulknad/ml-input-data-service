@@ -18,6 +18,9 @@ limitations under the License.
 
 namespace tensorflow {
 
+// This kernel is JIT-compiled.
+GENERATE_AND_REGISTER_UNARY_JIT_GPU_KERNEL(Rint, DT_HALF);
+
 GENERATE_AND_REGISTER_UNARY_GPU_KERNEL(Rint, DT_FLOAT);
 GENERATE_AND_REGISTER_UNARY_GPU_KERNEL(Rint, DT_DOUBLE);
 

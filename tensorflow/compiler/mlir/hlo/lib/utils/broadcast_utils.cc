@@ -45,7 +45,7 @@ bool IsLegalNumpyRankedBroadcast(Value lhs, Value rhs,
   auto expected_extents =
       llvm::seq<int64_t>(larger_rank - smaller_rank, larger_rank);
   return std::equal(expected_extents.begin(), expected_extents.end(),
-                    broadcast_dims.getIntValues().begin());
+                    broadcast_dims.value_begin<APInt>());
 }
 
 Value ComputeBinaryElementwiseBroadcastingResultExtents(Location loc, Value lhs,
@@ -69,9 +69,8 @@ Value ComputeNaryElementwiseBroadcastingResultExtents(Location loc,
     if (ty.isDynamicDim(0)) {
       result_rank = ShapedType::kDynamicSize;
       break;
-    } else {
-      result_rank = std::max(result_rank, ty.getDimSize(0));
     }
+    result_rank = std::max(result_rank, ty.getDimSize(0));
   }
   Type extent_tensor_ty =
       shape::getExtentTensorType(builder.getContext(), result_rank);

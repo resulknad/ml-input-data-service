@@ -18,6 +18,8 @@ limitations under the License.
 #include <cstring>
 #include <limits>
 #include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "grpcpp/grpcpp.h"
@@ -34,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/master_env.h"
 #include "tensorflow/core/distributed_runtime/master_session.h"
 #include "tensorflow/core/distributed_runtime/rpc/async_service_interface.h"
+#include "tensorflow/core/distributed_runtime/rpc/coordination/grpc_coordination_service_impl.h"
 #include "tensorflow/core/distributed_runtime/rpc/eager/grpc_eager_service_impl.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_master_service.h"
@@ -52,6 +55,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/threadpool.h"
 #include "tensorflow/core/profiler/rpc/profiler_service_impl.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/env_var.h"
@@ -253,6 +257,9 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
                                          opts.worker_service_options)
                         .release();
   eager_service_ = new eager::GrpcEagerServiceImpl(&worker_env_, &builder);
+  thread::ThreadPool* compute_pool = ComputePool(sess_opts);
+  coordination_service_ =
+      new GrpcCoordinationServiceImpl(compute_pool, &builder);
 
   profiler_service_ = profiler::CreateProfilerService();
   builder.RegisterService(profiler_service_.get());
@@ -299,7 +306,7 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
         WorkerCacheFactoryOptions options(server_def);
         return WorkerCacheFactory(options, worker_cache);
       });
-  worker_env_.compute_pool = ComputePool(sess_opts);
+  worker_env_.compute_pool = compute_pool;
 
   // Finish setting up master environment.
   master_env_.ops = OpRegistry::Global();
@@ -411,6 +418,9 @@ Status GrpcServer::Start() {
       eager_thread_.reset(
           env_->StartThread(ThreadOptions(), "TF_eager_service",
                             [this] { eager_service_->HandleRPCsLoop(); }));
+      coordination_thread_.reset(env_->StartThread(
+          ThreadOptions(), "TF_coordination_service",
+          [this] { coordination_service_->HandleRPCsLoop(); }));
 
       for (const auto& kv : extra_services_) {
         const std::string& service_name = kv.first;
@@ -472,6 +482,16 @@ Status GrpcServer::UpdateServerDef(const ServerDef& server_def) {
   master_env_.worker_cache = worker_cache;
   master_env_.collective_executor_mgr =
       worker_env_.collective_executor_mgr.get();
+  return Status::OK();
+}
+
+// TODO(haoyuzhang): Remove this method once we have a mechanism to directly set
+// field inside the RPC coordination service handler.
+Status GrpcServer::SetCoordinationServiceAgentInstance(
+    CoordinationServiceAgent* agent) {
+  auto* coord_service =
+      static_cast<GrpcCoordinationServiceImpl*>(coordination_service_);
+  coord_service->SetCoordinationServiceAgentInstance(agent);
   return Status::OK();
 }
 

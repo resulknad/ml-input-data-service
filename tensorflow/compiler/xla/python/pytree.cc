@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/python/pytree.h"
 
+#include <algorithm>
 #include <memory>
 #include <stdexcept>
 #include <utility>
@@ -32,7 +33,7 @@ limitations under the License.
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
 #include "pybind11/stl.h"
-#include "tensorflow/compiler/xla/python/absl_casters.h"
+#include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
@@ -111,7 +112,11 @@ bool PyTreeDef::operator==(const PyTreeDef& other) const {
   const PyTreeTypeRegistry::Registration* registration =
       PyTreeTypeRegistry::Lookup(obj.get_type());
   if (registration) {
-    *custom = registration;
+    if (registration->kind == PyTreeKind::kCustom) {
+      *custom = registration;
+    } else {
+      *custom = nullptr;
+    }
     return registration->kind;
   } else if (py::isinstance<py::tuple>(obj) && py::hasattr(obj, "_fields")) {
     // We can only identify namedtuples heuristically, here by the presence of
@@ -159,7 +164,7 @@ void PyTreeDef::FlattenIntoImpl(
         py::list keys =
             py::reinterpret_steal<py::list>(PyDict_Keys(dict.ptr()));
         if (PyList_Sort(keys.ptr())) {
-          throw std::runtime_error("Dictionary key sort failed.");
+          throw py::error_already_set();
         }
         for (py::handle key : keys) {
           recurse(dict[key]);
@@ -586,12 +591,16 @@ std::unique_ptr<PyTreeDef> PyTreeDef::Compose(const PyTreeDef& inner) const {
 /*static*/ std::unique_ptr<PyTreeDef> PyTreeDef::Tuple(
     const std::vector<PyTreeDef>& defs) {
   auto out = absl::make_unique<PyTreeDef>();
+  int num_leaves = 0;
   for (const PyTreeDef& def : defs) {
     absl::c_copy(def.traversal_, std::back_inserter(out->traversal_));
+    num_leaves += def.num_leaves();
   }
   Node node;
   node.kind = PyTreeKind::kTuple;
   node.arity = defs.size();
+  node.num_leaves = num_leaves;
+  node.num_nodes = out->traversal_.size() + 1;
   out->traversal_.push_back(node);
   return out;
 }
@@ -650,7 +659,8 @@ std::string PyTreeDef::ToString() const {
         if (py::len(node.node_data) != node.arity) {
           throw std::logic_error("Number of keys and entries does not match.");
         }
-        std::string separator = "{";
+        representation = "{";
+        std::string separator;
         auto child_iter = agenda.end() - node.arity;
         for (const py::handle& key : node.node_data) {
           absl::StrAppendFormat(&representation, "%s%s: %s", separator,
@@ -691,6 +701,7 @@ std::string PyTreeDef::ToString() const {
 
 void BuildPytreeSubmodule(py::module& m) {
   py::module pytree = m.def_submodule("pytree", "Python tree library");
+  pytree.attr("version") = py::int_(1);
   pytree.def("flatten", &PyTreeDef::Flatten, py::arg("tree"),
              py::arg("leaf_predicate") = absl::nullopt);
   pytree.def("tuple", &PyTreeDef::Tuple);

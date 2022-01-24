@@ -23,11 +23,11 @@ limitations under the License.
 #include <iterator>
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/node_hash_map.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -133,7 +133,7 @@ class HloDataflowAnalysis {
   HloValue& GetValue(HloValue::Id value_id);
 
   // Returns the total number of HloValues.
-  int64 value_count() const { return values_.size(); }
+  int64_t value_count() const { return values_.size(); }
 
   // Returns a vector of all HloValues stabily sorted by HloValue::Id.
   const std::vector<HloValue*>& values() const { return values_vector_; }
@@ -141,7 +141,7 @@ class HloDataflowAnalysis {
   // Returns the call graph used for computing the dataflow.
   const CallGraph& call_graph() const { return *call_graph_; }
 
-  string ToString() const;
+  std::string ToString() const;
 
   // Returns true if 'user' cannot possibly use the buffer at 'index' in
   // 'operand'. Returns false otherwise.
@@ -237,7 +237,6 @@ class HloDataflowAnalysis {
   bool UpdateAddDependencyValueSet(HloInstruction* add_dependency);
   bool UpdateAllGatherStartValueSet(HloInstruction* all_gather_start);
   bool UpdateAllGatherDoneValueSet(HloInstruction* all_gather_done);
-  bool UpdateAllReduceStartValueSet(HloInstruction* all_reduce_start);
   bool UpdateAllReduceDoneValueSet(HloInstruction* all_reduce_done);
   bool UpdateCollectivePermuteStartValueSet(
       HloInstruction* collective_permute_start);
@@ -277,10 +276,10 @@ class HloDataflowAnalysis {
   // The map of all HloValues in the module. We pass around pointers to the
   // mapped HloValues, so the underlying container must keep them valid despite
   // mutations touching other map entries.
-  std::unordered_map<HloValue::Id, HloValue> values_;
+  absl::node_hash_map<HloValue::Id, HloValue> values_;
 
   // A map from instruction to InstructionValueSet.
-  std::unordered_map<const HloInstruction*, InstructionValueSet> value_sets_;
+  absl::node_hash_map<const HloInstruction*, InstructionValueSet> value_sets_;
 
   // Values marked for deletion during construction. We don't delete them
   // immediately because references to them may remain in ValueSets temporarily

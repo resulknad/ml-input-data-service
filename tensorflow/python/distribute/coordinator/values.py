@@ -18,15 +18,11 @@
 This is currently under development and the API is subject to change.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import enum
 import threading
 
-from tensorflow.python.data.experimental.ops.distribute_options import ExternalStatePolicy
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops.options import ExternalStatePolicy
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -74,7 +70,8 @@ class RemoteValueStatus(enum.Enum):
   READY = "READY"
 
 
-@tf_export("distribute.experimental.coordinator.RemoteValue", v1=[])
+@tf_export("distribute.experimental.coordinator.RemoteValue",
+           "distribute.coordinator.RemoteValue", v1=[])
 class RemoteValue(object):
   """An asynchronously available value of a scheduled function.
 
@@ -252,7 +249,8 @@ class RemoteValueImpl(RemoteValue):
     return self._fetched_tensors
 
 
-@tf_export("distribute.experimental.coordinator.PerWorkerValues", v1=[])
+@tf_export("distribute.experimental.coordinator.PerWorkerValues",
+           "distribute.coordinator.PerWorkerValue", v1=[])
 class PerWorkerValues(composite_tensor.CompositeTensor):
   """A container that holds a list of values, one value per worker.
 
@@ -418,7 +416,8 @@ class PerWorkerDatasetFromDataset(PerWorkerDatasetFromDatasetFunction):
     hood.
 
     Args:
-      dataset: A tf.data.Dataset or a DistributedDataset.
+      dataset: A tf.data.Dataset, a DistributedDataset or a
+        DistributedDatasetsFromFunction
       coordinator: a `ClusterCoordinator` object, used to create dataset
         resources.
     """
@@ -431,14 +430,17 @@ class PerWorkerDatasetFromDataset(PerWorkerDatasetFromDatasetFunction):
             serialized, original_dataset.element_spec)
         dataset.build(dataset_to_replace=deserialized)
         return dataset
+    elif isinstance(dataset, input_lib.DistributedDatasetsFromFunction):
+      def dataset_fn():
+        dataset.build()
+        return dataset
     elif isinstance(dataset, dataset_ops.Dataset):
       serialized = serialize_dataset_to_graph(dataset)
 
       def dataset_fn():
         return deserialize_dataset_from_graph(serialized, dataset.element_spec)
     else:
-      raise NotImplementedError(
-          "DistributedDatasetsFromFunction is not supported yet.")
+      raise ValueError("Unexpected dataset type!")
 
     super(PerWorkerDatasetFromDataset, self).__init__(dataset_fn, coordinator)
 

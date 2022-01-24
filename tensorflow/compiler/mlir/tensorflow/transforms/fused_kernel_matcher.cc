@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 
@@ -49,13 +50,7 @@ namespace {
 // implementations to decrease the number of operations needed to perform a
 // computation.
 struct FusedKernelMatcherPass
-    : public PassWrapper<FusedKernelMatcherPass, FunctionPass> {
-  StringRef getArgument() const final { return "tf-fused-kernel-matcher"; }
-
-  StringRef getDescription() const final {
-    return "Matches computations corresponding to optimized fused kernels";
-  }
-
+    : public FusedKernelMatcherPassBase<FusedKernelMatcherPass> {
   void runOnFunction() override;
 };
 
@@ -175,12 +170,12 @@ class FuseContractionWithBiasAdd : public OpRewritePattern<SrcOpT> {
     std::vector<NamedAttribute> attrs = contraction->getAttrs();
     ArrayAttr fused_ops_attr = ArrayAttr::get(context, fused_ops);
     attrs.push_back(
-        NamedAttribute(Identifier::get("fused_ops", context), fused_ops_attr));
+        NamedAttribute(StringAttr::get(context, "fused_ops"), fused_ops_attr));
     // Epsilon is used only in fusions with the FusedBatchNorm op, so we zero it
     // here.
     Attribute epsilon = rewriter.getF32FloatAttr(0);
     attrs.push_back(
-        NamedAttribute(Identifier::get("epsilon", context), epsilon));
+        NamedAttribute(StringAttr::get(context, "epsilon"), epsilon));
 
     // Insert fused operation right before the BiasAdd operation to guarantee
     // that bias value dominates the fused operation. We already verified that
@@ -262,8 +257,6 @@ void FusedKernelMatcherPass::runOnFunction() {
 std::unique_ptr<OperationPass<FuncOp>> CreateFusedKernelMatcherPass() {
   return std::make_unique<FusedKernelMatcherPass>();
 }
-
-static PassRegistration<FusedKernelMatcherPass> pass;
 
 }  // namespace TF
 
