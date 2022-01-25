@@ -68,7 +68,7 @@ class BufferizeConstantOp : public OpConversionPattern<ConstantOp> {
     Value value;
     if (all_same_elems)
       value = rewriter.create<ConstantOp>(loc, elements_attr.getSplatValue());
-    for (auto en : llvm::enumerate(elements_attr.getAttributeValues())) {
+    for (auto en : llvm::enumerate(elements_attr.getValues<Attribute>())) {
       if (!all_same_elems) value = rewriter.create<ConstantOp>(loc, en.value());
       Value index = rewriter.create<ConstantIndexOp>(loc, en.index());
       rewriter.create<memref::StoreOp>(loc, value, buffer, index);
@@ -377,11 +377,12 @@ class BufferizeAndConvertMinimumBroadcastShapesOp
     Value new_rank = lb.create<SubIOp>(rank, leading_ones);
     auto result_type =
         MemRefType::get({ShapedType::kDynamicSize}, lb.getIndexType());
-    // Ideally we would use SubView here to return a MemRef with 'leading_ones'
-    // as offset, but several things related to MemRef with offsets are
-    // currently broken, so instead we just allocate another buffer of the
-    // desired size and copy the elements over. We assume the buffer will be
-    // small, so we allocate it on the stack.
+    // We cannot use SubView here to return a MemRef with 'leading_ones' as
+    // offset, because that also changes the size, so the result type would need
+    // to have an affine map to change the layout. This is incompatible to our
+    // other MemRef types without affine map. So instead we just allocate
+    // another buffer of the desired size and copy the elements over. We assume
+    // the buffer will be small, so we allocate it on the stack.
     // TODO(b/181654096): Replace AllocaOp with AllocOp.
     Value result = lb.create<memref::AllocaOp>(result_type, new_rank);
     Value zero = lb.create<ConstantIndexOp>(0);

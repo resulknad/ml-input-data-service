@@ -1622,3 +1622,173 @@ func @lt_loop(%arg0: tensor<4xf32>, %arg1: tensor<f32>, %arg2: tensor<f32>, %arg
   }) : (tensor<i32>, tensor<i32>, tensor<i32>) -> (tensor<i32>, tensor<i32>, tensor<i32>)
   return %1#0, %1#2, %1#2: tensor<i32>, tensor<i32>, tensor<i32>
 }
+
+// -----
+
+// CHECK-LABEL: while_with_different_types
+func @while_with_different_types(%arg0: tensor<3xf32>) -> tensor<3xf32> {
+  %cst_0 = constant dense<0> : tensor<1xi32>
+  %cst_1 = constant dense<[100, 100]> : tensor<2xi32>
+  %cst_2 = constant dense<1.00> : tensor<1xf32>
+  %1:4 = "mhlo.while"(%cst_0, %cst_1, %cst_2, %arg0) ( {
+  ^bb0(%arg1: tensor<1xi32>, %arg2: tensor<2xi32>, %arg3: tensor<1xf32>, %arg4: tensor<3xf32>):  // no predecessors
+    %2 = constant dense<0> : tensor<i32>
+    %3 = "mhlo.slice"(%arg2) {limit_indices = dense<[1]> : tensor<1xi64>, start_indices = dense<[0]> : tensor<1xi64>, strides = dense<1> : tensor<1xi64>} : (tensor<2xi32>) -> tensor<1xi32>
+    %4 = "mhlo.compare"(%arg1, %3) {comparison_direction = "LT"} : (tensor<1xi32>, tensor<1xi32>) -> tensor<1xi1>
+    "mhlo.return"(%4) : (tensor<1xi1>) -> ()
+  },  {
+  ^bb0(%arg1: tensor<1xi32>, %arg2: tensor<2xi32>, %arg3: tensor<1xf32>, %arg4: tensor<3xf32>):  // no predecessors
+    %3 = "mhlo.broadcast_in_dim"(%arg3) {broadcast_dimensions = dense<0> : tensor<1xi64>} : (tensor<1xf32>) -> tensor<3xf32>
+    %4 = mhlo.add %3, %arg4 : tensor<3xf32>
+    "mhlo.return"(%arg1, %arg2, %arg3, %4) : (tensor<1xi32>, tensor<2xi32>, tensor<1xf32>, tensor<3xf32>) -> ()
+  }) : (tensor<1xi32>, tensor<2xi32>, tensor<1xf32>, tensor<3xf32>) -> (tensor<1xi32>, tensor<2xi32>, tensor<1xf32>, tensor<3xf32>)
+  return %1#3: tensor<3xf32>
+}
+
+// -----
+
+func @while_with_invalid_types(%arg0: tensor<3xf32>) -> tensor<3xf32> {
+  %cst_0 = constant dense<0> : tensor<1xi32>
+  %cst_1 = constant dense<[100, 100]> : tensor<2xi32>
+  %cst_2 = constant dense<1.00> : tensor<1xf32>
+  // expected-error @+1 {{'mhlo.while' op requires the same type for operand and result at index 2}}
+  %1:4 = "mhlo.while"(%cst_0, %cst_1, %cst_2, %arg0) ( {
+  ^bb0(%arg1: tensor<1xi32>, %arg2: tensor<2xi32>, %arg3: tensor<1xf32>, %arg4: tensor<3xf32>):  // no predecessors
+    %2 = constant dense<0> : tensor<i32>
+    %3 = "mhlo.slice"(%arg2) {limit_indices = dense<[1]> : tensor<1xi64>, start_indices = dense<[0]> : tensor<1xi64>, strides = dense<1> : tensor<1xi64>} : (tensor<2xi32>) -> tensor<1xi32>
+    %4 = "mhlo.compare"(%arg1, %3) {comparison_direction = "LT"} : (tensor<1xi32>, tensor<1xi32>) -> tensor<1xi1>
+    "mhlo.return"(%4) : (tensor<1xi1>) -> ()
+  },  {
+  ^bb0(%arg1: tensor<1xi32>, %arg2: tensor<2xi32>, %arg3: tensor<1xf32>, %arg4: tensor<3xf32>):  // no predecessors
+    %3 = "mhlo.broadcast_in_dim"(%arg3) {broadcast_dimensions = dense<0> : tensor<1xi64>} : (tensor<1xf32>) -> tensor<3xf32>
+    %4 = mhlo.add %3, %arg4 : tensor<3xf32>
+    "mhlo.return"(%arg1, %arg2, %arg3, %4) : (tensor<1xi32>, tensor<2xi32>, tensor<1xf32>, tensor<3xf32>) -> ()
+  }) : (tensor<1xi32>, tensor<2xi32>, tensor<1xf32>, tensor<3xf32>) -> (tensor<1xi32>, tensor<2xi32>, tensor<3xf32>, tensor<1xf32>)
+  return %1#2: tensor<3xf32>
+}
+
+// -----
+
+// CHECK-LABEL: while_with_tuples
+func @while_with_tuples(%arg0: tensor<3xf32>) -> tensor<3xf32> {
+  %cst_0 = constant dense<0> : tensor<1xi32>
+  %cst_1 = constant dense<[100, 100]> : tensor<2xi32>
+  %cst_2 = constant dense<1.00> : tensor<1xf32>
+  %0 = "mhlo.tuple"(%cst_2, %arg0) : (tensor<1xf32>, tensor<3xf32>) -> tuple<tensor<1xf32>, tensor<3xf32>>
+  %1 = "mhlo.tuple"(%cst_1, %0) : (tensor<2xi32>, tuple<tensor<1xf32>, tensor<3xf32>>) -> tuple<tensor<2xi32>, tuple<tensor<1xf32>, tensor<3xf32>>>
+  %2:2 = "mhlo.while"(%cst_0, %1) ( {
+  ^bb0(%arg1: tensor<1xi32>, %arg2: tuple<tensor<2xi32>, tuple<tensor<1xf32>, tensor<3xf32>>>):  // no predecessors
+    %t0 = "mhlo.get_tuple_element"(%arg2) {index = 0 : i32} : (tuple<tensor<2xi32>, tuple<tensor<1xf32>, tensor<3xf32>>>) -> tensor<2xi32>
+    %3 = constant dense<0> : tensor<i32>
+    %4 = "mhlo.slice"(%t0) {limit_indices = dense<[1]> : tensor<1xi64>, start_indices = dense<[0]> : tensor<1xi64>, strides = dense<1> : tensor<1xi64>} : (tensor<2xi32>) -> tensor<1xi32>
+    %5 = "mhlo.compare"(%arg1, %4) {comparison_direction = "LT"} : (tensor<1xi32>, tensor<1xi32>) -> tensor<1xi1>
+    "mhlo.return"(%5) : (tensor<1xi1>) -> ()
+  },  {
+  ^bb0(%arg1: tensor<1xi32>, %arg2: tuple<tensor<2xi32>, tuple<tensor<1xf32>, tensor<3xf32>>>):  // no predecessors
+    %t0 = "mhlo.get_tuple_element"(%arg2) {index = 0 : i32} : (tuple<tensor<2xi32>, tuple<tensor<1xf32>, tensor<3xf32>>>) -> tensor<2xi32>
+    %t1_2 = "mhlo.get_tuple_element"(%arg2) {index = 1 : i32} : (tuple<tensor<2xi32>, tuple<tensor<1xf32>, tensor<3xf32>>>) -> tuple<tensor<1xf32>, tensor<3xf32>>
+    %t1 = "mhlo.get_tuple_element"(%t1_2) {index = 0 : i32} : (tuple<tensor<1xf32>, tensor<3xf32>>) -> tensor<1xf32>
+    %t2 = "mhlo.get_tuple_element"(%t1_2) {index = 1 : i32} : (tuple<tensor<1xf32>, tensor<3xf32>>) -> tensor<3xf32>
+    %3 = "mhlo.broadcast_in_dim"(%t1) {broadcast_dimensions = dense<0> : tensor<1xi64>} : (tensor<1xf32>) -> tensor<3xf32>
+    %4 = mhlo.add %3, %t2 : tensor<3xf32>
+    %5 = "mhlo.tuple"(%t1, %4) : (tensor<1xf32>, tensor<3xf32>) -> tuple<tensor<1xf32>, tensor<3xf32>>
+    %6 = "mhlo.tuple"(%t0, %5) : (tensor<2xi32>, tuple<tensor<1xf32>, tensor<3xf32>>) -> tuple<tensor<2xi32>, tuple<tensor<1xf32>, tensor<3xf32>>>
+    "mhlo.return"(%arg1, %6) : (tensor<1xi32>, tuple<tensor<2xi32>, tuple<tensor<1xf32>, tensor<3xf32>>>) -> ()
+  }) : (tensor<1xi32>, tuple<tensor<2xi32>, tuple<tensor<1xf32>, tensor<3xf32>>>) -> (tensor<1xi32>, tuple<tensor<2xi32>, tuple<tensor<1xf32>, tensor<3xf32>>>)
+  %3 = "mhlo.get_tuple_element"(%2#1) {index = 1 : i32} : (tuple<tensor<2xi32>, tuple<tensor<1xf32>, tensor<3xf32>>>) -> tuple<tensor<1xf32>, tensor<3xf32>>
+  %4 = "mhlo.get_tuple_element"(%3) {index = 1 : i32} : (tuple<tensor<1xf32>, tensor<3xf32>>) -> tensor<3xf32>
+  return %4: tensor<3xf32>
+}
+
+// -----
+
+func @while_with_invalid_tuples(%arg0: tensor<3xf32>) -> tensor<3xf32> {
+  %cst_0 = constant dense<0> : tensor<1xi32>
+  %cst_1 = constant dense<[100, 100]> : tensor<2xi32>
+  %cst_2 = constant dense<1.00> : tensor<1xf32>
+  %0 = "mhlo.tuple"(%arg0, %cst_2) : (tensor<3xf32>, tensor<1xf32>) -> tuple<tensor<3xf32>, tensor<1xf32>>
+  %1 = "mhlo.tuple"(%cst_1, %0) : (tensor<2xi32>, tuple<tensor<3xf32>, tensor<1xf32>>) -> tuple<tensor<2xi32>, tuple<tensor<3xf32>, tensor<1xf32>>>
+  // expected-error @+1 {{'mhlo.while' op requires the same type for operand and result at index 1}}
+  %2:2 = "mhlo.while"(%cst_0, %1) ( {
+  ^bb0(%arg1: tensor<1xi32>, %arg2: tuple<tensor<2xi32>, tuple<tensor<1xf32>, tensor<3xf32>>>):  // no predecessors
+    %t0 = "mhlo.get_tuple_element"(%arg2) {index = 0 : i32} : (tuple<tensor<2xi32>, tuple<tensor<1xf32>, tensor<3xf32>>>) -> tensor<2xi32>
+    %3 = constant dense<0> : tensor<i32>
+    %4 = "mhlo.slice"(%t0) {limit_indices = dense<[1]> : tensor<1xi64>, start_indices = dense<[0]> : tensor<1xi64>, strides = dense<1> : tensor<1xi64>} : (tensor<2xi32>) -> tensor<1xi32>
+    %5 = "mhlo.compare"(%arg1, %4) {comparison_direction = "LT"} : (tensor<1xi32>, tensor<1xi32>) -> tensor<1xi1>
+    "mhlo.return"(%5) : (tensor<1xi1>) -> ()
+  },  {
+  ^bb0(%arg1: tensor<1xi32>, %arg2: tuple<tensor<2xi32>, tuple<tensor<1xf32>, tensor<3xf32>>>):  // no predecessors
+    %t0 = "mhlo.get_tuple_element"(%arg2) {index = 0 : i32} : (tuple<tensor<2xi32>, tuple<tensor<1xf32>, tensor<3xf32>>>) -> tensor<2xi32>
+    %t1_2 = "mhlo.get_tuple_element"(%arg2) {index = 1 : i32} : (tuple<tensor<2xi32>, tuple<tensor<1xf32>, tensor<3xf32>>>) -> tuple<tensor<1xf32>, tensor<3xf32>>
+    %t1 = "mhlo.get_tuple_element"(%t1_2) {index = 0 : i32} : (tuple<tensor<1xf32>, tensor<3xf32>>) -> tensor<1xf32>
+    %t2 = "mhlo.get_tuple_element"(%t1_2) {index = 1 : i32} : (tuple<tensor<1xf32>, tensor<3xf32>>) -> tensor<3xf32>
+    %3 = "mhlo.broadcast_in_dim"(%t1) {broadcast_dimensions = dense<0> : tensor<1xi64>} : (tensor<1xf32>) -> tensor<3xf32>
+    %4 = mhlo.add %3, %t2 : tensor<3xf32>
+    %5 = "mhlo.tuple"(%t1, %4) : (tensor<1xf32>, tensor<3xf32>) -> tuple<tensor<1xf32>, tensor<3xf32>>
+    %6 = "mhlo.tuple"(%t0, %5) : (tensor<2xi32>, tuple<tensor<1xf32>, tensor<3xf32>>) -> tuple<tensor<2xi32>, tuple<tensor<1xf32>, tensor<3xf32>>>
+    "mhlo.return"(%arg1, %6) : (tensor<1xi32>, tuple<tensor<2xi32>, tuple<tensor<1xf32>, tensor<3xf32>>>) -> ()
+  }) : (tensor<1xi32>, tuple<tensor<2xi32>, tuple<tensor<3xf32>, tensor<1xf32>>>) -> (tensor<1xi32>, tuple<tensor<2xi32>, tuple<tensor<1xf32>, tensor<3xf32>>>)
+  %3 = "mhlo.get_tuple_element"(%2#1) {index = 1 : i32} : (tuple<tensor<2xi32>, tuple<tensor<1xf32>, tensor<3xf32>>>) -> tuple<tensor<1xf32>, tensor<3xf32>>
+  %4 = "mhlo.get_tuple_element"(%3) {index = 1 : i32} : (tuple<tensor<1xf32>, tensor<3xf32>>) -> tensor<3xf32>
+  return %4: tensor<3xf32>
+}
+
+// -----
+
+// Test the mhlo.scatter attribute printing/parsing.
+// We really just need one op as holder, use module: this is the simplest top-level.
+
+// CHECK: module
+// CHECK-SAME: mhlo.scatter = #mhlo.scatter<>
+module attributes{mhlo.scatter = #mhlo.scatter<>} {}
+
+// -----
+
+// CHECK: module
+// CHECK-SAME: mhlo.scatter = #mhlo.scatter<update_window_dims = [1], inserted_window_dims = [0, 1], scatter_dims_to_operand_dims = [0, 2], index_vector_dim = 1>
+module attributes{
+ mhlo.scatter = #mhlo.scatter<
+  index_vector_dim = 1,
+  scatter_dims_to_operand_dims = [0, 2],
+  inserted_window_dims = [0, 1],
+  update_window_dims = [1]
+ >} {}
+
+// -----
+
+module attributes{
+ mhlo.scatter = #mhlo.scatter<
+  index_vector_dim = 1,
+  // expected-error @+1 {{duplicated `index_vector_dim` entry}}
+  index_vector_dim = 1,
+ >} {}
+
+// -----
+
+// Test the mhlo.gather attribute printing/parsing.
+// We really just need one op as holder, use module: this is the simplest top-level.
+
+// CHECK: module
+// CHECK-SAME: mhlo.gather = #mhlo.gather<>
+module attributes{mhlo.gather = #mhlo.gather<>} {}
+
+// -----
+
+// CHECK: module
+// CHECK-SAME: mhlo.gather = #mhlo.gather<offset_dims = [1], collapsed_slice_dims = [0], start_index_map = [0], index_vector_dim = 1>
+module attributes{
+ mhlo.gather = #mhlo.gather<
+   collapsed_slice_dims = [0],
+   index_vector_dim = 1,
+   offset_dims = [1],
+   start_index_map = [0],
+ >} {}
+
+// -----
+
+module attributes{
+ mhlo.gather = #mhlo.gather<
+   collapsed_slice_dims = [0],
+   // expected-error @+1 {{duplicated `collapsed_slice_dims` entry}}
+   collapsed_slice_dims = [0],
+ >} {}

@@ -244,7 +244,7 @@ class ScanTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.range(10)
     with self.assertRaisesRegex(
         TypeError,
-        "The scan function must return a pair comprising the new state and the "
+        "`scan_func` should return a pair consisting of new state and the "
         "output value."):
       dataset.scan(
           initial_state=constant_op.constant(1, dtype=dtypes.int32),
@@ -293,6 +293,12 @@ class ScanTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.assertIn(b"CPU:0", self.evaluate(get_next()))
     else:
       self.assertIn(b"GPU:0", self.evaluate(get_next()))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testName(self):
+    dataset = dataset_ops.Dataset.from_tensors(42).scan(
+        0, lambda x, y: (y, y), name="scan")
+    self.assertDatasetProduces(dataset, [42])
 
 
 class ScanCheckpointTest(checkpoint_test_base.CheckpointTestBase,

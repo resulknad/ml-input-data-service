@@ -476,6 +476,19 @@ func @biasAdd_dynamic(%arg0: tensor<?x?x?x?xi32>, %arg1: tensor<?xi32>) -> tenso
   return %0 : tensor<?x?x?x?xi32>
 }
 
+// CHECK-LABEL: func @biasAdd_partial_dynamic
+func @biasAdd_partial_dynamic(%arg0: tensor<?x?x?x?xi32>, %arg1: tensor<512xi32>) -> tensor<?x?x?x512xi32> {
+  // CHECK: %[[ARG0_SHAPE:.+]] = shape.shape_of %arg0
+  // CHECK: %[[ARG0_EXTENTS:.+]] = shape.to_extent_tensor %[[ARG0_SHAPE]]
+  // CHECK: %[[ARG1_BCAST:.+]] = "mhlo.dynamic_broadcast_in_dim"(%arg1, %[[ARG0_EXTENTS]])
+  // CHECK-SAME:   {broadcast_dimensions = dense<3> : tensor<1xi64>}
+  // CHECK: %[[RESULT:.+]] = mhlo.add %arg0, %[[ARG1_BCAST]]
+  // CHECK: %[[CAST:.+]] = tensor.cast %[[RESULT]] : tensor<?x?x?x?xi32> to tensor<?x?x?x512xi32>
+  // CHECK: return %[[CAST]] : tensor<?x?x?x512xi32>
+  %0 = "tf.BiasAdd"(%arg0, %arg1) {data_format = "NHWC"} : (tensor<?x?x?x?xi32>, tensor<512xi32>) -> tensor<?x?x?x512xi32>
+  return %0 : tensor<?x?x?x512xi32>
+}
+
 
 //===----------------------------------------------------------------------===//
 // ClipByValue
@@ -598,7 +611,7 @@ func @matrix_diag_part(%arg0: tensor<7x140x128xi32>) -> tensor<7x22x128xi32> {
   // CHECK-DAG: %[[V40:.*]] = mhlo.and %[[V36]], %[[V39]] : tensor<1x22x128xi1>
   // CHECK-DAG: %[[V41:.*]] = "mhlo.reshape"(%[[V40]]) : (tensor<1x22x128xi1>) -> tensor<22x128xi1>
   // CHECK-DAG: %[[V42:.*]] = "mhlo.concatenate"(%[[V33]], %[[V32]]) {dimension = 0 : i64} : (tensor<1x22x128xi32>, tensor<1x22x128xi32>) -> tensor<2x22x128xi32>
-  // CHECK-DAG: %[[V43:.*]] = "mhlo.gather"(%[[ARG]], %[[V42]]) {dimension_numbers = {collapsed_slice_dims = dense<[1, 2]> : tensor<2xi64>, index_vector_dim = 0 : i64, offset_dims = dense<0> : tensor<1xi64>, start_index_map = dense<[1, 2]> : tensor<2xi64>}, indices_are_sorted = false, slice_sizes = dense<[7, 1, 1]> : tensor<3xi64>} : (tensor<7x140x128xi32>, tensor<2x22x128xi32>) -> tensor<7x22x128xi32>
+  // CHECK-DAG: %[[V43:.*]] = "mhlo.gather"(%[[ARG]], %[[V42]]) {dimension_numbers = #mhlo.gather<offset_dims = [0], collapsed_slice_dims = [1, 2], start_index_map = [1, 2], >, indices_are_sorted = false, slice_sizes = dense<[7, 1, 1]> : tensor<3xi64>} : (tensor<7x140x128xi32>, tensor<2x22x128xi32>) -> tensor<7x22x128xi32>
   // CHECK-DAG: %[[V44:.*]] = "mhlo.broadcast"(%[[V41]]) {broadcast_sizes = dense<7> : tensor<1xi64>} : (tensor<22x128xi1>) -> tensor<7x22x128xi1>
   // CHECK-DAG: %[[V45:.*]] = "mhlo.broadcast"(%[[V0]]) {broadcast_sizes = dense<[7, 22, 128]> : tensor<3xi64>} : (tensor<i32>) -> tensor<7x22x128xi32>
   // CHECK: %[[V46:.*]] = "mhlo.select"(%[[V44]], %[[V43]], %[[V45]]) : (tensor<7x22x128xi1>, tensor<7x22x128xi32>, tensor<7x22x128xi32>) -> tensor<7x22x128xi32>
@@ -1101,7 +1114,7 @@ func @checkNumerics(%arg0: tensor<1xf32>) -> tensor<1xf32> {
 // CHECK-LABEL: func @infeed_dequeue_tuple
 func @infeed_dequeue_tuple() -> (tensor<1x8x4x4xi32>, tensor<1x100x1xf32>) {
 // CHECK: [[TOKEN:%.*]] = "mhlo.create_token"() : () -> !mhlo.token
-// CHECK: [[INFEED:%.*]] = "mhlo.infeed"([[TOKEN]]) {infeed_config = "", layout = [{{\[\[1, 3, 2, 0], \[1, 2, 0]]}}, unit]} : (!mhlo.token) -> tuple<tuple<tensor<1x8x4x4xi32>, tensor<1x100x1xf32>>, !mhlo.token>
+// CHECK: [[INFEED:%.*]] = "mhlo.infeed"([[TOKEN]]) {infeed_config = ""{{.*}}} : (!mhlo.token) -> tuple<tuple<tensor<1x8x4x4xi32>, tensor<1x100x1xf32>>, !mhlo.token>
 // CHECK: [[INFEED_VAL:%.*]] = "mhlo.get_tuple_element"([[INFEED]]) {index = 0 : i32} : (tuple<tuple<tensor<1x8x4x4xi32>, tensor<1x100x1xf32>>, !mhlo.token>) -> tuple<tensor<1x8x4x4xi32>, tensor<1x100x1xf32>>
 // CHECK: [[RES_1:%.*]] = "mhlo.get_tuple_element"([[INFEED_VAL]]) {index = 0 : i32} : (tuple<tensor<1x8x4x4xi32>, tensor<1x100x1xf32>>) -> tensor<1x8x4x4xi32>
 // CHECK: [[RES_2:%.*]] = "mhlo.get_tuple_element"([[INFEED_VAL]]) {index = 1 : i32} : (tuple<tensor<1x8x4x4xi32>, tensor<1x100x1xf32>>) -> tensor<1x100x1xf32>
@@ -1171,10 +1184,10 @@ func @const_dynamic_output() -> tensor<*xi32> {
 }
 
 // CHECK-LABEL: @opaque_const
-func @opaque_const() -> tensor<!tf.variant<tensor<2xi32>>> {
+func @opaque_const() -> tensor<!tf_type.variant<tensor<2xi32>>> {
   // CHECK-NOT: mhlo.constant
-  %0 = "tf.Const"() {device = "", name = "", dtype = "tfdtype$DT_INT32", value = opaque<"tf", "0x746674656E736F722464747970653A2044545F494E5433320A74656E736F725F7368617065207B0A202064696D207B0A2020202073697A653A20320A20207D0A7D0A74656E736F725F636F6E74656E743A20225C3230305C3030305C3030305C3030305C3230305C3030305C3030305C303030220A"> : tensor<!tf.variant>} : () -> tensor<!tf.variant<tensor<2xi32>>>
-  return %0 : tensor<!tf.variant<tensor<2xi32>>>
+  %0 = "tf.Const"() {device = "", name = "", dtype = "tfdtype$DT_INT32", value = opaque<"tf", "0x746674656E736F722464747970653A2044545F494E5433320A74656E736F725F7368617065207B0A202064696D207B0A2020202073697A653A20320A20207D0A7D0A74656E736F725F636F6E74656E743A20225C3230305C3030305C3030305C3030305C3230305C3030305C3030305C303030220A"> : tensor<!tf_type.variant>} : () -> tensor<!tf_type.variant<tensor<2xi32>>>
+  return %0 : tensor<!tf_type.variant<tensor<2xi32>>>
 }
 
 //===----------------------------------------------------------------------===//
@@ -1662,7 +1675,7 @@ func @elu_grad(%gradients: tensor<4x8xf32>, %features: tensor<?x?xf32>) -> tenso
   // CHECK-DAG: %[[ONE:.*]] = mhlo.constant dense<1.000000e+00> : tensor<f32>
   // CHECK-DAG: %[[PRED:.*]] = chlo.broadcast_compare %[[FEATURES]], %[[ZERO]] {broadcast_dimensions = dense<> : tensor<0xi64>, comparison_direction = "GT"}
   // CHECK-DAG: %[[ADD1:.*]] = chlo.broadcast_add %[[FEATURES]], %[[ONE]] {broadcast_dimensions = dense<> : tensor<0xi64>}
-  // CHECK-DAG: %[[MULGRAD:.*]] = "mhlo.multiply"(%[[GRADIENTS]], %[[ADD1]])
+  // CHECK-DAG: %[[MULGRAD:.*]] = mhlo.multiply(%[[GRADIENTS]], %[[ADD1]])
   // CHECK: %[[RESULT:.*]] = "mhlo.select"(%[[PRED]], %[[GRADIENTS]], %[[MULGRAD]])
   // CHECK: return %[[RESULT]]
   %2 = "tf.EluGrad"(%gradients, %features) : (tensor<4x8xf32>, tensor<?x?xf32>) -> tensor<4x8xf32>
@@ -1691,8 +1704,8 @@ func @relu_unranked(%arg0: tensor<?xi32>) -> tensor<?xi32> {
 
 // CHECK-LABEL: func @relu6
 func @relu6(%arg0: tensor<1xi32>) -> tensor<1xi32> {
-  // CHECK: %[[ZERO:.*]] = mhlo.constant dense<0> : tensor<i32>
-  // CHECK: %[[SIX:.*]] = mhlo.constant dense<6> : tensor<i32>
+  // CHECK-DAG: %[[ZERO:.*]] = mhlo.constant dense<0> : tensor<i32>
+  // CHECK-DAG: %[[SIX:.*]] = mhlo.constant dense<6> : tensor<i32>
   // CHECK: "mhlo.clamp"(%[[ZERO]], %arg0, %[[SIX]]) : (tensor<i32>, tensor<1xi32>, tensor<i32>) -> tensor<1xi32>
   %0 = "tf.Relu6"(%arg0) : (tensor<1xi32>) -> tensor<1xi32>
   return %0: tensor<1xi32>
@@ -1700,8 +1713,8 @@ func @relu6(%arg0: tensor<1xi32>) -> tensor<1xi32> {
 
 // CHECK-LABEL: func @relu6_unranked
 func @relu6_unranked(%arg0: tensor<?xi32>) -> tensor<?xi32> {
-  // CHECK: %[[ZERO:.*]] = mhlo.constant dense<0> : tensor<i32>
-  // CHECK: %[[SIX:.*]] = mhlo.constant dense<6> : tensor<i32>
+  // CHECK-DAG: %[[ZERO:.*]] = mhlo.constant dense<0> : tensor<i32>
+  // CHECK-DAG: %[[SIX:.*]] = mhlo.constant dense<6> : tensor<i32>
   // CHECK: "mhlo.clamp"(%[[ZERO]], %arg0, %[[SIX]]) : (tensor<i32>, tensor<?xi32>, tensor<i32>) -> tensor<?xi32>
   %0 = "tf.Relu6"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
   return %0: tensor<?xi32>
@@ -1720,34 +1733,56 @@ func @relu_grad_unranked(%gradients: tensor<?x?xf32>, %features: tensor<?x?xf32>
 
 // CHECK-LABEL: func @leaky_relu
 func @leaky_relu(%arg0: tensor<1x4x4x3xf32>) -> tensor<1x4x4x3xf32> attributes {tf.entry_function = {}} {
-   // CHECK-NEXT: %[[ALPHA:.*]] = mhlo.constant dense<2.000000e-01> : tensor<f32>
-   // CHECK-NEXT: %[[BCASTALPHA:.*]] = "mhlo.broadcast"(%[[ALPHA]]) {broadcast_sizes = dense<[1, 4, 4, 3]> : tensor<4xi64>} : (tensor<f32>) -> tensor<1x4x4x3xf32>
-   // CHECK-NEXT: %[[ZERO:.*]] = constant dense<0.000000e+00> : tensor<1x4x4x3xf32>
-   // CHECK-NEXT: %[[LEAKY:.*]] = mhlo.multiply %[[INP:.*]], %[[BCASTALPHA]] : tensor<1x4x4x3xf32>
-   // CHECK-NEXT: %[[CMP:.*]] = "mhlo.compare"(%[[INP]], %[[ZERO]]) {comparison_direction = "GT"} : (tensor<1x4x4x3xf32>, tensor<1x4x4x3xf32>) -> tensor<1x4x4x3xi1>
-   // CHECK-NEXT: %[[RES:.*]] = "mhlo.select"(%[[CMP]], %[[INP]], %[[LEAKY]]) : (tensor<1x4x4x3xi1>, tensor<1x4x4x3xf32>, tensor<1x4x4x3xf32>) -> tensor<1x4x4x3xf32>
-   // CHECK-NEXT: return %[[RES]] : tensor<1x4x4x3xf32>
+    // CHECK-NEXT: %[[ALPHA:.*]] = "chlo.constant_like"(%arg0) {value = 2.000000e-01 : f32} : (tensor<1x4x4x3xf32>) -> tensor<1x4x4x3xf32>
+    // CHECK-NEXT: %[[ZERO:.*]] = "chlo.constant_like"(%arg0) {value = 0.000000e+00 : f32} : (tensor<1x4x4x3xf32>) -> tensor<1x4x4x3xf32>
+    // CHECK-NEXT: %[[LEAKY:.*]] = mhlo.multiply %[[INP:.*]], %[[ALPHA]] : tensor<1x4x4x3xf32>
+    // CHECK-NEXT: %[[CMP:.*]] = "mhlo.compare"(%[[INP]], %[[ZERO]]) {comparison_direction = "GT"} : (tensor<1x4x4x3xf32>, tensor<1x4x4x3xf32>) -> tensor<1x4x4x3xi1>
+    // CHECK-NEXT: %[[RES:.*]] = "mhlo.select"(%[[CMP]], %[[INP]], %[[LEAKY]]) : (tensor<1x4x4x3xi1>, tensor<1x4x4x3xf32>, tensor<1x4x4x3xf32>) -> tensor<1x4x4x3xf32>
+    // CHECK-NEXT: return %[[RES]] : tensor<1x4x4x3xf32>
     %0 = "tf.LeakyRelu"(%arg0) {alpha = 2.000000e-01 : f32, device = ""} : (tensor<1x4x4x3xf32>) -> tensor<1x4x4x3xf32>
     return %0 : tensor<1x4x4x3xf32>
 }
 
+// CHECK-LABEL: func @leaky_relu_unranked
+func @leaky_relu_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> attributes {tf.entry_function = {}} {
+    // CHECK-NEXT: %[[ALPHA:.*]] = "chlo.constant_like"(%arg0) {value = 2.000000e-01 : f32} : (tensor<*xf32>) -> tensor<*xf32>
+    // CHECK-NEXT: %[[ZERO:.*]] = "chlo.constant_like"(%arg0) {value = 0.000000e+00 : f32} : (tensor<*xf32>) -> tensor<*xf32>
+    // CHECK-NEXT: %[[LEAKY:.*]] = mhlo.multiply %[[INP:.*]], %[[ALPHA]] : tensor<*xf32>
+    // CHECK-NEXT: %[[CMP:.*]] = "mhlo.compare"(%[[INP]], %[[ZERO]]) {comparison_direction = "GT"} : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xi1>
+    // CHECK-NEXT: %[[RES:.*]] = "mhlo.select"(%[[CMP]], %[[INP]], %[[LEAKY]]) : (tensor<*xi1>, tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+    // CHECK-NEXT: return %[[RES]] : tensor<*xf32>
+    %0 = "tf.LeakyRelu"(%arg0) {alpha = 2.000000e-01 : f32, device = ""} : (tensor<*xf32>) -> tensor<*xf32>
+    return %0 : tensor<*xf32>
+}
+
 // CHECK-LABEL: func @leaky_relu_grad
 func @leaky_relu_grad(%arg0: tensor<1x4x4xf32>, %arg1: tensor<1x4x4xf32>) -> tensor<1x4x4xf32> attributes {tf.entry_function = {}} {
-   // CHECK-NEXT: %[[ALPHA:.*]] = mhlo.constant dense<2.000000e-01> : tensor<f32>
-   // CHECK-NEXT: %[[BCASTALPHA:.*]] = "mhlo.broadcast"(%0) {broadcast_sizes = dense<[1, 4, 4]> : tensor<3xi64>} : (tensor<f32>) -> tensor<1x4x4xf32>
-   // CHECK-NEXT: %[[ZERO:.*]] = constant dense<0.000000e+00> : tensor<1x4x4xf32>
-   // CHECK-NEXT: %[[LEAKYGRAD:.*]] = mhlo.multiply %[[GRADIENT:.*]], %[[BCASTALPHA]] : tensor<1x4x4xf32>
-   // CHECK-NEXT: %[[CMP:.*]] = "mhlo.compare"(%[[INP:.*]], %[[ZERO]]) {comparison_direction = "GT"} : (tensor<1x4x4xf32>, tensor<1x4x4xf32>) -> tensor<1x4x4xi1>
-   // CHECK-NEXT: %[[RES:.*]] = "mhlo.select"(%[[CMP]], %[[GRADIENT]], %[[LEAKYGRAD]]) : (tensor<1x4x4xi1>, tensor<1x4x4xf32>, tensor<1x4x4xf32>) -> tensor<1x4x4xf32>
-   // CHECK-NEXT: return %[[RES]] : tensor<1x4x4xf32>
+    // CHECK-NEXT: %[[ALPHA:.*]] = "chlo.constant_like"(%arg1) {value = 2.000000e-01 : f32} : (tensor<1x4x4xf32>) -> tensor<1x4x4xf32>
+    // CHECK-NEXT: %[[ZERO:.*]] = "chlo.constant_like"(%arg1) {value = 0.000000e+00 : f32} : (tensor<1x4x4xf32>) -> tensor<1x4x4xf32>
+    // CHECK-NEXT: %[[LEAKYGRAD:.*]] = mhlo.multiply %[[GRADIENT:.*]], %[[ALPHA]] : tensor<1x4x4xf32>
+    // CHECK-NEXT: %[[CMP:.*]] = "mhlo.compare"(%[[INP:.*]], %[[ZERO]]) {comparison_direction = "GT"} : (tensor<1x4x4xf32>, tensor<1x4x4xf32>) -> tensor<1x4x4xi1>
+    // CHECK-NEXT: %[[RES:.*]] = "mhlo.select"(%[[CMP]], %[[GRADIENT]], %[[LEAKYGRAD]]) : (tensor<1x4x4xi1>, tensor<1x4x4xf32>, tensor<1x4x4xf32>) -> tensor<1x4x4xf32>
+    // CHECK-NEXT: return %[[RES]] : tensor<1x4x4xf32>
     %0 = "tf.LeakyReluGrad"(%arg0, %arg1) {alpha = 2.000000e-01 : f32, device = ""} : (tensor<1x4x4xf32>, tensor<1x4x4xf32>) -> tensor<1x4x4xf32>
     return %0 : tensor<1x4x4xf32>
 }
 
+// CHECK-LABEL: func @leaky_relu_grad_unranked
+func @leaky_relu_grad_unranked(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> attributes {tf.entry_function = {}} {
+    // CHECK-NEXT: %[[ALPHA:.*]] = "chlo.constant_like"(%arg1) {value = 2.000000e-01 : f32} : (tensor<*xf32>) -> tensor<*xf32>
+    // CHECK-NEXT: %[[ZERO:.*]] = "chlo.constant_like"(%arg1) {value = 0.000000e+00 : f32} : (tensor<*xf32>) -> tensor<*xf32>
+    // CHECK-NEXT: %[[LEAKYGRAD:.*]] = mhlo.multiply %[[GRADIENT:.*]], %[[ALPHA]] : tensor<*xf32>
+    // CHECK-NEXT: %[[CMP:.*]] = "mhlo.compare"(%[[INP:.*]], %[[ZERO]]) {comparison_direction = "GT"} : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xi1>
+    // CHECK-NEXT: %[[RES:.*]] = "mhlo.select"(%[[CMP]], %[[GRADIENT]], %[[LEAKYGRAD]]) : (tensor<*xi1>, tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+    // CHECK-NEXT: return %[[RES]] : tensor<*xf32>
+    %0 = "tf.LeakyReluGrad"(%arg0, %arg1) {alpha = 2.000000e-01 : f32, device = ""} : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+    return %0 : tensor<*xf32>
+}
+
 // CHECK-LABEL: func @softsign
 func @softsign(%arg0: tensor<4x10xf32>) -> tensor<4x10xf32> {
-    // CHECK-NEXT: %[[ABS:.*]] = "mhlo.abs"(%{{.*}}) : (tensor<4x10xf32>) -> tensor<4x10xf32>
     // CHECK-NEXT: %[[ONE:.*]] = "chlo.constant_like"(%arg0) {value = 1.000000e+00 : f32} : (tensor<4x10xf32>) -> tensor<4x10xf32>
+    // CHECK-NEXT: %[[ABS:.*]] = "mhlo.abs"(%{{.*}}) : (tensor<4x10xf32>) -> tensor<4x10xf32>
     // CHECK-NEXT: %[[ADD:.*]] = mhlo.add %[[ONE]], %[[ABS]] : tensor<4x10xf32>
     // CHECK-NEXT: %[[DIV:.*]] = mhlo.divide %{{.*}}, %[[ADD]] : tensor<4x10xf32>
     // CHECK-NEXT: return %[[DIV]] : tensor<4x10xf32>
@@ -1757,8 +1792,8 @@ func @softsign(%arg0: tensor<4x10xf32>) -> tensor<4x10xf32> {
 
 // CHECK-LABEL: func @softsign_unranked
 func @softsign_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-    // CHECK-NEXT: %[[ABS:.*]] = "mhlo.abs"(%{{.*}}) : (tensor<*xf32>) -> tensor<*xf32>
     // CHECK-NEXT: %[[ONE:.*]] = "chlo.constant_like"(%arg0) {value = 1.000000e+00 : f32} : (tensor<*xf32>) -> tensor<*xf32>
+    // CHECK-NEXT: %[[ABS:.*]] = "mhlo.abs"(%{{.*}}) : (tensor<*xf32>) -> tensor<*xf32>
     // CHECK-NEXT: %[[ADD:.*]] = mhlo.add %[[ONE]], %[[ABS]] : tensor<*xf32>
     // CHECK-NEXT: %[[DIV:.*]] = mhlo.divide %{{.*}}, %[[ADD]] : tensor<*xf32>
     // CHECK-NEXT: return %[[DIV]] : tensor<*xf32>
@@ -1786,8 +1821,8 @@ func @softsign_grad(%arg0: tensor<4x10xf32>, %arg1: tensor<4x10xf32>) -> tensor<
 // CHECK-LABEL: func @Roll_0D
 func @Roll_0D(%arg0: tensor<512xi32>, %shift: tensor<i32>) -> tensor<512xi32> {
   %axis = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> (tensor<i32>)
-  //      CHECK: %[[ZERO:.*]] = mhlo.constant dense<0> : tensor<i32>
-  //      CHECK: %[[AXIS_SIZE:.*]] = mhlo.constant dense<512> : tensor<i32>
+  //      CHECK-DAG: %[[ZERO:.*]] = mhlo.constant dense<0> : tensor<i32>
+  //      CHECK-DAG: %[[AXIS_SIZE:.*]] = mhlo.constant dense<512> : tensor<i32>
   //      CHECK: %[[T1:.+]] = mhlo.remainder %arg1, %[[AXIS_SIZE]] : tensor<i32>
   //      CHECK: %[[T2:.+]] = mhlo.add %[[T1]], %[[AXIS_SIZE]] : tensor<i32>
   //      CHECK: %[[T3:.+]] = mhlo.remainder %[[T2]], %[[AXIS_SIZE]] : tensor<i32>
@@ -2080,14 +2115,14 @@ func @abs_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
 func @acos(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   // CHECK:  chlo.acos %arg0 : tensor<2xf32>
 // CHLO:   %[[VAL_1:.*]] = "mhlo.compare"({{.*}}) {comparison_direction = "NE"}
-// CHLO:   %[[VAL_5:.*]] = mhlo.multiply %arg0, %arg0
+// CHLO:   %[[VAL_3:.*]] = mhlo.constant dense<2.000000e+00>
 // CHLO:   %[[VAL_4:.*]] = mhlo.constant dense<1.000000e+00>
+// CHLO:   %[[VAL_5:.*]] = mhlo.multiply %arg0, %arg0
 // CHLO:   %[[VAL_6:.*]] = mhlo.subtract %[[VAL_4]], %[[VAL_5]]
 // CHLO:   %[[VAL_7:.*]] = "mhlo.sqrt"(%[[VAL_6]])
 // CHLO:   %[[VAL_8:.*]] = mhlo.constant dense<1.000000e+00>
 // CHLO:   %[[VAL_9:.*]] = mhlo.add %[[VAL_8]], %arg0
 // CHLO:   %[[VAL_10:.*]] = mhlo.atan2 %[[VAL_7]], %[[VAL_9]]
-// CHLO:   %[[VAL_3:.*]] = mhlo.constant dense<2.000000e+00>
 // CHLO:   %[[VAL_11:.*]] = mhlo.multiply %[[VAL_3]], %[[VAL_10]]
 // CHLO:   %[[VAL_12:.*]] = mhlo.constant dense<3.14159274>
 // CHLO:   %[[VAL_13:.*]] = "mhlo.select"(%[[VAL_1]], %[[VAL_11]], %[[VAL_12]])
@@ -2652,16 +2687,13 @@ func @sign_dynamic(%arg0: tensor<?x2x3x?xf32>) -> tensor<?x2x3x?xf32> {
 
 // CHECK-LABEL: slice_constant_start
 func @slice_constant_start(%arg0: tensor<4xi32>) -> tensor<2xi32> {
-  // CHECK: %[[START:.*]] = mhlo.constant dense<1> : tensor<1xi64>
-  // CHECK: %[[START_I64:.*]] = "mhlo.convert"(%[[START]]) : (tensor<1xi64>) -> tensor<1xi64>
-  // CHECK: %[[SLICED_START:.*]] = "mhlo.slice"(%[[START_I64]])
+  // CHECK: %[[START:.*]] = mhlo.constant dense<1> : tensor<i64>
   // CHECK-DAG-SAME: {limit_indices = dense<1> : tensor<1xi64>,
   // CHECK-DAG-SAME: start_indices = dense<0> : tensor<1xi64>,
   // CHECK-DAG-SAME: strides = dense<1> : tensor<1xi64>} :
   // CHECK-DAG-SAME: (tensor<1xi64>) -> tensor<1xi64>
-  // CHECK: %[[RESHAPED_START:.*]] = "mhlo.reshape"(%[[SLICED_START:.*]]) :
   // CHECK-DAG-SAME: (tensor<1xi64>) -> tensor<i64>
-  // CHECK: %[[RESULT:.*]] = "mhlo.dynamic-slice"(%arg0, %[[RESHAPED_START]])
+  // CHECK: %[[RESULT:.*]] = "mhlo.dynamic-slice"(%arg0, %[[START]])
   // CHECK-DAG-SAME: {slice_sizes = dense<2> : tensor<1xi64>} :
   // CHECK-DAG-SAME: (tensor<4xi32>, tensor<i64>) -> tensor<2xi32>
   // CHECK: return %[[RESULT]] : tensor<2xi32>
@@ -2673,14 +2705,8 @@ func @slice_constant_start(%arg0: tensor<4xi32>) -> tensor<2xi32> {
 
 // CHECK-LABEL: slice_i32_consts
 func @slice_i32_consts(%arg0: tensor<4xi32>) -> tensor<2xi32> {
-  // CHECK: %[[START:.*]] = mhlo.constant dense<1> : tensor<1xi32>
-  // CHECK: %[[START_I64:.*]] = "mhlo.convert"(%[[START]]) : (tensor<1xi32>) -> tensor<1xi64>
-  // CHECK: %[[SLICED_START:.*]] = "mhlo.slice"(%[[START_I64]])
-  // CHECK-DAG-SAME: {limit_indices = dense<1> : tensor<1xi64>,
-  // CHECK-DAG-SAME: start_indices = dense<0> : tensor<1xi64>,
-  // CHECK-DAG-SAME: strides = dense<1> : tensor<1xi64>} : (tensor<1xi64>) -> tensor<1xi64>
-  // CHECK: %[[RESHAPED_START:.*]] = "mhlo.reshape"(%[[SLICED_START]]) : (tensor<1xi64>) -> tensor<i64>
-  // CHECK: "mhlo.dynamic-slice"(%arg0, %[[RESHAPED_START]]) {slice_sizes = dense<2> : tensor<1xi64>} : (tensor<4xi32>, tensor<i64>) -> tensor<2xi32>
+  // CHECK: %[[START:.*]] = mhlo.constant dense<1> : tensor<i32>
+  // CHECK: "mhlo.dynamic-slice"(%arg0, %[[START]]) {slice_sizes = dense<2> : tensor<1xi64>} : (tensor<4xi32>, tensor<i32>) -> tensor<2xi32>
   %starts = "tf.Const"() {value = dense<[1]> : tensor<1xi32>} : () -> (tensor<1xi32>)
   %sizes = "tf.Const"() {value = dense<[2]> : tensor<1xi32>} : () -> (tensor<1xi32>)
   %0 = "tf.Slice"(%arg0, %starts, %sizes) : (tensor<4xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<2xi32>
@@ -2689,14 +2715,8 @@ func @slice_i32_consts(%arg0: tensor<4xi32>) -> tensor<2xi32> {
 
 // CHECK-LABEL: slice_constant_start_negative_one_size
 func @slice_constant_start_negative_one_size(%arg0: tensor<4xi32>) -> tensor<3xi32> {
-  // CHECK: %[[START:.*]] = mhlo.constant dense<1> : tensor<1xi64>
-  // CHECK: %[[START_I64:.*]] = "mhlo.convert"(%[[START]]) : (tensor<1xi64>) -> tensor<1xi64>
-  // CHECK: %[[SLICED_START:.*]] = "mhlo.slice"(%[[START_I64]])
-  // CHECK-DAG-SAME: {limit_indices = dense<1> : tensor<1xi64>,
-  // CHECK-DAG-SAME: start_indices = dense<0> : tensor<1xi64>,
-  // CHECK-DAG-SAME: strides = dense<1> : tensor<1xi64>} : (tensor<1xi64>) -> tensor<1xi64>
-  // CHECK: %[[RESHAPED_START:.*]] = "mhlo.reshape"(%[[SLICED_START]]) : (tensor<1xi64>) -> tensor<i64>
-  // CHECK: %[[RESULT:.*]] =  "mhlo.dynamic-slice"(%arg0, %[[RESHAPED_START]]) {slice_sizes = dense<3> : tensor<1xi64>} : (tensor<4xi32>, tensor<i64>) -> tensor<3xi32>
+  // CHECK: %[[START:.*]] = mhlo.constant dense<1> : tensor<i64>
+  // CHECK: %[[RESULT:.*]] =  "mhlo.dynamic-slice"(%arg0, %[[START]]) {slice_sizes = dense<3> : tensor<1xi64>} : (tensor<4xi32>, tensor<i64>) -> tensor<3xi32>
   // CHECK: return %[[RESULT]] : tensor<3xi32>
   %starts = "tf.Const"() {value = dense<[1]> : tensor<1xi64>} : () -> (tensor<1xi64>)
   %sizes = "tf.Const"() {value = dense<[-1]> : tensor<1xi64>} : () -> (tensor<1xi64>)
@@ -2706,24 +2726,10 @@ func @slice_constant_start_negative_one_size(%arg0: tensor<4xi32>) -> tensor<3xi
 
 // CHECK-LABEL: slice_constant_start_dynamic_shape
 func @slice_constant_start_dynamic_shape(%arg0: tensor<?x4xi32>, %arg1: tensor<2xi64>) -> tensor<1x4xi32> {
-  // CHECK: %[[START:.*]] = mhlo.constant dense<[1, 0]> : tensor<2xi64>
-  // CHECK: %[[START_I64:.*]] = "mhlo.convert"(%[[START]]) : (tensor<2xi64>) -> tensor<2xi64>
-  // CHECK: %[[SLICED_START1:.*]] = "mhlo.slice"(%[[START_I64]])
-  // CHECK-DAG-SAME: {limit_indices = dense<1> : tensor<1xi64>,
-  // CHECK-DAG-SAME: start_indices = dense<0> : tensor<1xi64>,
-  // CHECK-DAG-SAME: strides = dense<1> : tensor<1xi64>} :
-  // CHECK-DAG-SAME: (tensor<2xi64>) -> tensor<1xi64>
-  // CHECK: %[[RESHAPED_START1:.*]] = "mhlo.reshape"(%[[SLICED_START1]]) :
-  // CHECK-DAG-SAME: (tensor<1xi64>) -> tensor<i64>
-  // CHECK: %[[SLICED_START2:.*]] = "mhlo.slice"(%[[START_I64]])
-  // CHECK-DAG-SAME: {limit_indices = dense<2> : tensor<1xi64>,
-  // CHECK-DAG-SAME: start_indices = dense<1> : tensor<1xi64>,
-  // CHECK-DAG-SAME: strides = dense<1> : tensor<1xi64>} :
-  // CHECK-DAG-SAME: (tensor<2xi64>) -> tensor<1xi64>
-  // CHECK: %[[RESHAPED_START2:.*]] = "mhlo.reshape"(%[[SLICED_START2]]) :
-  // CHECK-DAG-SAME: (tensor<1xi64>) -> tensor<i64>
+  // CHECK-DAG: %[[START1:.*]] = mhlo.constant dense<1> : tensor<i64>
+  // CHECK-DAG: %[[START2:.*]] = mhlo.constant dense<0> : tensor<i64>
   // CHECK: %[[RESULT:.*]] = "mhlo.dynamic-slice"
-  // CHECK-DAG-SAME: (%arg0, %[[RESHAPED_START1]], %[[RESHAPED_START2]])
+  // CHECK-DAG-SAME: (%arg0, %[[START1]], %[[START2]])
   // CHECK-DAG-SAME: {slice_sizes = dense<[1, 4]> : tensor<2xi64>} :
   // CHECK-DAG-SAME: (tensor<?x4xi32>, tensor<i64>, tensor<i64>) -> tensor<1x4xi32>
   // CHECK: return %[[RESULT]] : tensor<1x4xi32>
@@ -2735,13 +2741,15 @@ func @slice_constant_start_dynamic_shape(%arg0: tensor<?x4xi32>, %arg1: tensor<2
 
 // CHECK-LABEL: slice_variable_start
 func @slice_variable_start(%arg0: tensor<3x4xi32>, %arg1: tensor<2xi64>) -> tensor<1x4xi32> {
-  // CHECK: %[[START_I64:.*]] = "mhlo.convert"(%arg1) : (tensor<2xi64>) -> tensor<2xi64>
-  // CHECK: %[[SLICED_START1:.*]] = "mhlo.slice"(%[[START_I64]])
+  // CHECK: %[[SLICED_START1:.*]] = "mhlo.slice"(%arg1)
   // CHECK-DAG-SAME: {limit_indices = dense<1> : tensor<1xi64>,
   // CHECK-DAG-SAME: start_indices = dense<0> : tensor<1xi64>,
   // CHECK-DAG-SAME: strides = dense<1> : tensor<1xi64>} : (tensor<2xi64>) -> tensor<1xi64>
   // CHECK: %[[RESHAPED_START1:.*]] = "mhlo.reshape"(%[[SLICED_START1]]) : (tensor<1xi64>) -> tensor<i64>
-  // CHECK: %[[SLICED_START2:.*]] = "mhlo.slice"(%[[START_I64]]) {limit_indices = dense<2> : tensor<1xi64>, start_indices = dense<1> : tensor<1xi64>, strides = dense<1> : tensor<1xi64>} : (tensor<2xi64>) -> tensor<1xi64>
+  // CHECK: %[[SLICED_START2:.*]] = "mhlo.slice"(%arg1)
+  // CHECK-DAG-SAME: {limit_indices = dense<2> : tensor<1xi64>,
+  // CHECK-DAG-SAME: start_indices = dense<1> : tensor<1xi64>,
+  // CHECK-DAG-SAME: strides = dense<1> : tensor<1xi64>} : (tensor<2xi64>) -> tensor<1xi64>
   // CHECK: %[[RESHAPED_START2:.*]] = "mhlo.reshape"(%[[SLICED_START2]]) : (tensor<1xi64>) -> tensor<i64>
   // CHECK: %[[RESULT:.*]] = "mhlo.dynamic-slice"(%arg0, %[[RESHAPED_START1]], %[[RESHAPED_START2]]) {slice_sizes = dense<[1, 4]> : tensor<2xi64>} : (tensor<3x4xi32>, tensor<i64>, tensor<i64>) -> tensor<1x4xi32>
   // CHECK: return %[[RESULT]] : tensor<1x4xi32>
@@ -3215,8 +3223,8 @@ func @mean_dynamic(%arg0: tensor<?x?xf16>) -> tensor<?x1xf16> {
   // CHECK:  "mhlo.return"(%[[REDUCE_BODY_RESULT]]) : (tensor<f32>) -> ()
   // CHECK: }) {dimensions = dense<1> : tensor<1xi64>} : (tensor<?x?xf32>, tensor<f32>) -> tensor<?xf32>
   // CHECK: %[[SHAPE0:.*]] = shape.shape_of %arg0 : tensor<?x?xf16> -> tensor<2xindex>
-  // CHECK: %[[C1_1:.*]] = constant 1 : index
-  // CHECK: %[[C1_2:.*]] = constant 1 : index
+  // CHECK-DAG: %[[C1_1:.*]] = constant 1 : index
+  // CHECK-DAG: %[[C1_2:.*]] = constant 1 : index
   // CHECK: %[[REDUCED_DIM:.*]] = tensor.extract %[[SHAPE0]][%[[C1_2]]] : tensor<2xindex>
   // CHECK: %[[MUL:.*]] = muli %[[C1_1]], %[[REDUCED_DIM]] : index
   // CHECK: %[[INDEX_CAST:.*]] = index_cast %[[MUL]] : index to i64
@@ -3226,8 +3234,8 @@ func @mean_dynamic(%arg0: tensor<?x?xf16>) -> tensor<?x1xf16> {
   // CHECK: %[[MEAN:.*]] = chlo.broadcast_divide %[[REDUCED]], %[[CONVERT]] {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<?xf32>, tensor<f32>) -> tensor<?xf32>
   // CHECK: %[[MEAN_CONVERTED:.*]] = "mhlo.convert"(%[[MEAN]]) : (tensor<?xf32>) -> tensor<?xf16>
   // CHECK: %[[SHAPE1:.*]] = shape.shape_of %[[MEAN_CONVERTED]] : tensor<?xf16> -> tensor<1xindex>
-  // CHECK: %[[C1:.*]] = constant 1 : index
-  // CHECK: %[[C0:.*]] = constant 0 : index
+  // CHECK-DAG: %[[C1:.*]] = constant 1 : index
+  // CHECK-DAG: %[[C0:.*]] = constant 0 : index
   // CHECK: %[[UNREDUCED_DIM:.*]] = tensor.extract %[[SHAPE1]][%[[C0]]] : tensor<1xindex>
   // CHECK: %[[RESULT_SHAPE:.*]] = tensor.from_elements %[[UNREDUCED_DIM]], %[[C1]] : tensor<2xindex>
   // CHECK: %[[RESULT:.*]] = "mhlo.dynamic_reshape"(%[[MEAN_CONVERTED]], %[[RESULT_SHAPE]]) : (tensor<?xf16>, tensor<2xindex>) -> tensor<?x1xf16>
@@ -3291,10 +3299,10 @@ func @max(%arg0: tensor<4x8xf16>) -> tensor<4x1xf16> {
 // CHECK-LABEL: func @max_qint
 // Regression test to ensure we don't crash getting the initial value for
 // tf.Max when using quantized integer types.
-func @max_qint(%arg0: tensor<4x8x!tf.qint8>) -> tensor<4x1x!tf.qint8> {
+func @max_qint(%arg0: tensor<4x8x!tf_type.qint8>) -> tensor<4x1x!tf_type.qint8> {
   %dimension = "tf.Const"() { value = dense<1> : tensor<1xi64> } : () -> tensor<1xi64>
-  %0 = "tf.Max"(%arg0, %dimension) { keep_dims = true }: (tensor<4x8x!tf.qint8>, tensor<1xi64>) -> tensor<4x1x!tf.qint8>
-  return %0 : tensor<4x1x!tf.qint8>
+  %0 = "tf.Max"(%arg0, %dimension) { keep_dims = true }: (tensor<4x8x!tf_type.qint8>, tensor<1xi64>) -> tensor<4x1x!tf_type.qint8>
+  return %0 : tensor<4x1x!tf_type.qint8>
 }
 
 // CHECK-LABEL: func @max_dynamic
@@ -3334,10 +3342,10 @@ func @min(%arg0: tensor<4x8xf16>) -> tensor<4x1xf16> {
 // CHECK-LABEL: func @min_qint
 // Regression test to ensure we don't crash getting the initial value for
 // tf.Min when using quantized integer types.
-func @min_qint(%arg0: tensor<4x8x!tf.qint8>) -> tensor<4x1x!tf.qint8> {
+func @min_qint(%arg0: tensor<4x8x!tf_type.qint8>) -> tensor<4x1x!tf_type.qint8> {
   %dimension = "tf.Const"() { value = dense<1> : tensor<1xi64> } : () -> tensor<1xi64>
-  %0 = "tf.Min"(%arg0, %dimension) { keep_dims = true }: (tensor<4x8x!tf.qint8>, tensor<1xi64>) -> tensor<4x1x!tf.qint8>
-  return %0 : tensor<4x1x!tf.qint8>
+  %0 = "tf.Min"(%arg0, %dimension) { keep_dims = true }: (tensor<4x8x!tf_type.qint8>, tensor<1xi64>) -> tensor<4x1x!tf_type.qint8>
+  return %0 : tensor<4x1x!tf_type.qint8>
 }
 
 // CHECK-LABEL: func @prod
@@ -3360,10 +3368,10 @@ func @prod(%arg0: tensor<4x8xf16>) -> tensor<4x1xf16> {
 // CHECK-LABEL: func @prod_qint
 // Regression test to ensure we don't crash getting the initial value for
 // tf.Prod when using quantized integer types.
-func @prod_qint(%arg0: tensor<4x8x!tf.qint8>) -> tensor<4x1x!tf.qint8> {
+func @prod_qint(%arg0: tensor<4x8x!tf_type.qint8>) -> tensor<4x1x!tf_type.qint8> {
   %dimension = "tf.Const"() { value = dense<1> : tensor<1xi64> } : () -> tensor<1xi64>
-  %0 = "tf.Prod"(%arg0, %dimension) { keep_dims = true }: (tensor<4x8x!tf.qint8>, tensor<1xi64>) -> tensor<4x1x!tf.qint8>
-  return %0 : tensor<4x1x!tf.qint8>
+  %0 = "tf.Prod"(%arg0, %dimension) { keep_dims = true }: (tensor<4x8x!tf_type.qint8>, tensor<1xi64>) -> tensor<4x1x!tf_type.qint8>
+  return %0 : tensor<4x1x!tf_type.qint8>
 }
 
 // CHECK-LABEL: @all
@@ -3469,7 +3477,7 @@ func @tile_dynamic_shape(%arg0: tensor<?x8xf32>) -> tensor<?x24xf32> {
 // CHECK-LABEL: func @argmax_i64_input_i32_output_axis_0
 func @argmax_i64_input_i32_output_axis_0(%arg0: tensor<3x7xi64>) -> tensor<7xi32> {
   // CHECK: %[[INIT:.*]] = mhlo.constant dense<-9223372036854775808> : tensor<i64>
-  // CHECK: %[[INDEX_INIT:.*]] = mhlo.constant dense<0> : tensor<i32>
+  // CHECK-NEXT: %[[INDEX_INIT:.*]] = mhlo.constant dense<0> : tensor<i32>
   // CHECK: %[[INDEX:.*]] = "mhlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<3x7xi32>
   // CHECK: %[[REDUCE:.*]]:2 = "mhlo.reduce"(%arg0, %[[INDEX]], %[[INIT]], %[[INDEX_INIT]])
   // CHECK: ^bb0(%[[ARG1:.*]]: tensor<i64>, %[[ARG2:.*]]: tensor<i32>, %[[ARG3:.*]]: tensor<i64>, %[[ARG4:.*]]: tensor<i32>):
@@ -3489,7 +3497,7 @@ func @argmax_i64_input_i32_output_axis_0(%arg0: tensor<3x7xi64>) -> tensor<7xi32
 // CHECK-LABEL: func @argmax_f32_input_i64_output_axis_1
 func @argmax_f32_input_i64_output_axis_1(%arg0: tensor<3x7xf32>) -> tensor<3xi64> {
   // CHECK: %[[INIT:.*]] = mhlo.constant dense<0xFF800000> : tensor<f32>
-  // CHECK: %[[INDEX_INIT:.*]] = mhlo.constant  dense<0> : tensor<i64>
+  // CHECK-NEXT: %[[INDEX_INIT:.*]] = mhlo.constant  dense<0> : tensor<i64>
   // CHECK: %[[INDEX:.*]] = "mhlo.iota"() {iota_dimension = 1 : i64} : () -> tensor<3x7xi64>
   // CHECK: %[[REDUCE:.*]]:2 = "mhlo.reduce"(%arg0, %[[INDEX]], %[[INIT]], %[[INDEX_INIT]])
   // CHECK: return %[[REDUCE]]#1 : tensor<3xi64>
@@ -3500,8 +3508,8 @@ func @argmax_f32_input_i64_output_axis_1(%arg0: tensor<3x7xf32>) -> tensor<3xi64
 
 // CHECK-LABEL: func @argmax_i1_input_i64_output_axis_1
 func @argmax_i1_input_i64_output_axis_1(%arg0: tensor<3x7xi1>) -> tensor<3xi64> {
-  // CHECK: %[[INIT:.*]] = mhlo.constant dense<false> : tensor<i1>
-  // CHECK: %[[INDEX_INIT:.*]] = mhlo.constant  dense<0> : tensor<i64>
+  // CHECK-DAG: %[[INIT:.*]] = mhlo.constant dense<false> : tensor<i1>
+  // CHECK-DAG: %[[INDEX_INIT:.*]] = mhlo.constant  dense<0> : tensor<i64>
   // CHECK: %[[INDEX:.*]] = "mhlo.iota"() {iota_dimension = 1 : i64} : () -> tensor<3x7xi64>
   // CHECK: %[[REDUCE:.*]]:2 = "mhlo.reduce"(%arg0, %[[INDEX]], %[[INIT]], %[[INDEX_INIT]])
   // CHECK: return %[[REDUCE]]#1 : tensor<3xi64>
@@ -3513,7 +3521,7 @@ func @argmax_i1_input_i64_output_axis_1(%arg0: tensor<3x7xi1>) -> tensor<3xi64> 
 // CHECK-LABEL: func @argmax_dynamic_shape_input_output
 func @argmax_dynamic_shape_input_output(%arg0: tensor<3x?xi32>) -> tensor<?xi32> {
   // CHECK: %[[INIT:.*]] = mhlo.constant dense<-2147483648> : tensor<i32>
-  // CHECK: %[[INDEX_INIT:.*]] = mhlo.constant dense<0> : tensor<i32>
+  // CHECK-NEXT: %[[INDEX_INIT:.*]] = mhlo.constant dense<0> : tensor<i32>
   // CHECK: %[[INDEX:.*]] = "mhlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<3x?xi32>
   // CHECK: %[[REDUCE:.*]]:2 = "mhlo.reduce"(%arg0, %[[INDEX]], %[[INIT]], %[[INDEX_INIT]])
   // CHECK: return %[[REDUCE]]#1 : tensor<?xi32>
@@ -3524,8 +3532,8 @@ func @argmax_dynamic_shape_input_output(%arg0: tensor<3x?xi32>) -> tensor<?xi32>
 
 // CHECK-LABEL: func @argmax_dynamic_shape_input
 func @argmax_dynamic_shape_input(%arg0: tensor<3x?xi32>) -> tensor<3xi32> {
-  // CHECK: %[[INIT:.*]] = mhlo.constant dense<-2147483648> : tensor<i32>
-  // CHECK: %[[INDEX_INIT:.*]] = mhlo.constant dense<0> : tensor<i32>
+  // CHECK-DAG: %[[INIT:.*]] = mhlo.constant dense<-2147483648> : tensor<i32>
+  // CHECK-DAG: %[[INDEX_INIT:.*]] = mhlo.constant dense<0> : tensor<i32>
   // CHECK: %[[INDEX:.*]] = "mhlo.iota"() {iota_dimension = 1 : i64} : () -> tensor<3x?xi32>
   // CHECK: %[[REDUCE:.*]]:2 = "mhlo.reduce"(%arg0, %[[INDEX]], %[[INIT]], %[[INDEX_INIT]])
   // CHECK: return %[[REDUCE]]#1 : tensor<3xi32>
@@ -3537,7 +3545,7 @@ func @argmax_dynamic_shape_input(%arg0: tensor<3x?xi32>) -> tensor<3xi32> {
 // CHECK-LABEL: func @argmin_i64_input_i32_output_axis_0
 func @argmin_i64_input_i32_output_axis_0(%arg0: tensor<3x7xi64>) -> tensor<7xi32> {
   // CHECK: %[[INIT:.*]] = mhlo.constant dense<9223372036854775807> : tensor<i64>
-  // CHECK: %[[INDEX_INIT:.*]] = mhlo.constant dense<0> : tensor<i32>
+  // CHECK-NEXT: %[[INDEX_INIT:.*]] = mhlo.constant dense<0> : tensor<i32>
   // CHECK: %[[INDEX:.*]] = "mhlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<3x7xi32>
   // CHECK: %[[REDUCE:.*]]:2 = "mhlo.reduce"(%arg0, %[[INDEX]], %[[INIT]], %[[INDEX_INIT]])
   // CHECK: ^bb0(%[[ARG1:.*]]: tensor<i64>, %[[ARG2:.*]]: tensor<i32>, %[[ARG3:.*]]: tensor<i64>, %[[ARG4:.*]]: tensor<i32>):
@@ -3560,8 +3568,8 @@ func @argmin_i64_input_i32_output_axis_0(%arg0: tensor<3x7xi64>) -> tensor<7xi32
 
 // CHECK-LABEL: func @rng_uniform
 func @rng_uniform(%arg0: tensor<3xi32>) -> tensor<12x?x64xf32> {
-  // CHECK: %[[ZERO:.*]] = mhlo.constant dense<0.000000e+00> : tensor<f32>
-  // CHECK: %[[ONE:.*]] = mhlo.constant dense<1.000000e+00> : tensor<f32>
+  // CHECK-DAG: %[[ZERO:.*]] = mhlo.constant dense<0.000000e+00> : tensor<f32>
+  // CHECK-DAG: %[[ONE:.*]] = mhlo.constant dense<1.000000e+00> : tensor<f32>
   // CHECK: %[[CONV:.*]] = "mhlo.convert"(%arg0) : (tensor<3xi32>) -> tensor<3xi64>
   // CHECK: %[[F32:.*]] = "mhlo.rng_uniform"(%[[ZERO]], %[[ONE]], %[[CONV]]) {{.*}} -> tensor<12x?x64xf32>
   %0 = "tf.RandomUniform"(%arg0) : (tensor<3xi32>) -> tensor<12x?x64xf32>
@@ -3571,8 +3579,8 @@ func @rng_uniform(%arg0: tensor<3xi32>) -> tensor<12x?x64xf32> {
 
 // CHECK-LABEL: func @rng_std_normal
 func @rng_std_normal(%arg0: tensor<3xi32>) -> tensor<12x?x64xf32> {
-  // CHECK: %[[ZERO:.*]] = mhlo.constant dense<0.000000e+00> : tensor<f32>
-  // CHECK: %[[ONE:.*]] = mhlo.constant dense<1.000000e+00> : tensor<f32>
+  // CHECK-DAG: %[[ZERO:.*]] = mhlo.constant dense<0.000000e+00> : tensor<f32>
+  // CHECK-DAG: %[[ONE:.*]] = mhlo.constant dense<1.000000e+00> : tensor<f32>
   // CHECK: %[[CONV:.*]] = "mhlo.convert"(%arg0) : (tensor<3xi32>) -> tensor<3xi64>
   // CHECK: %[[F32:.*]] = "mhlo.rng_normal"(%[[ZERO]], %[[ONE]], %[[CONV]]) {{.*}} -> tensor<12x?x64xf32>
   %0 = "tf.RandomStandardNormal"(%arg0) : (tensor<3xi32>) -> tensor<12x?x64xf32>
@@ -4125,7 +4133,14 @@ func @unsorted_segment_sum(%data: tensor<8x16x64xf32>, %segment_ids : tensor<8x1
   // CHECK: ^{{.*}}([[LHS:%.*]]: tensor<f32>, [[RHS:%.*]]: tensor<f32>):
   // CHECK:   [[ADD:%.*]] = mhlo.add [[LHS]], [[RHS]] : tensor<f32>
   // CHECK:   "mhlo.return"([[ADD]])
-  // CHECK: }) {indices_are_sorted = false, scatter_dimension_numbers = {index_vector_dim = 2 : i64, inserted_window_dims = dense<0> : tensor<1xi64>, scatter_dims_to_operand_dims = dense<0> : tensor<1xi64>, update_window_dims = dense<2> : tensor<1xi64>}, unique_indices = false} : (tensor<4x64xf32>, tensor<8x16xi32>, tensor<8x16x64xf32>) -> tensor<4x64xf32>
+  // CHECK: indices_are_sorted = false,
+  // CHECK-SAME: scatter_dimension_numbers =
+  // CHECK-SAME:   update_window_dims = [2]
+  // CHECK-SAME:   inserted_window_dims = [0]
+  // CHECK-SAME:   scatter_dims_to_operand_dims = [0]
+  // CHECK-SAME:   index_vector_dim = 2
+  // CHECK-SAME: unique_indices = false
+  // CHECK-SAME: (tensor<4x64xf32>, tensor<8x16xi32>, tensor<8x16x64xf32>) -> tensor<4x64xf32>
   // CHECK: return [[SCATTER]]
   %0 = "tf.UnsortedSegmentSum"(%data, %segment_ids, %num_segments) : (tensor<8x16x64xf32>, tensor<8x16xi32>, tensor<i32>) -> (tensor<4x64xf32>)
   return %0: tensor<4x64xf32>
@@ -4142,7 +4157,14 @@ func @unsorted_segment_prod(%data: tensor<8x?x64xf32>, %segment_ids : tensor<?x1
   // CHECK: ^{{.*}}([[LHS:%.*]]: tensor<f32>, [[RHS:%.*]]: tensor<f32>):
   // CHECK:   [[MUL:%.*]] = mhlo.multiply [[LHS]], [[RHS]] : tensor<f32>
   // CHECK:   "mhlo.return"([[MUL]])
-  // CHECK: }) {indices_are_sorted = false, scatter_dimension_numbers = {index_vector_dim = 2 : i64, inserted_window_dims = dense<0> : tensor<1xi64>, scatter_dims_to_operand_dims = dense<0> : tensor<1xi64>, update_window_dims = dense<2> : tensor<1xi64>}, unique_indices = false} : (tensor<4x64xf32>, tensor<?x16xi32>, tensor<8x?x64xf32>) -> tensor<4x?xf32>
+  // CHECK: indices_are_sorted = false
+  // CHECK-SAME: scatter_dimension_numbers =
+  // CHECK-SAME:   update_window_dims = [2]
+  // CHECK-SAME:   inserted_window_dims = [0]
+  // CHECK-SAME:   scatter_dims_to_operand_dims = [0]
+  // CHECK-SAME:   index_vector_dim = 2
+  // CHECK-SAME: unique_indices = false
+  // CHECK-SAME: (tensor<4x64xf32>, tensor<?x16xi32>, tensor<8x?x64xf32>) -> tensor<4x?xf32>
   // CHECK: return [[SCATTER]]
   %0 = "tf.UnsortedSegmentProd"(%data, %segment_ids, %num_segments) : (tensor<8x?x64xf32>, tensor<?x16xi32>, tensor<i32>) -> (tensor<4x?xf32>)
   return %0: tensor<4x?xf32>
@@ -4176,9 +4198,30 @@ func @gatherNd_dynamic(%arg0: tensor<?x?x?xi32>, %arg1: tensor<?x6x2xi32>) -> te
   // CHECK: tensor.dim
   // CHECK: index_cast
   // CHECK: tensor.from_elements
-  // CHECK: "mhlo.dynamic_gather"({{.*}}) {dimension_numbers = {collapsed_slice_dims = dense<[0, 1]> : tensor<2xi64>, index_vector_dim = 2 : i64, offset_dims = dense<2> : tensor<1xi64>, start_index_map = dense<[0, 1]> : tensor<2xi64>}, indices_are_sorted = false} : (tensor<?x?x?xi32>, tensor<?x6x2xi32>, tensor<3xi32>) -> tensor<?x6x?xi32>
+  // CHECK: mhlo.dynamic_gather
+  // CHECK-SAME: dimension_numbers =
+  // CHECK-SAME:   offset_dims = [2]
+  // CHECK-SAME:   collapsed_slice_dims = [0, 1]
+  // CHECK-SAME:   start_index_map = [0, 1]
+  // CHECK-SAME:   index_vector_dim = 2
+  // CHECK-SAME: indices_are_sorted = false
   %0 =  "tf.GatherNd"(%arg0, %arg1) {Tindices = i32, Tparams = i32, device = ""} : (tensor<?x?x?xi32>, tensor<?x6x2xi32>) -> tensor<?x6x?xi32>
   return %0 : tensor<?x6x?xi32>
+}
+
+// CHECK-LABEL: func @gatherNd_static
+func @gatherNd_static(%arg0: tensor<2x4x128xf32>, %arg1: tensor<2x1xi32>) -> tensor<2x4x128xf32> {
+  // CHECK:      "mhlo.gather"({{.*}}) {
+  // CHECK-SAME:   dimension_numbers =
+  // CHECK-SAME:     offset_dims = [1, 2]
+  // CHECK-SAME:     collapsed_slice_dims = [0]
+  // CHECK-SAME:     start_index_map = [0]
+  // CHECK-SAME:     index_vector_dim = 1
+  // CHECK-SAME:   indices_are_sorted = false
+  // CHECK-SAME:   slice_sizes = dense<[1, 4, 128]>
+  // CHECK-SAME: (tensor<2x4x128xf32>, tensor<2x1xi32>) -> tensor<2x4x128xf32>
+  %0 =  "tf.GatherNd"(%arg0, %arg1) {Tindices = i32, Tparams = i32, device = ""} : (tensor<2x4x128xf32>, tensor<2x1xi32>) -> tensor<2x4x128xf32>
+  return %0 : tensor<2x4x128xf32>
 }
 
 //===----------------------------------------------------------------------===//
@@ -4200,9 +4243,34 @@ func @gather_v2_dynamic(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?xi32>) -> ten
   // CHECK: tensor.dim {{.*}} : tensor<?x?x?xf32>
   // CHECK: index_cast {{.*}} : index to i32
   // CHECK: tensor.from_elements {{.*}} : tensor<3xi32>
-  // CHECK: "mhlo.dynamic_gather"({{.*}}) {dimension_numbers = {collapsed_slice_dims = dense<2> : tensor<1xi64>, index_vector_dim = 2 : i64, offset_dims = dense<[0, 1]> : tensor<2xi64>, start_index_map = dense<2> : tensor<1xi64>}, indices_are_sorted = false} : (tensor<?x?x?xf32>, tensor<?x?xi32>, tensor<3xi32>) -> tensor<*xf32>
+  // CHECK: mhlo.dynamic_gather
+  // CHECK-SAME:   dimension_numbers =
+  // CHECK-SAME:     offset_dims = [0, 1]
+  // CHECK-SAME:     collapsed_slice_dims = [2]
+  // CHECK-SAME:     start_index_map = [2]
+  // CHECK-SAME:     index_vector_dim = 2
+  // CHECK-SAME:   indices_are_sorted = false
   %0 = "tf.Const"() { value = dense<[-1]> : tensor<1xi32> } : () -> tensor<1xi32>
   %1 = "tf.GatherV2"(%arg0, %arg1, %0) {batch_dims = -1 : i64} : (tensor<?x?x?xf32>, tensor<?x?xi32>, tensor<1xi32>) -> tensor<*xf32>
+  return %1 : tensor<*xf32>
+}
+
+// CHECK-LABEL: @gather_v2_dynamic_index_i64
+func @gather_v2_dynamic_index_i64(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?xi64>) -> tensor<*xf32> {
+  // CHECK: tensor.dim {{.*}} : tensor<?x?x?xf32>
+  // CHECK: index_cast {{.*}} : index to i64
+  // CHECK: tensor.dim {{.*}} : tensor<?x?x?xf32>
+  // CHECK: index_cast {{.*}} : index to i64
+  // CHECK: tensor.from_elements {{.*}} : tensor<3xi64>
+  // CHECK: mhlo.dynamic_gather
+  // CHECK-SAME:   dimension_numbers =
+  // CHECK-SAME:     offset_dims = [0, 1]
+  // CHECK-SAME:     collapsed_slice_dims = [2]
+  // CHECK-SAME:     start_index_map = [2]
+  // CHECK-SAME:     index_vector_dim = 2
+  // CHECK-SAME:   indices_are_sorted = false
+  %0 = "tf.Const"() { value = dense<[-1]> : tensor<1xi32> } : () -> tensor<1xi32>
+  %1 = "tf.GatherV2"(%arg0, %arg1, %0) {batch_dims = -1 : i64} : (tensor<?x?x?xf32>, tensor<?x?xi64>, tensor<1xi32>) -> tensor<*xf32>
   return %1 : tensor<*xf32>
 }
 
@@ -4221,7 +4289,13 @@ func @gather_v2_dynamic_shape(%arg0: tensor<?x2x3xf32>, %arg1: tensor<?x5xi32>) 
   // CHECK: tensor.dim {{.*}} : tensor<?x2x3xf32>
   // CHECK: index_cast {{.*}} : index to i32
   // CHECK: tensor.from_elements {{.*}} : tensor<3xi32>
-  // CHECK: "mhlo.dynamic_gather"({{.*}}) {dimension_numbers = {collapsed_slice_dims = dense<2> : tensor<1xi64>, index_vector_dim = 2 : i64, offset_dims = dense<[0, 1]> : tensor<2xi64>, start_index_map = dense<2> : tensor<1xi64>}, indices_are_sorted = false} : (tensor<?x2x3xf32>, tensor<?x5xi32>, tensor<3xi32>) -> tensor<?x2x5xf32>
+  // CHECK: mhlo.dynamic_gather
+  // CHECK-SAME:   dimension_numbers =
+  // CHECK-SAME:     offset_dims = [0, 1]
+  // CHECK-SAME:     collapsed_slice_dims = [2]
+  // CHECK-SAME:     start_index_map = [2]
+  // CHECK-SAME:     index_vector_dim = 2
+  // CHECK-SAME:   indices_are_sorted = false
   %1 = "tf.GatherV2"(%arg0, %arg1, %0) {batch_dims = -1 : i64} : (tensor<?x2x3xf32>, tensor<?x5xi32>, tensor<1xi32>) -> tensor<?x2x5xf32>
   return %1 : tensor<?x2x5xf32>
 }
@@ -4393,10 +4467,10 @@ func @tensor_scatter_update(%tensor: tensor<?x?x?xf32>, %indices: tensor<?x2xi32
   // CHECK:  })
   // CHECK-SAME: indices_are_sorted = false
   // CHECK-SAME: scatter_dimension_numbers
-  // CHECK-SAME:   index_vector_dim = 1 : i64
-  // CHECK-SAME:   inserted_window_dims = dense<[0, 1]> : tensor<2xi64>
-  // CHECK-SAME:   scatter_dims_to_operand_dims = dense<[0, 1]> : tensor<2xi64>
-  // CHECK-SAME:   update_window_dims = dense<1> : tensor<1xi64>
+  // CHECK-SAME:   update_window_dims = [1]
+  // CHECK-SAME:   inserted_window_dims = [0, 1]
+  // CHECK-SAME:   scatter_dims_to_operand_dims = [0, 1]
+  // CHECK-SAME:   index_vector_dim = 1
   // CHECK-SAME: unique_indices = false
   %0 = "tf.TensorScatterUpdate"(%tensor, %indices, %updates) : (tensor<?x?x?xf32>, tensor<?x2xi32>, tensor<?x?xf32>) -> tensor<?x?x?xf32>
   return %0 : tensor<?x?x?xf32>
@@ -4411,10 +4485,10 @@ func @tensor_scatter_add(%tensor: tensor<?x?x?xf32>, %indices: tensor<?x2xi32>, 
   // CHECK:  })
   // CHECK-SAME: indices_are_sorted = false
   // CHECK-SAME: scatter_dimension_numbers
-  // CHECK-SAME:   index_vector_dim = 1 : i64
-  // CHECK-SAME:   inserted_window_dims = dense<[0, 1]> : tensor<2xi64>
-  // CHECK-SAME:   scatter_dims_to_operand_dims = dense<[0, 1]> : tensor<2xi64>
-  // CHECK-SAME:   update_window_dims = dense<1> : tensor<1xi64>
+  // CHECK-SAME:   update_window_dims = [1]
+  // CHECK-SAME:   inserted_window_dims = [0, 1]
+  // CHECK-SAME:   scatter_dims_to_operand_dims = [0, 1]
+  // CHECK-SAME:   index_vector_dim = 1
   // CHECK-SAME: unique_indices = false
   %0 = "tf.TensorScatterAdd"(%tensor, %indices, %updates) : (tensor<?x?x?xf32>, tensor<?x2xi32>, tensor<?x?xf32>) -> tensor<?x?x?xf32>
   return %0 : tensor<?x?x?xf32>
@@ -4429,10 +4503,10 @@ func @tensor_scatter_sub(%tensor: tensor<?x?x?xf32>, %indices: tensor<?x2xi32>, 
   // CHECK:  })
   // CHECK-SAME: indices_are_sorted = false
   // CHECK-SAME: scatter_dimension_numbers
-  // CHECK-SAME:   index_vector_dim = 1 : i64
-  // CHECK-SAME:   inserted_window_dims = dense<[0, 1]> : tensor<2xi64>
-  // CHECK-SAME:   scatter_dims_to_operand_dims = dense<[0, 1]> : tensor<2xi64>
-  // CHECK-SAME:   update_window_dims = dense<1> : tensor<1xi64>
+  // CHECK-SAME:   update_window_dims = [1]
+  // CHECK-SAME:   inserted_window_dims = [0, 1]
+  // CHECK-SAME:   scatter_dims_to_operand_dims = [0, 1]
+  // CHECK-SAME:   index_vector_dim = 1
   // CHECK-SAME: unique_indices = false
   %0 = "tf.TensorScatterSub"(%tensor, %indices, %updates) : (tensor<?x?x?xf32>, tensor<?x2xi32>, tensor<?x?xf32>) -> tensor<?x?x?xf32>
   return %0 : tensor<?x?x?xf32>
@@ -4447,10 +4521,10 @@ func @tensor_scatter_min(%tensor: tensor<?x?x?xf32>, %indices: tensor<?x2xi32>, 
   // CHECK:  })
   // CHECK-SAME: indices_are_sorted = false
   // CHECK-SAME: scatter_dimension_numbers
-  // CHECK-SAME:   index_vector_dim = 1 : i64
-  // CHECK-SAME:   inserted_window_dims = dense<[0, 1]> : tensor<2xi64>
-  // CHECK-SAME:   scatter_dims_to_operand_dims = dense<[0, 1]> : tensor<2xi64>
-  // CHECK-SAME:   update_window_dims = dense<1> : tensor<1xi64>
+  // CHECK-SAME:   update_window_dims = [1]
+  // CHECK-SAME:   inserted_window_dims = [0, 1]
+  // CHECK-SAME:   scatter_dims_to_operand_dims = [0, 1]
+  // CHECK-SAME:   index_vector_dim = 1
   // CHECK-SAME: unique_indices = false
   %0 = "tf.TensorScatterMin"(%tensor, %indices, %updates) : (tensor<?x?x?xf32>, tensor<?x2xi32>, tensor<?x?xf32>) -> tensor<?x?x?xf32>
   return %0 : tensor<?x?x?xf32>
@@ -4465,10 +4539,10 @@ func @tensor_scatter_max(%tensor: tensor<?x?x?xf32>, %indices: tensor<?x2xi32>, 
   // CHECK:  })
   // CHECK-SAME: indices_are_sorted = false
   // CHECK-SAME: scatter_dimension_numbers
-  // CHECK-SAME:   index_vector_dim = 1 : i64
-  // CHECK-SAME:   inserted_window_dims = dense<[0, 1]> : tensor<2xi64>
-  // CHECK-SAME:   scatter_dims_to_operand_dims = dense<[0, 1]> : tensor<2xi64>
-  // CHECK-SAME:   update_window_dims = dense<1> : tensor<1xi64>
+  // CHECK-SAME:   update_window_dims = [1]
+  // CHECK-SAME:   inserted_window_dims = [0, 1]
+  // CHECK-SAME:   scatter_dims_to_operand_dims = [0, 1]
+  // CHECK-SAME:   index_vector_dim = 1
   // CHECK-SAME: unique_indices = false
   %0 = "tf.TensorScatterMax"(%tensor, %indices, %updates) : (tensor<?x?x?xf32>, tensor<?x2xi32>, tensor<?x?xf32>) -> tensor<?x?x?xf32>
   return %0 : tensor<?x?x?xf32>
@@ -4489,14 +4563,14 @@ func @random_shuffle_first_dim_1(%input: tensor<1x?xf32>) -> tensor<1x?xf32> {
 // CHECK-LABEL: @random_shuffle_1D_16
 // CHECK-SAME: [[INPUT:%.*]]: tensor<16xf32>
 func @random_shuffle_1D_16(%input: tensor<16xf32>) -> tensor<16xf32> {
-  // CHECK: [[SHAPE:%.*]] = mhlo.constant dense<16> : tensor<1xi64>
-  // CHECK: [[LOWER:%.*]] = mhlo.constant dense<0> : tensor<i32>
-  // CHECK: [[UPPER:%.*]] = mhlo.constant dense<-1> : tensor<i32>
+  // CHECK-DAG: [[SHAPE:%.*]] = mhlo.constant dense<16> : tensor<1xi64>
+  // CHECK-DAG: [[LOWER:%.*]] = mhlo.constant dense<0> : tensor<i32>
+  // CHECK-DAG: [[UPPER:%.*]] = mhlo.constant dense<-1> : tensor<i32>
   // CHECK: [[RNG:%.*]] = "mhlo.rng_uniform"([[LOWER]], [[UPPER]], [[SHAPE]])
   // CHECK: [[SORT:%.*]]:2 = "mhlo.sort"([[RNG]], [[INPUT]]) ( {
   // CHECK: ^{{.*}}([[ARG1:%.*]]: tensor<i32>, [[ARG2:%.*]]: tensor<i32>, {{.*}}: tensor<f32>, {{.*}}: tensor<f32>):
   // CHECK:   "mhlo.compare"([[ARG1]], [[ARG2]]) {comparison_direction = "LT"}
-  // CHECK: }) {dimension = -1 : i64, is_stable = true} : (tensor<16xi32>, tensor<16xf32>) -> (tensor<16xi32>, tensor<16xf32>)
+  // CHECK: }) {dimension = -1 : i64, is_stable = {{.*}}} : (tensor<16xi32>, tensor<16xf32>) -> (tensor<16xi32>, tensor<16xf32>)
   // CHECK: return [[SORT]]#1
   %0 = "tf.RandomShuffle"(%input) : (tensor<16xf32>) -> (tensor<16xf32>)
   return %0: tensor<16xf32>
@@ -4517,9 +4591,9 @@ func @random_shuffle_1D_10240(%input: tensor<10240xf32>) -> tensor<10240xf32> {
 func @random_shuffle_3D(%input: tensor<4x?x16xf32>) -> tensor<4x?x16xf32> {
   // CHECK: [[INDICES:%.*]] = "mhlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<4xi32>
 
-  // CHECK: [[RNG_SHAPE:%.*]] = mhlo.constant dense<4> : tensor<1xi64>
-  // CHECK: [[RNG_LOWER:%.*]] = mhlo.constant dense<0> : tensor<i32>
-  // CHECK: [[RNG_UPPER:%.*]] = mhlo.constant dense<4> : tensor<i32>
+  // CHECK-DAG: [[RNG_SHAPE:%.*]] = mhlo.constant dense<4> : tensor<1xi64>
+  // CHECK-DAG: [[RNG_LOWER:%.*]] = mhlo.constant dense<0> : tensor<i32>
+  // CHECK-DAG: [[RNG_UPPER:%.*]] = mhlo.constant dense<4> : tensor<i32>
   // CHECK: [[SWAPS:%.*]] = "mhlo.rng_uniform"([[RNG_LOWER]], [[RNG_UPPER]], [[RNG_SHAPE]])
 
   // CHECK: [[IV_INIT:%.*]] = mhlo.constant dense<0> : tensor<i32>
@@ -4550,9 +4624,13 @@ func @random_shuffle_3D(%input: tensor<4x?x16xf32>) -> tensor<4x?x16xf32> {
 
   // CHECK: [[SWAPED_INDICES:%.*]] = "mhlo.get_tuple_element"([[WHILE_OUT]]) {index = 2 : i32} : (tuple<tensor<i32>, tensor<4xi32>, tensor<4xi32>>) -> tensor<4xi32>
   // CHECK: [[GATHER:%.*]] = "mhlo.gather"([[INPUT]], [[SWAPED_INDICES]])
-  // CHECK-SAME: dimension_numbers = {collapsed_slice_dims = dense<0> : tensor<1xi64>, index_vector_dim = 1 : i64, offset_dims = dense<[1, 2]> : tensor<2xi64>, start_index_map = dense<0> : tensor<1xi64>}
+  // CHECK-SAME:   dimension_numbers =
+  // CHECK-SAME:     offset_dims = [1, 2]
+  // CHECK-SAME:     collapsed_slice_dims = [0]
+  // CHECK-SAME:     start_index_map = [0]
+  // CHECK-SAME:     index_vector_dim = 1
   // CHECK-SAME: indices_are_sorted = false
-  // CHECK-SAME: slice_sizes = dense<[1, -1, 16]> : tensor<3xi64>
+  // CHECK-SAME: slice_sizes = dense<[1, -1, 16]>
   // CHECK: (tensor<4x?x16xf32>, tensor<4xi32>) -> tensor<4x?x16xf32>
 
   // CHECK: return [[GATHER]]
@@ -4727,8 +4805,8 @@ func @avgpool_3d_same_padding(%arg0: tensor<2x4x12x21x7xf32>) -> tensor<2x4x4x6x
 
 // CHECK-LABEL:   @avgpool_grad_valid_padding(
 // CHECK-SAME:      %[[OUT_GRAD:.*]]: tensor<10x12x16x64xf32>) -> tensor<10x24x32x64xf32> {
-// CHECK:           %[[ZERO:.*]] = mhlo.constant dense<0.000000e+00> : tensor<f32>
-// CHECK:           %[[DIVISOR:.*]] = mhlo.constant dense<4.000000e+00> : tensor<f32>
+// CHECK-DAG:       %[[ZERO:.*]] = mhlo.constant dense<0.000000e+00> : tensor<f32>
+// CHECK-DAG:       %[[DIVISOR:.*]] = mhlo.constant dense<4.000000e+00> : tensor<f32>
 // CHECK:           %[[OUT_GRAD_DIVIDED:.*]] = chlo.broadcast_divide %[[OUT_GRAD]], %[[DIVISOR]]
 // CHECK_SAME:        broadcast_dimensions = dense<>
 // CHECK_SAME:        -> tensor<10x12x16x64xf32>
@@ -4759,8 +4837,8 @@ func @avgpool_grad_valid_padding(%grad: tensor<10x12x16x64xf32>) -> tensor<10x24
 
 // CHECK-LABEL:   @avgpool_3d_grad_valid_padding(
 // CHECK-SAME:      %[[OUT_GRAD:.*]]: tensor<10x8x12x16x64xf32>) -> tensor<10x8x24x32x64xf32> {
-// CHECK:           %[[ZERO:.*]] = mhlo.constant dense<0.000000e+00> : tensor<f32>
-// CHECK:           %[[DIVISOR:.*]] = mhlo.constant dense<4.000000e+00> : tensor<f32>
+// CHECK-DAG:       %[[ZERO:.*]] = mhlo.constant dense<0.000000e+00> : tensor<f32>
+// CHECK-DAG:       %[[DIVISOR:.*]] = mhlo.constant dense<4.000000e+00> : tensor<f32>
 // CHECK:           %[[OUT_GRAD_DIVIDED:.*]] = chlo.broadcast_divide %[[OUT_GRAD]], %[[DIVISOR]] {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<10x8x12x16x64xf32>, tensor<f32>) -> tensor<10x8x12x16x64xf32>
 // CHECK:           %[[REDUCE_WINDOW_INPUT:.*]] = "mhlo.pad"(%[[OUT_GRAD_DIVIDED]], %[[ZERO]])
 // CHECK-SAME:        edge_padding_high = dense<[0, 0, 1, 1, 0]>
@@ -4788,8 +4866,8 @@ func @avgpool_3d_grad_valid_padding(%grad: tensor<10x8x12x16x64xf32>) -> tensor<
 
 // CHECK-LABEL:   @avgpool_grad_same_padding(
 // CHECK-SAME:      %[[OUT_GRAD:.*]]: tensor<2x4x7x9xf32>) -> tensor<2x13x25x9xf32> {
-// CHECK:           %[[ZERO:.*]] = mhlo.constant dense<0.000000e+00> : tensor<f32>
-// CHECK:           %[[ALL_ONES:.*]] = mhlo.constant dense<1.000000e+00> : tensor<2x13x25x9xf32>
+// CHECK-DAG:       %[[ZERO:.*]] = mhlo.constant dense<0.000000e+00> : tensor<f32>
+// CHECK-DAG:       %[[ALL_ONES:.*]] = mhlo.constant dense<1.000000e+00> : tensor<2x13x25x9xf32>
 // CHECK:           %[[DIVISOR:.*]] = "mhlo.reduce_window"(%[[ALL_ONES]], %[[ZERO]]) ( {
 // CHECK:           ^bb0(%[[ARG1:.*]]: tensor<f32>, %[[ARG2:.*]]: tensor<f32>):
 // CHECK:             %[[SUM1:.*]] = mhlo.add %[[ARG1]], %[[ARG2]] : tensor<f32>
@@ -4827,8 +4905,8 @@ func @avgpool_grad_same_padding(%grad: tensor<2x4x7x9xf32>) -> tensor<2x13x25x9x
 
 // CHECK-LABEL:   @avgpool_3d_grad_same_padding(
 // CHECK-SAME:      %[[OUT_GRAD:.*]]: tensor<2x8x4x7x9xf32>) -> tensor<2x8x13x25x9xf32> {
-// CHECK:           %[[ZERO:.*]] = mhlo.constant dense<0.000000e+00> : tensor<f32>
-// CHECK:           %[[ALL_ONES:.*]] = mhlo.constant dense<1.000000e+00> : tensor<2x8x13x25x9xf32>
+// CHECK-DAG:       %[[ZERO:.*]] = mhlo.constant dense<0.000000e+00> : tensor<f32>
+// CHECK-DAG:       %[[ALL_ONES:.*]] = mhlo.constant dense<1.000000e+00> : tensor<2x8x13x25x9xf32>
 // CHECK:           %[[DIVISOR:.*]] = "mhlo.reduce_window"(%[[ALL_ONES]], %[[ZERO]]) ( {
 // CHECK:           ^bb0(%[[ARG1:.*]]: tensor<f32>, %[[ARG2:.*]]: tensor<f32>):
 // CHECK:             %[[SUM1:.*]] = mhlo.add %[[ARG1]], %[[ARG2]] : tensor<f32>
@@ -4865,8 +4943,8 @@ func @avgpool_3d_grad_same_padding(%grad: tensor<2x8x4x7x9xf32>) -> tensor<2x8x1
 
 // CHECK-LABEL:   @avgpool_grad_nchw_format(
 // CHECK-SAME:      %[[OUT_GRAD:.*]]: tensor<2x9x4x7xf32>) -> tensor<2x9x13x25xf32> {
-// CHECK:           %[[ZERO:.*]] = mhlo.constant dense<0.000000e+00> : tensor<f32>
-// CHECK:           %[[ALL_ONES:.*]] = mhlo.constant dense<1.000000e+00> : tensor<2x9x13x25xf32>
+// CHECK-DAG:       %[[ZERO:.*]] = mhlo.constant dense<0.000000e+00> : tensor<f32>
+// CHECK-DAG:       %[[ALL_ONES:.*]] = mhlo.constant dense<1.000000e+00> : tensor<2x9x13x25xf32>
 // CHECK:           %[[DIVISOR:.*]] = "mhlo.reduce_window"(%[[ALL_ONES]], %[[ZERO]]) ( {
 // CHECK:           ^bb0(%[[ARG1:.*]]: tensor<f32>, %[[ARG2:.*]]: tensor<f32>):
 // CHECK:             %[[SUM1:.*]] = mhlo.add %[[ARG1]], %[[ARG2]] : tensor<f32>
@@ -4904,8 +4982,8 @@ func @avgpool_grad_nchw_format(%grad: tensor<2x9x4x7xf32>) -> tensor<2x9x13x25xf
 
 // CHECK-LABEL:   @avgpool_3d_grad_ncdwh_format(
 // CHECK-SAME:      %[[OUT_GRAD:.*]]: tensor<2x9x8x4x7xf32>) -> tensor<2x9x8x13x25xf32> {
-// CHECK:           %[[ZERO:.*]] = mhlo.constant dense<0.000000e+00> : tensor<f32>
-// CHECK:           %[[ALL_ONES:.*]] = mhlo.constant dense<1.000000e+00> : tensor<2x9x8x13x25xf32>
+// CHECK-DAG:       %[[ZERO:.*]] = mhlo.constant dense<0.000000e+00> : tensor<f32>
+// CHECK-DAG:       %[[ALL_ONES:.*]] = mhlo.constant dense<1.000000e+00> : tensor<2x9x8x13x25xf32>
 // CHECK:           %[[DIVISOR:.*]] = "mhlo.reduce_window"(%[[ALL_ONES]], %[[ZERO]]) ( {
 // CHECK:           ^bb0(%[[ARG1:.*]]: tensor<f32>, %[[ARG2:.*]]: tensor<f32>):
 // CHECK:             %[[SUM1:.*]] = mhlo.add %[[ARG1]], %[[ARG2]] : tensor<f32>
@@ -4942,8 +5020,8 @@ func @avgpool_3d_grad_ncdwh_format(%grad: tensor<2x9x8x4x7xf32>) -> tensor<2x9x8
 
 // CHECK-LABEL:   @avgpool_grad_bf16(
 // CHECK-SAME:      %[[OUT_GRAD:.*]]: tensor<10x12x16x64xbf16>) -> tensor<10x24x32x64xbf16> {
-// CHECK:           %[[ZERO:.*]] = mhlo.constant dense<0.000000e+00> : tensor<bf16>
-// CHECK:           %[[DIVISOR:.*]] = mhlo.constant dense<4.000000e+00> : tensor<bf16>
+// CHECK-DAG:       %[[ZERO:.*]] = mhlo.constant dense<0.000000e+00> : tensor<bf16>
+// CHECK-DAG:       %[[DIVISOR:.*]] = mhlo.constant dense<4.000000e+00> : tensor<bf16>
 // CHECK:           %[[OUT_GRAD_DIVIDED:.*]] = chlo.broadcast_divide %[[OUT_GRAD]], %[[DIVISOR]]
 // CHECK-SAME:        broadcast_dimensions = dense<>
 // CHECK-SAME:        -> tensor<10x12x16x64xbf16>
@@ -4977,7 +5055,7 @@ func @avgpool_grad_bf16(%grad: tensor<10x12x16x64xbf16>) -> tensor<10x24x32x64xb
 
 // CHECK-LABEL: xla_sharding
 func @xla_sharding(%arg0: tensor<4x16xf32>) -> tensor<4x16xf32> {
-  // CHECK-NEXT: "mhlo.custom_call"(%arg0) {backend_config = "", call_target_name = "Sharding", has_side_effect = false, mhlo.sharding = ""}
+  // CHECK-NEXT: "mhlo.custom_call"(%arg0) {api_version = 1 : i32, backend_config = "", call_target_name = "Sharding", has_side_effect = false, mhlo.sharding = ""}
   %0 = "tf.XlaSharding"(%arg0) {_XlaSharding = "", sharding = ""} : (tensor<4x16xf32>) -> tensor<4x16xf32>
   return %0 : tensor<4x16xf32>
 }
@@ -5271,10 +5349,10 @@ func @xla_gather(%arg0: tensor<200x100x300xf32>, %arg1: tensor<10x2xi32>) -> ten
 
   // CHECK: "mhlo.gather"
   // CHECK-SAME: dimension_numbers =
-  // CHECK-SAME:   collapsed_slice_dims = dense<0> : tensor<1xi64>
-  // CHECK-SAME:   index_vector_dim = 1 : i64
-  // CHECK-SAME:   offset_dims = dense<1> : tensor<1xi64>
-  // CHECK-SAME:   start_index_map = dense<0> : tensor<1xi64>
+  // CHECK-SAME:   offset_dims = [1]
+  // CHECK-SAME:   collapsed_slice_dims = [0]
+  // CHECK-SAME:   start_index_map = [0]
+  // CHECK-SAME:   index_vector_dim = 1
   // CHECK-SAME: indices_are_sorted = true
   // CHECK-SAME: slice_sizes = dense<[1, 1, 300]> : tensor<3xi64>
 
@@ -5288,10 +5366,10 @@ func @xla_gather_i32(%arg0: tensor<200x100x300xf32>, %arg1: tensor<10x2xi32>) ->
 
   // CHECK: "mhlo.gather"
   // CHECK-SAME: dimension_numbers =
-  // CHECK-SAME:   collapsed_slice_dims = dense<0> : tensor<1xi64>
-  // CHECK-SAME:   index_vector_dim = 1 : i64
-  // CHECK-SAME:   offset_dims = dense<1> : tensor<1xi64>
-  // CHECK-SAME:   start_index_map = dense<0> : tensor<1xi64>
+  // CHECK-SAME:   offset_dims = [1]
+  // CHECK-SAME:   collapsed_slice_dims = [0]
+  // CHECK-SAME:   start_index_map = [0]
+  // CHECK-SAME:   index_vector_dim = 1
   // CHECK-SAME: indices_are_sorted = true
   // CHECK-SAME: slice_sizes = dense<[1, 1, 300]> : tensor<3xi64>
 
@@ -5309,10 +5387,10 @@ func @stridedslice_with_i32(%arg0: tensor<i32>) -> tensor<4xf32> attributes {tf.
   %0 = "tf.Const"() {value = dense<[[0.000000e+00, 1.000000e+00, 2.000000e+00, 3.000000e+00], [4.000000e+00, 5.000000e+00, 6.000000e+00, 7.000000e+00]]> : tensor<2x4xf32>} : () -> tensor<2x4xf32>
   %1 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
   %2 = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
-  %3 = "tf.AddV2"(%arg0, %1) {_xla_inferred_shapes = [#tf.shape<>], device = ""} : (tensor<i32>, tensor<i32>) -> tensor<i32>
-  %4 = "tf.Pack"(%3) {_xla_inferred_shapes = [#tf.shape<1>], axis = 0 : i64, device = ""} : (tensor<i32>) -> tensor<1xi32>
-  %5 = "tf.Pack"(%arg0) {_xla_inferred_shapes = [#tf.shape<1>], axis = 0 : i64, device = ""} : (tensor<i32>) -> tensor<1xi32>
-  %6 = "tf.StridedSlice"(%0, %5, %4, %2) {_xla_inferred_shapes = [#tf.shape<4>], begin_mask = 0 : i64, device = "", ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 1 : i64} : (tensor<2x4xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<4xf32>
+  %3 = "tf.AddV2"(%arg0, %1) {_xla_inferred_shapes = [#tf_type.shape<>], device = ""} : (tensor<i32>, tensor<i32>) -> tensor<i32>
+  %4 = "tf.Pack"(%3) {_xla_inferred_shapes = [#tf_type.shape<1>], axis = 0 : i64, device = ""} : (tensor<i32>) -> tensor<1xi32>
+  %5 = "tf.Pack"(%arg0) {_xla_inferred_shapes = [#tf_type.shape<1>], axis = 0 : i64, device = ""} : (tensor<i32>) -> tensor<1xi32>
+  %6 = "tf.StridedSlice"(%0, %5, %4, %2) {_xla_inferred_shapes = [#tf_type.shape<4>], begin_mask = 0 : i64, device = "", ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 1 : i64} : (tensor<2x4xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<4xf32>
   return %6 : tensor<4xf32>
 }
 
@@ -5331,6 +5409,24 @@ func @angle_c64(%arg0: tensor<complex<f32>>) -> tensor<f32> {
 // CHECK: [[ATAN2:%.*]] = mhlo.atan2 [[IMAG]], [[REAL]]
   %0 = "tf.Angle"(%arg0): (tensor<complex<f32>>) -> tensor<f32>
   return %0 : tensor<f32>
+}
+
+//===----------------------------------------------------------------------===//
+// tf.XlaDot legalization
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: @xladot_matmul(
+// CHECK-SAME:    %[[LHS:.*]]: tensor<64x32xi8>, %[[RHS:.*]]: tensor<32x16xi8>) -> tensor<64x16xi32>
+func @xladot_matmul(%lhs : tensor<64x32xi8>, %rhs : tensor<32x16xi8>) -> tensor<64x16xi32> {
+  // CHECK: "mhlo.dot_general"(%[[LHS]], %[[RHS]]) {
+  // CHECK-SAME:  dot_dimension_numbers = {
+  // CHECK-SAME:      lhs_batching_dimensions = dense<> : tensor<0xi64>,
+  // CHECK-SAME:      lhs_contracting_dimensions = dense<1> : tensor<1xi64>,
+  // CHECK-SAME:      rhs_batching_dimensions = dense<> : tensor<0xi64>,
+  // CHECK-SAME:      rhs_contracting_dimensions = dense<0> : tensor<1xi64>
+  // CHECK-SAME:  }, precision_config = []} : (tensor<64x32xi8>, tensor<32x16xi8>) -> tensor<64x16xi32>
+  %res = "tf.XlaDot"(%lhs, %rhs) {dimension_numbers = "\0A\01\01\12\01\00", precision_config = ""} : (tensor<64x32xi8>, tensor<32x16xi8>) -> tensor<64x16xi32>
+  return %res : tensor<64x16xi32>
 }
 
 //===----------------------------------------------------------------------===//
@@ -5362,4 +5458,15 @@ func @simple_print() -> (tensor<*xi32>) {
   %const = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<*xi32>
   %print = "tf.Print"(%const) { message = "bla" } : (tensor<*xi32>) -> (tensor<*xi32>)
   return %print: tensor<*xi32>
+}
+
+//===----------------------------------------------------------------------===//
+// tf.NextAfter legalization
+//===----------------------------------------------------------------------===//
+// CHECK-LABEL: func @nextafter
+func @nextafter(%arg0: tensor<2xf32>, %arg1 : tensor<2xf32>) -> tensor<2xf32> {
+  // CHECK-NEXT:  %0 = chlo.broadcast_next_after %arg0, %arg1 : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+  // CHECK-NEXT:  return %0 : tensor<2xf32>
+  %0 = "tf.NextAfter"(%arg0, %arg1) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+  return %0: tensor<2xf32>
 }

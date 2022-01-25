@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_FRAMEWORK_METRICS_H_
 
 #include "absl/container/flat_hash_map.h"
+#include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/platform/statusor.h"
@@ -68,7 +69,7 @@ monitoring::GaugeCell<std::function<std::string()>>* GetTFDataModelGauge(
     const string& id);
 
 // Records the number of bytes fetched from tf.data.Dataset iterator.
-void RecordTFDataBytesFetched(int64 num_bytes);
+void RecordTFDataBytesFetched(int64_t num_bytes);
 
 // Records the number of times tf.data experiment is applied to input pipelines.
 void RecordTFDataExperiment(const string& name);
@@ -96,7 +97,7 @@ void RecordTFDataIteratorLifetime(uint64 duration_us);
 // application of a tf.data optimization.
 //
 // The `name` argument identifies the optimization (e.g. "noop_elimination").
-void RecordTFDataOptimization(const string& name, int64 num_changes);
+void RecordTFDataOptimization(const string& name, int64_t num_changes);
 
 // Records that a tf.data service worker has been created.
 void RecordTFDataServiceWorkerCreated();
@@ -106,21 +107,38 @@ void RecordTFDataServiceWorkerCreated();
 // The `name` argument identifies the Dataset type (e.g. "TFRecordDataset").
 void RecordTFDataFilename(const string& name, const string& filename);
 
+// Records statistics of tf.data auto sharding.
+//
+// The `id` is a unique identifier of the input pipeline. The `policy`
+// identifies the auto-sharding policy used, the `num_workers` identifies the
+// number of workers, and `num_replicas` identifies the number of replicas.
+void RecordTFDataAutoShard(const string& id, data::AutoShardPolicy policy,
+                           int64 num_workers, int64 num_replicas);
+
+// Records statistics of whether we can rewrite batch size in tf.data auto
+// sharding.
+//
+// The `id` is a unique identifier of the input pipeline. The `eligible`
+// indicates whether the input pipeline is eligible for the rewrite. The
+// `ineligible_reason` is the reason if the input pipeline is ineligible.
+void RecordTFDataAutoShardRewriteBatchSize(
+    bool eligible, const std::vector<string>& ineligible_reason);
+
 // Records parsing of dense tensor features.
-void RecordParseDenseFeature(int64 num_features);
+void RecordParseDenseFeature(int64_t num_features);
 
 // Records parsing of sparse tensor features.
-void RecordParseSparseFeature(int64 num_features);
+void RecordParseSparseFeature(int64_t num_features);
 
 // Records parsing of ragged tensor features.
-void RecordParseRaggedFeature(int64 num_features);
+void RecordParseRaggedFeature(int64_t num_features);
 
 // Records the size of input/output tensors in bytes.
 void RecordGraphInputTensors(const size_t size);
 void RecordGraphOutputTensors(const size_t size);
 
 // Records the number of cores requested by graphs with XLA SPMD enabled.
-void RecordTPUXlaSpmdCoresPerReplica(int64 cores_per_replica);
+void RecordTPUXlaSpmdCoresPerReplica(int64_t cores_per_replica);
 
 void UpdateGraphExecTime(const uint64 running_time_usecs);
 void UpdateGraphPendingQueueLength(uint64 len);
@@ -148,6 +166,12 @@ void UpdateGraphOptimizationPassTime(const string& pass_name,
                                      const uint64 running_time_usecs);
 void UpdateGrapplerPassTime(const string& pass_name,
                             const uint64 running_time_usecs);
+void UpdateMlirGraphOptimizationPassTime(const string& pass_name,
+                                         const uint64 running_time_usecs);
+void UpdateTFDataPassTime(const string& pass_name,
+                          const uint64 running_time_usecs);
+void UpdateGraphOptimizerPassTime(const string& pass_name,
+                                  const uint64 running_time_usecs);
 
 // Updates metrics for time to distribute variables to all TPU hosts.
 void UpdateTpuVariableDistributionTime(const uint64 distribution_time_usecs);

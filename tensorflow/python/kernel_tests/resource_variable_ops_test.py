@@ -238,12 +238,12 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
       self.assertEqual("<tf.Variable 'Variable:0' shape=() dtype=int32,"
                        " numpy=<unavailable>>", text)
 
-  def testUnprintableHandle(self):
+  def testFormatResourceHandle(self):
     with context.eager_mode():
       handle = resource_variable_ops.var_handle_op(
           dtype=dtypes.int32, shape=[1], name="foo")
-      self.assertIn("<unprintable>", str(handle))
-      self.assertIn("<unprintable>", repr(handle))
+      self.assertIn("<Resource Tensor>", str(handle))
+      self.assertIn("<Resource Tensor>", repr(handle))
 
   @test_util.run_in_graph_and_eager_modes
   def testDtypeSurvivesIdentity(self):
@@ -1174,7 +1174,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
       v = resource_variable_ops.ResourceVariable(initial_value=zero)
       return (i + 1, v.read_value())
 
-    with self.assertRaisesRegex(ValueError, "initializer"):
+    with self.assertRaisesRegex(ValueError, "initial_value"):
       control_flow_ops.while_loop(cond, body, [0, 0])
 
   def testVariableEager(self):
@@ -1599,6 +1599,12 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
       checker.record_snapshot()
     checker.report()
     checker.assert_no_leak_if_all_possibly_except_one()
+
+  @test_util.run_v2_only
+  def testIterateVariable(self):
+    v = variables.Variable([1., 2.])
+    self.assertAllClose([1., 2.], list(iter(v)))
+
 
 if __name__ == "__main__":
   test.main()

@@ -225,10 +225,15 @@ def while_loop(cond,
     # Note that external tensors will be treated as loop invariants, i.e.,
     # the value of that tensor in each iteration is the same as it was at the
     # beginning of the loop execution.
-    loop_vars = loop_vars + body_graph.external_captures
+    deferred_external_captures = nest.flatten(
+        [c() for c in body_graph.deferred_external_captures],
+        expand_composites=True)
+    loop_vars = (
+        loop_vars + body_graph.external_captures + deferred_external_captures)
     # TODO(srbs): Update lowering code to create _Enter nodes with
     # is_constant=True for inputs that are directly passed to outputs.
     body_graph.outputs.extend(body_graph.internal_captures)
+    body_graph.outputs.extend(body_graph.deferred_internal_captures)
 
     # Capture the extra `external_captures` of `body_graph` in `cond_graph` so
     # that it expects to receive those as arguments.
@@ -237,7 +242,8 @@ def while_loop(cond,
       assert (cond_graph.external_captures ==
               body_graph.external_captures[:num_cond_captures])
       _duplicate_body_captures_in_cond(
-          cond_graph, body_graph.external_captures[num_cond_captures:])
+          cond_graph, body_graph.external_captures[num_cond_captures:] +
+          deferred_external_captures)
 
     # Make sure that the shapes of the loop outputs are compatible with the
     # shape invariants, or the shapes of the loop vars if the invariants are not
@@ -403,7 +409,10 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
       # Continuing leads to an invalid graph with disconnected inputs.
       raise AssertionError(
           "Inputs and outputs constructed for the forward op of a While "
-          "gradient don't match. This doesn't make sense, please file a bug.")
+          "gradient don't match with 'output_types' at  "
+          f"{len(body_graph.output_types)},'inputs' at length "
+          f"{len(while_op.inputs)}, and 'new_inputs' at length "
+          f"{len(new_inputs)}. This doesn't make sense, please file a bug.")
     while_op._set_type_list_attr("T", body_graph.output_types)
     while_op._set_shape_list_attr("output_shapes", body_graph.output_shapes)
     while_op._add_while_inputs(new_inputs)
@@ -700,9 +709,9 @@ def _create_grad_func(ys, xs, grads, cond_graph, body_graph, name, while_op,
           internal_capture)]
     else:
       raise ValueError(
-          "Tensor %s which captures %s is in list of "
-          "internal_captures but not in internal_capture_to_output." %
-          (str(internal_capture), str(external_capture)))
+          f"Tensor {str(internal_capture)} which captures "
+          f"{str(external_capture)} is in list of "
+          f"internal_captures but not in internal_capture_to_output.")
     grad_func_graph.outputs.append(new_output)
     grad_func_graph.structured_outputs.append(new_output)
 
@@ -1261,8 +1270,7 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
         forward_graph_name_to_opdef,
         self._forward_graph._functions):
       raise AssertionError(
-          "Resource tensors must be loop invariants %s."
-          % tensor_in_outer_graph)
+          f"Resource tensors must be loop invariants {tensor_in_outer_graph}")
 
     self._indirect_captures[ops.tensor_id(tensor)] = self.capture(
         tensor_in_outer_graph)
@@ -1274,10 +1282,10 @@ def _check_shapes_compat(output_tensors, shape_invariants, input_tensors):
                                  input_tensors):
     if not control_flow_ops._ShapeLessThanOrEqual(t.shape, shape):
       raise ValueError(
-          "Input tensor '%s' enters the loop with shape %s, but has "
-          "shape %s after one iteration. To allow the shape to vary across "
-          "iterations, use the `shape_invariants` argument of tf.while_loop to "
-          "specify a less-specific shape." % (input_t.name, shape, t.shape))
+          f"Input tensor `{input_t.name}` enters the loop with shape {shape}, "
+          f"but has shape {t.shape} after one iteration. To allow the shape to "
+          "vary across iterations, use the `shape_invariants` argument of "
+          "tf.while_loop to specify a less-specific shape.")
 
 
 def _check_num_inputs_outputs(cond_graph, body_graph, num_flattened_loop_vars):
@@ -1299,9 +1307,10 @@ def _check_inputs_outputs_types_match(body_graph, flattened_loop_vars):
   for inp, out, loop_var in zip(body_graph.inputs, body_graph.outputs,
                                 flattened_loop_vars):
     if inp.dtype != out.dtype:
-      raise TypeError("Loop var {} enters the loop with type {} "
-                      "but has type {} after 1 iteration.".format(
-                          loop_var.name, inp.dtype, out.dtype))
+      raise TypeError(
+          f"Loop var {loop_var.name} enters the loop with type {inp.dtype} "
+          f"but has type {out.dtype} after 1 iteration. {loop_var.name} type "
+          "should remain constant.")
 
 
 def _build_cond_placeholders_name_prefix(cond_graph):

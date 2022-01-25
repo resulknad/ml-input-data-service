@@ -84,6 +84,11 @@ py_library(
     ],
 )
 
+# Some of the dependencies in keras_lib are possibly outdated or not generally
+# useful, so a future task is to determine a good set of dependencies.
+# keras_lib may be removed in the future, it should NOT be used as
+# a direct dependency.
+# TODO(b/199420795) investigate minimal set of dependencies ...
 py_library(
     name = "keras_lib",
     srcs_version = "PY3",
@@ -177,7 +182,9 @@ py_library(
         ":weights_broadcast_ops",
         ":while_v2",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/lite/python:analyzer",
         "//tensorflow/lite/python:lite",
+        "//tensorflow/lite/python/authoring",
         "//tensorflow/python/client",
         "//tensorflow/python/client:_pywrap_events_writer",
         "//tensorflow/python/client:pywrap_tf_session",
@@ -191,6 +198,7 @@ py_library(
         "//tensorflow/python/distribute:distribute_config",
         "//tensorflow/python/distribute:estimator_training",
         "//tensorflow/python/distribute:strategy_combinations",  # For tf.__internal__,
+        "//tensorflow/python/distribute/experimental/rpc:rpc_ops",
         "//tensorflow/python/dlpack",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:monitoring",
@@ -429,6 +437,15 @@ py_library(
 py_library(
     name = "extra_py_tests_deps",
     srcs_version = "PY3",
+    # extra_py_tests_deps is public to allow the use of tf_py_test or
+    # cuda_py_test build rules for out-of-tree custom ops.
+    # extra_py_tests_deps should NOT be used as dependency directly
+    # in out-of-tree BUILD files.
+    # Some of the dependencies in :keras_lib are possibly outdated
+    # or not generally useful, so a future task is to determine a good
+    # set of dependencies.
+    # TODO(b/199420795) investigate minimal set of dependencies ...
+    visibility = ["//visibility:public"],
     deps = [
         ":keras_lib",
         "//third_party/py/numpy",
@@ -884,6 +901,19 @@ tf_gen_op_wrapper_private_py(
         "//tensorflow/core:tpu_ordinal_selector_ops_op_lib",
         "//tensorflow/core:tpu_outfeed_ops_op_lib",
         "//tensorflow/core:tpu_replication_ops_op_lib",
+        "//tensorflow/core:tpu_sharding_util_ops_op_lib",
+    ],
+)
+
+tf_gen_op_wrapper_private_py(
+    name = "tpu_xla_ops_gen",
+    visibility = [
+        "//tensorflow:internal",
+        "//tensorflow/python/tpu:__pkg__",
+        "//tensorflow/python/tpu/ops:__pkg__",
+    ],
+    deps = [
+        "//tensorflow/core/tpu/ops",
     ],
 )
 
@@ -1764,6 +1794,7 @@ py_library(
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:sparse_tensor",
+        "//tensorflow/python/saved_model:registration",
         "//tensorflow/python/util",
         "@six_archive//:six",
     ],
@@ -1948,6 +1979,7 @@ py_library(
         ":nn_ops_gen",
         ":platform",
         ":random_ops",
+        ":stateless_random_ops",
         ":variables",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:graph_util",
@@ -2134,6 +2166,8 @@ py_library(
     deps = [
         ":array_ops",
         ":script_ops_gen",
+        "//tensorflow/python/eager:backprop_util",
+        "//tensorflow/python/eager:tape",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/lib/core:_pywrap_py_func",
         "//third_party/py/numpy",
@@ -2793,10 +2827,12 @@ cuda_py_test(
     shard_count = 16,
     tags = [
         "no_cuda_asan",  # TODO(b/171511582): re-enable.
+        "noasan",  # TODO(b/199895990):re-enable
     ],
     deps = [
         ":array_ops",
         ":client_testlib",
+        ":config",
         ":control_flow_ops",
         ":image_ops",
         ":io_ops",
@@ -3197,8 +3233,10 @@ pywrap_tensorflow_macro(
         "//tensorflow/core/profiler/rpc:profiler_server_impl",
         "//tensorflow/core/profiler/rpc/client:profiler_client_impl",
         "//tensorflow/core/profiler/internal:print_model_analysis",
-        "//tensorflow/lite/delegates/flex:delegate",
         "//tensorflow/core/profiler/internal/cpu:python_tracer",
+        "//tensorflow/distribute/experimental/rpc/kernels:rpc_ops",
+        "//tensorflow/lite/delegates/flex:delegate",
+        "//tensorflow/lite/kernels/shim:tf_kernel_shim",
         "//tensorflow/tools/graph_transforms:transform_graph_lib",
         "//tensorflow/lite/toco/python:toco_python_api",
         "//tensorflow/python/client:tf_session_helper",
@@ -3211,6 +3249,7 @@ pywrap_tensorflow_macro(
          tf_additional_profiler_deps()) + if_xla_available([
         "//tensorflow/compiler/aot:tfcompile_lib",
     ]) + if_static(extra_deps = [
+        "//tensorflow/core/util:determinism",
         "//tensorflow/core/platform:tensor_float_32_utils",
         "//tensorflow/core/platform:enable_tf2_utils",
     ]),
@@ -3239,7 +3278,7 @@ filegroup(
         "//tensorflow/c:checkpoint_reader",  # checkpoint_reader
         "//tensorflow/c:python_api",  # tf_session
         "//tensorflow/c:tf_status_helper",  # tfe
-        "//tensorflow/cc/experimental/libexport:metrics_impl",  # SavedModel metrics
+        "//tensorflow/cc/saved_model:metrics_impl",  # SavedModel metrics
         "//tensorflow/compiler/jit:get_compiler_ir",  # tfe
         "//tensorflow/core/platform:statusor",  # tfe
         "//tensorflow/compiler/jit:flags",  # tfe
@@ -3253,10 +3292,12 @@ filegroup(
         "//tensorflow/core/data/service:server_lib",  # server_lib
         "//tensorflow/core:framework_internal_impl",  # op_def_registry
         "//tensorflow/core:lib_internal_impl",  # device_lib
-        "//tensorflow/core:op_gen_lib",  # tf_session, tf_text
+        "//tensorflow/core:op_gen_lib",  # tf_session
         "//tensorflow/core/common_runtime/eager:context",  # tfe
         "//tensorflow/core/common_runtime/eager:tensor_handle",  # tfe
         "//tensorflow/core/common_runtime/eager:eager_executor",  # tfe
+        "//tensorflow/core/framework:attr_value_proto_cc_impl",  # tf_text
+        "//tensorflow/core/framework:op_def_proto_cc_impl",  # tf_text
         "//tensorflow/core/grappler:devices",  # tf_cluster
         "//tensorflow/core/grappler:grappler_item",  # tf_item
         "//tensorflow/core/grappler:grappler_item_builder",  # tf_item
@@ -3273,6 +3314,7 @@ filegroup(
         "//tensorflow/core/grappler/graph_analyzer:graph_analyzer_tool",  # graph_analyzer
         "//tensorflow/core/grappler/optimizers:meta_optimizer",  # tf_optimizer
         "//tensorflow/core/grappler/utils:topological_sort",  # tf_item
+        "//tensorflow/core/util:determinism",  # determinism
         "//tensorflow/core/platform:tensor_float_32_utils",  # tensor_float_32
         "//tensorflow/core/profiler/internal:print_model_analysis",  # tfprof
         "//tensorflow/core/profiler/internal/cpu:traceme_recorder_impl",  # profiler
@@ -3283,6 +3325,8 @@ filegroup(
         "//tensorflow/python/framework:python_api_parameter_converter",  # python_api_parameter_converter
         "//tensorflow/core/util:port",  # util_port
         "//tensorflow/core/util/tensor_bundle",  # checkpoint_reader
+        "//tensorflow/lite/kernels/shim:shape",  # tf_text
+        "//tensorflow/lite/kernels/shim:tf_op_shim",  # tf_text
         "//tensorflow/lite/toco/python:toco_python_api",  # toco
         "//tensorflow/python/client:tf_session_helper",  # tf_session
         "//tensorflow/python/eager:pywrap_tfe_lib",  # pywrap_tfe_lib
@@ -3493,9 +3537,11 @@ py_test(
         ":gradients",
         ":math_ops",
         ":random_ops",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/framework:test_lib",
     ],
 )

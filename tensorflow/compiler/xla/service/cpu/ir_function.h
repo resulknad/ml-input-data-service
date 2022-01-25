@@ -88,6 +88,9 @@ class IrFunction {
   // argument.
   llvm::Value* profile_counters_arg() { return profile_counters_arg_; }
 
+  // Get the llvm::BasicBlock* that contains this function's "ret" instruction.
+  llvm::BasicBlock* return_block() { return return_block_; }
+
  private:
   // Initialize an llvm::Function with standard signature based on arguments.
   void Initialize(const string& function_name,
@@ -102,7 +105,7 @@ class IrFunction {
   llvm::Module* llvm_module_;
   llvm::IRBuilder<>::InsertPointGuard caller_insert_point_guard_;
 
-  int64 num_dynamic_loop_bounds_ = 0;
+  int64_t num_dynamic_loop_bounds_ = 0;
   // Encapsulated llvm::Function.
   llvm::Function* function_;
   // Function argument IR values.
@@ -112,6 +115,8 @@ class IrFunction {
   llvm::Value* buffer_table_arg_;
   llvm::Value* dynamic_loop_bounds_arg_ = nullptr;
   llvm::Value* profile_counters_arg_;
+  // Basic block containing return.
+  llvm::BasicBlock* return_block_;
 };
 
 // Returns arguments in `arguments` encoded as a single buffer, suitable for a
@@ -131,8 +136,9 @@ std::vector<llvm::Value*> GetArrayFunctionCallArguments(
 // calls to 'parallel_function' (and joins threads before returning).
 Status EmitCallToParallelForkJoin(
     const std::vector<llvm::Value*>& arguments, const Shape& shape,
-    const std::vector<int64>& dimension_partition_counts, llvm::IRBuilder<>* b,
-    llvm::Function* parallel_function, const string& name);
+    const std::vector<int64_t>& dimension_partition_counts,
+    llvm::IRBuilder<>* b, llvm::Function* parallel_function,
+    const string& name);
 
 }  // namespace cpu
 }  // namespace xla

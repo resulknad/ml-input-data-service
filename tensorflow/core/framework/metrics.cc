@@ -134,6 +134,24 @@ auto* tf_data_model_gauge =
     monitoring::Gauge<std::function<std::string()>, 1>::New(
         "/tensorflow/data/model", "tf.data autotuning model proto.", "id");
 
+auto* tf_data_auto_shard = monitoring::Gauge<int64, 2>::New(
+    "/tensorflow/data/autoshard", "tf.data autoshard statistics.", "id",
+    "name");
+
+auto* tf_data_auto_shard_rewrite_batch_size_eligible =
+    monitoring::Counter<1>::New(
+        "/tensorflow/data/autoshard_rewrite_batch_size/eligible",
+        "Whether tf.data pipelines that are eligible for autoshard "
+        "to rewrite the batch size.",
+        "eligible");
+
+auto* tf_data_auto_shard_rewrite_batch_size_reason =
+    monitoring::Counter<1>::New(
+        "/tensorflow/data/autoshard_rewrite_batch_size/reason",
+        "The reasons that tf.data pipelines are ineligible for autoshard "
+        "to rewrite the batch size.",
+        "reason");
+
 auto* parse_dense_feature_counter = monitoring::Counter<0>::New(
     "/tensorflow/data/dense_feature",
     "The number of dense features parsed by ops for parsing tf.Example.");
@@ -219,7 +237,7 @@ monitoring::GaugeCell<std::function<std::string()>>* GetTFDataModelGauge(
   return tf_data_model_gauge->GetCell(id);
 }
 
-void RecordTFDataBytesFetched(int64 num_bytes) {
+void RecordTFDataBytesFetched(int64_t num_bytes) {
   tf_data_bytes_fetched_counter->GetCell()->IncrementBy(num_bytes);
 }
 
@@ -249,7 +267,7 @@ void RecordTFDataIteratorLifetime(uint64 duration_us) {
   tf_data_iterator_lifetime_cell->IncrementBy(duration_us);
 }
 
-void RecordTFDataOptimization(const string& name, int64 num_changes) {
+void RecordTFDataOptimization(const string& name, int64_t num_changes) {
   tf_data_optimization_counter->GetCell(name)->IncrementBy(num_changes);
 }
 
@@ -261,19 +279,37 @@ void RecordTFDataFilename(const string& name, const string& filename) {
   tf_data_filename_counter->GetCell(name, filename)->IncrementBy(1);
 }
 
+void RecordTFDataAutoShard(const string& id, data::AutoShardPolicy policy,
+                           int64 num_workers, int64 num_replicas) {
+  tf_data_auto_shard->GetCell(id, "policy")->Set(static_cast<int64>(policy));
+  tf_data_auto_shard->GetCell(id, "num_workers")->Set(num_workers);
+  tf_data_auto_shard->GetCell(id, "num_replicas")->Set(num_replicas);
+}
+
+void RecordTFDataAutoShardRewriteBatchSize(
+    bool eligible, const std::vector<string>& ineligible_reason) {
+  tf_data_auto_shard_rewrite_batch_size_eligible
+      ->GetCell(eligible ? "true" : "false")
+      ->IncrementBy(1);
+  for (const string& reason : ineligible_reason) {
+    tf_data_auto_shard_rewrite_batch_size_reason->GetCell(reason)->IncrementBy(
+        1);
+  }
+}
+
 void RecordParseDenseFeature(int64 num_features) {
   static auto* parse_dense_feature_counter_cell =
       parse_dense_feature_counter->GetCell();
   parse_dense_feature_counter_cell->IncrementBy(num_features);
 }
 
-void RecordParseSparseFeature(int64 num_features) {
+void RecordParseSparseFeature(int64_t num_features) {
   static auto* parse_sparse_feature_counter_cell =
       parse_sparse_feature_counter->GetCell();
   parse_sparse_feature_counter_cell->IncrementBy(num_features);
 }
 
-void RecordParseRaggedFeature(int64 num_features) {
+void RecordParseRaggedFeature(int64_t num_features) {
   static auto* parse_ragged_feature_counter_cell =
       parse_ragged_feature_counter->GetCell();
   parse_ragged_feature_counter_cell->IncrementBy(num_features);
@@ -291,7 +327,7 @@ void RecordGraphOutputTensors(const size_t size) {
   graph_run_output_tensor_bytes_cell->Add(size);
 }
 
-void RecordTPUXlaSpmdCoresPerReplica(int64 cores_per_replica) {
+void RecordTPUXlaSpmdCoresPerReplica(int64_t cores_per_replica) {
   xla_tpu_spmd_cores_per_replica->GetCell(absl::StrCat(cores_per_replica))
       ->IncrementBy(1);
 }
@@ -326,6 +362,34 @@ void UpdateGrapplerPassTime(const string& pass_name,
                             const uint64 running_time_usecs) {
   if (running_time_usecs > 0) {
     graph_optimization_usecs->GetCell("Grappler", pass_name)
+        ->IncrementBy(running_time_usecs);
+  }
+}
+
+void UpdateMlirGraphOptimizationPassTime(const string& pass_name,
+                                         const uint64 running_time_usecs) {
+  // TODO(jpienaar): Name here is temporary, currently the frameworks are
+  // distinct and so useful to be able to differentiate (esp as I have not
+  // checked for name conflicts) but not desirable in end state. Unify these
+  // post cleanups.
+  if (running_time_usecs > 0) {
+    graph_optimization_usecs->GetCell("TfMlir", pass_name)
+        ->IncrementBy(running_time_usecs);
+  }
+}
+
+void UpdateTFDataPassTime(const string& pass_name,
+                          const uint64 running_time_usecs) {
+  if (running_time_usecs > 0) {
+    graph_optimization_usecs->GetCell("TFDataPass", pass_name)
+        ->IncrementBy(running_time_usecs);
+  }
+}
+
+void UpdateGraphOptimizerPassTime(const string& pass_name,
+                                  const uint64 running_time_usecs) {
+  if (running_time_usecs > 0) {
+    graph_optimization_usecs->GetCell("GraphOptimizerPass", pass_name)
         ->IncrementBy(running_time_usecs);
   }
 }

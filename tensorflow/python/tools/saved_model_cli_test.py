@@ -386,7 +386,7 @@ Defined Functions:
     input_expr_str = 'input3=np.zeros([2,2]);input4=[4,5]'
     input_dict = saved_model_cli.preprocess_inputs_arg_string(input_str)
     input_expr_dict = saved_model_cli.preprocess_input_exprs_arg_string(
-        input_expr_str)
+        input_expr_str, safe=False)
     self.assertTrue(input_dict['input1'] == ('/path/file.txt', 'ab3'))
     self.assertTrue(input_dict['input2'] == ('file2', None))
     print(input_expr_dict['input3'])
@@ -422,6 +422,11 @@ Defined Functions:
           }
     """, feature)
 
+  def testInputPreprocessExampleWithCodeInjection(self):
+    input_examples_str = 'inputs=os.system("echo hacked")'
+    with self.assertRaisesRegex(RuntimeError, 'not a valid python literal.'):
+      saved_model_cli.preprocess_input_examples_arg_string(input_examples_str)
+
   def testInputPreProcessFileNames(self):
     input_str = (r'inputx=C:\Program Files\data.npz[v:0];'
                  r'input:0=c:\PROGRA~1\data.npy')
@@ -438,8 +443,8 @@ Defined Functions:
     with self.assertRaises(RuntimeError):
       saved_model_cli.preprocess_inputs_arg_string(input_str)
     input_str = 'inputx:np.zeros((5))'
-    with self.assertRaises(RuntimeError):
-      saved_model_cli.preprocess_input_exprs_arg_string(input_str)
+    with self.assertRaisesRegex(RuntimeError, 'format is incorrect'):
+      saved_model_cli.preprocess_input_exprs_arg_string(input_str, safe=False)
 
   def testInputParserNPY(self):
     x0 = np.array([[1], [2]])
@@ -625,6 +630,17 @@ Defined Functions:
         'regress_x2_to_y3', '--input_exprs', 'x2=np.ones((3,1))'
     ])
     with self.assertRaises(ValueError):
+      saved_model_cli.run(args)
+
+  def testRunCommandInvalidSignature(self):
+    self.parser = saved_model_cli.create_parser()
+    base_path = test.test_src_dir_path(SAVED_MODEL_PATH)
+    args = self.parser.parse_args([
+        'run', '--dir', base_path, '--tag_set', 'serve', '--signature_def',
+        'INVALID_SIGNATURE', '--input_exprs', 'x2=np.ones((3,1))'
+    ])
+    with self.assertRaisesRegex(ValueError,
+                                'Could not find signature "INVALID_SIGNATURE"'):
       saved_model_cli.run(args)
 
   def testRunCommandInputExamplesNotListError(self):

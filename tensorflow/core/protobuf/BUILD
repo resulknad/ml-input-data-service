@@ -33,6 +33,7 @@ COMMON_PROTO_SRCS = [
     "rewriter_config.proto",
     "tensor_bundle.proto",
     "saver.proto",
+    "status.proto",
     "verifier_config.proto",
 ]
 
@@ -178,6 +179,7 @@ tf_proto_library(
         # NOTE: tf_proto_library requires files to be in the same package.
         "snapshot.proto",
         "service_cache.proto",
+        "data_service.proto",
         "service_config.proto",
         "debug_event.proto",
         "composite_tensor_variant.proto",

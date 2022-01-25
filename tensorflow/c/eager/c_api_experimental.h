@@ -640,6 +640,12 @@ TF_CAPI_EXPORT extern const char* TFE_TensorHandleDeviceType(
 TF_CAPI_EXPORT extern int TFE_TensorHandleDeviceID(TFE_TensorHandle* h,
                                                    TF_Status* status);
 
+// Returns the status for the tensor handle. In TFRT, a tensor handle can carry
+// error info if error happens. If so, status will be set with the error info.
+// If not, status will be set as OK.
+TF_CAPI_EXPORT extern void TFE_TensorHandleGetStatus(TFE_TensorHandle* h,
+                                                     TF_Status* status);
+
 // Get a comma-separated list of op names executed in graph functions dispatched
 // to `ctx`. This feature is currently only enabled for TFRT debug builds, for
 // performance and simplicity reasons.
@@ -664,10 +670,10 @@ TF_CAPI_EXPORT extern void TFE_SetLogicalCpuDevices(TFE_Context* ctx,
 // Note that the key-values are only expected to be used for cluster
 // configuration data, and should not be used for storing large amount of data
 // or being accessed very frequently.
-TF_CAPI_EXPORT extern void TFE_SetConfigKeyValue(TFE_Context* ctx,
-                                                 const char* key,
-                                                 const char* value,
-                                                 TF_Status* status);
+TF_CAPI_EXPORT extern void TFE_InsertConfigKeyValue(TFE_Context* ctx,
+                                                    const char* key,
+                                                    const char* value,
+                                                    TF_Status* status);
 
 // Get configuration key and value using coordination service.
 // The config key must be set before getting its value. Getting value of
@@ -681,6 +687,13 @@ TF_CAPI_EXPORT extern void TFE_GetConfigKeyValue(TFE_Context* ctx,
 // all key-values under the path specified by `key`.
 TF_CAPI_EXPORT extern void TFE_DeleteConfigKeyValue(TFE_Context* ctx,
                                                     const char* key,
+                                                    TF_Status* status);
+
+// Report error (specified by error_code and error_message) to other tasks in
+// the cluster.
+TF_CAPI_EXPORT extern void TFE_ReportErrorToCluster(TFE_Context* ctx,
+                                                    int error_code,
+                                                    const char* error_message,
                                                     TF_Status* status);
 
 #ifdef __cplusplus

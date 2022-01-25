@@ -54,23 +54,23 @@ class Window : public DatasetBase {
     return output_shapes_;
   }
 
-  int64 AllocatedBytes() const override {
-    int64 allocated_bytes = 0;
+  int64_t AllocatedBytes() const override {
+    int64_t allocated_bytes = 0;
     for (auto& element : elements_) {
       allocated_bytes += GetAllocatedBytes(element);
     }
     return allocated_bytes;
   }
 
-  int64 TotalBytes() const override {
-    int64 total_bytes = 0;
+  int64_t TotalBytes() const override {
+    int64_t total_bytes = 0;
     for (auto& element : elements_) {
       total_bytes += GetTotalBytes(element);
     }
     return total_bytes;
   }
 
-  int64 Cardinality() const override { return elements_.size(); }
+  int64_t Cardinality() const override { return elements_.size(); }
 
   string DebugString() const override { return kWindow; }
 
@@ -84,7 +84,7 @@ class Window : public DatasetBase {
   Status AsGraphDefInternal(SerializationContext* ctx,
                             DatasetGraphDefBuilder* b,
                             Node** output) const override {
-    if (!ctx->serialize_data_tensors()) {
+    if (ctx->is_graph_rewrite()) {
       // If data tensors are not to be serialized (e.g. when the serialization
       // is done for the sake of graph optimizations), we return
       // `errors::Unimplemented` to short-circuit the computation.
@@ -132,7 +132,7 @@ class Window : public DatasetBase {
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
       mutex_lock l(mu_);
-      int64 i;
+      int64_t i;
       TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kCurIndex), &i));
       i_ = size_t(i);
       return Status::OK();
@@ -188,7 +188,7 @@ Status NewWindow(std::vector<std::vector<Tensor>> elements,
   // the elements match the output_types and output_shapes.
   *out_dataset = new Window(std::move(elements), std::move(output_types),
                             std::move(output_shapes));
-  (*out_dataset)->Initialize();
+  (*out_dataset)->Initialize(/*metadata=*/{});
   return Status::OK();
 }
 

@@ -412,7 +412,16 @@ REGISTER_OP("GroupByWindowDataset")
     .Attr("Twindow_size_func_other_arguments: list(type) >= 0")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
+    .Attr("metadata: string = ''")
     .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("GetElementAtIndex")
+    .Input("dataset: variant")
+    .Input("index: int64")
+    .Output("components: output_types")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::DatasetIteratorShape);
 
 REGISTER_OP("ExperimentalGroupByWindowDataset")
     .Input("input_dataset: variant")
@@ -509,6 +518,7 @@ REGISTER_OP("MapAndBatchDataset")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .Attr("preserve_cardinality: bool = false")
+    .Attr("metadata: string = ''")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       // Use index from the end to retrieve the Input shapes,
       // so that to avoid guessing the length of "other_arguments".
@@ -628,6 +638,7 @@ REGISTER_OP("ParallelInterleaveDataset")
     .Attr("Targuments: list(type) >= 0")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
+    .Attr("metadata: string = ''")
     .SetShapeFn(shape_inference::ScalarShape);
 
 // This is the V2 of ParallelInterleaveDataset, renamed to differentiate it
@@ -646,6 +657,7 @@ REGISTER_OP("LegacyParallelInterleaveDatasetV2")
     .Attr("Targuments: list(type) >= 0")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
+    .Attr("metadata: string = ''")
     .SetShapeFn(shape_inference::ScalarShape);
 
 // This op is no longer used. We keep it so that we can read graphs written by
@@ -760,6 +772,7 @@ REGISTER_OP("RandomDataset")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
+    .Attr("metadata: string = ''")
     .SetDoNotOptimize()  // TODO(b/123753214): See comment in dataset_ops.cc.
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
@@ -825,6 +838,7 @@ REGISTER_OP("ScanDataset")
     .Attr("output_shapes: list(shape) >= 1")
     .Attr("preserve_cardinality: bool = false")
     .Attr("use_default_device: bool = true")
+    .Attr("metadata: string = ''")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("ExperimentalScanDataset")
@@ -966,6 +980,7 @@ REGISTER_OP("SnapshotDatasetV2")
     .Attr("shard_func: func")
     .Attr("Treader_func_args: list(type) >= 0")
     .Attr("Tshard_func_args: list(type) >= 0")
+    .Attr("metadata: string = ''")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
       // `path` should be a scalar.
@@ -1125,6 +1140,7 @@ REGISTER_OP("TakeWhileDataset")
     .Attr("Targuments: list(type) >= 0")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
+    .Attr("metadata: string = ''")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("ExperimentalTakeWhileDataset")
@@ -1176,6 +1192,7 @@ REGISTER_OP("UnbatchDataset")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
+    .Attr("metadata: string = ''")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("ExperimentalUnbatchDataset")
@@ -1190,6 +1207,7 @@ REGISTER_OP("UniqueDataset")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
+    .Attr("metadata: string = ''")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("ExperimentalUniqueDataset")

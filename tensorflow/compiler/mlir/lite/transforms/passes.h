@@ -50,7 +50,8 @@ std::unique_ptr<OperationPass<FuncOp>> CreatePrepareTFPass(
 // Creates an instance of the TensorFlow Lite dialect LowerStaticTensorList
 // pass.
 std::unique_ptr<OperationPass<ModuleOp>> CreateLowerStaticTensorListPass(
-    bool allow_tensorlist_pass_through = false);
+    bool allow_tensorlist_pass_through = false,
+    bool default_to_single_batch = false);
 
 // Creates an instance of the TensorFlow Lite dialect Quantize pass.
 std::unique_ptr<OperationPass<FuncOp>> CreateQuantizePass(
@@ -126,6 +127,9 @@ std::unique_ptr<OperationPass<FuncOp>> CreateLowerCustomOpsPass();
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateInsertCallOnceOpFromSessionInitializerPass();
 
+// Replace the tfl wrapped random function body with tfl.customOp.
+std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeJaxRandomPass();
+
 // Creates a pass which is responsible for legalizing TensorFlow variables to
 // TensorFlow Lite variables.
 std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeVariablesPass();
@@ -141,6 +145,10 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeHashTablesPass();
 // Creates get arithmetic count pass, which will calculate the arithmetic count
 // for each ops.
 std::unique_ptr<OperationPass<FuncOp>> CreateGetArithmeticCountPass();
+
+// Creates unfold large constant pass, which will replace large splat constant
+// tensors with fill op.
+std::unique_ptr<OperationPass<ModuleOp>> CreateUnfoldLargeSplatConstantPass();
 }  // namespace TFL
 
 }  // namespace mlir

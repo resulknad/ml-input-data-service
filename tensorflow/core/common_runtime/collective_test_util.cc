@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/threadpool_device.h"
 #include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/platform/refcount.h"
@@ -93,8 +94,8 @@ std::vector<std::unique_ptr<Device>> CreateCPUDevices(
   std::vector<std::unique_ptr<Device>> devices;
   for (int wi = 0; wi < num_workers; ++wi) {
     for (int di = 0; di < num_devices_per_worker; ++di) {
-      string dev_name =
-          strings::StrCat("/job:worker/replica:0/task:", wi, "/cpu:", di);
+      string dev_name = strings::StrCat("/job:worker/replica:0/task:", wi,
+                                        "/device:CPU:", di);
       devices.push_back(absl::make_unique<ThreadPoolDevice>(
           sess_opts, dev_name, mem_limit, dev_locality, cpu_allocator()));
     }
@@ -139,7 +140,11 @@ std::vector<std::unique_ptr<Device>> CreateGPUDevices() {
 std::unique_ptr<CollectiveTestEnv> CreateCollectiveTestEnv(
     int num_workers, int num_devices_per_worker, DeviceType device_type) {
   auto test_env = absl::make_unique<CollectiveTestEnv>();
-  test_env->col_exec_mgr = absl::make_unique<TestCollectiveExecutorMgr>();
+  test_env->param_resolver = absl::make_unique<TestParamResolver>();
+  // We don't create CollecticeExecutor from the CollecticeExecutorMgr so we
+  // don't need to pass rma.
+  test_env->col_exec_mgr = absl::make_unique<TestCollectiveExecutorMgr>(
+      test_env->param_resolver.get(), /*rma=*/nullptr);
   test_env->num_workers = num_workers;
   test_env->num_devices_per_worker = num_devices_per_worker;
   test_env->device_type = device_type;
@@ -211,16 +216,14 @@ core::RefCountPtr<CollectiveParams> CreateCollectiveParams(
     col_params->group.num_devices_per_task[task_name] =
         test_env.num_devices_per_worker;
     for (int di = 0; di < test_env.num_devices_per_worker; ++di) {
-      string dev_name = strings::StrCat(task_name, "/cpu:", di);
-      if (test_env.device_type == DEVICE_GPU) {
-        dev_name = strings::StrCat(
-            task_name, "/gpu:", di % test_env.device_mgr->NumDeviceType("GPU"));
-      }
-      col_params->group.device_names.push_back(dev_name);
-      col_params->group.task_names.push_back(task_name);
+      CollGroupMember member;
+      member.device.set_name(strings::StrCat(
+          task_name, "/device:", test_env.device_type.type_string(), ":", di));
+      member.task = task_name;
       // Normally each device would set is_local to its own perspective but
       // this test runs in a single process so is_local is always true.
-      col_params->task.is_local.push_back(true);
+      member.is_local = true;
+      col_params->group.members.push_back(member);
     }
   }
 
@@ -325,6 +328,7 @@ Status RunCollective(CollectiveTestEnv* test_env, CollectiveParams* col_params,
   op_params.forward_from_array = &forward_from;
   AllocatorAttributes generic_alloc_attr;
   op_params.output_attr_array = &generic_alloc_attr;
+  op_params.resource_manager = device->resource_manager();
   OpKernelContext ctx(&op_params, 1);
 
   // Prepare a collective instance.

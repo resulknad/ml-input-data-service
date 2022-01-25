@@ -191,7 +191,7 @@ An n-way switch statement, implementing the following:
 // its type encoding the tensor's shape and data type.
 def TF_ConstOp : TF_Op<"Const", [ConstantLike, NoSideEffect,
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
-    DeclareOpInterfaceMethods<OpAsmOpInterface>]> {
+    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
   let summary = "Constant tensor op";
 
   let arguments = (ins
@@ -216,22 +216,6 @@ def TF_ConstOp : TF_Op<"Const", [ConstantLike, NoSideEffect,
       return BroadcastCompatible(l, r);
     }
   }];
-}
-
-def TF_XlaAllReduceOp : TF_Op<"XlaAllReduce", [NoSideEffect, TF_AllTypesMatch<["input", "output"]>]> {
-  let summary = "An Op to reduce inputs across replicated TPU instances.";
-
-  let arguments = (ins
-    TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Int32, TF_Uint32]>:$input,
-    TF_Int32Tensor:$group_assignment,
-    TF_AnyStrAttrOf<["Min", "Max", "Mul", "Add", "Mean"]>:$reduce_op
-  );
-
-  let results = (outs
-    TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Int32, TF_Uint32]>:$output
-  );
-
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_EmptyTensorListOp : TF_TensorListInitOp<"EmptyTensorList"> {
@@ -296,12 +280,14 @@ else_branch: A function that takes 'inputs' and returns a list of
   let extraClassDeclaration = [{
     // Get the then branch function.
     FuncOp then_function() {
-     return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, then_branch());
+     return SymbolTable::lookupNearestSymbolFrom<FuncOp>(
+         *this, then_branchAttr());
     }
 
     // Get the else branch function.
     FuncOp else_function() {
-     return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, else_branch());
+     return SymbolTable::lookupNearestSymbolFrom<FuncOp>(
+         *this, else_branchAttr());
     }
   }];
 }
@@ -411,7 +397,7 @@ def TF_LegacyCallOp : TF_Op<"LegacyCall",
 
     // returns the callee of this operation.
     FuncOp func() {
-      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, f());
+      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, fAttr());
     }
   }];
 }
@@ -568,7 +554,7 @@ underlying graph, and executes each of the partitioned subgraphs as a function.
 
     // returns the callee of this operation.
     FuncOp func() {
-      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, f());
+      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, fAttr());
     }
   }];
 
@@ -631,12 +617,12 @@ body: A function that takes a list of tensors and returns another
   let extraClassDeclaration = [{
     // Get the condition function.
     FuncOp cond_function() {
-      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, cond());
+      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, condAttr());
     }
 
     // Get the body function.
     FuncOp body_function() {
-      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, body());
+      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, bodyAttr());
     }
   }];
 }
@@ -877,8 +863,8 @@ def TF_ReduceDatasetOp : TF_Op<"ReduceDataset", [SameVariadicOperandSize]> {
   );
 }
 
-// Manually defined to restrict result type to `0DTensorOf<[I1]>`.
-def TF_ToBoolOp : TF_Op<"ToBool", [NoSideEffect]> {
+// Manually defined to restrict result type to `I1Tensor`.
+def TF_ToBoolOp : TF_Op<"ToBool", [DeclareOpInterfaceMethods<InferTypeOpInterface>, NoSideEffect]> {
   let summary = "Converts a tensor to a scalar predicate.";
 
   let description = [{
@@ -901,19 +887,19 @@ as true/false for a branch condition.
   );
 
   let results = (outs
-    0DTensorOf<[I1]>:$output
+    I1Tensor:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
-  let builders = [
-    OpBuilder<(ins "Value":$value),
-    [{
-      build($_builder, $_state, RankedTensorType::get({}, $_builder.getI1Type()),
-            value);
-    }]>];
-
   let hasCanonicalizer = 1;
+
+  let extraClassDeclaration = [{
+    // InferTypeOpInterface:
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
+      return ArraysAreCastCompatible(l, r);
+    }
+  }];
 }
 
 def TF_BesselI0eOp : TF_Op<"BesselI0e", [NoSideEffect, SameOperandsAndResultType]> {
@@ -985,7 +971,7 @@ def TF_TPUPartitionedCallOp : TF_Op<"TPUPartitionedCall", [CallOpInterface]> {
 
     // returns the callee of this operation.
     FuncOp func() {
-      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, f());
+      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, fAttr());
     }
   }];
 
@@ -1517,6 +1503,33 @@ def TF__InternalTestNonResourceValueSideEffects_ : TF_Op<"_InternalTestNonResour
     Arg<TF_StrTensor,"", [TF_DatasetIteratorRead, TF_DatasetIteratorWrite]>:$key
   );
   let results = (outs);
+}
+
+def TF_TPUCompileMlirAndExecuteOp : TF_Op<"TPUCompileMlirAndExecute", []> {
+  let summary = "Op that compiles a computation in MLIR into a TPU program, and loads and executes it on a TPU device.";
+
+  let description = [{
+For the internal use of the TPU compiler.
+
+'mlir_module' is a serialized MLIR module with a `main` function that contains
+target computation.
+'metadata' is a serialized TPUCompileMetadataProto describing the shapes and
+types of the inputs to the computation, as well as a mapping onto the TPU pod
+topology.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$args,
+    DefaultValuedAttr<StrAttr, "">:$mlir_module,
+    StrAttr:$metadata
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$results
+  );
+
+  TF_DerivedOperandTypeListAttr Targs = TF_DerivedOperandTypeListAttr<0>;
+  TF_DerivedResultTypeListAttr Tresults = TF_DerivedResultTypeListAttr<0>;
 }
 
 #endif // TF_OPS

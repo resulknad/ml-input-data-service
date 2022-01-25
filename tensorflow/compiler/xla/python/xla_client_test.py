@@ -126,8 +126,8 @@ def TestFactory(xla_backend,
     return np.array(*args, dtype=np.int32, **kwargs)
 
   def NumpyArrayBool(*args, **kwargs):
-    """Convenience wrapper to create Numpy arrays with a np.bool dtype."""
-    return np.array(*args, dtype=np.bool, **kwargs)
+    """Convenience wrapper to create Numpy arrays with a np.bool_ dtype."""
+    return np.array(*args, dtype=np.bool_, **kwargs)
 
   class ComputationPrinting(absltest.TestCase):
 
@@ -731,7 +731,7 @@ def TestFactory(xla_backend,
         "src_dtype": src_dtype,
         "dst_dtype": dst_dtype,
     } for src_dtype, dst_dtype in itertools.permutations(
-        [np.bool, np.int32, np.int64, np.float32, np.float64], 2))
+        [np.bool_, np.int32, np.int64, np.float32, np.float64], 2))
     # pyformat: enable
     def testConvertElementType(self, src_dtype, dst_dtype):
       if ((src_dtype in [np.int64, np.float64] or
@@ -2100,9 +2100,9 @@ def TestFactory(xla_backend,
     def testSetSharding(self):
       c = self._NewComputation()
       sharding = xla_client.OpSharding()
-      sharding.type = sharding.type.REPLICATED
-      sharding.tile_assignment_dimensions.extend([1])
-      sharding.tile_assignment_devices.extend([0])
+      sharding.type = xla_client.OpSharding.Type.REPLICATED
+      sharding.tile_assignment_dimensions = [1]
+      sharding.tile_assignment_devices = [0]
       c.set_sharding(sharding)
       x = ops.Parameter(c, 0, xla_client.shape_from_pyval(NumpyArrayF32(2.0)))
       c.clear_sharding()
@@ -2335,6 +2335,7 @@ def TestFactory(xla_backend,
 
     def testPlatformVersion(self):
       version = self.backend.platform_version
+      logging.info("platform_version:\n%s", version)
       if self.backend.platform == "cpu":
         self.assertEqual(version, "<unknown>")
       elif self.backend.platform == "gpu":
@@ -2345,6 +2346,9 @@ def TestFactory(xla_backend,
               msg=f"Expected CUDA version string; got {repr(version)}")
         else:
           self.assertEqual(version, "<unknown>")
+      elif self.backend.platform == "tpu" and not cloud_tpu:
+        self.assertIn("tpu", version.lower())
+        self.assertIn("cl/", version)
 
     @unittest.skipIf(cloud_tpu or tfrt_tpu, "not implemented")
     def testExecutableSerialization(self):

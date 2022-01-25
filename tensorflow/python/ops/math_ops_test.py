@@ -280,7 +280,32 @@ class MatMulTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                             (dtypes.int8, dtypes.uint8),
                             (dtypes.uint8, dtypes.int8))
   # TODO(shivaniagrawal): matmul (dtypes.uint8, dtypes.uint8) fails in xla_gpu.
-  def testInt8Matmul(self, a_dtype, b_dtype):
+  def testInt8MatMul2D(self, a_dtype, b_dtype):
+    a = constant_op.constant([1, 2, 3, 4, 5, 6], shape=[2, 3], dtype=a_dtype)
+    b = constant_op.constant([7, 8, 9, 10, 11, 12], shape=[3, 2], dtype=b_dtype)
+    c = math_ops.matmul(a, b, output_type=dtypes.int32)
+    c_np = constant_op.constant([[58, 64], [139, 154]],
+                                shape=(2, 2),
+                                dtype=dtypes.int32)
+    self.assertAllClose(c, c_np)
+
+  @parameterized.parameters((dtypes.int8), (dtypes.uint8))
+  def testMixPrecMatMul2D(self, b_dtype):
+    a = constant_op.constant([1, 2, 3, 4, 5, 6],
+                             shape=[2, 3],
+                             dtype=dtypes.bfloat16)
+    b = constant_op.constant([7, 8, 9, 10, 11, 12], shape=[3, 2], dtype=b_dtype)
+    c = math_ops.matmul(a, b, output_type=dtypes.bfloat16)
+    c_np = constant_op.constant([[58, 64], [139, 154]],
+                                shape=(2, 2),
+                                dtype=dtypes.bfloat16)
+    self.assertAllClose(c, c_np, atol=1e-2)
+
+  @parameterized.parameters((dtypes.int8, dtypes.int8),
+                            (dtypes.int8, dtypes.uint8),
+                            (dtypes.uint8, dtypes.int8))
+  # TODO(shivaniagrawal): matmul (dtypes.uint8, dtypes.uint8) fails in xla_gpu.
+  def testInt8BatchMatmul(self, a_dtype, b_dtype):
     a = constant_op.constant(np.arange(1, 13), shape=[2, 2, 3], dtype=a_dtype)
     b = constant_op.constant(np.arange(13, 25), shape=[2, 3, 2], dtype=b_dtype)
     c_np = constant_op.constant(
@@ -291,7 +316,7 @@ class MatMulTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertAllEqual(c, c_np)
 
   @parameterized.parameters((dtypes.int8), (dtypes.uint8))
-  def testMixPrecMatmul(self, b_dtype):
+  def testMixPrecBatchMatmul(self, b_dtype):
     a = constant_op.constant(
         np.arange(1, 13), shape=[2, 2, 3], dtype=dtypes.bfloat16)
     b = constant_op.constant(np.arange(13, 25), shape=[2, 3, 2], dtype=b_dtype)
@@ -403,7 +428,7 @@ class ApproximateEqualTest(test_util.TensorFlowTestCase):
     for dtype in [np.float32, np.double]:
       x = np.array([[[[-1, 2.00009999], [-3, 4.01]]]], dtype=dtype)
       y = np.array([[[[-1.001, 2], [-3.00009, 4]]]], dtype=dtype)
-      z = np.array([[[[False, True], [True, False]]]], dtype=np.bool)
+      z = np.array([[[[False, True], [True, False]]]], dtype=np.bool_)
       with test_util.device(use_gpu=True):
         z_tf = self.evaluate(math_ops.approximate_equal(x, y, tolerance=0.0001))
         self.assertAllEqual(z, z_tf)
@@ -795,6 +820,19 @@ class DivNoNanTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     # Results should always be exactly zero.
     self.assertAllEqual(tf_result, zero)
 
+  @parameterized.parameters((dtypes.bfloat16), (dtypes.float16),
+                            (dtypes.float32), (dtypes.float64),
+                            (dtypes.complex64), (dtypes.complex128))
+  def testNonFiniteInNumerator(self, dtype):
+    nums = constant_op.constant([np.nan, np.inf, np.NINF], dtype=dtype)
+    zeros = constant_op.constant([0, 0, 0], dtype=dtype)
+    ones = constant_op.constant([1, 1, 1], dtype=dtype)
+    with test_util.use_gpu():
+      tf_result_zeros = math_ops.div_no_nan(nums, zeros)
+      self.assertAllEqual([0, 0, 0], tf_result_zeros)
+      tf_result_ones = math_ops.div_no_nan(nums, ones)
+      self.assertAllEqual(nums / ones, tf_result_ones)
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class MultiplyNoNanTest(test_util.TensorFlowTestCase):
@@ -810,6 +848,10 @@ class MultiplyNoNanTest(test_util.TensorFlowTestCase):
         self.assertAllEqual(tf_result_zeros, zeros)
         tf_result_ones = math_ops.multiply_no_nan(x, ones)
         self.assertAllEqual(tf_result_ones, x)
+        # Normal floating point arithmetic if nonfinite values are in the
+        # second argument.
+        tf_result_reverseargs = math_ops.multiply_no_nan(zeros, x)
+        self.assertAllEqual(zeros * x, tf_result_reverseargs)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -971,7 +1013,7 @@ class BinaryOpsTest(test_util.TensorFlowTestCase):
           r"Attempt to convert a value .* with an unsupported type")
     else:
       error = TypeError
-      error_message = (r"Failed to convert object of type .* to Tensor")
+      error_message = (r"Failed to convert elements of .* to Tensor")
 
     class RHSReturnsTrue(object):
 

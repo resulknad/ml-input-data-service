@@ -630,9 +630,6 @@ def tf_additional_device_tracer_srcs():
         "device_tracer_rocm.cc",
     ]
 
-def tf_additional_cupti_utils_cuda_deps():
-    return []
-
 def tf_additional_test_deps():
     return []
 
@@ -665,16 +662,6 @@ def tf_additional_core_deps():
         clean_dep("//tensorflow:no_gcp_support"): [],
         "//conditions:default": [
             "//tensorflow/core/platform/cloud:gcs_file_system",
-        ],
-    }) + select({
-        clean_dep("//tensorflow:no_hdfs_support"): [],
-        "//conditions:default": [
-            clean_dep("//tensorflow/core/platform/hadoop:hadoop_file_system"),
-        ],
-    }) + select({
-        clean_dep("//tensorflow:no_aws_support"): [],
-        "//conditions:default": [
-            clean_dep("//tensorflow/core/platform/s3:s3_file_system"),
         ],
     })
 
@@ -761,6 +748,12 @@ def tf_windows_aware_platform_deps(name):
 
 def tf_platform_deps(name, platform_dir = "//tensorflow/core/platform/"):
     return [platform_dir + "default:" + name]
+
+def tf_testing_deps(name, platform_dir = "//tensorflow/core/platform/"):
+    return tf_platform_deps(name, platform_dir)
+
+def tf_stream_executor_deps(name, platform_dir = "//tensorflow/core/platform/"):
+    return tf_platform_deps(name, platform_dir)
 
 def tf_platform_alias(name, platform_dir = "//tensorflow/core/platform/"):
     return [platform_dir + "default:" + name]

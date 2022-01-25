@@ -521,6 +521,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_seed",
         "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:script_ops",
         "//tensorflow/python:sendrecv_ops_gen",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:tensor_shape",
@@ -741,6 +742,30 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_ops",
         "//tensorflow/python/data",
+    ],
+)
+
+tf_xla_py_test(
+    name = "run_eager_op_as_function_xla_test",
+    size = "small",
+    srcs = ["run_eager_op_as_function_xla_test.py"],
+    enable_mlir_bridge = False,
+    enabled_backends = [
+        "cpu",
+        "gpu",
+    ],
+    python_version = "PY3",
+    tags = [
+        "multi_and_single_gpu",
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
+    deps = [
+        ":context",
+        ":test",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:variables",
     ],
 )
 

@@ -79,19 +79,20 @@ def save(dataset,
 
   To enable checkpointing, pass in `checkpoint_args` to the `save` method
   as follows:
+
   ```python
-       dataset = tf.data.Dataset.range(100)
-       save_dir = "..."
-       checkpoint_prefix = "..."
-       step_counter = tf.Variable(0, trainable=False)
-       checkpoint_args = {
-         "checkpoint_interval": 50,
-         "step_counter": step_counter,
-         "directory": checkpoint_prefix,
-         "max_to_keep": 20,
-        }
-        dataset.save(dataset, save_dir, checkpoint_args=checkpoint_args)
-   ```
+  dataset = tf.data.Dataset.range(100)
+  save_dir = "..."
+  checkpoint_prefix = "..."
+  step_counter = tf.Variable(0, trainable=False)
+  checkpoint_args = {
+    "checkpoint_interval": 50,
+    "step_counter": step_counter,
+    "directory": checkpoint_prefix,
+    "max_to_keep": 20,
+  }
+  dataset.save(dataset, save_dir, checkpoint_args=checkpoint_args)
+  ```
 
   NOTE: The directory layout and file format used for saving the dataset is
   considered an implementation detail and may change. For this reason, datasets
@@ -122,7 +123,9 @@ def save(dataset,
 
     if "checkpoint" in checkpoint_args:
       raise ValueError(
-          "'checkpoint_args' are not allowed to include 'checkpoint'")
+          "'Invalid `checkpoint_args`. `checkpoint_args` are not allowed "
+          "to include 'checkpoint'."
+      )
     checkpoint = tracking.util.Checkpoint(iterator=save_iterator)
     checkpoint_args["checkpoint"] = checkpoint
     manager = checkpoint_management.CheckpointManager(**checkpoint_args)

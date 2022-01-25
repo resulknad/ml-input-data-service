@@ -51,6 +51,18 @@ static bool AreInstructionSupported(HloComputation* comp) {
       VLOG(2) << "NOT SUPPORTED: " << instr->ToString();
       return false;
     }
+
+    // If there is an instruction that change the layout, we do not do
+    // anything.
+    if (HloInstruction::IsOpElementwise(instr->opcode()) &&
+        !absl::c_all_of(instr->operands(), [&](HloInstruction* input) {
+          return ShapeUtil::EqualIgnoringElementType(input->shape(),
+                                                     instr->shape());
+        })) {
+      VLOG(2) << "NOT SUPPORTED (instruction change the layout): "
+              << instr->ToString();
+      return false;
+    }
   }
   return true;
 }
@@ -136,7 +148,7 @@ StatusOr<bool> FusionBitcastLift::Run(HloModule* module) {
             VLOG(3) << "kParameter: " << i->ToString();
             // Replace the parameter inside the fusion.
             Shape new_shape = i->users()[0]->shape();
-            int64 parameter_number = i->parameter_number();
+            int64_t parameter_number = i->parameter_number();
             string name = i->name();
             auto n = HloInstruction::CreateParameter(parameter_number,
                                                      new_shape, name);
@@ -231,7 +243,7 @@ StatusOr<bool> FusionBitcastLift::Run(HloModule* module) {
           }
         }  // while
         DCHECK(clone_changed) << "We should have changed the fusion!";
-        std::function<int64(const Shape&)> shape_size_func =
+        std::function<int64_t(const Shape&)> shape_size_func =
             [](const Shape& shape) { return ShapeUtil::ByteSizeOf(shape); };
         auto shape_verifier = absl::make_unique<ShapeVerifier>(
             /*layout_sensitive=*/true,

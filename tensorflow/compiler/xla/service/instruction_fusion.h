@@ -79,13 +79,13 @@ class InstructionFusion : public HloModulePass {
   // the operand is 'producer' and the instruction is 'consumer')
   //
   // Subtypes can override this with target-specific heuristics.
-  virtual bool ShouldFuse(HloInstruction* consumer, int64 operand_index);
+  virtual bool ShouldFuse(HloInstruction* consumer, int64_t operand_index);
 
   // Returns whether multi-output fusion can be applied to fuse `producer` into
   // `consumer`. In contrast to "regular" fusion, the `producer` is not
   // duplicated by multi-output fusion.
   virtual bool ShouldFuseIntoMultiOutput(HloInstruction* consumer,
-                                         int64 operand_index) {
+                                         int64_t operand_index) {
     return false;
   }
 
@@ -128,6 +128,12 @@ class InstructionFusion : public HloModulePass {
     return is_expensive_(instruction);
   }
 
+  // Overwrites the originally initialized is_expensive function.
+  void set_is_expensive(
+      std::function<bool(const HloInstruction& instruction)> is_expensive) {
+    is_expensive_ = is_expensive;
+  }
+
   // Whether multi-output fusion would introduce a cycle into the HLO graph.
   bool MultiOutputFusionCreatesCycle(HloInstruction* producer,
                                      HloInstruction* consumer);
@@ -145,7 +151,7 @@ class InstructionFusion : public HloModulePass {
   // Returns whether 'consumer' may reuse elements of its `operand_index`th
   // operand.
   bool ReusesOperandElements(const HloInstruction* consumer,
-                             int64 operand_index);
+                             int64_t operand_index);
 
   // The set of producers whose consumers we cannot fuse into.
   using HloInstructionSet = std::unordered_set<HloInstruction*>;

@@ -33,11 +33,13 @@ from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
+@test_util.with_eager_op_as_function
 class DefFunctionTest(xla_test.XLATestCase):
 
   def testAutoclusteringWithTfFunction(self):
@@ -681,6 +683,30 @@ class DefFunctionTest(xla_test.XLATestCase):
           v.device)['current'] if on_gpu else 0
       self.assertEqual(initial_usage, final_usage)
 
+  @test_util.disable_mlir_bridge('MLIR does not support resource update for'
+                                 ' signature with compile-time constant.')
+  def testUpdateVariableWithCompileTimeConstMemoryUsage(self):
+    with ops.device('device:{}:0'.format(self.device)):
+
+      on_gpu = 'gpu' in self.device.lower()
+      v = variables.Variable(random_ops.random_normal([1024, 1024]))
+
+      # test a signature of (compile-time const, arg, res_var). The compile-time
+      # const will be optimized away so that the kernel signature will become
+      # (arg, res_var).
+      @def_function.function(jit_compile=True)
+      def update_var(shape, arg):
+        v.assign_add(array_ops.reshape(arg, shape))
+
+      arg = random_ops.random_normal([1])
+
+      initial_usage = context.context().get_memory_info(
+          v.device)['current'] if on_gpu else 0
+      update_var(constant_op.constant([1, 1]), arg)
+      final_usage = context.context().get_memory_info(
+          v.device)['current'] if on_gpu else 0
+      self.assertEqual(initial_usage, final_usage)
+
   @test_util.disable_mlir_bridge('TODO(b/162381930): MLIR bridge renames '
                                  ' functions')
   def testUpdateVariableInClass(self):
@@ -794,7 +820,7 @@ class DefFunctionTest(xla_test.XLATestCase):
         return fn(x, a)
 
       inputs = constant_op.constant([1, 2, 2, 3, 3])
-      with self.assertRaisesRegex(TypeError, '"Graph" tensor'):
+      with self.assertRaises(TypeError):
         fn2(inputs, 1)
 
   def testGetCompilerIrKwargs(self):
@@ -1062,7 +1088,7 @@ class DefFunctionTest(xla_test.XLATestCase):
 
       arg = random_ops.random_normal([2])
       with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                  'def_function_xla_jit_test.py'):
+                                  'Trying to access resource .*'):
         update_var(arg)
 
   def testMustBeConstantInsideCondition(self):
@@ -1101,12 +1127,43 @@ class DefFunctionTest(xla_test.XLATestCase):
       def f(samples):
         v.assign(array_ops.zeros(samples))  # assignment
 
-      with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                  '@ .+def_function_xla_jit_test.py'):
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError,
+          'Shape .* cannot be changed after initialization'):
         f(constant_op.constant(6))
 
       with self.assertRaisesRegex(errors.InvalidArgumentError, 'assignment'):
         f(constant_op.constant(6))
+
+  def testTfSummaryErrMsg(self):
+    if 'gpu' not in self.device.lower():
+      self.skipTest('Only runs on GPU')
+
+    with ops.device('device:{}:0'.format(self.device)):
+      writer = summary_ops_v2.create_file_writer(self.get_temp_dir())
+
+      @def_function.function(jit_compile=True)
+      def my_func_temp():
+        with writer.as_default():
+          summary_ops_v2.scalar('my_metric', 0.5, step=10)
+
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  'Trying to access resource .*'):
+        my_func_temp()
+
+  def testSinglePassArgmax(self):
+    with ops.device('device:{}:0'.format(self.device)):
+
+      @def_function.function(jit_compile=True)
+      def f(x):
+        return math_ops.argmax(x)
+
+      hlo = f.experimental_get_compiler_ir(
+          array_ops.ones([10], dtype=dtypes.float32))(
+              stage='hlo')
+
+      # Test that reduction occurs only once.
+      self.assertTrue(hlo.count('reduce'), 1)
 
 
 if __name__ == '__main__':
