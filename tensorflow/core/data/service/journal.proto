@@ -117,7 +117,7 @@ message ClientHeartbeatUpdate {
   TaskRejected task_rejected = 3;
 }
 
-// Next tag: 7
+// Next tag: 8
 message CreatePendingTaskUpdate {
   int64 task_id = 1;
   int64 job_id = 2;
@@ -125,7 +125,7 @@ message CreatePendingTaskUpdate {
   string transfer_address = 4;
   repeated string worker_tags = 6;
   int64 starting_round = 5;
-  string dataset_key = 6;
+  string dataset_key = 7;
 }
 
 // Next tag: 9
@@ -137,7 +137,7 @@ message CreateTaskUpdate {
   string transfer_address = 6;
   // EASL
   string dataset_key = 7;
-    repeated string worker_tags = 8;
+  repeated string worker_tags = 8;
 }
 
 // Next tag: 2

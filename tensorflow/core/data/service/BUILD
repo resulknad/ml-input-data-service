@@ -889,7 +889,6 @@ cc_library(
     deps = [
         ":common_proto_cc",
         ":dispatcher_proto_cc",
-        ":data_service",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:env",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -905,7 +904,6 @@ cc_library(
     ],
     deps = [
         ":common_proto_cc",
-        ":data_service",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
@@ -929,7 +927,6 @@ cc_library(
     deps = [
         ":common_proto_cc",
         ":cache_model",
-        ":data_service",
         ":dispatcher_cache_state",
         ":dispatcher_state",
         ":metadata_store",
@@ -950,7 +947,6 @@ cc_library(
     ],
     deps = [
         ":common_proto_cc",
-        ":data_service",
         ":cache_model",
         ":dispatcher_cache_state",
         ":dispatcher_state",

@@ -158,7 +158,7 @@ class DispatcherState {
           job_type(job_type),
           target_worker_count(target_worker_count),
           target_workers(target_workers) {
-      if (processing_mode == ProcessingMode::DISTRIBUTED_EPOCH) {
+      if (IsDynamicShard(processing_mode)) {
         distributed_epoch_state = DistributedEpochState(num_split_providers);
       }
     }
@@ -193,18 +193,14 @@ class DispatcherState {
   };
 
   struct Task {
-    explicit Task(int64 task_id, const std::shared_ptr<Job>& job,
-                  const std::string& worker_address,
-                  const std::string& transfer_address,
-                  const std::string& dataset_key,
-                  TargetWorkers target_workers)
-        : task_id(task_id),
+    explicit Task(const T& create_task_update, const std::shared_ptr<Job>& job)
+        : task_id(create_task_update.task_id()),
           job(job),
-          worker_address(worker_address),
-          transfer_address(transfer_address),
-          dataset_key(dataset_key),
+          worker_address(create_task_update.worker_address()),
+          transfer_address(create_task_update.transfer_address()),
           worker_tags(create_task_update.worker_tags().begin(),
-                      create_task_update.worker_tags().end() {}
+                      create_task_update.worker_tags().end()),
+          dataset_key(create_task_update.dataset_key()){}
 
     const int64_t task_id;
     const std::shared_ptr<Job> job;
