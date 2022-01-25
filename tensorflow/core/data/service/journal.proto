@@ -2,7 +2,6 @@ syntax = "proto3";
 
 package tensorflow.data;
 
-import "tensorflow/core/data/service/common.proto";
 import "tensorflow/core/protobuf/data_service.proto";
 
 // Message representing journaled dispatcher metadata updates. When we apply
@@ -23,9 +22,9 @@ message Update {
     ClientHeartbeatUpdate client_heartbeat = 10;
     CreateTaskUpdate create_task = 3;
     FinishTaskUpdate finish_task = 4;
-    SetElementSpecUpdate set_element_spec = 13;
-    ReassignFreeWorkers reassign_free_workers = 14;
-    JobTargetWorkerCountUpdate job_target_worker_count_update = 15;
+    SetElementSpecUpdate set_element_spec = 14;
+    ReassignFreeWorkers reassign_free_workers = 15;
+    JobTargetWorkerCountUpdate job_target_worker_count_update = 16;
   }
   reserved 13;
 }
@@ -127,7 +126,7 @@ message CreatePendingTaskUpdate {
   repeated string worker_tags = 6;
   int64 worker_uid = 7;
   int64 starting_round = 5;
-  string dataset_key = 6;
+  string dataset_key = 8;
 }
 
 // Next tag: 10
