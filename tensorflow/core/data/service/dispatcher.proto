@@ -14,7 +14,7 @@ message TaskProgress {
   bool completed = 2;
 }
 
-// Next tag: 6
+// Next tag: 7
 message WorkerHeartbeatRequest {
 // Next tag: 6
   message Task {
@@ -32,12 +32,12 @@ message WorkerHeartbeatRequest {
   }
 
   string worker_address = 1;
+  repeated int64 current_tasks = 2;
   string transfer_address = 3;
   repeated string worker_tags = 4;
   // The UID of the worker Borg job, used for telemetry.
   int64 worker_uid = 5;
-  repeated int64 current_tasks = 2;
-  repeated Task tasks = 4;
+  repeated Task tasks = 6;
 }
 
 // Next tag: 3
@@ -95,6 +95,18 @@ message GetOrRegisterDatasetRequest {
   // Metadata related to tf.data service.
   DataServiceMetadata metadata = 3;
   reserved 2;
+}
+
+// Next tag: 2
+message GetElementSpecRequest {
+  // The id of the dataset to get the element spec for.
+  int64 dataset_id = 1;
+}
+
+// Next tag: 2
+message GetElementSpecResponse {
+  // The retrieved element spec.
+  bytes element_spec = 1;
 }
 
 // Next tag: 2
