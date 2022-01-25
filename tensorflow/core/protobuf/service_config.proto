@@ -7,7 +7,7 @@ import "tensorflow/core/protobuf/data_service.proto";
 option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";
 
 // Configuration for a tf.data service DispatchServer.
-// Next id: 16
+// Next id: 18
 message DispatcherConfig {
   // The port for the dispatcher to bind to. A value of 0 indicates that the
   // dispatcher may bind to any available port.
@@ -42,26 +42,26 @@ message DispatcherConfig {
   // We use integers for now, we might change to strings.
 
   // The caching policy applied by the service (e.g. no-cache, all-cache, etc.)
-  int32 cache_policy = 7;
+  int32 cache_policy = 8;
   // The file format to use for cached data
-  int32 cache_format = 8;
+  int32 cache_format = 10;
   // The compression scheme (if any) of the caching op
-  int32 cache_compression = 9;
+  int32 cache_compression = 11;
   // The number of parallel readers and writers to use for the caching ops.
-  int32 cache_ops_parallelism = 10;
+  int32 cache_ops_parallelism = 12;
   // The base path to use for the cache content
-  string cache_path = 12;
+  string cache_path = 13;
   // The scaling policy applied by the service
-  int32 scaling_policy = 11;
+  int32 scaling_policy = 14;
   // The directory to use for logging files
-  string log_dir = 13;
+  string log_dir = 15;
   // The interval at which the dispatcher should dump log files.
-  int64 log_dumps_interval_ms = 14;
+  int64 log_dumps_interval_ms = 16;
 
   // How long to wait before garbage-collecting a client that hasn't
   // heartbeated to the dispatcher. A value of 0 indicates that the timeout
   // should be left to the runtime.
-  int64 client_timeout_ms = 15;
+  int64 client_timeout_ms = 17;
 }
 
 // Configuration for a tf.data service WorkerServer.
