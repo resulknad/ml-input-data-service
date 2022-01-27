@@ -25,7 +25,16 @@ Status DecideIfLocal(
         const std::string& dataset_key,
         bool& using_local_workers);
 
-Status DecideTargetWorkers(
+Status DecideTargetWorkersGridSearch(
+        const experimental::DispatcherConfig& dispatcher_config,
+        const ::tensorflow::data::easl::MetadataStore& metadata_store,
+        const std::string& dataset_key,
+        int64 num_worker_remote_avail,
+        int64 num_worker_local_avail,
+        int64& num_worker_remote_target,
+        int64& num_worker_local_target);
+
+Status DecideTargetWorkersAutoscaling(
         const experimental::DispatcherConfig& dispatcher_config,
         const ::tensorflow::data::easl::MetadataStore& metadata_store,
         const std::string& dataset_key,

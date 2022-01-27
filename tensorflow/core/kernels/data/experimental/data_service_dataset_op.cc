@@ -794,13 +794,14 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           }
         }
       }
+
       for (auto& task : resp.task_info()) {
         auto it = task_id_to_task.find(task.task_id());
         if (it == task_id_to_task.end()) {
           continue;
         }
-        if (!ShouldReadFromTask(task, resp.if_use_local_workers())) {
-          VLOG(3) << "Skipping untargeted worker task " << task.task_id();
+        if (!ShouldReadFromTask(task, resp.num_worker_local_target())) {
+          VLOG(0) << "Skipping untargeted worker task " << task.task_id();
           should_finish_job_ = false;
           continue;
         }
@@ -813,37 +814,13 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       }
     }
 
-    bool ShouldReadFromTask(const TaskInfo& task, const bool if_use_local_workers) const
+    bool ShouldReadFromTask(const TaskInfo& task, const int num_worker_local_target) const
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       if (StrictRoundRobin()) {
         return true;
       }
 
-      const bool is_local_task =
-          (LocalWorkers::Get(task.worker_address()) != nullptr);
-
-      if (if_use_local_workers) {
-          VLOG(1) << "EASL-MUYU: IF_USE_LOCAL_WORKERS is true";
-          if (is_local_task) {
-              VLOG(1) << "EASL-MUYU(IF_USE_LOCAL_WORKERS): the worker address is: ("
-                    << task.worker_address() <<
-                    "), which is local. CHOOSE IT!!";
-          }
-          else {
-              VLOG(1) << "EASL-MUYU(IF_USE_LOCAL_WORKERS): the worker address is: ("
-                      << task.worker_address() <<
-                      "), which is NOT local. BUT Anyways choosing it!!";
-          }
-      }
-      else {
-          VLOG(1) << "EASL-MUYU: IF_USE_LOCAL_WORKERS is false, do nothing";
-      }
-
-//      if (dataset()->target_workers_ == TARGET_WORKERS_LOCAL &&
-//        !is_local_task) {
-//          VLOG(1) << "EASL-MUYU: TARGET_WORKERS_LOCAL is set. "
-//          return false;
-//      }
+      const bool is_local_task = (LocalWorkers::Get(task.worker_address()) != nullptr);
 
       if (dataset()->target_workers_ == TARGET_WORKERS_LOCAL) {
           VLOG(1) << "EASL-MUYU: TARGET_WORKERS_TAG is set";

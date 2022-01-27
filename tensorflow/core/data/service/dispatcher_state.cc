@@ -374,11 +374,18 @@ DispatcherState::ListAvailableWorkers() const {
   return workers;
 }
 
+// Reserves a number of available workers for a particular job. If num_workers
+// is lower than or equal to 0, then the reserved number of workers is equal
+// to all the available workers.
 std::vector<std::shared_ptr<DispatcherState::Worker>>
 DispatcherState::ReserveWorkers(
     int64 job_id, int64 num_worker_remote_target,
     int64 num_worker_local_target,
     const absl::flat_hash_set<std::string> local_workers) {
+  num_worker_remote_target = num_worker_remote_target <= 0 || num_worker_remote_target > avail_workers_.size() ? avail_workers_.size()
+    : num_worker_remote_target;
+  num_worker_local_target = num_worker_local_target <= 0 || num_worker_local_target > avail_workers_.size() ? avail_workers_.size()
+    : num_worker_local_target;
 
   std::vector<std::shared_ptr<Worker>> workers;
   workers.reserve(avail_workers_.size());
@@ -388,11 +395,10 @@ DispatcherState::ReserveWorkers(
           << "Target local: " << num_worker_local_target << "\n";
 
   for (auto it = avail_workers_.begin(); it != avail_workers_.end(); ) {
-    bool is_local;
-    // is_local = std::count(it->second->tags.begin(), it->second->tags.end(), "COLOCATED");  // Tag based
-    is_local = local_workers.count(it->first);
+    //bool is_local = std::count(it->second->tags.begin(), it->second->tags.end(), "COLOCATED");  // Tag based
+    bool is_local = local_workers.count(it->first);
     if (is_local) {
-        VLOG(1) << "EASL-DSL (ReserveWorkers) Worker_L: " << it->first;
+        VLOG(0) << "EASL-DSL (ReserveWorkers) Worker_L: " << it->first;
         if (num_worker_local_target <= 0) { // No additional local workers needed
             it++;
             continue;
@@ -400,7 +406,7 @@ DispatcherState::ReserveWorkers(
           num_worker_local_target--;
         }
     } else {
-        VLOG(1) << "EASL-DSL (ReserveWorkers) Worker_R: " << it->first;
+        VLOG(0) << "EASL-DSL (ReserveWorkers) Worker_R: " << it->first;
         if (num_worker_remote_target <= 0) { // No additional remote workers needed
             it++;
             continue;

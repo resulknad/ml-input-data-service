@@ -908,11 +908,35 @@ Status DataServiceDispatcherImpl::CreateJob(
           << compute_dataset_key << ": " << worker_count;
 
   int64 num_worker_remote_target, num_worker_local_target;
-  TF_RETURN_IF_ERROR(service::easl::local_decision::DecideTargetWorkers(
-          config_, metadata_store_, compute_dataset_key,
-          total_workers - local_workers.size(), local_workers.size(),
-          num_worker_remote_target, num_worker_local_target
-          ));
+  if(config_.scaling_policy() == 1) {
+  bool want_to_use_local_workers;
+  TF_RETURN_IF_ERROR(service::easl::local_decision::DecideIfLocal(
+      config_, metadata_store_, compute_dataset_key, want_to_use_local_workers
+      )); // Do we have enough throughput to decide to use local workers to save network bandwidth?
+
+    if(want_to_use_local_workers && local_workers.size() >= 1) {
+        num_worker_remote_target = worker_count - 1;
+        num_worker_local_target = 1;
+    } else {
+        num_worker_remote_target = worker_count;
+        num_worker_local_target = 0;
+    }
+  } else if(config_.scaling_policy() == 2) {
+    num_worker_remote_target = total_workers - local_workers.size();
+    num_worker_local_target = local_workers.size();
+  } else if(config_.scaling_policy() == 3) {
+    TF_RETURN_IF_ERROR(service::easl::local_decision::DecideTargetWorkersGridSearch(
+            config_, metadata_store_, compute_dataset_key,
+            total_workers - local_workers.size(), local_workers.size(),
+            num_worker_remote_target, num_worker_local_target
+    ));
+  } else {
+    TF_RETURN_IF_ERROR(service::easl::local_decision::DecideTargetWorkersAutoscaling(
+            config_, metadata_store_, compute_dataset_key,
+            total_workers - local_workers.size(), local_workers.size(),
+            num_worker_remote_target, num_worker_local_target
+    ));
+  }
 
   // EASL add job entry to metadata store
   std::string dataset_key = service::easl::cache_utils::DatasetKey(
