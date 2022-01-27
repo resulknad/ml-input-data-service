@@ -253,8 +253,8 @@ class DispatcherState {
   // is lower than or equal to 0, then the reserved number of workers is equal
   // to all the available workers.
   std::vector<std::shared_ptr<Worker>> ReserveWorkers(int64 job_id, 
-    int64 num_workers = 0,
-    bool if_use_local_workers = false,
+    int64 num_worker_remote_target = 0,
+    int64 num_worker_local_target = 0,
     const absl::flat_hash_set<std::string> local_workers = {}
     );
 

@@ -904,8 +904,9 @@ Status DataServiceDispatcherImpl::CreateJob(
   int64 total_workers = state_.ListWorkers().size();
   TF_RETURN_IF_ERROR(service::easl::cache_utils::DetermineElasticity(job_type, 
       config_, metadata_store_, compute_dataset_key, total_workers, worker_count));
-  VLOG(0) << "EASL - Scalability decision for dataset_key "
-          << compute_dataset_key << ": " << worker_count;
+  worker_count = 2;
+  VLOG(0) << "EASL-DSL - Scalability decision for dataset_key "
+          << compute_dataset_key << " was manually set to " << worker_count;
 
   bool if_use_local_workers = true;
   VLOG(0) << "EASL-DSL (CreateJob) - Local Worker Policy was manually set to " << if_use_local_workers;
