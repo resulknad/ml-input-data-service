@@ -82,6 +82,8 @@ Status DecideTargetWorkers(
         int64& num_worker_local_target) {
   num_worker_remote_target = num_worker_remote_avail / 2;
   num_worker_local_target = num_worker_local_avail / 2;
+  VLOG(1) << num_worker_remote_avail << ' ' << num_worker_local_avail
+  << ' ' << num_worker_remote_target << ' ' << num_worker_local_target;
   return Status::OK();
 }
 
