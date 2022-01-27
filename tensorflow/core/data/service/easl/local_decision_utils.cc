@@ -72,6 +72,34 @@ Status DecideIfLocal(
     return Status::OK();
 }
 
+std::vector<int64> records;
+
+void grid_search(int64 num_worker_remote_avail, int64 num_worker_local_avail,
+                int64& num_worker_remote_target, int64& num_worker_local_target) {
+  std::vector<std::pair<int64, int64>> test_set = std::vector<std::pair<int64, int64>>();
+  for(int64 n_r = 0; n_r <= num_worker_remote_avail; n_r++) {
+    for(int64 n_l = 0; n_l <= num_worker_local_avail; n_l++) {
+      if(n_r + n_l <= 0) {
+        continue;
+      }
+      test_set.emplace_back(n_r, n_l);
+    }
+  }
+  std::vector<int64> epoch_times;
+  for(int i = 1; i < records.size(); i++) {
+    epoch_times.push_back(records[i] - records[i-1]);
+  }
+  int index;
+  if(epoch_times.size() < test_set.size()) {
+    index = epoch_times.size();
+  } else {
+    index = std::min_element(epoch_times.begin(), epoch_times.begin() + test_set.size()) - epoch_times.begin();
+  }
+  auto p = test_set[index];
+  num_worker_remote_target = p.first;
+  num_worker_local_target = p.second;
+}
+
 Status DecideTargetWorkers(
         const experimental::DispatcherConfig& dispatcher_config,
         const ::tensorflow::data::easl::MetadataStore& metadata_store,
@@ -80,10 +108,14 @@ Status DecideTargetWorkers(
         int64 num_worker_local_avail,
         int64& num_worker_remote_target,
         int64& num_worker_local_target) {
-  num_worker_remote_target = num_worker_remote_avail / 2;
-  num_worker_local_target = num_worker_local_avail / 2;
-  VLOG(1) << "DSL (DecideTargetWorkers) " << num_worker_remote_avail << ' ' << num_worker_local_avail
-  << ' ' << num_worker_remote_target << ' ' << num_worker_local_target;
+  std::time_t t = std::time(nullptr);
+  records.push_back(t);
+  grid_search(num_worker_remote_avail, num_worker_local_avail, num_worker_remote_target, num_worker_local_target);
+  VLOG(1) << "DSL (DecideTargetWorkers)"
+  << " num_worker_remote_avail " << num_worker_remote_avail
+  << " num_worker_local_avail " << num_worker_local_avail
+  << " num_worker_remote_target " << num_worker_remote_target
+  << " num_worker_local_target " << num_worker_local_target;
   return Status::OK();
 }
 

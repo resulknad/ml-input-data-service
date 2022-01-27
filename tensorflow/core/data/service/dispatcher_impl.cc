@@ -916,11 +916,19 @@ Status DataServiceDispatcherImpl::CreateJob(
 //  VLOG(0) << "EASL-MUYU (CreateJob) - Check Local Worker Policy: " << if_use_local_workers;
 
   int64 num_worker_remote_target, num_worker_local_target;
-  TF_RETURN_IF_ERROR(service::easl::local_decision::DecideTargetWorkers(
-          config_, metadata_store_, compute_dataset_key,
-          total_workers - local_workers.size(), local_workers.size(),
-          num_worker_remote_target, num_worker_local_target
-          ));
+  if(config_.scaling_policy() == 1) {
+    num_worker_remote_target = worker_count;
+    num_worker_local_target = 0;
+  } else if(config_.scaling_policy() == 2) {
+    num_worker_remote_target = total_workers - local_workers.size();
+    num_worker_local_target = local_workers.size();
+  } else {
+    TF_RETURN_IF_ERROR(service::easl::local_decision::DecideTargetWorkers(
+            config_, metadata_store_, compute_dataset_key,
+            total_workers - local_workers.size(), local_workers.size(),
+            num_worker_remote_target, num_worker_local_target
+    ));
+  }
 
   // EASL add job entry to metadata store
   std::string dataset_key = service::easl::cache_utils::DatasetKey(
