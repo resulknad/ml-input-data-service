@@ -72,6 +72,19 @@ Status DecideIfLocal(
     return Status::OK();
 }
 
+Status DecideTargetWorkers(
+        const experimental::DispatcherConfig& dispatcher_config,
+        const ::tensorflow::data::easl::MetadataStore& metadata_store,
+        const std::string& dataset_key,
+        int64 num_worker_remote_avail,
+        int64 num_worker_local_avail,
+        int64& num_worker_remote_target,
+        int64& num_worker_local_target) {
+  num_worker_remote_target = num_worker_remote_avail / 2;
+  num_worker_local_target = num_worker_local_avail / 2;
+  return Status::OK();
+}
+
 } // namespace local_decision
 } // namespace easl
 } // namespace service

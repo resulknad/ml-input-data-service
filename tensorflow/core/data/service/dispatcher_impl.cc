@@ -888,33 +888,39 @@ Status DataServiceDispatcherImpl::CreateJob(
   int64 dataset_fingerprint = dataset->fingerprint;
   std::string compute_dataset_key = DatasetKey(dataset_id, dataset_fingerprint);
 
-  service::easl::cache_utils::DetermineJobType(
-      config_, cache_state_, metadata_store_, dataset_fingerprint,
-      compute_dataset_key, job_id, job_type);
-  VLOG(0) << "EASL - Caching decision for dataset_key " 
-            << compute_dataset_key << ": " << job_type;
-
-
-  // MUYU, firstly check the local_workers from the client
+//  service::easl::cache_utils::DetermineJobType(
+//      config_, cache_state_, metadata_store_, dataset_fingerprint,
+//      compute_dataset_key, job_id, job_type);
+//  VLOG(0) << "EASL - Caching decision for dataset_key "
+//            << compute_dataset_key << ": " << job_type;
+//
+//
+//  // MUYU, firstly check the local_workers from the client
   absl::flat_hash_set<std::string> local_workers;
   local_workers.insert(request.local_workers().cbegin(),
                        request.local_workers().cend());
 
   // Infer the worker count for  this job and job type
   int64 total_workers = state_.ListWorkers().size();
-  TF_RETURN_IF_ERROR(service::easl::cache_utils::DetermineElasticity(job_type, 
-      config_, metadata_store_, compute_dataset_key, total_workers, worker_count));
-  worker_count = 2;
-  VLOG(0) << "EASL-DSL - Scalability decision for dataset_key "
-          << compute_dataset_key << " was manually set to " << worker_count;
-
-  bool if_use_local_workers = true;
-  VLOG(0) << "EASL-DSL (CreateJob) - Local Worker Policy was manually set to " << if_use_local_workers;
+//  TF_RETURN_IF_ERROR(service::easl::cache_utils::DetermineElasticity(job_type,
+//      config_, metadata_store_, compute_dataset_key, total_workers, worker_count));
+//  VLOG(0) << "EASL - Scalability decision for dataset_key "
+//          << compute_dataset_key << ": " << worker_count;
+//
+//  bool if_use_local_workers = true;
+//  VLOG(0) << "EASL-DSL (CreateJob) - Local Worker Policy was manually set to " << if_use_local_workers;
 
 //  TF_RETURN_IF_ERROR(service::easl::local_decision::DecideIfLocal(
 //          config_, metadata_store_, compute_dataset_key, if_use_local_workers
 //          ));
 //  VLOG(0) << "EASL-MUYU (CreateJob) - Check Local Worker Policy: " << if_use_local_workers;
+
+  int64 num_worker_remote_target, num_worker_local_target;
+  TF_RETURN_IF_ERROR(service::easl::local_decision::DecideTargetWorkers(
+          config_, metadata_store_, compute_dataset_key,
+          total_workers - local_workers.size(), local_workers.size(),
+          num_worker_remote_target, num_worker_local_target
+          ));
 
   // EASL add job entry to metadata store
   std::string dataset_key = service::easl::cache_utils::DatasetKey(
@@ -935,10 +941,10 @@ Status DataServiceDispatcherImpl::CreateJob(
   create_job->set_dataset_id(request.dataset_id());
   *create_job->mutable_processing_mode_def() = request.processing_mode_def();
   create_job->set_job_type(job_type);
-  create_job->set_worker_count(worker_count);
+  create_job->set_num_worker_remote_target(num_worker_remote_target);
   create_job->set_num_split_providers(num_split_providers);
 
-  create_job->set_if_use_local_workers(if_use_local_workers);
+  create_job->set_num_worker_local_target(num_worker_local_target);
   *create_job->mutable_local_workers() =
           {local_workers.begin(), local_workers.end()};
 

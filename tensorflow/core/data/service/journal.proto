@@ -65,8 +65,8 @@ message CreateJobUpdate {
   TargetWorkers target_workers = 10;
   // EASL
   string job_type = 13; // i.e read, write, cache
-  int64 worker_count = 14; // determined by elasticity policy
-  bool if_use_local_workers = 15; // decided between epochs
+  int64 num_worker_remote_target = 14; // decided between epochs
+  int64 num_worker_local_target = 15; // decided between epochs
   repeated string local_workers = 16;
 }
 

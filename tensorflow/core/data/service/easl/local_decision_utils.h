@@ -25,6 +25,15 @@ Status DecideIfLocal(
         const std::string& dataset_key,
         bool& if_local);
 
+Status DecideTargetWorkers(
+        const experimental::DispatcherConfig& dispatcher_config,
+        const ::tensorflow::data::easl::MetadataStore& metadata_store,
+        const std::string& dataset_key,
+        int64 num_worker_remote_avail,
+        int64 num_worker_local_avail,
+        int64& num_worker_remote_target,
+        int64& num_worker_local_target);
+
 } // namespace local_decision
 } // namespace easl
 } // namespace service
