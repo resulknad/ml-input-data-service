@@ -382,104 +382,10 @@ DispatcherState::ReserveWorkers(
 
   std::vector<std::shared_ptr<Worker>> workers;
   workers.reserve(avail_workers_.size());
-  VLOG(0) << "(ReserveWorkers) num_worker_total_avail=" << avail_workers_.size()
-          << " num_worker_local_avail="  << local_workers.size()
-          << " num_worker_remote_target="  << num_worker_remote_target
-          << " num_worker_local_target=" << num_worker_local_target;
-
-//  // DCHECK(num_workers <= avail_workers_.size());
-//
-//  // If the number of required workers is below those available, we just assign
-//  // as many as there are available at this epoch's scheduling time.
-//  int64 num_workers = target_num_workers <= 0
-//    || target_num_workers > avail_workers_.size() ? avail_workers_.size()
-//    : target_num_workers;
-//  std::vector<std::shared_ptr<Worker>> workers;
-//  workers.reserve(num_workers);
-//  VLOG(0) << "(ReserveWorkers) User got " << num_workers << " workers from "
-//          << "target " << target_num_workers << " workers";
-//  VLOG(0) << "(ReserveWorkers) IF_USE_LOCAL_WORKERS is set to " << if_use_local_workers;
-//
-//  for (auto worker: local_workers) {
-//    VLOG(1) << "EASL-MUYU (ReserveWorkers) local_workers: " << worker;
-//  }
-//
-//  int num_local_workers_available = 0;
-//  for (auto it = avail_workers_.begin(); it != avail_workers_.end(); it++) {
-//    if (local_workers.count(it->first))
-//      num_local_workers_available++;
-//  }
-//  if (if_use_local_workers && num_local_workers_available == 0) {
-//    VLOG(0) << "EASL-MUYU (ReserveWorkers): local worker mode is set "
-//               "but no local worker is available, change to default mode";
-//    if_use_local_workers = false;
-//  }
-//
-//  if (if_use_local_workers) {
-//      VLOG(0) << "EASL-DSL (ReserveWorkers): if_use_local_workers is true, so we will first assign a local worker.";
-//      bool found_local_worker=false;
-//      for (auto it = avail_workers_.begin(); it != avail_workers_.end(); ) {
-//        if (local_workers.count(it->first) != 0) {
-//          VLOG(0) << "EASL-DSL (ReserveWorkers): we found the worker "
-//                  << it->first <<
-//                  " (from list avail_workers_) in the job's local_workers list";
-//
-//          num_workers--;
-//          workers.push_back(it->second);
-//          VLOG(0) << "EASL-DSL (ReserveWorkers) Assigning local worker at address "
-//                  << it->second->address << " to job " << job_id;
-//          workers_by_job_[job_id].push_back(it->second);
-//          jobs_by_worker_[it->second->address][job_id] = jobs_[job_id];
-//          avail_workers_.erase(it++);
-//
-//          found_local_worker=true;
-//          break;
-//        }
-//        it++;
-//      }
-//      if(!found_local_worker) {
-//        VLOG(0) << "EASL-DSL (ReserveWorkers): we tried but failed to find a local worker to assign.";
-//      }
-//  }
-
-//  int num_local_workers_available = 0;
-//  for (auto it = avail_workers_.begin(); it != avail_workers_.end(); it++) {
-//    if (local_workers.count(it->first))
-//      num_local_workers_available++;
-//  }
-//  if (if_use_local_workers && num_local_workers_available == 0) {
-//    VLOG(0) << "EASL-MUYU (ReserveWorkers): local worker mode is set "
-//               "but no local worker is available, change to default mode";
-//    if_use_local_workers = false;
-//  }
-//
-//  if (if_use_local_workers) {
-//      VLOG(0) << "EASL-DSL (ReserveWorkers): if_use_local_workers is true, so we will first assign a local worker.";
-//      bool found_local_worker=false;
-//      for (auto it = avail_workers_.begin(); it != avail_workers_.end(); ) {
-//        if (local_workers.count(it->first) != 0) {
-//          VLOG(0) << "EASL-DSL (ReserveWorkers): we found the worker "
-//                  << it->first <<
-//                  " (from list avail_workers_) in the job's local_workers list";
-//
-//          num_workers--;
-//          workers.push_back(it->second);
-//          VLOG(0) << "EASL-DSL (ReserveWorkers) Assigning local worker at address "
-//                  << it->second->address << " to job " << job_id;
-//          workers_by_job_[job_id].push_back(it->second);
-//          jobs_by_worker_[it->second->address][job_id] = jobs_[job_id];
-//          avail_workers_.erase(it++);
-//
-//          found_local_worker=true;
-//          break;
-//        }
-//        it++;
-//      }
-//      if(!found_local_worker) {
-//        VLOG(0) << "EASL-DSL (ReserveWorkers): we tried but failed to find a local worker to assign.";
-//      }
-//  }
-
+  VLOG(0) << "DSL (ReserveWorkers) Available remote: " << avail_workers_.size() << "\n"
+          << "Available local: " << local_workers.size() << "\n"
+          << "Target remote: " << num_worker_remote_target << "\n"
+          << "Target local: " << num_worker_local_target << "\n";
 
   for (auto it = avail_workers_.begin(); it != avail_workers_.end(); ) {
     bool is_local;
@@ -487,7 +393,7 @@ DispatcherState::ReserveWorkers(
     is_local = local_workers.count(it->first);
     if (is_local) {
         VLOG(1) << "EASL-DSL (ReserveWorkers) Worker_L: " << it->first;
-        if (num_worker_local_target <= 0) {
+        if (num_worker_local_target <= 0) { // No additional local workers needed
             it++;
             continue;
         } else {
@@ -495,7 +401,7 @@ DispatcherState::ReserveWorkers(
         }
     } else {
         VLOG(1) << "EASL-DSL (ReserveWorkers) Worker_R: " << it->first;
-        if (num_worker_remote_target <= 0) {
+        if (num_worker_remote_target <= 0) { // No additional remote workers needed
             it++;
             continue;
         } else {

@@ -23,7 +23,7 @@ Status DecideIfLocal(
         const experimental::DispatcherConfig& dispatcher_config,
         const ::tensorflow::data::easl::MetadataStore& metadata_store,
         const std::string& dataset_key,
-        bool& if_local);
+        bool& using_local_workers);
 
 Status DecideTargetWorkers(
         const experimental::DispatcherConfig& dispatcher_config,

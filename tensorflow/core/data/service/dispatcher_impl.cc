@@ -907,14 +907,6 @@ Status DataServiceDispatcherImpl::CreateJob(
   VLOG(0) << "EASL - Scalability decision for dataset_key "
           << compute_dataset_key << ": " << worker_count;
 
-//  bool if_use_local_workers = true;
-//  VLOG(0) << "EASL-DSL (CreateJob) - Local Worker Policy was manually set to " << if_use_local_workers;
-//
-//  TF_RETURN_IF_ERROR(service::easl::local_decision::DecideIfLocal(
-//          config_, metadata_store_, compute_dataset_key, if_use_local_workers
-//          ));
-//  VLOG(0) << "EASL-MUYU (CreateJob) - Check Local Worker Policy: " << if_use_local_workers;
-
   int64 num_worker_remote_target, num_worker_local_target;
   TF_RETURN_IF_ERROR(service::easl::local_decision::DecideTargetWorkers(
           config_, metadata_store_, compute_dataset_key,
@@ -943,7 +935,6 @@ Status DataServiceDispatcherImpl::CreateJob(
   create_job->set_job_type(job_type);
   create_job->set_num_worker_remote_target(num_worker_remote_target);
   create_job->set_num_split_providers(num_split_providers);
-
   create_job->set_num_worker_local_target(num_worker_local_target);
   *create_job->mutable_local_workers() =
           {local_workers.begin(), local_workers.end()};
@@ -1023,11 +1014,12 @@ Status DataServiceDispatcherImpl::CreateTasksForJob(
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   std::vector<std::shared_ptr<Worker>> workers = state_.ReserveWorkers(
     job->job_id, job->num_worker_remote_target, job->num_worker_local_target, job->local_workers);
-//  if (workers.size() < job->num_worker_remote_target){
-//    VLOG(0)
-//    << "EASL - Not enough workers for job. Elasticity policy requires "
-//    << job->num_worker_remote_target << " but got " << workers.size();
-//  }
+  if (workers.size() < job->num_worker_remote_target + job->num_worker_local_target){
+    VLOG(0)
+    << "EASL - Not enough workers for job. Elasticity policy requires "
+    << job->num_worker_remote_target << " remote and " << job->num_worker_local_target
+    << " local but got " << workers.size();
+  }
   tasks.clear();
   tasks.reserve(workers.size());
   for (auto& worker : workers) {
@@ -1256,8 +1248,7 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
     task_info->set_starting_round(task->starting_round);
   }
   response->set_job_finished(job->finished);
-
-  response->set_if_use_local_workers(job->num_worker_local_target);
+  response->set_num_worker_local_target(job->num_worker_local_target);
 
   VLOG(4) << "Found " << response->task_info_size()
           << " tasks for job client id " << request->job_client_id();
