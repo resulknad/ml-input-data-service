@@ -1167,15 +1167,17 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
     Status TryGetElement(const Task& task, GetElementResult& result) {
       GetElementRequest req;
-      mutex_lock l(mu_); // EASL - added cause tasks can be used by multiple threads
-      req.set_task_id(task.info.task_id());
-      req.set_skipped_previous_round(task.skipped_previous_round);
-      absl::optional<int64> round_index;
-      if (StrictRoundRobin()) {
-        round_index = task.round;
-        req.set_consumer_index(dataset()->consumer_index_.value());
-        req.set_round_index(task.round);
-        req.set_allow_skip(true);
+      {
+          mutex_lock l(mu_); // EASL - added cause tasks can be used by multiple threads
+          req.set_task_id(task.info.task_id());
+          req.set_skipped_previous_round(task.skipped_previous_round);
+          absl::optional<int64> round_index;
+          if (StrictRoundRobin()) {
+            round_index = task.round;
+            req.set_consumer_index(dataset()->consumer_index_.value());
+            req.set_round_index(task.round);
+            req.set_allow_skip(true);
+          }
       }
       return task.worker->GetElement(req, result);
     }
