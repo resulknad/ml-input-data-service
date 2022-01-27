@@ -150,8 +150,8 @@ class DispatcherState {
                  absl::optional<int64> num_consumers,
                  TargetWorkers target_workers,
                  const std::string& job_type,
-                 int64 worker_count,
-                 bool if_use_local_workers = false,
+                 int64 num_worker_remote_target,
+                 int64 num_worker_local_target,
                  absl::flat_hash_set<std::string> local_workers = {}
                  )
         : job_id(job_id),
@@ -160,9 +160,9 @@ class DispatcherState {
           named_job_key(named_job_key),
           num_consumers(num_consumers),
           job_type(job_type),
-          worker_count(worker_count),
+          num_worker_remote_target(num_worker_remote_target),
           target_workers(target_workers),
-          if_use_local_workers(if_use_local_workers),
+          num_worker_local_target(num_worker_local_target),
           local_workers(local_workers)
           {
       if (IsDynamicShard(processing_mode)) {
@@ -195,9 +195,9 @@ class DispatcherState {
     bool garbage_collected = false;
     // EASL
     const std::string job_type;
-    const int64 worker_count;
+    const int64 num_worker_remote_target;
     // EASL: indicate whether this job should be processed locally
-    const bool if_use_local_workers;
+    const int64 num_worker_local_target;
     // EASL: list of local workers in the client
     absl::flat_hash_set<std::string> local_workers;
   };

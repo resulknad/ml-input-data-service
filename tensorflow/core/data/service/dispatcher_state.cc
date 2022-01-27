@@ -527,7 +527,8 @@ void DispatcherState::ReassignFreeWorkers() {
     // Get a job in need of workers
     std::shared_ptr<Job> job = job_iter->second;
     int64 num_assigned_workers = workers_by_job_[job->job_id].size();
-    while (job->finished || num_assigned_workers == job->worker_count){
+    while (job->finished || num_assigned_workers ==
+    job->num_worker_remote_target + job->num_worker_local_target){
       job_iter++;
       if(job_iter == jobs_.end()){
         // Went through all jobs, can return

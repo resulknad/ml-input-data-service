@@ -888,28 +888,28 @@ Status DataServiceDispatcherImpl::CreateJob(
   int64 dataset_fingerprint = dataset->fingerprint;
   std::string compute_dataset_key = DatasetKey(dataset_id, dataset_fingerprint);
 
-//  service::easl::cache_utils::DetermineJobType(
-//      config_, cache_state_, metadata_store_, dataset_fingerprint,
-//      compute_dataset_key, job_id, job_type);
-//  VLOG(0) << "EASL - Caching decision for dataset_key "
-//            << compute_dataset_key << ": " << job_type;
-//
-//
-//  // MUYU, firstly check the local_workers from the client
+  service::easl::cache_utils::DetermineJobType(
+      config_, cache_state_, metadata_store_, dataset_fingerprint,
+      compute_dataset_key, job_id, job_type);
+  VLOG(0) << "EASL - Caching decision for dataset_key "
+            << compute_dataset_key << ": " << job_type;
+
+
+  // MUYU, firstly check the local_workers from the client
   absl::flat_hash_set<std::string> local_workers;
   local_workers.insert(request.local_workers().cbegin(),
                        request.local_workers().cend());
 
   // Infer the worker count for  this job and job type
   int64 total_workers = state_.ListWorkers().size();
-//  TF_RETURN_IF_ERROR(service::easl::cache_utils::DetermineElasticity(job_type,
-//      config_, metadata_store_, compute_dataset_key, total_workers, worker_count));
-//  VLOG(0) << "EASL - Scalability decision for dataset_key "
-//          << compute_dataset_key << ": " << worker_count;
-//
+  TF_RETURN_IF_ERROR(service::easl::cache_utils::DetermineElasticity(job_type,
+      config_, metadata_store_, compute_dataset_key, total_workers, worker_count));
+  VLOG(0) << "EASL - Scalability decision for dataset_key "
+          << compute_dataset_key << ": " << worker_count;
+
 //  bool if_use_local_workers = true;
 //  VLOG(0) << "EASL-DSL (CreateJob) - Local Worker Policy was manually set to " << if_use_local_workers;
-
+//
 //  TF_RETURN_IF_ERROR(service::easl::local_decision::DecideIfLocal(
 //          config_, metadata_store_, compute_dataset_key, if_use_local_workers
 //          ));
@@ -965,8 +965,8 @@ Status DataServiceDispatcherImpl::CreateJob(
   TF_RETURN_IF_ERROR(Apply(update));
   TF_RETURN_IF_ERROR(state_.JobFromId(job_id, job));
 
-  VLOG(1) << "EASL-MUYU(DataServiceDispatcherImpl::CreateJob) if_use_local_workers flag is set: "
-    << job->if_use_local_workers;
+//  VLOG(1) << "EASL-MUYU(DataServiceDispatcherImpl::CreateJob) if_use_local_workers flag is set: "
+//    << job->if_use_local_workers;
 
   for (auto worker: job->local_workers) {
     VLOG(1) << "EASL-MUYU (CreateJob-after) local_workers: " << worker;
@@ -1022,12 +1022,12 @@ Status DataServiceDispatcherImpl::CreateTasksForJob(
     std::vector<std::shared_ptr<const Task>>& tasks)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   std::vector<std::shared_ptr<Worker>> workers = state_.ReserveWorkers(
-    job->job_id, job->worker_count, job->if_use_local_workers, job->local_workers);
-  if (workers.size() < job->worker_count){
-    VLOG(0)
-    << "EASL - Not enough workers for job. Elasticity policy requires "
-    << job->worker_count << " but got " << workers.size();
-  }
+    job->job_id, job->num_worker_remote_target, job->num_worker_local_target, job->local_workers);
+//  if (workers.size() < job->num_worker_remote_target){
+//    VLOG(0)
+//    << "EASL - Not enough workers for job. Elasticity policy requires "
+//    << job->num_worker_remote_target << " but got " << workers.size();
+//  }
   tasks.clear();
   tasks.reserve(workers.size());
   for (auto& worker : workers) {
@@ -1257,7 +1257,7 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
   }
   response->set_job_finished(job->finished);
 
-  response->set_if_use_local_workers(job->if_use_local_workers);
+  response->set_if_use_local_workers(job->num_worker_local_target);
 
   VLOG(4) << "Found " << response->task_info_size()
           << " tasks for job client id " << request->job_client_id();
