@@ -382,10 +382,11 @@ DispatcherState::ReserveWorkers(
     int64 job_id, int64 num_worker_remote_target,
     int64 num_worker_local_target,
     const absl::flat_hash_set<std::string> local_workers) {
-  num_worker_remote_target = num_worker_remote_target <= 0 || num_worker_remote_target > avail_workers_.size() ? avail_workers_.size()
-    : num_worker_remote_target;
-  num_worker_local_target = num_worker_local_target <= 0 || num_worker_local_target > avail_workers_.size() ? avail_workers_.size()
-    : num_worker_local_target;
+  int64 num_worker_target = num_worker_remote_target + num_worker_local_target;
+  if(num_worker_target <= 0 || num_worker_target > avail_workers_.size()) {
+      num_worker_remote_target = avail_workers_.size();
+      num_worker_local_target = avail_workers_.size();
+  }
 
   std::vector<std::shared_ptr<Worker>> workers;
   workers.reserve(avail_workers_.size());

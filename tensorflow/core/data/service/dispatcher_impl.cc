@@ -908,11 +908,11 @@ Status DataServiceDispatcherImpl::CreateJob(
           << compute_dataset_key << ": " << worker_count;
 
   int64 num_worker_remote_target, num_worker_local_target;
-  if(config_.scaling_policy() == 1) {
-  bool want_to_use_local_workers;
-  TF_RETURN_IF_ERROR(service::easl::local_decision::DecideIfLocal(
-      config_, metadata_store_, compute_dataset_key, want_to_use_local_workers
-      )); // Do we have enough throughput to decide to use local workers to save network bandwidth?
+  if(config_.scaling_policy() == 1) { // Old autoscaling prior to paper
+    bool want_to_use_local_workers; // Do we have enough throughput to decide to use local workers to save network bandwidth?
+    TF_RETURN_IF_ERROR(service::easl::local_decision::DecideIfLocal(
+        config_, metadata_store_, compute_dataset_key, want_to_use_local_workers
+        ));
 
     if(want_to_use_local_workers && local_workers.size() >= 1) {
         num_worker_remote_target = worker_count - 1;
@@ -921,16 +921,16 @@ Status DataServiceDispatcherImpl::CreateJob(
         num_worker_remote_target = worker_count;
         num_worker_local_target = 0;
     }
-  } else if(config_.scaling_policy() == 2) {
+  } else if(config_.scaling_policy() == 2) { // Use all available workers
     num_worker_remote_target = total_workers - local_workers.size();
     num_worker_local_target = local_workers.size();
-  } else if(config_.scaling_policy() == 3) {
+  } else if(config_.scaling_policy() == 3) {  // Grid search over local and remote workers
     TF_RETURN_IF_ERROR(service::easl::local_decision::DecideTargetWorkersGridSearch(
             config_, metadata_store_, compute_dataset_key,
             total_workers - local_workers.size(), local_workers.size(),
             num_worker_remote_target, num_worker_local_target
     ));
-  } else {
+  } else { // New paper autoscaling
     TF_RETURN_IF_ERROR(service::easl::local_decision::DecideTargetWorkersAutoscaling(
             config_, metadata_store_, compute_dataset_key,
             total_workers - local_workers.size(), local_workers.size(),
@@ -979,9 +979,6 @@ Status DataServiceDispatcherImpl::CreateJob(
   create_job->set_target_workers(request.target_workers());
   TF_RETURN_IF_ERROR(Apply(update));
   TF_RETURN_IF_ERROR(state_.JobFromId(job_id, job));
-
-//  VLOG(1) << "EASL-MUYU(DataServiceDispatcherImpl::CreateJob) if_use_local_workers flag is set: "
-//    << job->if_use_local_workers;
 
   for (auto worker: job->local_workers) {
     VLOG(1) << "EASL-MUYU (CreateJob-after) local_workers: " << worker;
