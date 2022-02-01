@@ -1009,9 +1009,10 @@ Status DataServiceDispatcherImpl::CreateJob(
   int64_t job_id = state_.NextAvailableJobId();
 
   // EASL - Caching decision: should the job compute, write or read from cache?
+  int64_t dataset_id = job->dataset_id;
   int64 worker_count;
   std::string job_type;
-  string job_name = named_job_key.value().name;
+  string job_name = job->named_job_key.value().name;
   std::shared_ptr<const Dataset> dataset;
   TF_RETURN_IF_ERROR(state_.DatasetFromId(dataset_id, dataset));
   int64 dataset_fingerprint = dataset->fingerprint;
@@ -1074,7 +1075,8 @@ Status DataServiceDispatcherImpl::CreateJob(
   int64_t num_split_providers = 0;
   if (IsDynamicShard(request.processing_mode_def())) {
     TF_RETURN_IF_ERROR(
-        MakeSplitProviders(request.dataset_id(), split_providers_[job_id]));
+        MakeSplitProviders(request.dataset_id(), job_type,
+          split_providers_[job_id]));
     num_split_providers = split_providers_[job_id].size();
   }
 

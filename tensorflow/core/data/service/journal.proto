@@ -119,16 +119,16 @@ message ClientHeartbeatUpdate {
   TaskRejected task_rejected = 3;
 }
 
-// Next tag: 8
+// Next tag: 9
 message CreatePendingTaskUpdate {
   int64 task_id = 1;
   int64 job_id = 2;
   string worker_address = 3;
   string transfer_address = 4;
+  int64 starting_round = 5;
   repeated string worker_tags = 6;
   int64 worker_uid = 7;
-  int64 starting_round = 5;
-  string dataset_key = 6;
+  string dataset_key = 8;
 }
 
 // Next tag: 10
