@@ -1,6 +1,10 @@
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
-load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+load(
+    "//tensorflow/lite:build_def.bzl",
+    "tflite_copts",
+)
 
 package(
     default_visibility = [
@@ -224,6 +228,7 @@ cc_library(
     srcs = ["operator_property.cc"],
     hdrs = ["operator_property.h"],
     compatible_with = get_compatible_with_cloud(),
+    copts = tflite_copts(),
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite/schema:schema_fbs",
@@ -272,6 +277,7 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@flatbuffers",
         "//tensorflow/lite:framework",
         # TODO(suharshs): Move the relevant quantization utils to a non-internal location.
@@ -335,8 +341,10 @@ cc_library(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:util",
         "//tensorflow/lite/core/api",
+        "//tensorflow/lite/kernels/internal:cppmath",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
+        "@com_google_absl//absl/strings",
         "@flatbuffers",
     ],
 )
@@ -365,6 +373,7 @@ tf_cc_test(
         "//tensorflow/lite/tools/optimize:testdata/mixed16x8.bin",
         "//tensorflow/lite/tools/optimize:testdata/multi_input_add_reshape.bin",
         "//tensorflow/lite/tools/optimize:testdata/pack.bin",
+        "//tensorflow/lite/tools/optimize:testdata/resource_vars_calibrated.bin",
         "//tensorflow/lite/tools/optimize:testdata/single_avg_pool_min_minus_5_max_plus_5.bin",
         "//tensorflow/lite/tools/optimize:testdata/single_conv_no_bias.bin",
         "//tensorflow/lite/tools/optimize:testdata/single_conv_weights_min_0_max_plus_10.bin",

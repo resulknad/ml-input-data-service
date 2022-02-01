@@ -182,7 +182,7 @@ void SetTensorProto(TensorProto* tensor_proto) {
 
 void BuildOperation(
     Operation* operation, int64_t id, const string& name,
-    const std::vector<absl::variant<TensorProto, std::pair<int64, int32>>>&
+    const std::vector<absl::variant<TensorProto, std::pair<int64_t, int32>>>&
         inputs,
     const std::unordered_map<string, AttrValue>& attrs, const string& device) {
   operation->set_id(id);
@@ -195,7 +195,7 @@ void BuildOperation(
           absl::get<TensorProto>(input);
     } else {
       const auto& tensor_handle_pair =
-          absl::get<std::pair<int64, int32>>(input);
+          absl::get<std::pair<int64_t, int32>>(input);
       auto* input = operation->add_op_inputs()->mutable_remote_handle();
       input->set_op_id(tensor_handle_pair.first);
       input->set_output_num(tensor_handle_pair.second);
@@ -211,7 +211,7 @@ void BuildOperation(
 
 void AddOperationToEnqueueRequest(
     int64_t id, const string& name,
-    const std::vector<absl::variant<TensorProto, std::pair<int64, int32>>>&
+    const std::vector<absl::variant<TensorProto, std::pair<int64_t, int32>>>&
         inputs,
     const std::unordered_map<string, AttrValue>& attrs, const string& device,
     EnqueueRequest* request) {
@@ -221,7 +221,7 @@ void AddOperationToEnqueueRequest(
 
 void AddOperationToRunComponentFunctionRequest(
     int64_t id, const string& name,
-    const std::vector<absl::variant<TensorProto, std::pair<int64, int32>>>&
+    const std::vector<absl::variant<TensorProto, std::pair<int64_t, int32>>>&
         inputs,
     const std::unordered_map<string, AttrValue>& attrs, const string& device,
     const int output_num, RunComponentFunctionRequest* request) {
@@ -954,7 +954,11 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncTest) {
       /*composite_devices=*/{}, /*input_resource_dtypes_and_shapes=*/{},
       /*runner=*/nullptr,
       /*collective_executor=*/nullptr, local_device, fdef_.signature().name(),
-      /*outputs_on_op_device=*/false, ctx->RendezvousCreator(),
+      /*outputs_on_op_device=*/false,
+      /*allow_small_function_optimizations=*/false,
+      /*allow_control_flow_sync_execution=*/false,
+      /*shape_inference_on_tfe_dialect_import=*/true,
+      /*int_args_and_retvals_on_device=*/false, ctx->RendezvousCreator(),
       [=]() { return op_id; }));
 
   // Instantiate MatMulFunction on remote_device.
@@ -980,7 +984,8 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncTest) {
   TF_ASSERT_OK(kernel->Run(/*step_container=*/nullptr, inputs, &outputs,
                            /*cancellation_manager=*/nullptr,
                            /*remote_func_params=*/absl::nullopt,
-                           /*stack_trace=*/absl::nullopt));
+                           /*stack_trace=*/absl::nullopt,
+                           /*coordination_service_agent=*/nullptr));
 
   CheckOutputsAndClose(outputs, op_id);
 }
@@ -1002,7 +1007,11 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncAsyncTest) {
       /*composite_devices=*/{}, /*input_resource_dtypes_and_shapes=*/{},
       /*runner=*/nullptr,
       /*collective_executor=*/nullptr, local_device, fdef_.signature().name(),
-      /*outputs_on_op_device=*/false, ctx->RendezvousCreator(),
+      /*outputs_on_op_device=*/false,
+      /*allow_small_function_optimizations=*/false,
+      /*allow_control_flow_sync_execution=*/false,
+      /*shape_inference_on_tfe_dialect_import=*/true,
+      /*int_args_and_retvals_on_device=*/false, ctx->RendezvousCreator(),
       [=]() { return op_id; }));
 
   // Instantiate MatMulFunction on remote_device.
@@ -1030,6 +1039,7 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncAsyncTest) {
   kernel->RunAsync(/*step_container=*/nullptr, inputs, &outputs,
                    /*cancellation_manager=*/nullptr,
                    /*remote_func_params=*/absl::nullopt,
+                   /*coordination_service_agent=*/nullptr,
                    [&status, &n](const Status& s) {
                      status = s;
                      n.Notify();
@@ -1194,7 +1204,7 @@ TEST_F(EagerServiceImplTest, SendPackedHandleTest) {
   EXPECT_EQ(handle2->Type(), TensorHandle::REMOTE);
   EXPECT_EQ(handle2->op_device()->name(), device2);
   int64_t op_id;
-  int32 output_num;
+  int32_t output_num;
   TF_ASSERT_OK(handle2->RemoteAddress(handle2->device(),
                                       /*wait_until_ready=*/true, &op_id,
                                       &output_num));
@@ -1243,7 +1253,7 @@ TEST_F(EagerServiceImplTest, RequestsToMasterTest) {
   // Unable to handle the request since there is no eager context.
   Status status = eager_service_impl.Enqueue(nullptr, &remote_enqueue_request,
                                              &remote_enqueue_response);
-  EXPECT_EQ(error::UNAVAILABLE, status.code());
+  EXPECT_EQ(error::ABORTED, status.code());
   EXPECT_TRUE(absl::StrContains(
       status.error_message(),
       "Unable to find a context_id matching the specified one"));
@@ -1280,7 +1290,7 @@ TEST_F(EagerServiceImplTest, KeepAliveTest) {
   Status status =
       eager_service_impl.KeepAlive(&keep_alive_request, &keep_alive_response);
 
-  EXPECT_EQ(status.code(), error::UNAVAILABLE);
+  EXPECT_EQ(status.code(), error::ABORTED);
   EXPECT_PRED_FORMAT2(::testing::IsSubstring, "Unable to find a context_id",
                       status.error_message());
 

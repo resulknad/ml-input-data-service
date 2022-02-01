@@ -49,8 +49,8 @@ struct DLPackTensor {
   // `external_reference` is always populated.
   std::unique_ptr<PjRtBuffer::ExternalReference> external_reference;
 
-  std::vector<int64> shape;
-  std::vector<int64> strides;
+  std::vector<int64_t> shape;
+  std::vector<int64_t> strides;
   DLManagedTensor tensor;
 };
 
@@ -165,13 +165,13 @@ StatusOr<PrimitiveType> DLDataTypeToPrimitiveType(DLDataType type) {
 }
 
 // Returns the strides for `shape`.
-std::vector<int64> StridesForShape(const Shape& shape) {
-  std::vector<int64> strides;
+std::vector<int64_t> StridesForShape(const Shape& shape) {
+  std::vector<int64_t> strides;
   CHECK(shape.IsArray());
   CHECK(shape.has_layout());
 
   strides.resize(shape.dimensions_size());
-  int64 stride = 1;
+  int64_t stride = 1;
   for (int i : shape.layout().minor_to_major()) {
     strides.at(i) = stride;
     stride *= shape.dimensions(i);
@@ -179,10 +179,10 @@ std::vector<int64> StridesForShape(const Shape& shape) {
   return strides;
 }
 
-StatusOr<std::vector<int64>> StridesToLayout(absl::Span<int64 const> dims,
-                                             absl::Span<int64 const> strides) {
+StatusOr<std::vector<int64_t>> StridesToLayout(
+    absl::Span<int64_t const> dims, absl::Span<int64_t const> strides) {
   CHECK_EQ(dims.size(), strides.size());
-  std::vector<int64> minor_to_major(dims.size());
+  std::vector<int64_t> minor_to_major(dims.size());
   std::iota(minor_to_major.begin(), minor_to_major.end(), 0);
   absl::c_sort(minor_to_major, [&](int a, int b) {
     if (strides[a] < strides[b]) {
@@ -193,8 +193,8 @@ StatusOr<std::vector<int64>> StridesToLayout(absl::Span<int64 const> dims,
     }
     return dims[a] == 1 && dims[b] != 1;
   });
-  int64 stride = 1;
-  for (int64 d : minor_to_major) {
+  int64_t stride = 1;
+  for (int64_t d : minor_to_major) {
     if (strides[d] != stride) {
       return Unimplemented(
           "Only DLPack tensors with trivial (compact) striding are supported; "
@@ -209,9 +209,9 @@ StatusOr<std::vector<int64>> StridesToLayout(absl::Span<int64 const> dims,
 }
 
 StatusOr<DLDeviceType> DLDeviceTypeForDevice(const PjRtDevice& device) {
-  if (device.client()->platform_id() == kCpuId) {
+  if (device.client()->platform_id() == CpuId()) {
     return kDLCPU;
-  } else if (device.client()->platform_id() == kGpuId) {
+  } else if (device.client()->platform_id() == GpuId()) {
     return kDLGPU;
   }
   return InvalidArgument("Device %s cannot be used as a DLPack device.",
@@ -234,14 +234,14 @@ StatusOr<PjRtDevice*> DeviceForDLContext(const PjRtClient* cpu_client,
         return InvalidArgument(
             "DLPack tensor is on CPU, but no CPU backend was provided.");
       }
-      TF_RET_CHECK(cpu_client->platform_id() == kCpuId);
+      TF_RET_CHECK(cpu_client->platform_id() == CpuId());
       return cpu_client->LookupAddressableDevice(context.device_id);
     case kDLGPU:
       if (gpu_client == nullptr) {
         return InvalidArgument(
             "DLPack tensor is on GPU, but no GPU backend was provided.");
       }
-      TF_RET_CHECK(gpu_client->platform_id() == kGpuId);
+      TF_RET_CHECK(gpu_client->platform_id() == GpuId());
       return gpu_client->LookupAddressableDevice(context.device_id);
     default:
       return InvalidArgument("Unknown/unsupported DLPack device type %d",
@@ -299,7 +299,7 @@ StatusOr<py::capsule> BufferToDLPackManagedTensor(py::handle py_buffer,
                       PrimitiveTypeToDLDataType(
                           buffer->buffer()->on_device_shape().element_type()));
 
-  pack->shape = std::vector<int64>(
+  pack->shape = std::vector<int64_t>(
       buffer->buffer()->on_device_shape().dimensions().begin(),
       buffer->buffer()->on_device_shape().dimensions().end());
   pack->strides = StridesForShape(buffer->buffer()->on_device_shape());
@@ -327,11 +327,11 @@ StatusOr<PyBuffer::object> DLPackManagedTensorToBuffer(
     std::shared_ptr<PyClient> gpu_client) {
   // Backward compatibility: if only one client is passed, it may be from any
   // platform. Drop this support after dropping support for jax <= 0.2.14.
-  if (cpu_client && cpu_client->pjrt_client()->platform_id() == kGpuId) {
+  if (cpu_client && cpu_client->pjrt_client()->platform_id() == GpuId()) {
     gpu_client = std::move(cpu_client);
     cpu_client = nullptr;
   }
-  if (cpu_client && cpu_client->pjrt_client()->platform_id() != kCpuId) {
+  if (cpu_client && cpu_client->pjrt_client()->platform_id() != CpuId()) {
     return InvalidArgument("DLPack does not support platform %s",
                            cpu_client->pjrt_client()->platform_name());
   }
@@ -353,16 +353,16 @@ StatusOr<PyBuffer::object> DLPackManagedTensorToBuffer(
       DeviceForDLContext(cpu_client ? cpu_client->pjrt_client() : nullptr,
                          gpu_client ? gpu_client->pjrt_client() : nullptr,
                          dlmt->dl_tensor.ctx));
-  absl::Span<int64 const> dimensions(
-      reinterpret_cast<int64*>(dlmt->dl_tensor.shape), dlmt->dl_tensor.ndim);
+  absl::Span<int64_t const> dimensions(
+      reinterpret_cast<int64_t*>(dlmt->dl_tensor.shape), dlmt->dl_tensor.ndim);
   TF_ASSIGN_OR_RETURN(PrimitiveType element_type,
                       DLDataTypeToPrimitiveType(dlmt->dl_tensor.dtype));
 
-  std::vector<int64> minor_to_major;
+  std::vector<int64_t> minor_to_major;
   if (dlmt->dl_tensor.strides &&
       absl::c_find(dimensions, 0) == dimensions.end()) {
-    absl::Span<int64 const> strides(
-        reinterpret_cast<int64*>(dlmt->dl_tensor.strides),
+    absl::Span<int64_t const> strides(
+        reinterpret_cast<int64_t*>(dlmt->dl_tensor.strides),
         dlmt->dl_tensor.ndim);
     TF_ASSIGN_OR_RETURN(minor_to_major, StridesToLayout(dimensions, strides));
   } else {

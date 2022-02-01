@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for Building Blocks of the TensorFlow Debugger CLI."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import stat
 import tempfile
@@ -1034,30 +1030,6 @@ class CommandHistoryTest(test_util.TensorFlowTestCase):
     # The creation of a CommandHistory object should not error out.
     debugger_cli_common.CommandHistory(
         limit=3, history_file_path=self._history_file_path)
-
-    self._restoreFileReadWritePermissions(self._history_file_path)
-
-  def testCommandHistoryHandlesWritingIOErrorGraciously(self):
-    with open(self._history_file_path, "wt") as f:
-      f.write("help\n")
-
-    # Change file to read-only.
-    os.chmod(self._history_file_path,
-             stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
-
-    # Reading from the file should still work.
-    cmd_hist_2 = debugger_cli_common.CommandHistory(
-        limit=3, history_file_path=self._history_file_path)
-    self.assertEqual(["help"], cmd_hist_2.most_recent_n(1))
-
-    # Writing should no longer work, but it should fail silently and
-    # the within instance-command history should still work.
-    cmd_hist_2.add_command("foo")
-    self.assertEqual(["help", "foo"], cmd_hist_2.most_recent_n(2))
-
-    cmd_hist_3 = debugger_cli_common.CommandHistory(
-        limit=3, history_file_path=self._history_file_path)
-    self.assertEqual(["help"], cmd_hist_3.most_recent_n(1))
 
     self._restoreFileReadWritePermissions(self._history_file_path)
 

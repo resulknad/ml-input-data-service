@@ -141,7 +141,7 @@ Status IrEmitter::EmitConstants(const HloComputation& computation) {
     info.symbol_name = global_name;
 
     if (!should_emit_initializer) {
-      auto base = static_cast<const uint8*>(literal.untyped_data());
+      auto base = static_cast<const uint8_t*>(literal.untyped_data());
       info.content.assign(base, base + literal.size_bytes());
     }
     ir_emitter_context_->constants().push_back(std::move(info));
@@ -341,13 +341,14 @@ bool IrEmitter::MaybeEmitDirectAtomicOperation(
 // On Nvidia GPUs, atomicCAS can only operate on 32 bit and 64 bit integers. If
 // the element type of the binary operation is 32 bits or 64 bits, the integer
 // type of the same size is used for the atomicCAS operation. On the other hand,
-// if the element type is smaller than 32 bits, int32 is used for the atomicCAS
-// operation. In this case, atomicCAS reads and writes 32 bit values from
-// the memory, which is larger than the memory size required by the original
-// atomic binary operation. We mask off the last two bits of the output_address
-// and use the result as an address to read the 32 bit values from the memory.
-// This can avoid out of bound memory accesses if tensor buffers are 4 byte
-// aligned and have a size of 4N, an assumption that the runtime can guarantee.
+// if the element type is smaller than 32 bits, int32_t is used for the
+// atomicCAS operation. In this case, atomicCAS reads and writes 32 bit values
+// from the memory, which is larger than the memory size required by the
+// original atomic binary operation. We mask off the last two bits of the
+// output_address and use the result as an address to read the 32 bit values
+// from the memory. This can avoid out of bound memory accesses if tensor
+// buffers are 4 byte aligned and have a size of 4N, an assumption that the
+// runtime can guarantee.
 //
 // The pseudo code is shown below. Variables *_address are pointers to a memory
 // region with a size equal to the size of the atomicCAS operation, with the
@@ -359,7 +360,7 @@ bool IrEmitter::MaybeEmitDirectAtomicOperation(
 //   cas_new_output_address = alloca(atomic_size);
 //   cas_old_output_address = alloca(atomic_size);
 //   if (atomic_size != element_size) {
-//     atomic_address = output_address & ((int64)(-4));
+//     atomic_address = output_address & ((int64_t)(-4));
 //     new_output_address = cas_new_output_address + (output_address & 3);
 //   } else {
 //     atomic_address = output_address;
@@ -630,15 +631,22 @@ Status IrEmitter::HandleBatchNormGrad(HloInstruction*) {
 StatusOr<std::vector<llvm::Value*>> IrEmitter::ComputeNestedElement(
     const HloComputation& computation,
     absl::Span<llvm::Value* const> parameter_elements) {
-  const Shape& return_shape = computation.root_instruction()->shape();
-  llvm::Value* return_buffer = llvm_ir::EmitAllocaAtFunctionEntry(
-      llvm_ir::ShapeToIrType(return_shape, module_), "return_buffer", &b_);
   std::vector<llvm::Value*> parameter_buffers;
   for (llvm::Value* parameter_element : parameter_elements) {
     parameter_buffers.push_back(llvm_ir::EmitAllocaAtFunctionEntry(
         parameter_element->getType(), "parameter_buffer", &b_));
     Store(parameter_element, parameter_buffers.back());
   }
+
+  return ComputeNestedElementFromAddrs(computation, parameter_buffers);
+}
+
+StatusOr<std::vector<llvm::Value*>> IrEmitter::ComputeNestedElementFromAddrs(
+    const HloComputation& computation,
+    absl::Span<llvm::Value* const> parameter_elements_addrs) {
+  const Shape& return_shape = computation.root_instruction()->shape();
+  llvm::Value* return_buffer = llvm_ir::EmitAllocaAtFunctionEntry(
+      llvm_ir::ShapeToIrType(return_shape, module_), "return_buffer", &b_);
 
   std::vector<llvm::Value*> allocas_for_returned_scalars;
   if (!return_shape.IsTuple()) {
@@ -651,8 +659,8 @@ StatusOr<std::vector<llvm::Value*>> IrEmitter::ComputeNestedElement(
     EmitTuple(tuple_array, allocas_for_returned_scalars, &b_);
   }
 
-  TF_RETURN_IF_ERROR(EmitCallToNestedComputation(computation, parameter_buffers,
-                                                 return_buffer));
+  TF_RETURN_IF_ERROR(EmitCallToNestedComputation(
+      computation, parameter_elements_addrs, return_buffer));
 
   std::vector<llvm::Value*> returned_scalars;
   returned_scalars.reserve(allocas_for_returned_scalars.size());

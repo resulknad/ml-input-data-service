@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for `tf.data.experimental.parse_example_dataset()."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
 
 from absl.testing import parameterized
@@ -30,6 +26,7 @@ from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.kernel_tests import tf_record_test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.eager import context
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
@@ -1138,8 +1135,8 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase,
             num_parallel_calls=10,
             deterministic=local_determinism))
 
-    opts = dataset_ops.Options()
-    opts.experimental_deterministic = global_determinism
+    opts = options_lib.Options()
+    opts.deterministic = global_determinism
     dataset = dataset.with_options(opts)
 
     expected = list(range(num_elements))

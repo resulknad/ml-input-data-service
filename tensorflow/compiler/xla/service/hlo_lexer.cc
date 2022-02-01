@@ -129,6 +129,7 @@ TokKind HloLexer::LexToken() {
       case '8':
       case '9':
       case '-':
+      case '?':
         if (current_char == '-' && PeekCurrentChar() == '>') {
           current_ptr_++;
           return TokKind::kArrow;
@@ -224,7 +225,7 @@ TokKind HloLexer::LexToken() {
   }
 }
 
-absl::optional<int64> HloLexer::LexNanPayload(absl::string_view& consumable) {
+absl::optional<int64_t> HloLexer::LexNanPayload(absl::string_view& consumable) {
   static LazyRE2 payload_pattern = {R"(\(0x[0-9a-fA-F]+\))"};
   if (!RE2::Consume(&consumable, *payload_pattern)) {
     return absl::nullopt;
@@ -235,7 +236,7 @@ absl::optional<int64> HloLexer::LexNanPayload(absl::string_view& consumable) {
   slice.remove_prefix(std::strlen("(0x"));
   CHECK(absl::EndsWith(slice, ")"));
   slice.remove_suffix(std::strlen(")"));
-  uint64 payload_value;
+  uint64_t payload_value;
   if (tensorflow::strings::HexStringToUint64(slice, &payload_value)) {
     if (payload_value <= 0 || payload_value > NanPayloadBitMask<double>()) {
       LOG(ERROR) << "NaN payload out of range: " << payload_value;
@@ -253,7 +254,7 @@ absl::optional<int64> HloLexer::LexNanPayload(absl::string_view& consumable) {
 // name     ::= [a-zA-Z_][a-zA-Z0-9_.-]*:
 // keyword  ::= HloModule, ENTRY, ...
 // attribute_name ::= condition, body, dimensions, ...
-// dim_labels_pattern ::= [0-9bf]{2,}_[0-9io]{2,}->[0-9bf]{2,}
+// dim_labels_pattern ::= [0-9bf?]{2,}_[0-9io?]{2,}->[0-9bf?]{2,}
 // identifiers ::= other cases that match [a-zA-Z_][a-zA-Z0-9_.-]*
 TokKind HloLexer::LexIdentifier() {
   while (IsIdentifierChar(PeekCurrentChar())) {
@@ -361,7 +362,7 @@ TokKind HloLexer::LexPercent() {
 //
 // fp with exp ::= [-]?([0-9]+|[0-9]+[.][0-9]*|[0-9]*[.][0-9]+)([eE][+-]?[0-9]+)
 // fp without exp ::= [-]?([0-9]+[.][0-9]*|[0-9]*[.][0-9]+)
-// dim_labels_pattern ::= [0-9bf]{2,}_[0-9io]{2,}->[0-9bf]{2,}
+// dim_labels_pattern ::= [0-9bf?]{2,}_[0-9io?]{2,}->[0-9bf?]{2,}
 // dxd_pattern ::= [0-9]+(x[0-9]+)+
 // pad_pattern ::=
 //   [-]?[0-9]+_[-]?[0-9]+(_[0-9]+)?(x[-]?[0-9]+_[-]?[0-9]+(_[0-9]+)?)*
@@ -374,13 +375,13 @@ TokKind HloLexer::LexNumberOrPattern() {
       R"([-]?((\d+|\d+[.]\d*|\d*[.]\d+)([eE][+-]?\d+))|[-]?(\d+[.]\d*|\d*[.]\d+))"};
   if (RE2::Consume(&consumable, *float_pattern)) {
     current_ptr_ = consumable.begin();
-    CHECK(absl::SimpleAtod(string(token_state_.token_start, current_ptr_),
+    CHECK(absl::SimpleAtod(std::string(token_state_.token_start, current_ptr_),
                            &token_state_.decimal_val));
     return TokKind::kDecimal;
   }
 
   static LazyRE2 dim_labels_pattern = {
-      R"([0-9bf]{2,}_[0-9io]{2,}->[0-9bf]{2,})"};
+      R"([0-9bf?]{2,}_[0-9io?]{2,}->[0-9bf?]{2,})"};
   static LazyRE2 dxd_pattern = {R"([0-9]+(x[0-9]+)+)"};
   static LazyRE2 pad_pattern = {
       R"([-]?[0-9]+_[-]?[0-9]+(_[0-9]+)?(x[-]?[0-9]+_[-]?[0-9]+(_[0-9]+)?)*)"};
@@ -411,9 +412,9 @@ TokKind HloLexer::LexNumberOrPattern() {
     if (absl::SimpleAtoi(slice, &token_state_.int64_val)) {
       return TokKind::kInt;
     }
-    uint64 uint64_val;
+    uint64_t uint64_val;
     if (absl::SimpleAtoi(slice, &uint64_val)) {
-      token_state_.int64_val = absl::bit_cast<int64>(uint64_val);
+      token_state_.int64_val = absl::bit_cast<int64_t>(uint64_val);
       return TokKind::kInt;
     }
     LOG(ERROR) << "Failed to parse int literal: " << slice;
@@ -497,7 +498,7 @@ TokKind HloLexer::LexString() {
     current_ptr_ = consumable.begin();
     absl::string_view raw =
         StringPieceFromPointers(token_state_.token_start + 1, current_ptr_ - 1);
-    string error;
+    std::string error;
     if (!absl::CUnescape(raw, &token_state_.str_val, &error)) {
       LOG(ERROR) << "Failed unescaping string: " << raw << ". error: " << error;
       return TokKind::kError;
@@ -507,7 +508,7 @@ TokKind HloLexer::LexString() {
   return TokKind::kError;
 }
 
-string TokKindToString(TokKind kind) {
+std::string TokKindToString(TokKind kind) {
   switch (kind) {
     case TokKind::kEof:
       return "kEof";

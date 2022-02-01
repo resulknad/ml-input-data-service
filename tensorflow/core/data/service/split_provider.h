@@ -33,15 +33,15 @@ namespace data {
 class DataServiceSplitProvider : public SplitProvider {
  public:
   DataServiceSplitProvider(const std::string& address,
-                           const std::string& protocol, int64 job_id,
-                           int64 split_provider_index, int64 timeout_ms,
-                           int64 task_id)
+                           const std::string& protocol, int64_t job_id,
+                           int64_t split_provider_index, int64_t timeout_ms,
+                           int64_t task_id)
       : address_(address),
         protocol_(protocol),
         job_id_(job_id),
         split_provider_index_(split_provider_index),
         timeout_ms_(timeout_ms),
-        task_id_(task_id){}
+        task_id_(task_id) {}
 
   Status GetNext(Tensor* split, bool* end_of_splits) override;
   Status Reset() override;
@@ -53,15 +53,15 @@ class DataServiceSplitProvider : public SplitProvider {
  private:
   const std::string address_;
   const std::string protocol_;
-  const int64 job_id_;
-  const int64 split_provider_index_;
-  const int64 timeout_ms_;
+  const int64_t job_id_;
+  const int64_t split_provider_index_;
+  const int64_t timeout_ms_;
 
   // EASL - used to "end" one task earlier
   const int64 task_id_;
 
   mutex mu_;
-  int64 repetition_ = 0;
+  int64_t repetition_ = 0;
   std::unique_ptr<DataServiceDispatcherClient> dispatcher_;
 };
 

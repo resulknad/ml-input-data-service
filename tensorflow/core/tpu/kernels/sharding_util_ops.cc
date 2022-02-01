@@ -155,7 +155,7 @@ Eigen::DSizes<Eigen::DenseIndex, 3> GetSliceIndices(
   subscript[1] =
       ((index / num_partitions[2]) % num_partitions[1]) * slice_shape[1];
   subscript[0] =
-      (index / (num_partitions[2] * num_partitions[1])) * slice_shape[2];
+      (index / (num_partitions[2] * num_partitions[1])) * slice_shape[0];
   return subscript;
 }
 
@@ -379,7 +379,7 @@ class XlaSplitNDBaseOp : public OpKernel {
     const auto& shape = input->shape().dim_sizes();
     const Device& device = ctx->eigen_device<Device>();
     if (num_slices_ == 1) {
-      Eigen::array<Eigen::IndexPair<int64>, Rank> tensor_paddings;
+      Eigen::array<Eigen::IndexPair<int64_t>, Rank> tensor_paddings;
       TensorShape output_shape;
       for (int i = 0; i < Rank; ++i) {
         tensor_paddings[i] = {0, paddings_[i]};
@@ -410,21 +410,21 @@ class XlaSplitNDBaseOp : public OpKernel {
       int num_complete_pad_dims = 0;
       int num_partial_pad_dims = 0;
       TensorShape non_padded_slice_shape;
-      Eigen::array<Eigen::IndexPair<int64>, Rank> slice_paddings;
+      Eigen::array<Eigen::IndexPair<int64_t>, Rank> slice_paddings;
       Eigen::DSizes<Eigen::DenseIndex, Rank> slice_indices =
           GetSliceIndices<Rank>(num_splits_, output_slice_shape_dsizes, i);
 
       // Calculate paddings necessary for slice instead of padding input and
       // slicing subsequently to reduce temporary memory allocation.
       for (int dim = 0; dim < Rank; ++dim) {
-        const int64 dim_size = shape[dim];
+        const int64_t dim_size = shape[dim];
         if (slice_indices[dim] >= dim_size) {
           // Complete padding.
           slice_indices[dim] = dim_size;
           non_padded_slice_shape.AddDim(0);
           slice_paddings[dim] = {0, output_slice_shape_dsizes[dim]};
           ++num_complete_pad_dims;
-        } else if (slice_indices[dim] + output_slice_shape_dsizes[dim] >=
+        } else if (slice_indices[dim] + output_slice_shape_dsizes[dim] >
                    dim_size) {
           // Partial padding.
           non_padded_slice_shape.AddDim(dim_size - slice_indices[dim]);
@@ -699,13 +699,13 @@ class XlaConcatNDBaseOp : public OpKernel {
       TensorShape non_padded_slice_shape;
       // Calculate paddings necessary to strip from slice.
       for (int dim = 0; dim < Rank; ++dim) {
-        const int64 dim_size = output->shape().dim_size(dim);
+        const int64_t dim_size = output->shape().dim_size(dim);
         if (slice_indices[dim] >= dim_size) {
           // Complete padding.
           slice_indices[dim] = dim_size;
           non_padded_slice_shape.AddDim(0);
           ++num_complete_pad_dims;
-        } else if (slice_indices[dim] + slice_shape_dsizes[dim] >= dim_size) {
+        } else if (slice_indices[dim] + slice_shape_dsizes[dim] > dim_size) {
           // Partial padding.
           non_padded_slice_shape.AddDim(dim_size - slice_indices[dim]);
           ++num_partial_pad_dims;

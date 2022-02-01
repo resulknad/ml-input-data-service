@@ -9,6 +9,7 @@ load("//tensorflow/compiler/mlir/tfr:build_defs.bzl", "gen_op_libraries")
 load(
     "@llvm-project//mlir:tblgen.bzl",
     "gentbl_cc_library",
+    "td_library",
 )
 load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
@@ -22,7 +23,6 @@ package(
 
 package_group(
     name = "friends",
-    includes = ["@llvm-project//mlir:subpackages"],
     packages = [
         "//learning/brain/experimental/mlir/quantization/...",
         "//tensorflow/c/...",
@@ -32,21 +32,21 @@ package_group(
     ],
 )
 
-filegroup(
+td_library(
     name = "tfr_ops_td_files",
     srcs = [
         "ir/tfr_ops.td",
-        "//tensorflow/compiler/mlir/lite/quantization:quantization_td_files",
-        "//tensorflow/compiler/mlir/tensorflow:ir/tf_op_base.td",
-        "//tensorflow/compiler/mlir/tensorflow:ir/tf_op_interfaces.td",
-        "@llvm-project//mlir:ControlFlowInterfacesTdFiles",
-        "@llvm-project//mlir:OpBaseTdFiles",
-        "@llvm-project//mlir:SideEffectTdFiles",
-        "@llvm-project//mlir:include/mlir/Dialect/Shape/IR/ShapeBase.td",
-        "@llvm-project//mlir:include/mlir/Dialect/Shape/IR/ShapeOps.td",
-        "@llvm-project//mlir:include/mlir/Interfaces/CallInterfaces.td",
     ],
     compatible_with = get_compatible_with_cloud(),
+    deps = [
+        "//tensorflow/compiler/mlir/lite/quantization:quantization_td_files",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
+        "@llvm-project//mlir:CallInterfacesTdFiles",
+        "@llvm-project//mlir:ControlFlowInterfacesTdFiles",
+        "@llvm-project//mlir:OpBaseTdFiles",
+        "@llvm-project//mlir:ShapeOpsTdFiles",
+        "@llvm-project//mlir:SideEffectTdFiles",
+    ],
 )
 
 gentbl_cc_library(
@@ -82,6 +82,7 @@ gentbl_cc_library(
     td_file = "passes/decompose_patterns.td",
     deps = [
         ":tfr_ops_td_files",
+        "@llvm-project//mlir:ArithmeticOpsTdFiles",
         "@llvm-project//mlir:StdOpsTdFiles",
     ],
 )
@@ -101,11 +102,14 @@ cc_library(
         ":tfr_ops_inc_gen",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:ControlFlowInterfaces",
         "@llvm-project//mlir:Dialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:InferTypeOpInterface",
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:Shape",
         "@llvm-project//mlir:SideEffects",
@@ -138,6 +142,7 @@ cc_library(
         "passes/decompose.cc",
         "passes/generated_decompose.inc",
         "passes/raise_to_tf.cc",
+        "passes/rewrite_quantized_io.cc",
     ],
     hdrs = [
         "passes/passes.h",
@@ -150,6 +155,7 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:QuantOps",
@@ -173,6 +179,7 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:MlirOptLib",
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:SCFDialect",
@@ -182,10 +189,7 @@ tf_cc_binary(
 )
 
 glob_lit_tests(
-    data = [
-        ":test_utilities",
-        "@llvm-project//mlir:run_lit.sh",
-    ],
+    data = [":test_utilities"],
     driver = "//tensorflow/compiler/mlir:run_lit.sh",
     test_file_exts = ["mlir"],
 )
@@ -198,6 +202,7 @@ filegroup(
         "//tensorflow/compiler/mlir/tfr:tfr-opt",
         "@llvm-project//llvm:FileCheck",
         "@llvm-project//llvm:not",
+        "@llvm-project//mlir:run_lit.sh",
     ],
 )
 
@@ -210,8 +215,8 @@ cc_library(
         ":tfr",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_attr",
-        "//tensorflow/compiler/mlir/tensorflow:convert_graphdef",
         "//tensorflow/compiler/mlir/tensorflow:convert_type",
+        "//tensorflow/compiler/mlir/tensorflow:export_graphdef",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/core:lib",
@@ -220,6 +225,7 @@ cc_library(
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
@@ -323,6 +329,7 @@ tf_python_pybind_extension(
         "//tensorflow/python:pybind11_lib",
         "//tensorflow/python:pybind11_status",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:SCFDialect",
@@ -343,8 +350,18 @@ py_library(
     srcs = ["python/tfr_gen.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow:tensorflow_py",
+        "//tensorflow:tensorflow_py",  # buildcleaner: keep
         "//tensorflow/compiler/mlir/tfr:tfr_wrapper",
+        "//tensorflow/python/autograph/converters",
+        "//tensorflow/python/autograph/impl",
+        "//tensorflow/python/autograph/pyct",
+        "//tensorflow/python/autograph/pyct/static_analysis",
+        "//tensorflow/python/framework",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:op_def_registry",
+        "//tensorflow/python/platform",
+        "//tensorflow/python/util",
+        "@gast_archive//:gast",
     ],
 )
 

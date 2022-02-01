@@ -4,10 +4,19 @@
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load(":build_defs.bzl", "build_test")
+load(":cc_library_with_tflite.bzl", "custom_c_library_with_tflite")
 
 package(
     default_visibility = ["//visibility:private"],
     licenses = ["notice"],  # Apache 2.0
+)
+
+exports_files(
+    srcs = ["c/c_api.h"],
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+        "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
+    ],
 )
 
 #------------------------------------------------------------------------------
@@ -311,6 +320,17 @@ cc_library(
 )
 
 cc_library(
+    name = "c_api_without_op_resolver",
+    hdrs = ["c/c_api.h"],
+    copts = tflite_copts_warnings(),
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+        "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
+    ],
+    deps = ["//tensorflow/lite/c:c_api_without_op_resolver"],
+)
+
+cc_library(
     name = "c_api_experimental",
     hdrs = ["c/c_api_experimental.h"],
     copts = tflite_copts_warnings(),
@@ -356,6 +376,29 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "nnapi_plugin",
+    hdrs = ["c/experimental/acceleration/configuration/nnapi_plugin.h"],
+    copts = tflite_copts_warnings(),
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+        "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
+    ],
+    deps = [
+        "//tensorflow/lite/experimental/acceleration/configuration/c:nnapi_plugin",
+    ],
+)
+
+custom_c_library_with_tflite(
+    name = "custom_c_api_example",
+    testonly = True,
+    models = [
+        "//tensorflow/lite:testdata/add.bin",
+        "//tensorflow/lite:testdata/add_quantized.bin",
+    ],
+    visibility = ["//visibility:private"],
+)
+
 build_test(
     name = "c_api_build_test",
     targets = [
@@ -363,6 +406,9 @@ build_test(
         ":c_api",
         ":c_api_experimental",
         ":common",
+        ":custom_c_api_example",
+        ":delegate_plugin",
+        ":nnapi_plugin",
     ],
 )
 
@@ -415,6 +461,18 @@ build_test(
 
 #------------------------------------------------------------------------------
 # JNI bindings (Java API and Java Tasks library)
+
+cc_library(
+    name = "jni_utils",
+    srcs = ["jni/jni_utils.cc"],
+    hdrs = ["jni/jni_utils.h"],
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+    ],
+    deps = [
+        "//tensorflow/lite/java/jni",
+    ],
+)
 
 # Contains code to initialize TFLite through JNI in the internal version.
 cc_library(

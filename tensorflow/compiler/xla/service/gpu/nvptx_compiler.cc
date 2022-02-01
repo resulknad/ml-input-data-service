@@ -18,11 +18,14 @@ limitations under the License.
 #include <stdlib.h>
 
 #include <fstream>
+#include <string>
+#include <utility>
 
 #include "absl/base/call_once.h"
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Support/SourceMgr.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
+#include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_pad_for_gemms.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_fused_conv_rewriter.h"
@@ -30,12 +33,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/cudnn_vectorize_convolutions.h"
 #include "tensorflow/compiler/xla/service/gpu/cusolver_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_algorithm_picker.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_asm_opts_util.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_padding_legalization.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_layout_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
-#include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
+#include "tensorflow/compiler/xla/service/gpu/nvptx_helper.h"
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
@@ -50,7 +54,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/platform/cuda_libdevice_path.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
@@ -59,53 +62,6 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
-
-namespace {
-
-namespace tracing = tensorflow::tracing;
-
-static std::vector<std::string> CandidateCudaRoots(
-    const HloModuleConfig& config) {
-  return tensorflow::CandidateCudaRoots(
-      config.debug_options().xla_gpu_cuda_data_dir());
-}
-
-void PrintCantFindCudaMessage(absl::string_view msg,
-                              const HloModuleConfig& hlo_module_config) {
-  LOG(WARNING) << msg;
-  LOG(WARNING) << "Searched for CUDA in the following directories:";
-
-  for (const auto& dir : CandidateCudaRoots(hlo_module_config)) {
-    LOG(WARNING) << "  " << dir;
-  }
-  LOG(WARNING)
-      << "You can choose the search directory by setting xla_gpu_cuda_data_dir "
-         "in HloModule's DebugOptions.  For most apps, setting the environment "
-         "variable XLA_FLAGS=--xla_gpu_cuda_data_dir=/path/to/cuda will work.";
-}
-
-}  // namespace
-
-string GetLibdeviceDir(const HloModuleConfig& hlo_module_config) {
-  for (const string& cuda_root : CandidateCudaRoots(hlo_module_config)) {
-    string libdevice_dir =
-        tensorflow::io::JoinPath(cuda_root, "nvvm", "libdevice");
-    VLOG(2) << "Looking for libdevice at " << libdevice_dir;
-    if (tensorflow::Env::Default()->IsDirectory(libdevice_dir).ok()) {
-      VLOG(2) << "Found libdevice dir " << libdevice_dir;
-      return libdevice_dir;
-    }
-  }
-  PrintCantFindCudaMessage(
-      "Can't find libdevice directory ${CUDA_DIR}/nvvm/libdevice. This may "
-      "result in compilation or runtime failures, if the program we try to run "
-      "uses routines from libdevice.",
-      hlo_module_config);
-
-  // GetCudaRootCandidates always includes ".", but if everything fails, we
-  // return it anyway.  Better than returning the empty string.
-  return ".";
-}
 
 Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
@@ -124,9 +80,10 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
       stream_exec->GetDeviceDescription().cuda_compute_capability());
   pipeline.AddPass<CudnnVectorizeConvolutions>(
       stream_exec->GetDeviceDescription().cuda_compute_capability());
-  // CudnnConvPadForIntegerConvolutions and CudnnConvPadForTensorCores leave
-  // behind unnecessary tuple/get-tuple-element pairs that TupleSimplifier
-  // fixes.
+  // The conv padding/vectorization passes which we need to get rid of.  They
+  // also leave behind unnecessary tuple/get-tuple-element pairs that
+  // TupleSimplifier fixes.
+  pipeline.AddPass<CallInliner>();
   pipeline.AddPass<TupleSimplifier>();
 
   // tf2xla bridge, DepthwiseConvolutionConverter and GpuConvRewriter
@@ -179,6 +136,9 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
     pre_pipeline.AddPass<CublasPadForGemms>(PrimitiveType::F16,
                                             /*pad_to_multiple_of=*/8);
   }
+  // Padding a gemm operand that's a constant results in pad(constant).  Run
+  // constant-folding to simplify this into a new constant.
+  pre_pipeline.AddPass<HloConstantFolding>();
   TF_RETURN_IF_ERROR(pre_pipeline.Run(hlo_module).status());
 
   TF_RETURN_IF_ERROR(GpuCompiler::OptimizeHloPostLayoutAssignment(
@@ -225,7 +185,7 @@ bool MaybeLoadPtxFromFile(const HloModuleConfig module_config,
   // and warn when a file is not used to ease catching typo in filename.
   std::string prefix = xla::FilenameFor(*module, "", *ptx);
   std::string matched_filename;
-  for (const string& full_filename :
+  for (const std::string& full_filename :
        module_config.debug_options().xla_gpu_ptx_file()) {
     // To ease comparing many PTX versions, accept different suffixes then
     // the original filename.
@@ -267,7 +227,7 @@ std::unique_ptr<llvm::Module> MaybeLoadLLVMFromFile(const HloModule* module,
   auto xla_gpu_llvm_ir_file =
       module->config().debug_options().xla_gpu_llvm_ir_file();
   auto matched_filename = absl::c_find_if(
-      xla_gpu_llvm_ir_file, [prefix](const string& full_filename) {
+      xla_gpu_llvm_ir_file, [prefix](const std::string& full_filename) {
         // To ease comparing many LLVM versions, accept different suffixes then
         // the original filename.
         return absl::StartsWith(tensorflow::io::Basename(full_filename),
@@ -340,8 +300,8 @@ void WarnIfBadDriverJITVersion() {
 }
 
 NVPTXCompiler::NVPTXCompiler()
-    : GpuCompiler(stream_executor::cuda::kCudaPlatformId, nvptx::kTargetTriple,
-                  nvptx::kDataLayout) {}
+    : GpuCompiler(stream_executor::cuda::kCudaPlatformId, nvptx::TargetTriple(),
+                  nvptx::DataLayout()) {}
 
 HloDataflowAnalysis::CanShareBuffer NVPTXCompiler::GetCanShareBuffer() {
   return &CanShareBufferHint;
@@ -351,7 +311,7 @@ GpuVersion NVPTXCompiler::GetGpuVersion(se::StreamExecutor* stream_exec) {
   return stream_exec->GetDeviceDescription().cuda_compute_capability();
 }
 
-StatusOr<std::pair<std::string, std::vector<uint8>>>
+StatusOr<std::pair<std::string, std::vector<uint8_t>>>
 NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
                                    llvm::Module* llvm_module,
                                    GpuVersion gpu_version,
@@ -380,7 +340,7 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
     selected_module = llvm_module;
   }
 
-  string ptx;
+  std::string ptx;
   if (!(debug_module &&
         MaybeLoadPtxFromFile(module_config, debug_module, &ptx))) {
     XLA_SCOPED_LOGGING_TIMER(
@@ -389,16 +349,16 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
                                                  module_config, libdevice_dir));
   }
 
-  std::vector<uint8> cubin = CompileGpuAsmOrGetCachedResult(
+  std::vector<uint8_t> cubin = CompileGpuAsmOrGetCachedResult(
       stream_exec, ptx, absl::get<se::CudaComputeCapability>(gpu_version),
       module_config, relocatable);
 
-  return std::pair<std::string, std::vector<uint8>>(std::move(ptx),
-                                                    std::move(cubin));
+  return std::pair<std::string, std::vector<uint8_t>>(std::move(ptx),
+                                                      std::move(cubin));
 }
 
-std::vector<uint8> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
-    se::StreamExecutor* stream_exec, const string& ptx,
+std::vector<uint8_t> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
+    se::StreamExecutor* stream_exec, const std::string& ptx,
     se::CudaComputeCapability cc, const HloModuleConfig& hlo_module_config,
     bool relocatable) {
   XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::CompileGpuAsmOrGetCachedResult");
@@ -408,7 +368,7 @@ std::vector<uint8> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
   decltype(compilation_cache_.begin()) iter;
   // Pointers into compilation_cache_ where the ptx and (optional) cubin are
   // stored.
-  const string* cache_ptx = nullptr;
+  const std::string* cache_ptx = nullptr;
   CompilationCacheValue* cache_value = nullptr;
 
   {
@@ -429,11 +389,12 @@ std::vector<uint8> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
     if (inserted) {
       CHECK(!cache_value->compilation_done);
       if (!ptx.empty()) {
-        auto ptxas_config = PtxOptsFromConfig(hlo_module_config);
+        auto ptxas_config =
+            PtxOptsFromDebugOptions(hlo_module_config.debug_options());
         if (relocatable) {
           ptxas_config.extra_flags.push_back("-c");
         }
-        StatusOr<std::vector<uint8>> maybe_cubin = se::CompileGpuAsm(
+        StatusOr<std::vector<uint8_t>> maybe_cubin = se::CompileGpuAsm(
             stream_exec->device_ordinal(), cache_ptx->c_str(), ptxas_config);
 
         if (maybe_cubin.ok()) {
@@ -503,8 +464,9 @@ std::vector<uint8> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
   return cache_value->cubin_data;
 }
 
-StatusOr<std::vector<uint8>> NVPTXCompiler::LinkModules(
-    se::StreamExecutor* stream_exec, std::vector<std::vector<uint8>> modules) {
+StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
+    se::StreamExecutor* stream_exec,
+    std::vector<std::vector<uint8_t>> modules) {
   std::vector<stream_executor::CubinOrPTXImage> images;
   images.reserve(modules.size());
   for (auto& module : modules) {

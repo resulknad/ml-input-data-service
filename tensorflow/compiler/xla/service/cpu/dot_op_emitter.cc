@@ -30,6 +30,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_options.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
@@ -119,7 +120,7 @@ DotImplementationStrategy GetDotImplementationStrategy(
 // Helper class for emitting LLVM IR to perform the dot operation.
 class DotOpEmitter {
  public:
-  explicit DotOpEmitter(DotInfo dot_info, string dot_hlo_name,
+  explicit DotOpEmitter(DotInfo dot_info, std::string dot_hlo_name,
                         const llvm_ir::IrArray& target_array,
                         const llvm_ir::IrArray& lhs_array,
                         const llvm_ir::IrArray& rhs_array,
@@ -143,14 +144,14 @@ class DotOpEmitter {
   // Represents the dimensions of a matrix-matrix multiply operation.
   struct MatMultDims {
     // The number of rows in the LHS.
-    int64 m;
+    int64_t m;
 
     // The number of columns in the LHS, which is also must be equal to the
     // number of rows in the RHS.
-    int64 k;
+    int64_t k;
 
     // The number of columns on the RHS.
-    int64 n;
+    int64_t n;
 
     // True if the LHS matrix is column major.
     bool lhs_column_major;
@@ -185,19 +186,19 @@ class DotOpEmitter {
 
   // When doing a tiled GEMV in LLVM IR, a "tile" consists of this many vector
   // registers.
-  int64 GetGemvTilingFactor() const {
-    const int64 kDefaultTilingFactor = 8;
+  int64_t GetGemvTilingFactor() const {
+    const int64_t kDefaultTilingFactor = 8;
     return options::LlvmIrGemvTilingFactor(hlo_module_config_)
         .value_or(kDefaultTilingFactor);
   }
 
-  std::tuple<int64, int64, int64> GetGemmTileSize() const {
+  std::tuple<int64_t, int64_t, int64_t> GetGemmTileSize() const {
     // Tuned for broadwell - Intel(R) Xeon(R) CPU E5-2690 v4 @ 2.60GHz
     //
     // TODO(b/80093688): Tune for other architectures and centralize this
     // information in one place.
-    const std::tuple<int64, int64, int64> kDefaultTileSize =
-        std::tuple<int64, int64, int64>(11, 9, 1);
+    const std::tuple<int64_t, int64_t, int64_t> kDefaultTileSize =
+        std::tuple<int64_t, int64_t, int64_t>(11, 9, 1);
     return options::LlvmIrGemmTileSize(hlo_module_config_)
         .value_or(kDefaultTileSize);
   }
@@ -217,7 +218,7 @@ class DotOpEmitter {
   }
 
   DotInfo dot_info_;
-  string dot_hlo_name_;
+  std::string dot_hlo_name_;
   const llvm_ir::IrArray& target_array_;
   const llvm_ir::IrArray& lhs_array_;
   const llvm_ir::IrArray& rhs_array_;
@@ -231,9 +232,9 @@ class DotOpEmitter {
 }  // namespace
 
 DotOpEmitter::DotOpEmitter(
-    DotInfo dot_info, string dot_hlo_name, const llvm_ir::IrArray& target_array,
-    const llvm_ir::IrArray& lhs_array, const llvm_ir::IrArray& rhs_array,
-    const llvm_ir::IrArray* addend_array,
+    DotInfo dot_info, std::string dot_hlo_name,
+    const llvm_ir::IrArray& target_array, const llvm_ir::IrArray& lhs_array,
+    const llvm_ir::IrArray& rhs_array, const llvm_ir::IrArray* addend_array,
     llvm::Value* executable_run_options_value, llvm::IRBuilder<>* b,
     mlir::MLIRContext* mlir_context, const HloModuleConfig& hlo_module_config,
     const TargetMachineFeatures& target_machine_features)
@@ -326,20 +327,35 @@ Status DotOpEmitter::EmitLinalgMatmul() {
             target_machine_features_.minimum_alignment_for_allocation(
                 ShapeUtil::ByteSizeOf(dot_info_.result_shape));
         mlir::linalg::CodegenStrategy strategy;
-        strategy.tile<mlir::linalg::GenericOp>(tilingOptions)
-            .promote<mlir::linalg::GenericOp>(
-                mlir::linalg::LinalgPromotionOptions()
-                    .setAlignment(alignment)
-                    .setUseFullTileBuffersByDefault(true)
-                    .setUseAlloca(true))
-            .vectorize<mlir::linalg::GenericOp>()
-            .setVectorTransformsOptions(
-                mlir::vector::VectorTransformsOptions()
+        strategy
+            .tile(mlir::linalg::GenericOp::getOperationName(), tilingOptions)
+            .promote(mlir::linalg::GenericOp::getOperationName(),
+                     mlir::linalg::LinalgPromotionOptions()
+                         .setAlignment(alignment)
+                         .setUseFullTileBuffersByDefault(true)
+                         .setUseAlloca(true))
+            .vectorize(mlir::linalg::GenericOp::getOperationName())
+            .vectorLowering(
+                mlir::linalg::LinalgVectorLoweringOptions()
                     .setVectorTransformsOptions(
-                        mlir::vector::VectorContractLowering::OuterProduct))
-            .setVectorTransferToSCFOptions(
-                mlir::VectorTransferToSCFOptions().setUnroll(true));
-        strategy.transform(function);
+                        mlir::vector::VectorTransformsOptions()
+                            .setVectorTransformsOptions(
+                                mlir::vector::VectorContractLowering::
+                                    OuterProduct))
+                    .setVectorTransferToSCFOptions(
+                        mlir::VectorTransferToSCFOptions().enableFullUnroll()));
+        // TODO: this should be within a pass and we should be able to create a
+        // nested OpPassManager.
+        // Created a nested OpPassManager, populate the strategy and run.
+        // mlir::OpPassManager dynamicPM("builtin.func");
+        // strategy.configurePassPipeline(dynamicPM, function.getContext());
+        // Propagate pass failure?
+        // (void)mlir::runPipeline(dynamicPM, function);
+        mlir::PassManager pm(function.getContext(),
+                             function.getOperationName());
+        strategy.configurePassPipeline(pm, function.getContext());
+        // Propagate pass failure?
+        (void)pm.run(function);
       });
 }
 
@@ -377,7 +393,7 @@ void DotOpEmitter::EmitTiledLlvmIrGemm() {
       /*m=*/m, /*k=*/k, /*n=*/n,
       /*max_vectorization_width=*/max_target_vector_width,
       /*max_vector_count=*/tile_size_n_in_vector_width,
-      /*min_vectorization_width=*/std::min<int64>(4, max_target_vector_width),
+      /*min_vectorization_width=*/std::min<int64_t>(4, max_target_vector_width),
       /*tile_size_m=*/tile_size_m, /*tile_size_k=*/tile_size_k, /*lhs=*/lhs,
       /*rhs=*/rhs, /*result=*/target, b_, hlo_module_config_);
 }
@@ -638,7 +654,7 @@ void DotOpEmitter::EmitNaiveLlvmIrGemm() {
   llvm::Value* lhs_element = lhs_array_.EmitReadArrayElement(lhs_index, b_);
   llvm::Value* rhs_element = rhs_array_.EmitReadArrayElement(rhs_index, b_);
 
-  llvm::Value* accum = b_->CreateLoad(accum_address);
+  llvm::Value* accum = b_->CreateLoad(accum_type, accum_address);
   llvm::Value* updated_accum;
   if (ShapeUtil::ElementIsComplex(lhs_shape)) {
     auto real = [&](llvm::Value* x) { return b_->CreateExtractValue(x, {0}); };
@@ -670,7 +686,7 @@ void DotOpEmitter::EmitNaiveLlvmIrGemm() {
   // - Store into output array.
   SetToFirstInsertPoint(reduction_loop->GetExitBasicBlock(), b_);
 
-  llvm::Value* result = b_->CreateLoad(accum_address);
+  llvm::Value* result = b_->CreateLoad(accum_type, accum_address);
 
   // Create index into target address. The target index is the concatenation of
   // the rhs and lhs indexes with the reduction dimensions removed. The terms
@@ -736,9 +752,9 @@ Status DotOpEmitter::EmitCallToRuntime() {
   // The signature of the Eigen runtime matmul function is:
   //
   //   (void)(void* run_options, float* out, float* lhs, float* rhs,
-  //          int64 m, int64 n, int64 k, int32 transpose_lhs,
-  //          int32 transpose_rhs);
-  // The two transpose_... parameters are actually booleans, but we use int32
+  //          int64_t m, int64_t n, int64_t k, int32_t transpose_lhs,
+  //          int32_t transpose_rhs);
+  // The two transpose_... parameters are actually booleans, but we use int32_t
   // to avoid target-dependent calling convention details.
 
   bool multi_threaded = ShouldUseMultiThreadedEigen(hlo_module_config_);
@@ -884,7 +900,7 @@ DotOpEmitter::MatMultDims DotOpEmitter::GetMatMultDims() const {
 
 // For vector-matrix dot products, it is always profitable to make the Rhs
 // column major.
-absl::optional<int64> ProfitableToMakeDotOperandColumnMajor(
+absl::optional<int64_t> ProfitableToMakeDotOperandColumnMajor(
     const HloInstruction& hlo) {
   if (hlo.opcode() == HloOpcode::kDot && hlo.shape().dimensions_size() <= 1) {
     if (hlo.operand(0)->shape().rank() != 1 ||
@@ -1031,6 +1047,20 @@ DotImplementationStrategy GetDotImplementationStrategy(
     return DotImplementationStrategy::kTiledLlvmIrGemv;
   }
 
+  // MatMul smaller than 3x3 should use naive nested loop.
+  if ((dot_info.lhs_shape.dimensions_size() <= 1 ||
+       (dot_info.lhs_shape.dimensions_size() == 2 &&
+        (dot_info.lhs_shape.dimensions(0) <= 3 ||
+         dot_info.lhs_shape.dimensions(1) <= 3))) &&
+      (dot_info.rhs_shape.dimensions_size() <= 1 ||
+       (dot_info.rhs_shape.dimensions_size() == 2 &&
+        (dot_info.rhs_shape.dimensions(0) <= 3 ||
+         dot_info.rhs_shape.dimensions(1) <= 3))) &&
+      (primitive_util::IsFloatingPointType(element_type) ||
+       primitive_util::IsIntegralType(element_type))) {
+    return DotImplementationStrategy::kNaiveLlvmIr;
+  }
+
   if (IsAlignedGemm(dot_info, target_machine_features)) {
     if (CanEmitTiledLlvmIrGemm(config, dot_info, target_machine_features)) {
       return DotImplementationStrategy::kTiledLlvmIrGemm;
@@ -1042,9 +1072,9 @@ DotImplementationStrategy GetDotImplementationStrategy(
 }
 
 Status EmitNonBatchDotOperation(
-    DotInfo dot_info, string hlo_name, const llvm_ir::IrArray& target_array,
-    const llvm_ir::IrArray& lhs_array, const llvm_ir::IrArray& rhs_array,
-    const llvm_ir::IrArray* addend_array,
+    DotInfo dot_info, std::string hlo_name,
+    const llvm_ir::IrArray& target_array, const llvm_ir::IrArray& lhs_array,
+    const llvm_ir::IrArray& rhs_array, const llvm_ir::IrArray* addend_array,
     llvm::Value* executable_run_options_value, llvm::IRBuilder<>* b,
     mlir::MLIRContext* mlir_context, const HloModuleConfig& hlo_module_config,
     const TargetMachineFeatures& target_machine_features) {
@@ -1061,17 +1091,17 @@ Status EmitNonBatchDotOperation(
 }
 
 Shape DropFirstDim(const Shape& shape) {
-  absl::Span<int64 const> array_shape_dims(shape.dimensions());
+  absl::Span<int64_t const> array_shape_dims(shape.dimensions());
   array_shape_dims.remove_prefix(1);
   return ShapeUtil::MakeShapeWithDescendingLayout(shape.element_type(),
                                                   array_shape_dims);
 }
 
 Shape CollapseFirstNDims(const Shape& shape, int64_t n) {
-  absl::Span<int64 const> input_shape_dims(shape.dimensions());
+  absl::Span<int64_t const> input_shape_dims(shape.dimensions());
   int64_t prefix_dim =
       std::accumulate(input_shape_dims.begin(), input_shape_dims.begin() + n,
-                      1ll, std::multiplies<int64>());
+                      1ll, std::multiplies<int64_t>());
   DimensionVector result_dims;
   result_dims.push_back(prefix_dim);
   std::copy(input_shape_dims.begin() + n, input_shape_dims.end(),
@@ -1098,7 +1128,8 @@ Status ValidateDotDimensionNumbers(const DotDimensionNumbers& dim_numbers) {
   // Checks some invariants that do not hold in general, but DotDecomposer
   // should have established for us.  This is just a debugging aid.
   TF_RET_CHECK(dim_numbers.lhs_contracting_dimensions_size() == 1);
-  std::vector<int64> batch_dim_numbers(dim_numbers.lhs_batch_dimensions_size());
+  std::vector<int64_t> batch_dim_numbers(
+      dim_numbers.lhs_batch_dimensions_size());
   absl::c_iota(batch_dim_numbers, 0);
   TF_RET_CHECK(
       absl::c_equal(batch_dim_numbers, dim_numbers.lhs_batch_dimensions()));

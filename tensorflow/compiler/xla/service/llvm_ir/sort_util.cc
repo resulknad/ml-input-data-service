@@ -118,12 +118,12 @@ Status EmitCompareLoopBody(
       values_to_compare.push_back(element_address(i, current_keys_index));
     }
     llvm::Module* module = b->GetInsertBlock()->getParent()->getParent();
+    llvm::Type* pred_type = llvm_ir::PrimitiveTypeToIrType(PRED, module);
     llvm::Value* compare_return_buffer = llvm_ir::EmitAllocaAtFunctionEntry(
-        llvm_ir::PrimitiveTypeToIrType(PRED, module), "compare_return_buffer",
-        b);
+        pred_type, "compare_return_buffer", b);
     TF_RETURN_IF_ERROR(
         emit_compare_callback(values_to_compare, compare_return_buffer));
-    llvm::Value* result = b->CreateLoad(compare_return_buffer);
+    llvm::Value* result = b->CreateLoad(pred_type, compare_return_buffer);
 
     // Check if the 'compare' function returns true.
     llvm::Value* is_smaller_than =
@@ -132,8 +132,12 @@ Status EmitCompareLoopBody(
     ksl.If("is_smaller_than", is_smaller_than, [&]() {
       for (int64_t i = 0; i < num_values; ++i) {
         // Swap the values.
-        auto value1 = b->CreateLoad(values_to_compare[i * 2]);
-        auto value2 = b->CreateLoad(values_to_compare[i * 2 + 1]);
+        auto value1 = b->CreateLoad(
+            values_to_compare[i * 2]->getType()->getPointerElementType(),
+            values_to_compare[i * 2]);
+        auto value2 = b->CreateLoad(
+            values_to_compare[i * 2 + 1]->getType()->getPointerElementType(),
+            values_to_compare[i * 2 + 1]);
         write_element(i, current_keys_index, value1);
         write_element(i, compare_keys_index, value2);
       }
@@ -144,7 +148,7 @@ Status EmitCompareLoopBody(
 
 Status EmitTiledCompareLoop(
     const IrArray::Index& tiled_keys_index, int64_t dimension_to_sort,
-    int64_t dimension_to_sort_bound, absl::Span<const int64> xor_masks,
+    int64_t dimension_to_sort_bound, absl::Span<const int64_t> xor_masks,
     const std::vector<IrArray>& params,
     const std::vector<llvm::Value*>& param_shmem_buffers, int64_t tile_size,
     const EmitCallToNestedComputationCallback& emit_compare_callback,
@@ -195,10 +199,12 @@ Status EmitTiledCompareLoop(
       IrArray::Index keys_index(keys_multi_index, params[i].GetShape(),
                                 tiled_keys_index.GetType());
       auto value = params[i].EmitReadArrayElement(keys_index, b);
-      b->CreateStore(value,
-                     b->CreateGEP(param_shmem_buffers[i],
-                                  {tiled_keys_index.GetConstantWithIndexType(0),
-                                   cache_index}));
+      b->CreateStore(
+          value,
+          b->CreateGEP(
+              param_shmem_buffers[i]->getType()->getPointerElementType(),
+              param_shmem_buffers[i],
+              {tiled_keys_index.GetConstantWithIndexType(0), cache_index}));
     });
   }
   // Wait until all reads have happened.
@@ -206,9 +212,10 @@ Status EmitTiledCompareLoop(
 
   // Now emit the bodies of the comparison loops.
   auto element_address = [&](int64_t operand, llvm::Value* index) {
-    auto shared_memory_address =
-        b->CreateGEP(param_shmem_buffers[operand],
-                     {tiled_keys_index.GetConstantWithIndexType(0), index});
+    auto shared_memory_address = b->CreateGEP(
+        param_shmem_buffers[operand]->getType()->getPointerElementType(),
+        param_shmem_buffers[operand],
+        {tiled_keys_index.GetConstantWithIndexType(0), index});
     auto ptr_type = shared_memory_address->getType();
     // We need a generic pointer with address space 0 instead of a pointer to
     // shared memory (address space 3) so that we can pass it to the comparison
@@ -222,8 +229,10 @@ Status EmitTiledCompareLoop(
                            llvm::Value* value) {
     b->CreateStore(
         value,
-        b->CreateGEP(param_shmem_buffers[operand],
-                     {tiled_keys_index.GetConstantWithIndexType(0), index}));
+        b->CreateGEP(
+            param_shmem_buffers[operand]->getType()->getPointerElementType(),
+            param_shmem_buffers[operand],
+            {tiled_keys_index.GetConstantWithIndexType(0), index}));
   };
   for (int64_t xor_mask : xor_masks) {
     // The index of the element pair to be compared within the tile stored in
@@ -241,7 +250,7 @@ Status EmitTiledCompareLoop(
               b->CreateMul(tiled_keys_index[dimension_to_sort],
                            tiled_keys_index.GetConstantWithIndexType(2)),
               tiled_keys_index.GetConstantWithIndexType(
-                  RoundDownToNearest(dimension_to_sort_bound, tile_size))),
+                  RoundDownTo(dimension_to_sort_bound, tile_size))),
           [&]() {
             return EmitCompareLoopBody(
                 dimension_to_sort_bound % tile_size, params.size(),
@@ -273,9 +282,11 @@ Status EmitTiledCompareLoop(
       keys_multi_index[dimension_to_sort] = index;
       IrArray::Index keys_index(keys_multi_index, params[i].GetShape(),
                                 tiled_keys_index.GetType());
-      auto value = b->CreateLoad(b->CreateGEP(
+      auto gep = b->CreateGEP(
+          param_shmem_buffers[i]->getType()->getPointerElementType(),
           param_shmem_buffers[i],
-          {tiled_keys_index.GetConstantWithIndexType(0), cache_index}));
+          {tiled_keys_index.GetConstantWithIndexType(0), cache_index});
+      auto value = b->CreateLoad(gep->getType()->getPointerElementType(), gep);
       params[i].EmitWriteArrayElement(keys_index, value, b);
     });
   }
@@ -293,7 +304,7 @@ Status EmitTiledCompareLoop(
 
 Status EmitSortInPlace(
     int64_t dimension_to_sort, const std::vector<IrArray>& values_arrays,
-    absl::string_view name, absl::Span<const int64> xor_masks,
+    absl::string_view name, absl::Span<const int64_t> xor_masks,
     llvm::IRBuilder<>* b, const gpu::LaunchDimensions& launch_dimensions,
     int64_t num_iterations_in_sort_dim, const int64_t tile_size,
     const EmitCallToNestedComputationCallback& emit_compare_callback) {
@@ -309,8 +320,8 @@ Status EmitSortInPlace(
   const Shape& keys_shape = values_arrays[0].GetShape();
   int64_t rank = keys_shape.rank();
   int64_t dimension_to_sort_bound = keys_shape.dimensions(dimension_to_sort);
-  std::vector<int64> dimensions_in_iteration_order(rank);
-  std::vector<int64> iteration_order_to_logical_order(rank);
+  std::vector<int64_t> dimensions_in_iteration_order(rank);
+  std::vector<int64_t> iteration_order_to_logical_order(rank);
   int64_t dim = 0;
   for (int64_t dimension : LayoutUtil::MinorToMajor(keys_shape)) {
     if (dimension != dimension_to_sort) {
@@ -342,11 +353,11 @@ Status EmitSortInPlace(
       [&](const IrArray::Index& tiles_index) -> Status {
     // Naive C++ code for the inner compare loop:
     //
-    // for (int64 i = 0; i < dimension_to_sort_bound; ++i) {
-    //   int64 j = i ^ xor_mask;
+    // for (int64_t i = 0; i < dimension_to_sort_bound; ++i) {
+    //   int64_t j = i ^ xor_mask;
     //   /* emitted in EmitCompareLoopBody() */
     //   if (i < j && j < dimension_to_sort_bound) {
-    //     int64 min_key = std::min(keys[i], keys[j]);
+    //     int64_t min_key = std::min(keys[i], keys[j]);
     //     keys[j] = std::max(keys[i], keys[j]);
     //     keys[i] = min_key;
     //   }

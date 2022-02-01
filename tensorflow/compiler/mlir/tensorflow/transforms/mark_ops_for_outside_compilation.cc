@@ -59,8 +59,8 @@ struct MarkOpsForOutsideCompilation
 // remove this.
 void AddCanonicalizationPatterns(MLIRContext* context,
                                  OwningRewritePatternList* patterns) {
-  for (auto* op : context->getRegisteredOperations())
-    op->getCanonicalizationPatterns(*patterns, context);
+  for (auto op : context->getRegisteredOperations())
+    op.getCanonicalizationPatterns(*patterns, context);
 }
 
 // Adds the list of ops that are supported on TPU through constant folding which
@@ -120,6 +120,8 @@ void AddSupportedFunctionalOps(MLIRContext* context,
       OperationName(TF::XlaReduceOp::getOperationName(), context));
   supported_ops->insert(
       OperationName(TF::XlaReduceWindowOp::getOperationName(), context));
+  supported_ops->insert(
+      OperationName(TF::XlaRngBitGeneratorOp::getOperationName(), context));
   supported_ops->insert(
       OperationName(TF::XlaScatterOp::getOperationName(), context));
   supported_ops->insert(

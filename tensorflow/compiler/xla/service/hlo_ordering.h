@@ -73,10 +73,15 @@ class HloOrdering {
   bool IsDefinedBefore(const HloValue& a, const HloValue& b) const;
 
   // Returns whether the given use is before the given value definition under
-  // the given ordering.
-  bool UsesBeforeValueDefinition(absl::Span<const HloUse* const> uses,
-                                 const HloValue& value,
-                                 const HloDataflowAnalysis& dataflow) const;
+  // the given ordering. Set use_is_always_before_def_in_same_instr to false if
+  // you want the analysis to always consider a use at an instruction's operand
+  // to be strictly before that instructions definition. The configuration needs
+  // to be false when result will be used to remove unnecessary copy
+  // instructions, due to additional buffer sharing constraints.
+  bool UsesBeforeValueDefinition(
+      absl::Span<const HloUse* const> uses, const HloValue& value,
+      const HloDataflowAnalysis& dataflow,
+      bool use_is_always_before_def_in_same_instr = false) const;
   // Returns whether the given values interfere. Two values interfere if they
   // may both be simultaneously live.
   bool MayInterfere(const HloValue& a, const HloValue& b,
@@ -84,8 +89,9 @@ class HloOrdering {
 
   // Returns true if the live range of the given value 'a' is strictly before
   // the live range of value 'b' using the given HLO ordering.
-  bool LiveRangeStrictlyBefore(const HloValue& a, const HloValue& b,
-                               const HloDataflowAnalysis& dataflow) const;
+  bool LiveRangeStrictlyBefore(
+      const HloValue& a, const HloValue& b, const HloDataflowAnalysis& dataflow,
+      bool use_is_always_before_def_in_same_instr = false) const;
 
   // Returns the sequential instruction order for the given computation, or
   // nullptr if the computation does not have a sequential ordering.
@@ -95,7 +101,7 @@ class HloOrdering {
   // Return the call graph of the module used to compute ordering.
   const CallGraph& call_graph() const { return *call_graph_; }
 
-  virtual string ToString() const = 0;
+  virtual std::string ToString() const = 0;
 
  protected:
   // Returns true if instruction 'a' executes before instruction 'b'.
@@ -136,7 +142,7 @@ class PredecessorHloOrdering : public HloOrdering {
 
  protected:
   explicit PredecessorHloOrdering(const HloModule* module);
-  string ToStringHelper(const string& name) const;
+  std::string ToStringHelper(const std::string& name) const;
 
   bool ExecutesBeforeInSameComputation(const HloInstruction* a,
                                        const HloInstruction* b) const override;
@@ -175,7 +181,7 @@ class DependencyHloOrdering : public PredecessorHloOrdering {
   explicit DependencyHloOrdering(const HloModule* module);
   ~DependencyHloOrdering() override = default;
 
-  string ToString() const override;
+  std::string ToString() const override;
 };
 
 // An HLO ordering based on a total order of instructions in each computation.
@@ -213,7 +219,7 @@ class SequentialHloOrdering : public HloOrdering {
   const HloInstructionSequence* SequentialOrder(
       const HloComputation& computation) const override;
 
-  string ToString() const override;
+  std::string ToString() const override;
 
  protected:
   void Initialize();
