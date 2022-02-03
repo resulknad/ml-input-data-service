@@ -14,15 +14,15 @@ namespace local_workers_utils {
 Status ShouldUseLocalWorkers(
         const experimental::DispatcherConfig& dispatcher_config,
         const ::tensorflow::data::easl::MetadataStore& metadata_store,
-        const std::string& dataset_key,
+        const int64 dataset_fingerprint,
         bool& should_use_local_workers) {
     using NodeMetrics = ::tensorflow::data::easl::NodeMetrics;
     using ModelMetrics = ::tensorflow::data::easl::ModelMetrics;
 
     // Check if we have any metrics for this dataset
     std::shared_ptr<data::easl::InputPipelineMetrics> job_metrics;
-    Status s = metadata_store.GetLastNodeMetricsByDatasetFingerprint(
-            dataset_key, job_metrics);
+    Status s = metadata_store.GetInputPipelineMetricsByDatasetFingerprint(
+            dataset_fingerprint, job_metrics);
 
     // We do not yet have the metrics for this dataset --> use 1 worker
     if(errors::IsNotFound(s)) {
@@ -36,8 +36,7 @@ Status ShouldUseLocalWorkers(
 
     // Pipeline stats: last TF node metrics
     std::shared_ptr<NodeMetrics> last_tf_node_metrics;
-
-    s = metadata_store.GetLastNodeMetricsByDatasetKey(dataset_key, last_tf_node_metrics);
+    s = metadata_store.GetLastNodeMetricsByDatasetFingerprint(dataset_fingerprint, last_tf_node_metrics);
     if (!s.ok()) {
         VLOG(0) << "DSL (ShouldUseLocalWorkers) Failed to get the last TF node metrics";
         return s;
@@ -55,9 +54,9 @@ Status ShouldUseLocalWorkers(
     VLOG(0) << "DSL (ShouldUseLocalWorkers) Total bytes produced: " << total_bytes_produced << "\n"
             << "Total num elements: " << total_num_elements << "\n"
             << "Avg bytes produced per element: " << avg_bytes_per_element << "\n"
-            << "Decision Threshold: " << dispatcher_config.avg_bytes_per_element_local_thres() << "\n";
+            << "Decision Threshold: " << dispatcher_config.avg_bytes_per_element_local_workers_threshold() << "\n";
 
-    if (avg_bytes_per_element > dispatcher_config.avg_bytes_per_element_local_thres()) {
+    if (avg_bytes_per_element > dispatcher_config.avg_bytes_per_element_local_workers_threshold()) {
         should_use_local_workers = true;
         VLOG(0) << "DSL (ShouldUseLocalWorkers) Using local workers! (because avg. bytes per element > threshold) \n";
     }
@@ -71,8 +70,14 @@ Status ShouldUseLocalWorkers(
 
 std::vector<int64> records;
 
-void grid_search(int64 num_worker_remote_avail, int64 num_worker_local_avail,
-                int64& num_worker_remote_target, int64& num_worker_local_target) {
+Status DecideTargetWorkersGridSearch(
+        int64 num_worker_remote_avail,
+        int64 num_worker_local_avail,
+        int64& num_worker_remote_target,
+        int64& num_worker_local_target) {
+  std::time_t t = std::time(nullptr);
+  records.push_back(t);
+
   std::vector<std::pair<int64, int64>> test_set = std::vector<std::pair<int64, int64>>();
   for(int64 n_r = 0; n_r <= num_worker_remote_avail; n_r++) {
     for(int64 n_l = 0; n_l <= num_worker_local_avail; n_l++) {
@@ -95,19 +100,7 @@ void grid_search(int64 num_worker_remote_avail, int64 num_worker_local_avail,
   auto p = test_set[index];
   num_worker_remote_target = p.first;
   num_worker_local_target = p.second;
-}
 
-Status DecideTargetWorkersGridSearch(
-        const experimental::DispatcherConfig& dispatcher_config,
-        const ::tensorflow::data::easl::MetadataStore& metadata_store,
-        const std::string& dataset_key,
-        int64 num_worker_remote_avail,
-        int64 num_worker_local_avail,
-        int64& num_worker_remote_target,
-        int64& num_worker_local_target) {
-  std::time_t t = std::time(nullptr);
-  records.push_back(t);
-  grid_search(num_worker_remote_avail, num_worker_local_avail, num_worker_remote_target, num_worker_local_target);
   VLOG(0) << "DSL (DecideTargetWorkersGridSearch)" << "\n"
           << "Available remote: " << num_worker_remote_avail << "\n"
           << "Available local: " << num_worker_local_avail << "\n"

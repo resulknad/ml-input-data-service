@@ -832,9 +832,14 @@ Status DataServiceDispatcherImpl::GetOrCreateJob(
         GetOrCreateJobRequest::kNumConsumers) {
       num_consumers = request->num_consumers();
     }
+
+    absl::flat_hash_set<std::string> local_workers;
+    local_workers.insert(request->local_workers().cbegin(),
+                         request->local_workers().cend());
+
     TF_RETURN_IF_ERROR(CreateJob(request->dataset_id(),
                                  requested_processing_mode, key, num_consumers,
-                                 job));
+                                 job, local_workers));
     int64 job_client_id;
     TF_RETURN_IF_ERROR(AcquireJobClientId(job, job_client_id));
     response->set_job_client_id(job_client_id);
@@ -943,7 +948,9 @@ Status DataServiceDispatcherImpl::ValidateMatchingJob(
 Status DataServiceDispatcherImpl::CreateJob(
     int64 dataset_id, ProcessingMode processing_mode,
     absl::optional<NamedJobKey> named_job_key,
-    absl::optional<int64> num_consumers, std::shared_ptr<const Job>& job)
+    absl::optional<int64> num_consumers,
+    std::shared_ptr<const Job>& job,
+    absl::flat_hash_set<std::string> local_workers)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   switch (processing_mode) {
     case ProcessingMode::PARALLEL_EPOCHS:
@@ -1005,10 +1012,10 @@ Status DataServiceDispatcherImpl::CreateJob(
 
     bool should_use_local_workers; // Do we have enough throughput to decide to use local workers to save network bandwidth?
     TF_RETURN_IF_ERROR(service::easl::local_workers_utils::ShouldUseLocalWorkers(
-        config_, metadata_store_, compute_dataset_key, should_use_local_workers
+        config_, metadata_store_, dataset_fingerprint, should_use_local_workers
         ));
 
-    if(should_use_local_workers && request.local_workers().size() >= 1) {
+    if(should_use_local_workers && local_workers.size() >= 1) {
         target_remote_workers = suggested_worker_count - 1;
         target_local_workers = 1;
     } else {
@@ -1016,13 +1023,12 @@ Status DataServiceDispatcherImpl::CreateJob(
         target_local_workers = 0;
     }
   } else if(config_.scaling_policy() == 2) { // Use all available workers
-    target_remote_workers = total_workers - request.local_workers().size();
-    target_local_workers = request.local_workers().size();
+    target_remote_workers = total_workers - local_workers.size();
+    target_local_workers = local_workers.size();
   } else if(config_.scaling_policy() == 3) {  // Grid search over local and remote workers
     TF_RETURN_IF_ERROR(service::easl::local_workers_utils::DecideTargetWorkersGridSearch(
-            config_, metadata_store_, compute_dataset_key,
-            total_workers - request.local_workers().size(), request.local_workers().size(),
-            target_remote_workers, target_local_workers
+            total_workers - local_workers.size(), local_workers.size(),
+            target_remote_workers, target_local_workers // passed by reference
     ));
   }
 
@@ -1061,7 +1067,7 @@ Status DataServiceDispatcherImpl::CreateJob(
   create_job->set_target_worker_count(suggested_worker_count);
   create_job->set_target_local_workers(target_local_workers);
   create_job->set_target_remote_workers(target_remote_workers);
-  *create_job->mutable_local_workers() = {request.local_workers().begin(), request.local_workers().end()};
+  *create_job->mutable_local_workers() = {local_workers.begin(), local_workers.end()};
   if (named_job_key.has_value()) {
     NamedJobKeyDef* key = create_job->mutable_named_job_key();
     key->set_name(named_job_key->name);
@@ -1120,7 +1126,7 @@ Status DataServiceDispatcherImpl::CreateTasksForJob(
     std::vector<std::shared_ptr<const Task>>& tasks)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   std::vector<std::shared_ptr<const Worker>> workers = state_.ReserveWorkers(
-    job->job_id, job->target_worker_count, job->target_remote_workers, job->target_local_workers, job->local_workers);
+    job->job_id, job->target_remote_workers, job->target_local_workers, job->local_workers);
   if (workers.size() < job->target_worker_count){
     VLOG(0)
     << "EASL - Not enough workers for job. Elasticity policy requires "
@@ -1415,7 +1421,6 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
   }
   response->set_job_finished(job->finished);
   response->set_target_local_workers(job->target_local_workers);
-  response->set_target_remote_workers(job->target_remote_workers);
   VLOG(4) << "Found " << response->task_info_size()
           << " tasks for job client id " << request->job_client_id();
 

@@ -23,13 +23,10 @@ namespace local_workers_utils {
 Status ShouldUseLocalWorkers(
         const experimental::DispatcherConfig& dispatcher_config,
         const ::tensorflow::data::easl::MetadataStore& metadata_store,
-        const std::string& dataset_key,
+        const int64 dataset_key,
         bool& should_use_local_workers);
 
 Status DecideTargetWorkersGridSearch(
-        const experimental::DispatcherConfig& dispatcher_config,
-        const ::tensorflow::data::easl::MetadataStore& metadata_store,
-        const std::string& dataset_key,
         int64 num_worker_remote_avail,
         int64 num_worker_local_avail,
         int64& num_worker_remote_target,

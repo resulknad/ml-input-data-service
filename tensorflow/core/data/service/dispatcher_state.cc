@@ -431,10 +431,10 @@ DispatcherState::ReserveWorkers(
     workers.push_back(it->second);
     VLOG(0) << "(ReserveWorkers) Assigning worker at address " 
             << it->second->address << " to job " << job_id;
-    workers_by_job_[job_id].push_back(it->second);
+    workers_by_job_[job_id][it->second->address] = it->second;
     jobs_by_worker_[it->second->address][job_id] = jobs_[job_id];
     avail_workers_.erase(it++);
-    if (target_worker_count == 0)
+    if (target_local_workers + target_remote_workers == 0)
       break;
   }
   VLOG(0) << "(ReserveWorkers) Number of workers for job " << job_id << " is: "
