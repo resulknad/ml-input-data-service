@@ -881,7 +881,6 @@ Status DataServiceDispatcherImpl::CreateJob(
   int64 dataset_id = request.dataset_id();
 
   // EASL - Caching decision: should the job compute, write or read from cache?
-  int64 worker_count;
   std::string job_type;
   std::shared_ptr<const Dataset> dataset;
   TF_RETURN_IF_ERROR(state_.DatasetFromId(dataset_id, dataset));
@@ -894,21 +893,21 @@ Status DataServiceDispatcherImpl::CreateJob(
   VLOG(0) << "EASL - Caching decision for dataset_key "
             << compute_dataset_key << ": " << job_type;
 
-
   // MUYU, firstly check the local_workers from the client
   absl::flat_hash_set<std::string> local_workers;
   local_workers.insert(request.local_workers().cbegin(),
                        request.local_workers().cend());
 
-  // Infer the worker count for  this job and job type
-  int64 total_workers = state_.ListWorkers().size();
-  TF_RETURN_IF_ERROR(service::easl::cache_utils::DetermineElasticity(job_type,
-      config_, metadata_store_, compute_dataset_key, total_workers, worker_count));
-  VLOG(0) << "EASL - Scalability decision for dataset_key "
-          << compute_dataset_key << ": " << worker_count;
-
   int64 num_worker_remote_target, num_worker_local_target;
   if(config_.scaling_policy() == 1) { // Old autoscaling prior to paper
+    // Infer the worker count for  this job and job type
+    int64 worker_count;
+    int64 total_workers = state_.ListWorkers().size();
+    TF_RETURN_IF_ERROR(service::easl::cache_utils::DetermineElasticity(job_type,
+        config_, metadata_store_, compute_dataset_key, total_workers, worker_count));
+    VLOG(0) << "EASL - Scalability decision for dataset_key "
+          << compute_dataset_key << ": " << worker_count;
+
     bool want_to_use_local_workers; // Do we have enough throughput to decide to use local workers to save network bandwidth?
     TF_RETURN_IF_ERROR(service::easl::local_decision::DecideIfLocal(
         config_, metadata_store_, compute_dataset_key, want_to_use_local_workers
@@ -964,7 +963,7 @@ Status DataServiceDispatcherImpl::CreateJob(
           {local_workers.begin(), local_workers.end()};
 
   for (auto worker: local_workers) {
-    VLOG(1) << "EASL-MUYU (CreateJob) local_workers: " << worker;
+    VLOG(2) << "EASL-MUYU (CreateJob) local_workers: " << worker;
   }
 
   if (request.has_job_key()) {
@@ -981,7 +980,7 @@ Status DataServiceDispatcherImpl::CreateJob(
   TF_RETURN_IF_ERROR(state_.JobFromId(job_id, job));
 
   for (auto worker: job->local_workers) {
-    VLOG(1) << "EASL-MUYU (CreateJob-after) local_workers: " << worker;
+    VLOG(2) << "EASL-MUYU (CreateJob-after) local_workers: " << worker;
   }
 
   return Status::OK();
