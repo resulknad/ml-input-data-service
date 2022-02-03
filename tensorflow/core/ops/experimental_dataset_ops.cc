@@ -1428,6 +1428,7 @@ REGISTER_OP("DataServiceDatasetV3")
     .Input("consumer_index: int64")
     .Input("num_consumers: int64")
     .Input("max_outstanding_requests: int64")
+    .Input("max_request_pipelining_per_task: int64") // EASL
     .Input("iteration_counter: resource")
     .Output("handle: variant")
     .Attr("task_refresh_interval_hint_ms: int = -1")
