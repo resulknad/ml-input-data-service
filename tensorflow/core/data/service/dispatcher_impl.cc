@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/easl/cache_utils.h"
 #include "tensorflow/core/data/service/easl/scaling_utils.h"
 #include "tensorflow/core/data/service/easl/metadata_store.h"
+#include "tensorflow/core/data/service/easl/local_workers_utils.h"
 #include "tensorflow/core/data/standalone.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -955,7 +956,6 @@ Status DataServiceDispatcherImpl::CreateJob(
   int64 job_id = state_.NextAvailableJobId();
 
   // EASL - Caching decision: should the job compute, write or read from cache?
-  int64 worker_count;
   std::string job_type;
   string job_name = "named_job_key.value().name";
   std::shared_ptr<const Dataset> dataset;
@@ -993,10 +993,37 @@ Status DataServiceDispatcherImpl::CreateJob(
 
   std::shared_ptr<easl::JobMetrics> job_metrics;
   s = metadata_store_.GetJobMetrics(job_id, job_metrics);
-  worker_count = job_metrics->target_worker_count_;
 
-  if (config_.scaling_policy() == 2) {
-    worker_count = 100;
+  // EASL - Scaling decision: how many workers (remote/local) should the job assign?
+  int64 total_workers = state_.ListWorkers().size();
+  int64 suggested_worker_count = job_metrics->target_worker_count_;
+
+  int64 target_remote_workers, target_local_workers;
+  if(config_.scaling_policy() == 1) { // Paper autoscaling, except a discrimination between local and remote workers is now made
+    VLOG(0) << "EASL - Scalability decision for dataset_key "
+          << compute_dataset_key << ": " << suggested_worker_count;
+
+    bool should_use_local_workers; // Do we have enough throughput to decide to use local workers to save network bandwidth?
+    TF_RETURN_IF_ERROR(service::easl::local_workers_utils::ShouldUseLocalWorkers(
+        config_, metadata_store_, compute_dataset_key, should_use_local_workers
+        ));
+
+    if(should_use_local_workers && request.local_workers().size() >= 1) {
+        target_remote_workers = suggested_worker_count - 1;
+        target_local_workers = 1;
+    } else {
+        target_remote_workers = suggested_worker_count;
+        target_local_workers = 0;
+    }
+  } else if(config_.scaling_policy() == 2) { // Use all available workers
+    target_remote_workers = total_workers - request.local_workers().size();
+    target_local_workers = request.local_workers().size();
+  } else if(config_.scaling_policy() == 3) {  // Grid search over local and remote workers
+    TF_RETURN_IF_ERROR(service::easl::local_workers_utils::DecideTargetWorkersGridSearch(
+            config_, metadata_store_, compute_dataset_key,
+            total_workers - request.local_workers().size(), request.local_workers().size(),
+            target_remote_workers, target_local_workers
+    ));
   }
 
   if (job_type == "PUT" || job_type == "PUT_SOURCE") {
@@ -1004,17 +1031,17 @@ Status DataServiceDispatcherImpl::CreateJob(
     s = metadata_store_.GetJobMetricsByDatasetFingerprintAndName(
         dataset_fingerprint, job_name, dataset_fingerprint_metrics);
     if (s.ok()) {
-      worker_count = std::ceil(std::max(1.0,
+      suggested_worker_count = std::ceil(std::max(1.0,
           dataset_fingerprint_metrics->target_worker_count_ * 1.5));
     }
-    job_metrics->target_worker_count_ = worker_count;
+    job_metrics->target_worker_count_ = suggested_worker_count;
   }
 
   // EASL: Logging stuff
   if (kEnableEventLogging) {
-    last_scale_[job_name] = worker_count;
+    last_scale_[job_name] = suggested_worker_count;
     RecordEvent(dataset_fingerprint, dataset_id, job_name, job_id,
-                "starting_worker_count", std::to_string(worker_count));
+                "starting_worker_count", std::to_string(suggested_worker_count));
   }
 
   int64 num_split_providers = 0;
@@ -1031,7 +1058,10 @@ Status DataServiceDispatcherImpl::CreateJob(
   create_job->set_processing_mode(ProcessingModeDef(processing_mode));
   create_job->set_job_type(job_type);
   create_job->set_num_split_providers(num_split_providers);
-  create_job->set_target_worker_count(worker_count);
+  create_job->set_target_worker_count(suggested_worker_count);
+  create_job->set_target_local_workers(target_local_workers);
+  create_job->set_target_remote_workers(target_remote_workers);
+  *create_job->mutable_local_workers() = {request.local_workers().begin(), request.local_workers().end()};
   if (named_job_key.has_value()) {
     NamedJobKeyDef* key = create_job->mutable_named_job_key();
     key->set_name(named_job_key->name);
@@ -1090,7 +1120,7 @@ Status DataServiceDispatcherImpl::CreateTasksForJob(
     std::vector<std::shared_ptr<const Task>>& tasks)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   std::vector<std::shared_ptr<const Worker>> workers = state_.ReserveWorkers(
-    job->job_id, job->target_worker_count);
+    job->job_id, job->target_worker_count, job->target_remote_workers, job->target_local_workers, job->local_workers);
   if (workers.size() < job->target_worker_count){
     VLOG(0)
     << "EASL - Not enough workers for job. Elasticity policy requires "
@@ -1384,6 +1414,8 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
     task_info->set_starting_round(task->starting_round);
   }
   response->set_job_finished(job->finished);
+  response->set_target_local_workers(job->target_local_workers);
+  response->set_target_remote_workers(job->target_remote_workers);
   VLOG(4) << "Found " << response->task_info_size()
           << " tasks for job client id " << request->job_client_id();
 

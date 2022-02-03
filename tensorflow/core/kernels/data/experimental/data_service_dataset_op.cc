@@ -21,6 +21,7 @@ limitations under the License.
 #include <queue>
 #include <string>
 #include <vector>
+#include <fstream>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -302,7 +303,10 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           [&]() {
             return dispatcher_->GetOrCreateJob(
                 dataset()->dataset_id_, dataset()->processing_mode_, key,
-                dataset()->num_consumers_, job_client_id_);
+                dataset()->num_consumers_,
+                job_client_id_,
+                LocalWorkers::GetList()
+                );
           },
           /*description=*/
           strings::StrCat("get or create job with dispatcher at ",
@@ -1015,7 +1019,29 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       }
 
       if (enqueue_result && !result.end_of_sequence) {
-        results_.push(std::move(result));
+        uint64 current_micro_timestamp = Env::Default()->NowMicros();
+        std::string data_source = task.info.worker_address();
+        bool if_local = false;
+        int result_size = result.element.size();
+        if (local_tasks_.contains(task.info.worker_address())) {
+          if_local = true;
+          local_results_buffer_.push(std::move(result));
+        } else {
+          results_.push(std::move(result));
+        }
+
+        const char* log_location = std::getenv("EASL_MUYU_WORKER_METRICS");
+        if (log_location) {
+          std::ofstream file(log_location, std::ios_base::app);
+
+          file << current_micro_timestamp << ","
+               << data_source << ","
+               << if_local << ","
+               << result_size << "\n";
+
+          file.flush();
+          file.clear();
+        }
       }
       get_next_cv_.notify_all();
     }

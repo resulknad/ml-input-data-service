@@ -532,6 +532,19 @@ void LocalWorkers::Add(absl::string_view worker_address,
   (*local_workers_)[worker_address] = worker;
 }
 
+std::vector<std::string> LocalWorkers::GetList() {
+  string local_workers_string = "";
+  std::vector<std::string> local_workers;
+  for (auto it = local_workers_->begin(); it != local_workers_->end(); ++it) {
+      local_workers.push_back(it->first);
+      local_workers_string += it->first + "; ";
+  }
+
+  VLOG(1) << "EASL-DSL: Check List of Local Workers: " << local_workers_string;
+
+  return local_workers;
+}
+
 std::shared_ptr<DataServiceWorkerImpl> LocalWorkers::Get(
     absl::string_view worker_address) {
   tf_shared_lock l(mu_);
