@@ -1023,7 +1023,7 @@ Status DataServiceDispatcherImpl::CreateJob(
 
   // EASL - Caching decision: should the job compute, write or read from cache?
   VLOG(3) << "(CreateJob): int64_t dataset_id = job->dataset_id";
-  int64_t dataset_id = job->dataset_id;
+  int64_t dataset_id = request.dataset_id();
   VLOG(3) << "(CreateJob): int64 worker_count";
   int64 worker_count;
   VLOG(3) << "(CreateJob): std::string job_type";
