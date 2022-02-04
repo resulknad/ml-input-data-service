@@ -519,7 +519,7 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
           state_.DatasetFromId(task_object->job->dataset_id, dataset);
 
           string job_type;
-          string job_name = task_object->job->named_job_key.value().name;
+          string job_name = task_object->job->named_job_key->name;
           Status s3 = metadata_store_.GetJobTypeByJobId(job_id, job_type);
 
           if (s3.ok()) {
@@ -677,7 +677,7 @@ Status DataServiceDispatcherImpl::GetSplit(const GetSplitRequest* request,
     if (kEnableEventLogging) {
       std::shared_ptr<const Dataset> dataset;
       state_.DatasetFromId(job->dataset_id, dataset);
-      string job_name = job->named_job_key.value().name;
+      string job_name = job->named_job_key->name;
       RecordEvent(dataset->fingerprint, dataset->dataset_id, job_name, job_id,
                   "extended_epoch");
     }
@@ -1024,7 +1024,13 @@ Status DataServiceDispatcherImpl::CreateJob(
   int64_t dataset_id = job->dataset_id;
   int64 worker_count;
   std::string job_type;
-  string job_name = job->named_job_key.value().name;
+
+  // EASL: Note that jobs are discarded if they are not named
+  if (!request.has_job_key()) {
+    return errors::FailedPrecondition("Jobs must be named");
+  }
+
+  string job_name = request.job_key().job_name();
   std::shared_ptr<const Dataset> dataset;
 
   VLOG(3) << "(CreateJob): Before DatasetFromId call";
@@ -1332,7 +1338,7 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
   bool do_reassign_workers = false;
   int64 job_target_worker_count;
   string job_type;
-  string job_name = job->named_job_key.value().name;
+  string job_name = job->named_job_key->name;
   metadata_store_.GetJobTypeByJobId(job->job_id, job_type);
   // FIXME: Note that we're only checking the first split provider
   if (config_.scaling_policy() == 1 &&
@@ -1385,7 +1391,7 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
         std::shared_ptr<const Dataset> dataset;
         TF_RETURN_IF_ERROR(state_.DatasetFromId(job->dataset_id, dataset));
         RecordEvent(dataset->fingerprint, dataset->dataset_id,
-                    job->named_job_key.value().name, job->job_id, scale_type,
+                    job->named_job_key->name, job->job_id, scale_type,
                     std::to_string(target_worker_count));
       }
     }
