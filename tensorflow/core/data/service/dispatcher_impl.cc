@@ -866,16 +866,24 @@ Status DataServiceDispatcherImpl::GetOrCreateJob(
   std::shared_ptr<const Job> job;
   std::vector<std::shared_ptr<const Task>> tasks;
   {
+    VLOG(3) << "(GetOrCreateJob) In mutex block";
     mutex_lock l(mu_);
     if (key.has_value()) {
+      VLOG(3) << "(GetOrCreateJob) In key.has_value() block";
       Status s = state_.NamedJobByKey(key.value(), job);
+      VLOG(3) << "(GetOrCreateJob) After the NamedJobByKey call";
+
       if (s.ok()) {
         TF_RETURN_IF_ERROR(ValidateMatchingJob(job, *request));
+        VLOG(3) << "(GetOrCreateJob) After the ValidateMatchingJob call";
+
         // If the matching job was already garbage-collected, we fall through to
         // re-create the job.
         if (!job->garbage_collected) {
           int64_t job_client_id;
+          VLOG(3) << "(GetOrCreateJob) Before the AcquireJobClientId call";
           TF_RETURN_IF_ERROR(AcquireJobClientId(job, job_client_id));
+          VLOG(3) << "(GetOrCreateJob) After the AcquireJobClientId call";
           response->set_job_client_id(job_client_id);
           VLOG(3) << "Found existing job for name=" << key.value().name
                   << ", index=" << key.value().index
@@ -1005,8 +1013,12 @@ Status DataServiceDispatcherImpl::CreateJob(
     const GetOrCreateJobRequest& request, std::shared_ptr<const Job>& job)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
 
+  VLOG(3) << "(CreateJob): Entered method";
+
   TF_RETURN_IF_ERROR(ValidateProcessingMode(request.processing_mode_def()));
   int64_t job_id = state_.NextAvailableJobId();
+
+  VLOG(3) << "(CreateJob): After ValidateProcessingMode call";
 
   // EASL - Caching decision: should the job compute, write or read from cache?
   int64_t dataset_id = job->dataset_id;
@@ -1014,9 +1026,14 @@ Status DataServiceDispatcherImpl::CreateJob(
   std::string job_type;
   string job_name = job->named_job_key.value().name;
   std::shared_ptr<const Dataset> dataset;
+
+  VLOG(3) << "(CreateJob): Before DatasetFromId call";
   TF_RETURN_IF_ERROR(state_.DatasetFromId(dataset_id, dataset));
+
+  VLOG(3) << "(CreateJob): After DatasetFromId call";
   int64 dataset_fingerprint = dataset->fingerprint;
   std::string compute_dataset_key = DatasetKey(dataset_id, dataset_fingerprint);
+  VLOG(3) << "(CreateJob): After DatasetKey call";
 
   service::easl::cache_utils::DetermineJobType(config_, cache_state_,
     metadata_store_, dataset_fingerprint, job_name, job_type);
