@@ -1030,7 +1030,7 @@ Status DataServiceDispatcherImpl::CreateJob(
     return errors::FailedPrecondition("Jobs must be named");
   }
 
-  VLOG(3) << "(CreateJob): Before 'string job_name = request.job_key().job_name()'";
+  VLOG(3) << "(CreateJob): Before 'string job_name = request.job_key().job_name()'" << request.has_job_key();
   string job_name = request.job_key().job_name();
   VLOG(3) << "(CreateJob): After 'string job_name = request.job_key().job_name()'";
   std::shared_ptr<const Dataset> dataset;
