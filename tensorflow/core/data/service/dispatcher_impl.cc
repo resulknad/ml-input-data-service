@@ -1018,15 +1018,21 @@ Status DataServiceDispatcherImpl::CreateJob(
   TF_RETURN_IF_ERROR(ValidateProcessingMode(request.processing_mode_def()));
   int64_t job_id = state_.NextAvailableJobId();
 
+  // Just adding a comment here
   VLOG(3) << "(CreateJob): After ValidateProcessingMode call";
 
   // EASL - Caching decision: should the job compute, write or read from cache?
+  VLOG(3) << "(CreateJob): int64_t dataset_id = job->dataset_id";
   int64_t dataset_id = job->dataset_id;
+  VLOG(3) << "(CreateJob): int64 worker_count";
   int64 worker_count;
+  VLOG(3) << "(CreateJob): std::string job_type";
   std::string job_type;
 
+  VLOG(3) << "if (!request.has_job_key()) {";
   // EASL: Note that jobs are discarded if they are not named
   if (!request.has_job_key()) {
+    VLOG(3) << "In if";
     return errors::FailedPrecondition("Jobs must be named");
   }
 
