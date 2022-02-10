@@ -960,6 +960,8 @@ Status DataServiceDispatcherImpl::CreateJob(
       return errors::Internal(
           absl::StrCat("ProcessingMode ", processing_mode, " not recognized"));
   }
+    LOG(INFO) << "EASL DSL - DataServiceDispatcherImpl::CreateJob triggered";
+
   int64 job_id = state_.NextAvailableJobId();
 
   // EASL - Caching decision: should the job compute, write or read from cache?
@@ -1007,8 +1009,10 @@ Status DataServiceDispatcherImpl::CreateJob(
 
   int64 target_remote_workers, target_local_workers;
   if(config_.scaling_policy() == 1) { // Paper autoscaling, except a discrimination between local and remote workers is now made
-    VLOG(0) << "EASL - Scalability decision for dataset_key "
+    VLOG(0) << "EASL DSL - Scalability decision for dataset_key "
           << compute_dataset_key << ": " << suggested_worker_count;
+    LOG(INFO) << "EASL - Scalability decision for dataset_key "
+          << compute_dataset_key << ": " << suggested_worker_count << " with fingerprint " << dataset_fingerprint;
 
     bool should_use_local_workers; // Do we have enough throughput to decide to use local workers to save network bandwidth?
     TF_RETURN_IF_ERROR(service::easl::local_workers_utils::ShouldUseLocalWorkers(
@@ -1023,9 +1027,12 @@ Status DataServiceDispatcherImpl::CreateJob(
         target_local_workers = 0;
     }
   } else if(config_.scaling_policy() == 2) { // Use all available workers
+    LOG(INFO) << "EASL DSL - Use all available workers";
     target_remote_workers = total_workers - local_workers.size();
     target_local_workers = local_workers.size();
   } else if(config_.scaling_policy() == 3) {  // Grid search over local and remote workers
+    LOG(INFO) << "EASL DSL - Grid search over local and remote workers"
+          << compute_dataset_key << ": " << suggested_worker_count;
     TF_RETURN_IF_ERROR(service::easl::local_workers_utils::DecideTargetWorkersGridSearch(
             total_workers - local_workers.size(), local_workers.size(),
             target_remote_workers, target_local_workers // passed by reference
