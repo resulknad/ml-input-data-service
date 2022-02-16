@@ -899,10 +899,10 @@ Status DataServiceDispatcherImpl::CreateJob(
                        request.local_workers().cend());
 
   int64 num_worker_remote_target, num_worker_local_target;
+  int64 total_workers = state_.ListWorkers().size();
   if(config_.scaling_policy() == 1) { // Old autoscaling prior to paper
     // Infer the worker count for  this job and job type
     int64 worker_count;
-    int64 total_workers = state_.ListWorkers().size();
     TF_RETURN_IF_ERROR(service::easl::cache_utils::DetermineElasticity(job_type,
         config_, metadata_store_, compute_dataset_key, total_workers, worker_count));
     VLOG(0) << "EASL - Scalability decision for dataset_key "
