@@ -155,6 +155,7 @@ class DispatcherState {
                  absl::optional<NamedJobKey> named_job_key,
                  absl::optional<int64_t> num_consumers,
                  const std::string& job_type,
+                 int64_t target_worker_count,
                  TargetWorkers target_workers)
         : job_id(job_id),
           dataset_id(dataset_id),
@@ -162,6 +163,7 @@ class DispatcherState {
           named_job_key(named_job_key),
           num_consumers(num_consumers),
           job_type(job_type),
+          target_worker_count(target_worker_count),
           target_workers(target_workers) {
       if (IsDynamicShard(processing_mode)) {
         distributed_epoch_state = DistributedEpochState(num_split_providers);
