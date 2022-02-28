@@ -857,7 +857,7 @@ Status DataServiceDispatcherImpl::GetDataServiceMetadata(
 Status DataServiceDispatcherImpl::GetOrCreateJob(
     const GetOrCreateJobRequest* request, GetOrCreateJobResponse* response) {
   TF_RETURN_IF_ERROR(CheckStarted());
-  VLOG(3) << "GetOrCreateJob(" << request->DebugString() << ")";
+  VLOG(0) << "GetOrCreateJob(" << request->DebugString() << ")";
   absl::optional<NamedJobKey> key;
   if (request->has_job_key()) {
     key.emplace(request->job_key().job_name(),
@@ -866,26 +866,26 @@ Status DataServiceDispatcherImpl::GetOrCreateJob(
   std::shared_ptr<const Job> job;
   std::vector<std::shared_ptr<const Task>> tasks;
   {
-    VLOG(3) << "(GetOrCreateJob) In mutex block";
+    VLOG(0) << "(GetOrCreateJob) In mutex block";
     mutex_lock l(mu_);
     if (key.has_value()) {
-      VLOG(3) << "(GetOrCreateJob) In key.has_value() block";
+      VLOG(0) << "(GetOrCreateJob) In key.has_value() block";
       Status s = state_.NamedJobByKey(key.value(), job);
-      VLOG(3) << "(GetOrCreateJob) After the NamedJobByKey call";
+      VLOG(0) << "(GetOrCreateJob) After the NamedJobByKey call";
 
       if (s.ok()) {
         TF_RETURN_IF_ERROR(ValidateMatchingJob(job, *request));
-        VLOG(3) << "(GetOrCreateJob) After the ValidateMatchingJob call";
+        VLOG(0) << "(GetOrCreateJob) After the ValidateMatchingJob call";
 
         // If the matching job was already garbage-collected, we fall through to
         // re-create the job.
         if (!job->garbage_collected) {
           int64_t job_client_id;
-          VLOG(3) << "(GetOrCreateJob) Before the AcquireJobClientId call";
+          VLOG(0) << "(GetOrCreateJob) Before the AcquireJobClientId call";
           TF_RETURN_IF_ERROR(AcquireJobClientId(job, job_client_id));
-          VLOG(3) << "(GetOrCreateJob) After the AcquireJobClientId call";
+          VLOG(0) << "(GetOrCreateJob) After the AcquireJobClientId call";
           response->set_job_client_id(job_client_id);
-          VLOG(3) << "Found existing job for name=" << key.value().name
+          VLOG(0) << "Found existing job for name=" << key.value().name
                   << ", index=" << key.value().index
                   << ". job_id: " << job->job_id;
           return Status::OK();
@@ -901,7 +901,7 @@ Status DataServiceDispatcherImpl::GetOrCreateJob(
     TF_RETURN_IF_ERROR(CreateTasksForJob(job, tasks));
   }
   TF_RETURN_IF_ERROR(AssignTasks(tasks));
-  VLOG(3) << "Created job " << job->job_id << " for CreateJob("
+  VLOG(0) << "Created job " << job->job_id << " for CreateJob("
           << request->DebugString() << ")";
   return Status::OK();
 }
@@ -1012,42 +1012,26 @@ Status DataServiceDispatcherImpl::ValidateMatchingJob(
 Status DataServiceDispatcherImpl::CreateJob(
     const GetOrCreateJobRequest& request, std::shared_ptr<const Job>& job)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-
-  VLOG(3) << "(CreateJob): Entered method";
-
   TF_RETURN_IF_ERROR(ValidateProcessingMode(request.processing_mode_def()));
   int64_t job_id = state_.NextAvailableJobId();
 
-  // Just adding a comment here
-  VLOG(3) << "(CreateJob): After ValidateProcessingMode call";
-
   // EASL - Caching decision: should the job compute, write or read from cache?
-  VLOG(3) << "(CreateJob): int64_t dataset_id = job->dataset_id";
   int64_t dataset_id = request.dataset_id();
-  VLOG(3) << "(CreateJob): int64 worker_count";
   int64 worker_count;
-  VLOG(3) << "(CreateJob): std::string job_type";
   std::string job_type;
 
-  VLOG(3) << "if (!request.has_job_key()) {";
   // EASL: Note that jobs are discarded if they are not named
   if (!request.has_job_key()) {
-    VLOG(3) << "In if";
     return errors::FailedPrecondition("Jobs must be named");
   }
 
-  VLOG(3) << "(CreateJob): Before 'string job_name = request.job_key().job_name()'" << request.has_job_key();
   string job_name = request.job_key().job_name();
-  VLOG(3) << "(CreateJob): After 'string job_name = request.job_key().job_name()'";
   std::shared_ptr<const Dataset> dataset;
 
-  VLOG(3) << "(CreateJob): Before DatasetFromId call";
   TF_RETURN_IF_ERROR(state_.DatasetFromId(dataset_id, dataset));
 
-  VLOG(3) << "(CreateJob): After DatasetFromId call";
   int64 dataset_fingerprint = dataset->fingerprint;
   std::string compute_dataset_key = DatasetKey(dataset_id, dataset_fingerprint);
-  VLOG(3) << "(CreateJob): After DatasetKey call";
 
   service::easl::cache_utils::DetermineJobType(config_, cache_state_,
     metadata_store_, dataset_fingerprint, job_name, job_type);
@@ -1071,6 +1055,8 @@ Status DataServiceDispatcherImpl::CreateJob(
   bool trigger_scaling = s.ok() && (existing_job_type != job_type ||
     job_type == "PUT" || job_type == "PUT_SOURCE");
 
+  VLOG(0) << "Trigger scaling: " << trigger_scaling;
+
   // EASL add job entry to metadata store
   std::string dataset_key = service::easl::cache_utils::DatasetKey(
     dataset->dataset_id, dataset->fingerprint, job_type);
@@ -1085,16 +1071,8 @@ Status DataServiceDispatcherImpl::CreateJob(
     worker_count = 100;
   }
 
-  if (job_type == "PUT" || job_type == "PUT_SOURCE") {
-    std::shared_ptr<easl::JobMetrics> dataset_fingerprint_metrics;
-    s = metadata_store_.GetJobMetricsByDatasetFingerprintAndName(
-        dataset_fingerprint, job_name, dataset_fingerprint_metrics);
-    if (s.ok()) {
-      worker_count = std::ceil(std::max(1.0,
-          dataset_fingerprint_metrics->target_worker_count_ * 1.5));
-    }
-    job_metrics->target_worker_count_ = worker_count;
-  }
+  VLOG(0) << "Worker count vs target_worker_count_" << worker_count << " "
+      << job_metrics->target_worker_count_;
 
   // EASL: Logging stuff
   if (kEnableEventLogging) {
@@ -1109,6 +1087,7 @@ Status DataServiceDispatcherImpl::CreateJob(
         MakeSplitProviders(request.dataset_id(), job_type,
           split_providers_[job_id]));
     num_split_providers = split_providers_[job_id].size();
+    VLOG(0) << "Number of split providers " << num_split_providers;
   }
 
   Update update;

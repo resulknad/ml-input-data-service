@@ -430,7 +430,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
-      VLOG(3) << "Calling GetNext in data service dataset's iterator.";
+      VLOG(0) << "Calling GetNext in data service dataset's iterator.";
       mutex_lock l(mu_);
       EnsureThreadsStarted(ctx);
 
@@ -447,7 +447,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         result_queue_size_.push_back(results_.size()); // EASL metrics
 //        result_queue_size_duplicate_.push_back(results_.size()); // EASL metrics
         while (!ResultReady() && !Finished() && !cancelled_ && status_.ok()) {
-          VLOG(3) << "Blocking in GetNext: " << DebugString();
+          VLOG(0) << "Blocking in GetNext: " << DebugString();
           get_next_cv_.wait(l);
           hadToWait = true; // EASL - metrics collection.
         }
@@ -459,7 +459,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         had_to_wait_.push_back(hadToWait); // EASL metrics
 //        had_to_wait_duplicate_.push_back(hadToWait); // EASL metrics
         if (cancelled_) {
-          VLOG(3) << "Returning from GetNext due to cancellation";
+          VLOG(0) << "Returning from GetNext due to cancellation";
           return errors::Cancelled("Data service iterator was cancelled");
         }
         if (!status_.ok()) {
@@ -468,7 +468,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         }
         if (results_.empty() && local_results_buffer_.empty()) {
           *end_of_sequence = true;
-          VLOG(3) << "Returning from GetNext with end_of_sequence";
+          VLOG(0) << "Returning from GetNext with end_of_sequence";
           return Status::OK();
         }
 
@@ -485,11 +485,11 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
       *end_of_sequence = result.end_of_sequence;
       if (!*end_of_sequence) {
-        VLOG(1) << "Returning the next element from data service dataset's "
+        VLOG(0) << "Returning the next element from data service dataset's "
                 << "Iterator: task " << result.task_id << ", element "
-                << result.element_index;
+                << result.element_index << " result " << result.element;
         if (StrictRoundRobin()) {
-          VLOG(1) << "Consumer " << dataset()->consumer_index_.value()
+          VLOG(0) << "Consumer " << dataset()->consumer_index_.value()
                   << ": Result " << get_next_index_++;
         }
         out_tensors->swap(result.element);

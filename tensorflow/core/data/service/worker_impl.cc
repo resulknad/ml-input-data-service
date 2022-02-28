@@ -396,15 +396,23 @@ void DataServiceWorkerImpl::StopTask(Task& task) TF_LOCKS_EXCLUDED(mu_) {
 
 Status DataServiceWorkerImpl::GetElement(const GetElementRequest* request,
                                          GetElementResponse* response) {
-  VLOG(3) << "Received GetElement request for task " << request->task_id();
+  VLOG(0) << "Received GetElement request for task " << request->task_id();
   struct GetElementResult result;
   TF_RETURN_IF_ERROR(GetElementResult(request, &result));
   response->set_end_of_sequence(result.end_of_sequence);
   response->set_skip_task(result.skip);
+
+  VLOG(0) << "(GetElement) result object: " << result.components
+               << " " << result.end_of_sequence << " " <<  result.skip
+               << " " << result.element_index;
+
   if (!response->end_of_sequence() && !response->skip_task()) {
     TF_RETURN_IF_ERROR(
         MoveElementToResponse(std::move(result.components), *response));
-    VLOG(3) << "Producing an element for task " << request->task_id();
+    VLOG(0) << "Producing an element for task " << request->task_id();
+  } else {
+    VLOG(0) << "Could not produce an element for the task "
+    << request->task_id();
   }
   return Status::OK();
 }
