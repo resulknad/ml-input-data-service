@@ -895,10 +895,13 @@ Status DataServiceDispatcherImpl::GetOrCreateJob(
       }
     }
     TF_RETURN_IF_ERROR(CreateJob(*request, job));
+    VLOG(0) << "The number of target workers " << job->target_worker_count;
     int64_t job_client_id;
     TF_RETURN_IF_ERROR(AcquireJobClientId(job, job_client_id));
+    VLOG(0) << "The number of target workers " << job->target_worker_count;
     response->set_job_client_id(job_client_id);
     TF_RETURN_IF_ERROR(CreateTasksForJob(job, tasks));
+    VLOG(0) << "The number of target workers " << job->target_worker_count;
   }
   TF_RETURN_IF_ERROR(AssignTasks(tasks));
   VLOG(0) << "Created job " << job->job_id << " for CreateJob("
@@ -1164,7 +1167,7 @@ Status DataServiceDispatcherImpl::CreateTasksForJob(
     std::vector<std::shared_ptr<const Task>>& tasks)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   std::vector<std::shared_ptr<const Worker>> workers = state_.ReserveWorkers(
-    job->job_id, job->target_worker_count);
+    job->job_id, 1);
   if (workers.size() < job->target_worker_count){
     VLOG(0)
     << "EASL - Not enough workers for job. Elasticity policy requires "
