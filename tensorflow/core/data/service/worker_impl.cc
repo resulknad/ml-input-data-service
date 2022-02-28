@@ -402,7 +402,7 @@ Status DataServiceWorkerImpl::GetElement(const GetElementRequest* request,
   response->set_end_of_sequence(result.end_of_sequence);
   response->set_skip_task(result.skip);
 
-  VLOG(0) << "(GetElement) result object: " << result.components
+  VLOG(0) << "(GetElement) result object: " << result.components[0].DebugString()
                << " " << result.end_of_sequence << " " <<  result.skip
                << " " << result.element_index;
 
