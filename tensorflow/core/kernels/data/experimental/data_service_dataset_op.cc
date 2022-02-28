@@ -487,7 +487,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       if (!*end_of_sequence) {
         VLOG(0) << "Returning the next element from data service dataset's "
                 << "Iterator: task " << result.task_id << ", element "
-                << result.element_index << " result " << result.element;
+                << result.element_index << " result " << result.element[0].DebugString();
         if (StrictRoundRobin()) {
           VLOG(0) << "Consumer " << dataset()->consumer_index_.value()
                   << ": Result " << get_next_index_++;
