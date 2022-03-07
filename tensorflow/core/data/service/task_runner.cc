@@ -118,12 +118,15 @@ void FirstComeFirstServedTaskRunner::RunPrefetchThread() {
 StatusOr<GetElementResult>
 FirstComeFirstServedTaskRunner::GetNextFromInputIterator()
     TF_LOCKS_EXCLUDED(mu_) {
+  VLOG(0) << "(GetNextFromInputIterator) Entering ";
   GetElementResult result;
   std::vector<Tensor> element;
   bool end_of_task;
   result.skip = false;
   {
     mutex_lock l(mu_);
+    VLOG(0) << "(GetNextFromInputIterator) iterator_ "
+      << typeid(iterator_).name();
     TF_RETURN_IF_ERROR(iterator_->GetNext(element, end_of_task));
     result.end_of_sequence = end_of_task;
     result.element_index = element_index_++;

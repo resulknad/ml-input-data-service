@@ -622,7 +622,7 @@ Status DataServiceDispatcherImpl::GetSplit(const GetSplitRequest* request,
   int64_t task_id = request->task_id();
   int64_t repetition = request->repetition();
   int64_t provider_index = request->split_provider_index();
-  VLOG(3) << "Received GetSplit request for job " << job_id << ", repetition "
+  VLOG(0) << "Received GetSplit request for job " << job_id << ", repetition "
           << repetition << ", split provider index " << provider_index;
   std::shared_ptr<const Job> job;
   TF_RETURN_IF_ERROR(state_.JobFromId(job_id, job));
@@ -636,8 +636,8 @@ Status DataServiceDispatcherImpl::GetSplit(const GetSplitRequest* request,
   if (repetition < current_repetition) {
     response->set_end_of_splits(true);
     // TODO(dada) reset to 3
-    VLOG(0) << "Returning end_of_splits since current reptition "
-                 << current_repetition << " is greater than the requested reptition "
+    VLOG(0) << "Returning end_of_splits since current repetition "
+                 << current_repetition << " is greater than the requested repetition "
                  << repetition;
     return Status::OK();
   }
@@ -694,7 +694,7 @@ Status DataServiceDispatcherImpl::GetSplit(const GetSplitRequest* request,
   } else {
     split.AsProtoTensorContent(response->mutable_split());
   }
-  VLOG(3) << "Returning from GetSplit, end_of_splits=" << end_of_splits;
+  VLOG(0) << "Returning from GetSplit, end_of_splits=" << end_of_splits;
   return Status::OK();
 }
 
