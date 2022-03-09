@@ -1060,7 +1060,8 @@ Status DataServiceDispatcherImpl::CreateJob(
   int64 num_split_providers = 0;
   if (IsDynamicShard(request.processing_mode_def())) {
     TF_RETURN_IF_ERROR(
-        MakeSplitProviders(request.dataset_id(), split_providers_[job_id]));
+        MakeSplitProviders(request.dataset_id(), job_type,
+            split_providers_[job_id]));
     num_split_providers = split_providers_[job_id].size();
   }
 
