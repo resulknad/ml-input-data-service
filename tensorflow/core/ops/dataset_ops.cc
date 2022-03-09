@@ -302,6 +302,18 @@ REGISTER_OP("WindowOp")
     .Attr("Tinputs: list(type) >= 1")
     .SetShapeFn(shape_inference::ScalarShape);
 
+    REGISTER_OP("SkiponeDataset")
+    .Input("input_dataset: variant")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+    shape_inference::ShapeHandle count_shape;
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &count_shape));
+    return shape_inference::ScalarShape(c);
+    });
+
+
 REGISTER_OP("BatchDataset")
     .Input("input_dataset: variant")
     .Input("batch_size: int64")

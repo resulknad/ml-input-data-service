@@ -1075,6 +1075,26 @@ tf_cc_test(
 )
 
 tf_kernel_library(
+    name = "skipone_dataset_op",
+    srcs = ["skipone_dataset_op.cc"],
+    hdrs = ["skipone_dataset_op.h"],
+    deps = [
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/data:dataset_utils",
+        "//tensorflow/core/data:name_utils",
+        "//tensorflow/core/data:stats_utils",
+        "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/profiler/lib:traceme_encode",
+    ],
+)
+
+tf_kernel_library(
     name = "skip_dataset_op",
     srcs = ["skip_dataset_op.cc"],
     hdrs = ["skip_dataset_op.h"],
@@ -1465,6 +1485,7 @@ tf_kernel_library(
         ":shard_dataset_op",
         ":shuffle_dataset_op",
         ":skip_dataset_op",
+        ":skipone_dataset_op",
         ":sparse_tensor_slice_dataset_op",
         ":take_dataset_op",
         ":forty_two_op",
