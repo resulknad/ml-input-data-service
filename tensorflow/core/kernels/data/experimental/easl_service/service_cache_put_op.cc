@@ -37,7 +37,7 @@ class ServiceCachePutOp::Dataset : public DatasetBase {
 
   string DebugString() const override;
 
-  int64 Cardinality() const override;
+  int64_t CardinalityInternal() const override;
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override;
 
@@ -154,7 +154,7 @@ string ServiceCachePutOp::Dataset::DebugString() const {
   return name_utils::DatasetDebugString(kDatasetType);
 }
 
-int64 ServiceCachePutOp::Dataset::Cardinality() const {
+int64_t ServiceCachePutOp::Dataset::CardinalityInternal() const {
   return input_->Cardinality();
 }
 
