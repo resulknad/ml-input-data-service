@@ -130,7 +130,7 @@ message CreatePendingTaskUpdate {
   repeated string worker_tags = 6;
   int64 worker_uid = 7;
   int64 starting_round = 5;
-  string dataset_key = 6;
+  string dataset_key = 8;
 }
 
 // Next tag: 10
