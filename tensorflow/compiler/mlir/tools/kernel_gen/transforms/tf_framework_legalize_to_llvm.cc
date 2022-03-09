@@ -45,27 +45,6 @@ static constexpr StringRef kCInterfaceJITExecute =
 static constexpr StringRef kJITCodeGlobalBaseName = "jit_module_code";
 static constexpr StringRef kErrorMessageGlobalBaseName = "error_message";
 
-Value CreateOrFindGlobalStringConstant(Location loc, OpBuilder &builder,
-                                       StringRef base_name, StringRef str) {
-  auto module =
-      builder.getInsertionBlock()->getParentOp()->getParentOfType<ModuleOp>();
-  std::string global_name =
-      llvm::formatv("{0}_{1}", base_name, llvm::hash_value(str));
-  Operation *global_constant =
-      SymbolTable::lookupNearestSymbolFrom(module, global_name);
-  if (global_constant) {
-    Value global_ptr = builder.create<LLVM::AddressOfOp>(
-        loc, cast<LLVM::GlobalOp>(global_constant));
-    Value c0 = builder.create<LLVM::ConstantOp>(loc, builder.getI64Type(),
-                                                builder.getIndexAttr(0));
-    return builder.create<LLVM::GEPOp>(
-        loc, LLVM::LLVMPointerType::get(builder.getIntegerType(8)), global_ptr,
-        ValueRange{c0, c0});
-  }
-  return LLVM::createGlobalString(loc, builder, global_name, str,
-                                  LLVM::Linkage::Internal);
-}
-
 /// Base class for patterns converting TF Framework ops to function calls.
 template <typename OpTy>
 class ConvertToLLVMCallOpPattern : public ConvertOpToLLVMPattern<OpTy> {
@@ -91,6 +70,76 @@ class ConvertToLLVMCallOpPattern : public ConvertOpToLLVMPattern<OpTy> {
  protected:
   virtual StringRef GetFuncName() const = 0;
   virtual Type GetFuncType() const = 0;
+
+  Value CreateOrFindGlobalStringConstant(Location loc, OpBuilder &builder,
+                                         StringRef base_name,
+                                         StringRef str) const {
+    auto module =
+        builder.getInsertionBlock()->getParentOp()->getParentOfType<ModuleOp>();
+    std::string global_name =
+        llvm::formatv("{0}_{1}", base_name, llvm::hash_value(str));
+    mlir::StringAttr global_name_attr = builder.getStringAttr(global_name);
+    Operation *global_constant =
+        SymbolTable::lookupNearestSymbolFrom(module, global_name_attr);
+    if (global_constant) {
+      Value global_ptr = builder.create<LLVM::AddressOfOp>(
+          loc, cast<LLVM::GlobalOp>(global_constant));
+      Value c0 = builder.create<LLVM::ConstantOp>(loc, builder.getI64Type(),
+                                                  builder.getIndexAttr(0));
+      return builder.create<LLVM::GEPOp>(
+          loc, LLVM::LLVMPointerType::get(builder.getIntegerType(8)),
+          global_ptr, ValueRange{c0, c0});
+    }
+    return LLVM::createGlobalString(loc, builder, global_name, str,
+                                    LLVM::Linkage::Internal);
+  }
+
+  std::pair<Value, Value> ConvertArrayAttrToStackAllocatedArray(
+      Location loc, Type size_ty, Type element_ty,
+      llvm::Optional<ArrayAttr> attr, ConversionPatternRewriter *rewriter,
+      std::function<Value(Attribute)> create_element) const {
+    Type element_ptr_ty = LLVM::LLVMPointerType::get(element_ty);
+
+    // If the attribute is missing or empty, set the element count to 0 and
+    // return NULL.
+    if (!attr.hasValue() || attr.getValue().empty()) {
+      Value zero = rewriter->create<LLVM::ConstantOp>(
+          loc, size_ty, rewriter->getIntegerAttr(size_ty, 0));
+      Value null_ptr = rewriter->create<LLVM::NullOp>(loc, element_ptr_ty);
+      return std::make_pair(zero, null_ptr);
+    }
+
+    // Allocate array to store the elements.
+    auto &array_attr = attr.getValue();
+    Value array_size = rewriter->create<LLVM::ConstantOp>(
+        loc, size_ty, rewriter->getIntegerAttr(size_ty, array_attr.size()));
+    Value array_ptr = rewriter->create<LLVM::AllocaOp>(
+        loc, element_ptr_ty, array_size, /*alignment=*/0);
+    for (auto &e : llvm::enumerate(array_attr)) {
+      Value index = rewriter->create<LLVM::ConstantOp>(
+          loc, size_ty, rewriter->getIntegerAttr(size_ty, e.index()));
+      Value element_ptr =
+          rewriter->create<LLVM::GEPOp>(loc, element_ptr_ty, array_ptr, index);
+      Value element = create_element(e.value());
+      rewriter->create<LLVM::StoreOp>(loc, element, element_ptr);
+    }
+    return std::make_pair(array_size, array_ptr);
+  }
+
+  std::pair<Value, Value> ConvertIntegerArrayAttrToStackAllocatedArray(
+      Location loc, Type size_ty, Type element_ty,
+      llvm::Optional<ArrayAttr> attr,
+      ConversionPatternRewriter *rewriter) const {
+    assert(size_ty.isa<IntegerType>() && "expect integer size type");
+    assert(element_ty.isa<IntegerType>() && "expect integer element type");
+    return ConvertArrayAttrToStackAllocatedArray(
+        loc, size_ty, element_ty, attr, rewriter, [&](Attribute attr) {
+          return rewriter->create<LLVM::ConstantOp>(
+              loc, element_ty,
+              rewriter->getIntegerAttr(element_ty,
+                                       attr.cast<IntegerAttr>().getInt()));
+        });
+  }
 };
 
 class TFAllocOpConverter : public ConvertToLLVMCallOpPattern<TFAllocOp> {
@@ -98,12 +147,10 @@ class TFAllocOpConverter : public ConvertToLLVMCallOpPattern<TFAllocOp> {
   using ConvertToLLVMCallOpPattern<TFAllocOp>::ConvertToLLVMCallOpPattern;
 
   LogicalResult matchAndRewrite(
-      TFAllocOp tf_alloc_op, ArrayRef<Value> operands,
+      TFAllocOp tf_alloc_op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     mlir::Operation *op = tf_alloc_op.getOperation();
     Location loc = op->getLoc();
-    TFAllocOp::Adaptor transformed(operands);
-
     MemRefType memref_type = tf_alloc_op.getType();
 
     // Get memref descriptor sizes.
@@ -111,8 +158,8 @@ class TFAllocOpConverter : public ConvertToLLVMCallOpPattern<TFAllocOp> {
     SmallVector<Value, 4> strides;
     Value sizeBytes;
     getMemRefDescriptorSizes(loc, memref_type,
-                             llvm::to_vector<4>(transformed.dyn_sizes()),
-                             rewriter, sizes, strides, sizeBytes);
+                             llvm::to_vector<4>(adaptor.dyn_sizes()), rewriter,
+                             sizes, strides, sizeBytes);
     // Get number of elements.
     Value num_elements = getNumElements(loc, sizes, rewriter);
     // Get element size.
@@ -128,8 +175,10 @@ class TFAllocOpConverter : public ConvertToLLVMCallOpPattern<TFAllocOp> {
                                        : -1));
 
     // Convert `candidate_input_indices`.
-    auto candidates_count_and_ptr = ConvertI32ArrayAttrToStackAllocatedArray(
-        loc, tf_alloc_op.input_indices(), &rewriter);
+    auto candidates_count_and_ptr =
+        ConvertIntegerArrayAttrToStackAllocatedArray(
+            loc, rewriter.getI32Type(), rewriter.getI32Type(),
+            tf_alloc_op.input_indices(), &rewriter);
 
     // Insert function call.
     FlatSymbolRefAttr tf_func_ref = getOrInsertTFFunction(rewriter, op);
@@ -137,8 +186,8 @@ class TFAllocOpConverter : public ConvertToLLVMCallOpPattern<TFAllocOp> {
         rewriter
             .create<LLVM::CallOp>(
                 loc, getVoidPtrType(), tf_func_ref,
-                llvm::makeArrayRef({transformed.ctx(), num_elements,
-                                    element_size, output_index,
+                llvm::makeArrayRef({adaptor.ctx(), num_elements, element_size,
+                                    output_index,
                                     candidates_count_and_ptr.first,
                                     candidates_count_and_ptr.second}))
             .getResult(0);
@@ -204,42 +253,6 @@ class TFAllocOpConverter : public ConvertToLLVMCallOpPattern<TFAllocOp> {
     }
     return memref_desc;
   }
-
-  std::pair<Value, Value> ConvertI32ArrayAttrToStackAllocatedArray(
-      Location loc, llvm::Optional<ArrayAttr> attr,
-      ConversionPatternRewriter *rewriter) const {
-    Type llvm_i32_type = IntegerType::get(getDialect().getContext(), 32);
-    Type llvm_i32_ptr_type = LLVM::LLVMPointerType::get(llvm_i32_type);
-
-    // If the attribute is missing or empty, set the element count to 0 and
-    // return NULL.
-    if (!attr.hasValue() || attr.getValue().empty()) {
-      Value zero = rewriter->create<LLVM::ConstantOp>(
-          loc, llvm_i32_type, rewriter->getI32IntegerAttr(0));
-      Value null_ptr = rewriter->create<LLVM::NullOp>(loc, llvm_i32_ptr_type);
-      return std::make_pair(zero, null_ptr);
-    }
-
-    // Allocate array to store the elements.
-    auto &array_attr = attr.getValue();
-    Value array_size = rewriter->create<LLVM::ConstantOp>(
-        loc, llvm_i32_type, rewriter->getI32IntegerAttr(array_attr.size()));
-    Value array_ptr = rewriter->create<LLVM::AllocaOp>(
-        loc, llvm_i32_ptr_type, array_size, /*alignment=*/0);
-
-    for (auto &dim : llvm::enumerate(array_attr)) {
-      Value index = rewriter->create<LLVM::ConstantOp>(
-          loc, llvm_i32_type, rewriter->getI32IntegerAttr(dim.index()));
-      Value elem_ptr = rewriter->create<LLVM::GEPOp>(loc, llvm_i32_ptr_type,
-                                                     array_ptr, index);
-      Value elem = rewriter->create<LLVM::ConstantOp>(
-          loc, llvm_i32_type,
-          rewriter->getI32IntegerAttr(
-              dim.value().cast<IntegerAttr>().getInt()));
-      rewriter->create<LLVM::StoreOp>(loc, elem, elem_ptr);
-    }
-    return std::make_pair(array_size, array_ptr);
-  }
 };
 
 class TFDeallocOpConverter : public ConvertToLLVMCallOpPattern<TFDeallocOp> {
@@ -247,10 +260,11 @@ class TFDeallocOpConverter : public ConvertToLLVMCallOpPattern<TFDeallocOp> {
   using ConvertToLLVMCallOpPattern<TFDeallocOp>::ConvertToLLVMCallOpPattern;
 
   LogicalResult matchAndRewrite(
-      TFDeallocOp op, ArrayRef<Value> operands,
+      TFDeallocOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    TFDeallocOp::Adaptor transformed(operands);
-    MemRefDescriptor memref(transformed.memref());
+    // TODO(herhut) Support unranked memrefs.
+    if (!op.memref().getType().isa<MemRefType>()) return failure();
+    MemRefDescriptor memref(adaptor.memref());
 
     Value allocated_bytes_ptr = rewriter.create<LLVM::BitcastOp>(
         op.getLoc(), getVoidPtrType(),
@@ -260,7 +274,7 @@ class TFDeallocOpConverter : public ConvertToLLVMCallOpPattern<TFDeallocOp> {
     FlatSymbolRefAttr tf_func_ref = getOrInsertTFFunction(rewriter, op);
     rewriter.replaceOpWithNewOp<LLVM::CallOp>(
         op, llvm::None, tf_func_ref,
-        llvm::makeArrayRef({transformed.ctx(), allocated_bytes_ptr}));
+        llvm::makeArrayRef({adaptor.ctx(), allocated_bytes_ptr}));
     return success();
   }
 
@@ -278,16 +292,34 @@ class JITCompileFromStrOpConverter
       JITCompileFromStrOp>::ConvertToLLVMCallOpPattern;
 
   LogicalResult matchAndRewrite(
-      JITCompileFromStrOp op, ArrayRef<Value> operands,
+      JITCompileFromStrOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    JITCompileFromStrOp::Adaptor transformed(operands);
-    if (transformed.ctx() == nullptr) return failure();
+    if (adaptor.ctx() == nullptr) return failure();
+    auto loc = op.getLoc();
+    std::string zero_terminated_code = op.code().str() + '\00';
     Value jit_module_code = CreateOrFindGlobalStringConstant(
-        op.getLoc(), rewriter, kJITCodeGlobalBaseName, op.code());
+        loc, rewriter, kJITCodeGlobalBaseName, zero_terminated_code);
+    std::pair<Value, Value> tile_sizes =
+        ConvertIntegerArrayAttrToStackAllocatedArray(loc, rewriter.getI64Type(),
+                                                     rewriter.getI64Type(),
+                                                     op.tileSizes(), &rewriter);
+    std::pair<Value, Value> unroll_factors =
+        ConvertIntegerArrayAttrToStackAllocatedArray(
+            loc, rewriter.getI64Type(), rewriter.getI64Type(),
+            op.unrollFactors(), &rewriter);
+    Value max_supported_rank = rewriter.create<LLVM::ConstantOp>(
+        loc, rewriter.getI64Type(), op.maxSupportedRankAttr());
+    Value enable_ftz = rewriter.create<LLVM::ConstantOp>(
+        loc, rewriter.getI1Type(), op.enableFtzAttr());
+    Value cpu_codegen = rewriter.create<LLVM::ConstantOp>(
+        loc, rewriter.getI1Type(), op.cpuCodegenAttr());
     FlatSymbolRefAttr tf_func_ref = getOrInsertTFFunction(rewriter, op);
     rewriter.replaceOpWithNewOp<LLVM::CallOp>(
         op, getVoidPtrType(), tf_func_ref,
-        llvm::makeArrayRef({transformed.ctx(), jit_module_code}));
+        llvm::makeArrayRef({adaptor.ctx(), jit_module_code, tile_sizes.first,
+                            tile_sizes.second, unroll_factors.first,
+                            unroll_factors.second, max_supported_rank,
+                            enable_ftz, cpu_codegen}));
     return success();
   }
 
@@ -295,10 +327,21 @@ class JITCompileFromStrOpConverter
   StringRef GetFuncName() const override { return kCInterfaceJITCompile; }
 
   Type GetFuncType() const override {
-    auto i8_ptr_type =
+    auto i8_ptr_ty =
         LLVM::LLVMPointerType::get(IntegerType::get(getContext(), 8));
-    return LLVM::LLVMFunctionType::get(getVoidPtrType(),
-                                       {getVoidPtrType(), i8_ptr_type});
+    auto i64_ty = IntegerType::get(getContext(), 64);
+    Type i64_ptr_ty = LLVM::LLVMPointerType::get(i64_ty);
+    auto i1_ty = IntegerType::get(getContext(), 1);
+    return LLVM::LLVMFunctionType::get(
+        getVoidPtrType(), {/*void* op_kernel_ctx*/ getVoidPtrType(),
+                           /*char* code*/ i8_ptr_ty,
+                           /*int64_t num_tile_sizes*/ i64_ty,
+                           /*int64_t* tile_sizes_ptr*/ i64_ptr_ty,
+                           /*int64_t num_unroll_factors*/ i64_ty,
+                           /*int64_t* unroll_factors_ptr*/ i64_ptr_ty,
+                           /*int64_t max_supported_rank*/ i64_ty,
+                           /*bool enable_ftz*/ i1_ty,
+                           /*bool cpu_codegen*/ i1_ty});
   }
 };
 
@@ -307,40 +350,53 @@ class JITExecuteOpConverter : public ConvertToLLVMCallOpPattern<JITExecuteOp> {
   using ConvertToLLVMCallOpPattern<JITExecuteOp>::ConvertToLLVMCallOpPattern;
 
   LogicalResult matchAndRewrite(
-      JITExecuteOp op, ArrayRef<Value> operands,
+      JITExecuteOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    // Currently, only unary ops are supported.
-    // The TF context must be known for a succesful lowering.
-    // TODO(frgossen): Generalize this runtime interface to n-ary kernels.
-    JITExecuteOp::Adaptor transformed(operands, op->getAttrDictionary());
-    if (transformed.ctx() == nullptr || op.operands().size() != 1 ||
-        op.getNumResults() != 1) {
+    // The TF context must be known for a succesful lowering. Also, we support
+    // only one result.
+    if (adaptor.ctx() == nullptr || op.operands().empty() ||
+        op.getNumResults() != 1)
       return failure();
-    }
 
     // Allocate result on stack.
     auto loc = op.getLoc();
     Type result_ty =
         getTypeConverter()->convertType(op->getResultTypes().front());
     Type result_ptr_ty = LLVM::LLVMPointerType::get(result_ty);
-    Value c1 = rewriter.create<LLVM::ConstantOp>(
-        loc, rewriter.getI64Type(),
-        rewriter.getIntegerAttr(rewriter.getIndexType(), 1));
+    Type i64_ty = rewriter.getI64Type();
+    Value one = rewriter.create<LLVM::ConstantOp>(
+        loc, i64_ty, rewriter.getI64IntegerAttr(1));
     auto result_ptr =
-        rewriter.create<LLVM::AllocaOp>(loc, result_ptr_ty, c1, llvm::None);
+        rewriter.create<LLVM::AllocaOp>(loc, result_ptr_ty, one, llvm::None);
+    Type void_ptr_ty = getVoidPtrType();
     auto result_void_ptr =
-        rewriter.create<LLVM::BitcastOp>(loc, getVoidPtrType(), result_ptr);
+        rewriter.create<LLVM::BitcastOp>(loc, void_ptr_ty, result_ptr);
 
-    // Find all the operands and unpack the one argument.
-    SmallVector<Value, 8> forward_operands = {
-        transformed.ctx(), transformed.callable(), result_void_ptr};
-    UnrankedMemRefDescriptor::unpack(
-        rewriter, loc, transformed.operands().front(), forward_operands);
+    // Pass the buffer arguments as a stack-allocated array.
+    Type arg_ptr_ty =
+        LLVM::LLVMPointerType::get(adaptor.operands().front().getType());
+    Value num_args = rewriter.create<LLVM::ConstantOp>(
+        loc, i64_ty,
+        rewriter.getI64IntegerAttr(
+            static_cast<int64_t>(adaptor.operands().size())));
+    Value args_ptr = rewriter.create<LLVM::AllocaOp>(loc, arg_ptr_ty, num_args,
+                                                     /*alignment=*/0);
+    for (auto it : llvm::enumerate(adaptor.operands())) {
+      Value index = rewriter.create<LLVM::ConstantOp>(
+          loc, i64_ty, rewriter.getI64IntegerAttr(it.index()));
+      Value element_ptr =
+          rewriter.create<LLVM::GEPOp>(loc, arg_ptr_ty, args_ptr, index);
+      rewriter.create<LLVM::StoreOp>(loc, it.value(), element_ptr);
+    }
+    auto args_void_ptr =
+        rewriter.create<LLVM::BitcastOp>(loc, void_ptr_ty, args_ptr);
 
-    // Materialize call.
+    // Materialize runtime call.
     FlatSymbolRefAttr tf_func_ref = getOrInsertTFFunction(rewriter, op);
-    rewriter.create<LLVM::CallOp>(loc, llvm::None, tf_func_ref,
-                                  forward_operands);
+    rewriter.create<LLVM::CallOp>(
+        loc, llvm::None, tf_func_ref,
+        ValueRange{adaptor.ctx(), adaptor.callable(), result_void_ptr, num_args,
+                   args_void_ptr});
 
     // Copy result (including the descriptor) to a stack-allocated buffer and
     // free the old descriptor.
@@ -361,9 +417,13 @@ class JITExecuteOpConverter : public ConvertToLLVMCallOpPattern<JITExecuteOp> {
 
   Type GetFuncType() const override {
     auto i64_ty = IntegerType::get(getContext(), 64);
-    return LLVM::LLVMFunctionType::get(
-        getVoidType(), {getVoidPtrType(), getVoidPtrType(), getVoidPtrType(),
-                        i64_ty, getVoidPtrType()});
+    auto void_ptr_ty = getVoidPtrType();
+    return LLVM::LLVMFunctionType::get(getVoidType(),
+                                       {/*void* op_kernel_ctx*/ void_ptr_ty,
+                                        /*void* callable*/ void_ptr_ty,
+                                        /*void* result*/ void_ptr_ty,
+                                        /*int64_t num_args*/ i64_ty,
+                                        /*void* args_ptr*/ void_ptr_ty});
   }
 };
 
@@ -373,24 +433,21 @@ class ReportErrorOpConverter
   using ConvertToLLVMCallOpPattern<ReportErrorOp>::ConvertToLLVMCallOpPattern;
 
   LogicalResult matchAndRewrite(
-      ReportErrorOp op, ArrayRef<Value> operands,
+      ReportErrorOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    ReportErrorOp::Adaptor transformed(operands,
-                                       op.getOperation()->getAttrDictionary());
-
     Location loc = op.getLoc();
     auto module = op->getParentOfType<ModuleOp>();
     Value message_constant = GenerateErrorMessageConstant(
-        loc, module, transformed.msg().getValue(), rewriter);
+        loc, module, adaptor.msg().getValue(), rewriter);
 
     // Insert function call.
     FlatSymbolRefAttr tf_func_ref = getOrInsertTFFunction(rewriter, op);
     Value error_code = rewriter.create<LLVM::ConstantOp>(
         loc, typeConverter->convertType(rewriter.getI32Type()),
-        transformed.error_code());
+        adaptor.error_code());
     rewriter.replaceOpWithNewOp<LLVM::CallOp>(
         op, llvm::None, tf_func_ref,
-        llvm::makeArrayRef({transformed.ctx(), error_code, message_constant}));
+        llvm::makeArrayRef({adaptor.ctx(), error_code, message_constant}));
     return success();
   }
 
@@ -417,6 +474,7 @@ class ReportErrorOpConverter
       err_stream << " at ";
       loc.print(err_stream);
     }
+    err_stream << '\00';
     StringRef generated_error(err_stream.str());
     return CreateOrFindGlobalStringConstant(
         loc, builder, kErrorMessageGlobalBaseName, generated_error);
@@ -428,7 +486,7 @@ class NullContextOpConverter : public ConvertOpToLLVMPattern<NullContextOp> {
   using ConvertOpToLLVMPattern<NullContextOp>::ConvertOpToLLVMPattern;
 
   LogicalResult matchAndRewrite(
-      NullContextOp op, ArrayRef<Value> operands,
+      NullContextOp op, OpAdaptor /*adaptor*/,
       ConversionPatternRewriter &rewriter) const override {
     rewriter.replaceOpWithNewOp<LLVM::NullOp>(op, getVoidPtrType());
     return success();
@@ -440,7 +498,7 @@ class NullMemRefOpConverter : public ConvertOpToLLVMPattern<NullMemRefOp> {
   using ConvertOpToLLVMPattern<NullMemRefOp>::ConvertOpToLLVMPattern;
 
   LogicalResult matchAndRewrite(
-      NullMemRefOp null_memref_op, ArrayRef<Value> operands,
+      NullMemRefOp null_memref_op, OpAdaptor /*adaptor*/,
       ConversionPatternRewriter &rewriter) const override {
     Location loc = null_memref_op->getLoc();
     LLVMTypeConverter type_converter = *getTypeConverter();
@@ -519,10 +577,10 @@ class IsValidMemRefOpConverter
   using ConvertOpToLLVMPattern<IsValidMemRefOp>::ConvertOpToLLVMPattern;
 
   LogicalResult matchAndRewrite(
-      IsValidMemRefOp op, ArrayRef<Value> operands,
+      IsValidMemRefOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
-    MemRefDescriptor desc(IsValidMemRefOp::Adaptor(operands).arg());
+    MemRefDescriptor desc(adaptor.arg());
 
     // Compare every size in the descriptor to 0 to check num_elements == 0.
     int64_t rank = op.arg().getType().cast<MemRefType>().getRank();

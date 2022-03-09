@@ -16,10 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2TENSORRT_CONVERT_UTILS_H_
 #define TENSORFLOW_COMPILER_TF2TENSORRT_CONVERT_UTILS_H_
 
+#include <algorithm>
+#include <iterator>
 #include <memory>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/tf2tensorrt/common/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_tensor_proxy.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -31,34 +34,25 @@ limitations under the License.
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 #include "third_party/tensorrt/NvInfer.h"
-#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
 
 namespace tensorflow {
 namespace tensorrt {
 
 static constexpr char kCastOutputTypeAttrName[] = "DstT";
 
-class IONamePrefixes {
- public:
-  static constexpr const char* const kInputPHName = "TensorRTInputPH_";
-  static constexpr const char* const kOutputPHName = "TensorRTOutputPH_";
-};
-
+#if !IS_TRT_VERSION_GE(8, 2, 0, 0)
 template <typename T>
 struct TrtDestroyer {
   void operator()(T* t) {
     if (t) t->destroy();
   }
 };
-
 template <typename T>
 using TrtUniquePtrType = std::unique_ptr<T, TrtDestroyer<T>>;
-
-enum class TrtPrecisionMode { FP32, FP16, INT8 };
-
-Status TrtPrecisionModeToName(const TrtPrecisionMode mode, string* name);
-
-Status TrtPrecisionModeFromName(const string& name, TrtPrecisionMode* mode);
+#else
+template <typename T>
+using TrtUniquePtrType = std::unique_ptr<T>;
+#endif
 
 // Define a hash function for vector<TensorShape> because it is used as the key
 // for the engine cache.
@@ -67,8 +61,6 @@ struct VectorTensorShapeHasher {
     return std::hash<std::string>()(TensorShapeUtils::ShapeListString(key));
   }
 };
-
-#if GOOGLE_CUDA && GOOGLE_TENSORRT
 
 using absl::StrAppend;
 using absl::StrCat;
@@ -96,7 +88,6 @@ string DebugString(const std::vector<CType>& vector) {
 }
 string DebugString(const nvinfer1::Dims& dims);
 string DebugString(const nvinfer1::DataType trt_dtype);
-string DebugString(const TrtPrecisionMode mode);
 string DebugString(const DataType tf_type);
 string DebugString(const nvinfer1::Permutation& permutation, int len);
 string DebugString(const ITensorProxyPtr& tensor);
@@ -104,6 +95,11 @@ string DebugString(const nvinfer1::ITensor& tensor);
 string DebugString(const std::vector<nvinfer1::Dims>& dimvec);
 string DebugString(const std::vector<TensorShape>& shapes);
 string DebugString(const std::vector<PartialTensorShape>& shapes);
+
+template <size_t N>
+string DebugString(const absl::InlinedVector<int64, N>& data) {
+  return absl::StrCat("[", absl::StrJoin(data, ","), "]");
+}
 
 inline bool HasStaticShape(const nvinfer1::Dims& dims) {
   if (dims.nbDims < 0) return false;
@@ -165,6 +161,19 @@ Status TensorShapeToTrtDims(const TensorShapeType& shape, bool ignore_first_dim,
 Status GetNetworkInputShapes(const nvinfer1::INetworkDefinition* network,
                              std::vector<PartialTensorShape>* input_shapes);
 
+// Creates PartialTensorShape from nvinfer1::Dims. The "batch_dimension", when
+// provided, is prepended to the shape.
+inline PartialTensorShape TrtDimsToPartialTensorShape(
+    const nvinfer1::Dims& dims,
+    absl::optional<int64> batch_dimension = absl::nullopt) {
+  absl::InlinedVector<int64, 4> dims_vec;
+  if (batch_dimension) {
+    dims_vec.insert(dims_vec.begin(), std::max(int64(-1), *batch_dimension));
+  }
+  std::copy(dims.d, dims.d + dims.nbDims, std::back_inserter(dims_vec));
+  return PartialTensorShape(dims_vec);
+}
+
 Status TrtDimsToTensorShape(const std::vector<int>& trt_dims,
                             TensorShape* shape,
                             absl::optional<int> batch_size = absl::nullopt);
@@ -213,20 +222,8 @@ absl::optional<DeviceNameUtils::ParsedName> MergeIfCompatible(
 absl::optional<DeviceNameUtils::ParsedName> MergeIfCompatible(
     const DeviceNameUtils::ParsedName& a, absl::string_view b);
 
-// Optimization profile generation strategies.
-enum class ProfileStrategy {
-  kRange,
-  kOptimal,
-  kRangeOptimal,
-  kImplicitBatchModeCompatible,
-};
-
-string ProfileStrategyToName(const ProfileStrategy strategy);
-Status ProfileStrategyFromName(const string& name, ProfileStrategy* strategy);
-
-#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
-
 }  // namespace tensorrt
 }  // namespace tensorflow
 
+#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
 #endif  // TENSORFLOW_COMPILER_TF2TENSORRT_CONVERT_UTILS_H_

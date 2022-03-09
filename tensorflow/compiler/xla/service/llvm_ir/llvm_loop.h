@@ -147,14 +147,14 @@ class ForLoop {
 
   // Creates a name for an LLVM construct, appending prefix_ and suffix_, if
   // they are set.
-  string GetQualifiedName(absl::string_view name);
+  std::string GetQualifiedName(absl::string_view name);
 
   // Return a list of metadata nodes that should be associated with the
   // llvm::Loop for this `ForLoop`.
   std::vector<llvm::Metadata*> GetLoopMetadata(llvm::IRBuilder<>* b);
 
-  string prefix_;
-  string suffix_;
+  std::string prefix_;
+  std::string suffix_;
   llvm::Value* start_index_;
   llvm::Value* end_index_;
   llvm::Value* step_;
@@ -240,7 +240,7 @@ class ForLoopNest {
   // size equals the rank of shape and there is a null for each
   // dimension that is not in "dimensions".
   std::vector<llvm::Value*> AddLoopsForShapeOnDimensions(
-      const Shape& shape, absl::Span<const int64> dimensions,
+      const Shape& shape, absl::Span<const int64_t> dimensions,
       absl::string_view suffix);
 
   // Emits a series of nested loops for iterating over an operand array. Loops
@@ -273,7 +273,7 @@ class ForLoopNest {
   }
 
   // Human-friendly name of the loop nest.
-  string name_;
+  std::string name_;
 
   // The preheader and exit basic block of the outermost loop, or nullptr if no
   // loop has been added yet.

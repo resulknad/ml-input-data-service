@@ -53,7 +53,18 @@ cc_library(
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
-        "//tensorflow/core/protobuf/tpu:tpu_embedding_output_layout_proto_cc",
+    ],
+)
+
+cc_library(
+    name = "tpu_embedding_configuration_proto_rewrite",
+    srcs = ["tpu_embedding_configuration_proto_rewrite.cc"],
+    hdrs = ["tpu_embedding_configuration_proto_rewrite.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
     ],
 )
 
@@ -223,6 +234,7 @@ cc_library(
         ":tpu_defs",
         "//tensorflow/compiler/jit:flags_headers",
         "//tensorflow/compiler/jit:shape_inference",
+        "//tensorflow/compiler/tf2xla:layout_util",
         "//tensorflow/compiler/tf2xla:tf2xla_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
@@ -266,6 +278,7 @@ cc_library(
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/tpu:tpu_ops_c_api_hdrs",
         "//tensorflow/core/tpu/kernels:tpu_executable_info_proto_cc",
+        "//tensorflow/core/tpu/kernels:tpu_execute_op_options",
         "//tensorflow/stream_executor:device_memory",
         "//tensorflow/stream_executor:stream",
         "//tensorflow/stream_executor/lib",
@@ -303,6 +316,7 @@ cc_library(
         "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
         "//tensorflow/stream_executor/tpu:tpu_executor_hdrs",
         "//tensorflow/stream_executor/tpu:tpu_platform_id",
+        "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/types:span",
     ],
     alwayslink = True,
@@ -375,6 +389,7 @@ cc_library(
     deps = [
         ":tpu_defs",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
         "//tensorflow/cc:scope",
         "//tensorflow/cc:tpu_ops",
         "//tensorflow/core:core_cpu",

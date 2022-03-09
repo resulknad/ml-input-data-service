@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/binary_function.h"
+#include "tensorflow/lite/kernels/internal/reference/gelu.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/log_softmax.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/logistic.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/tanh.h"
@@ -75,7 +76,7 @@ struct SoftmaxOpData {
   uint8_t uint8_table1[256];
   uint8_t uint8_table2[256];
 #endif
-  static constexpr int kInt16LUTArraySize = 513;
+  static constexpr int kInt16LUTArraySize = lut_size<int16_t>();
   int16_t exp_lut[kInt16LUTArraySize];  // int16 LUT for exp(x), where x uniform
                                         // distributed between [-10.0 , 0.0]
   int16_t one_over_one_plus_x_lut[kInt16LUTArraySize];  // int16 LUT for 1 /
@@ -390,7 +391,7 @@ TfLiteStatus TanhPrepare(TfLiteContext* context, TfLiteNode* node) {
 
       const double q =
           std::frexp(input_real_multiplier, &data->input_left_shift);
-      auto q_fixed = static_cast<int32_t>(TfLiteRound(q * (1ll << 15)));
+      auto q_fixed = static_cast<int32_t>(TfLiteRound(q * (1LL << 15)));
       data->input_multiplier = static_cast<int16_t>(q_fixed);
 
       int16_t input_range_radius =
@@ -495,7 +496,7 @@ TfLiteStatus SigmoidPrepare(TfLiteContext* context, TfLiteNode* node) {
 
       const double q =
           std::frexp(input_real_multiplier, &data->input_left_shift);
-      auto q_fixed = static_cast<int32_t>(TfLiteRound(q * (1ll << 15)));
+      auto q_fixed = static_cast<int32_t>(TfLiteRound(q * (1LL << 15)));
       data->input_multiplier = static_cast<int16_t>(q_fixed);
 
       int16_t input_range_radius =
@@ -633,11 +634,13 @@ TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
     data->params.exp_lut = data->exp_lut;
     // exp LUT only used on nagative values
     // we consider exp(-10.0) is insignificant to accumulation
-    gen_lut([](double value) { return std::exp(value); }, -10.0, 0.0,
-            data->params.exp_lut, data->kInt16LUTArraySize);
+    gen_lut<double, int16_t, int16_t>(
+        [](double value) { return std::exp(value); }, -10.0, 0.0, -1.0, 1.0,
+        data->params.exp_lut);
     data->params.one_over_one_plus_x_lut = data->one_over_one_plus_x_lut;
-    gen_lut([](double value) { return 1.0 / (1.0 + value); }, 0.0, 1.0,
-            data->params.one_over_one_plus_x_lut, data->kInt16LUTArraySize);
+    gen_lut<double, int16_t, int16_t>(
+        [](double value) { return 1.0 / (1.0 + value); }, 0.0, 1.0, -1.0, 1.0,
+        data->params.one_over_one_plus_x_lut);
     data->params.zero_point = output->params.zero_point;
     data->params.scale = output->params.scale;
 
@@ -1469,7 +1472,7 @@ TfLiteStatus EluPrepare(TfLiteContext* context, TfLiteNode* node) {
   // Use LUT to handle quantized elu path.
   if (input->type == kTfLiteInt8) {
     PopulateLookupTable<int8_t>(data, input, output, [](float value) {
-      return value < 0.0 ? std::exp(value) - 1.0f : value;
+      return value < 0.0f ? std::expm1(value) : value;
     });
   }
   return GenericPrepare(context, node);
@@ -1497,6 +1500,28 @@ TfLiteStatus EluEval(TfLiteContext* context, TfLiteNode* node) {
           TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
+}
+
+TfLiteStatus GeluEval(TfLiteContext* context, TfLiteNode* node) {
+  auto* params = reinterpret_cast<TfLiteGeluParams*>(node->builtin_data);
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &input));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
+
+  switch (input->type) {
+    case kTfLiteFloat32: {
+      reference_ops::Gelu(GetTensorShape(input), GetTensorData<float>(input),
+                          params->approximate, GetTensorShape(output),
+                          GetTensorData<float>(output));
+      return kTfLiteOk;
+    }
+    default:
+      TF_LITE_KERNEL_LOG(context, "Only float32 supported currently, got %s.",
+                         TfLiteTypeGetName(input->type));
+      return kTfLiteError;
+  }
+  return kTfLiteOk;
 }
 
 }  // namespace activations
@@ -1656,6 +1681,13 @@ TfLiteRegistration* Register_HARD_SWISH_REF() {
       activations::HardSwishInit, activations::HardSwishFree,
       activations::HardSwishPrepare,
       activations::HardSwishEval<activations::kReference>};
+  return &r;
+}
+
+TfLiteRegistration* Register_GELU() {
+  static TfLiteRegistration r = {/*init=*/nullptr, /*free=*/nullptr,
+                                 activations::GenericPrepare,
+                                 activations::GeluEval};
   return &r;
 }
 

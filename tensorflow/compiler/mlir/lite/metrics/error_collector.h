@@ -20,7 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/mlir/lite/metrics/types_util.h"
-#include "tensorflow/lite/python/metrics_wrapper/converter_error_data.pb.h"
+#include "tensorflow/lite/python/metrics/converter_error_data.pb.h"
 
 namespace mlir {
 namespace TFL {
@@ -30,7 +30,7 @@ class ErrorCollector {
   using ConverterErrorData = tflite::metrics::ConverterErrorData;
   using ConverterErrorDataSet =
       std::unordered_set<ConverterErrorData, ConverterErrorDataHash,
-                         ConverterErrorDataComparision>;
+                         ConverterErrorDataComparison>;
 
  public:
   const ConverterErrorDataSet &CollectedErrors() { return collected_errors_; }

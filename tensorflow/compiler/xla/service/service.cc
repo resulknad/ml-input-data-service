@@ -240,9 +240,10 @@ Service::ResolveAndValidateArguments(
   for (size_t i = 0; i < arguments.size(); ++i) {
     auto buffer_status = allocation_tracker_.Resolve(*arguments[i]);
     if (!buffer_status.ok()) {
-      return Status(buffer_status.status().code(),
-                    StrCat(buffer_status.status().error_message(), ", ",
-                           "failed to resolve allocation for parameter ", i));
+      return tensorflow::errors::CreateWithUpdatedMessage(
+          buffer_status.status(),
+          StrCat(buffer_status.status().error_message(), ", ",
+                 "failed to resolve allocation for parameter ", i));
     }
     auto replicated_buffers = buffer_status.ValueOrDie();
     CHECK_EQ(options_.number_of_replicas(), replicated_buffers.size());
@@ -299,7 +300,7 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
   CHECK_EQ(module_protos.size(), module_configs.size());
   auto module_group =
       absl::make_unique<HloModuleGroup>(module_protos[0]->name());
-  for (int64 i = 0, end = module_protos.size(); i < end; ++i) {
+  for (int64_t i = 0, end = module_protos.size(); i < end; ++i) {
     const HloModuleProto* proto = module_protos[i];
     const HloModuleConfig& config = *module_configs[i];
     TF_ASSIGN_OR_RETURN(
@@ -331,7 +332,7 @@ Service::ExecuteParallelAndRegisterResult(
     absl::Span<Executable* const> executables,
     absl::Span<const std::vector<std::vector<const ShapedBuffer*>>> arguments,
     Backend* backend, absl::Span<const DeviceHandle> device_handles,
-    absl::Span<const string> result_tags, ExecutionProfile* profile) {
+    absl::Span<const std::string> result_tags, ExecutionProfile* profile) {
   // Streams where the computation are launched, so we can wait on the streams
   // to complete.
   std::vector<StreamPool::Ptr> streams;
@@ -342,25 +343,27 @@ Service::ExecuteParallelAndRegisterResult(
 
   // Device ID to stream executor, populated only with devices that are being
   // profiled.
-  std::map<int64, se::Stream*> index_to_profiled_streams;
+  std::map<int64_t, se::Stream*> index_to_profiled_streams;
 
   // Build DeviceAssignment for all cores based on the provided device handles.
   DeviceAssignment device_assignment(options_.number_of_replicas(),
                                      executables.size());
-  for (int64 i = 0; i < executables.size(); i++) {
+  for (int64_t i = 0; i < executables.size(); i++) {
     TF_ASSIGN_OR_RETURN(auto replicas, Replicas(*backend, device_handles[i]));
     CHECK_EQ(replicas.size(), arguments[i].size());
-    for (int64 replica = 0, end = replicas.size(); replica < end; ++replica) {
+    for (int64_t replica = 0, end = replicas.size(); replica < end; ++replica) {
       device_assignment(replica, i) = replicas[replica]->device_ordinal();
     }
   }
 
-  for (int64 i = 0, end = executables.size(); i < end; i++) {
+  for (int64_t i = 0, end = executables.size(); i < end; i++) {
     // Stream executors for the replicas of the current computation.
     TF_ASSIGN_OR_RETURN(auto replicas, Replicas(*backend, device_handles[i]));
     CHECK_EQ(replicas.size(), arguments[i].size());
     std::vector<ScopedShapedBuffer> result_buffers;
-    for (int64 replica = 0; replica < replicas.size(); ++replica) {
+    const int64_t n = replicas.size();
+    result_buffers.reserve(n);
+    for (int64_t replica = 0; replica < n; ++replica) {
       TF_ASSIGN_OR_RETURN(StreamPool::Ptr stream,
                           backend->BorrowStream(replicas[replica]));
       streams.push_back(std::move(stream));
@@ -414,7 +417,7 @@ Service::ExecuteParallelAndRegisterResult(
   }
 
   // Wait for all executions to complete.
-  for (int64 i = 0, end = streams.size(); i < end; ++i) {
+  for (int64_t i = 0, end = streams.size(); i < end; ++i) {
     Status block_status = streams[i]->BlockHostUntilDone();
     if (!block_status.ok()) {
       return InternalError("failed to complete execution for stream %d: %s", i,
@@ -424,12 +427,12 @@ Service::ExecuteParallelAndRegisterResult(
 
   if (profile != nullptr) {
     CHECK(!timers.empty());
-    std::vector<uint64> timer_nanoseconds;
+    std::vector<uint64_t> timer_nanoseconds;
     timer_nanoseconds.reserve(timers.size());
     for (auto& timer : timers) {
       timer_nanoseconds.push_back(timer->Nanoseconds());
     }
-    uint64 nanoseconds =
+    uint64_t nanoseconds =
         *std::max_element(timer_nanoseconds.begin(), timer_nanoseconds.end());
 
     // Overall execution time (in nanoseconds) from the executor timer.
@@ -456,7 +459,7 @@ StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
     Executable* executable,
     absl::Span<const std::vector<const ShapedBuffer*>> arguments,
     Backend* backend, const DeviceHandle& device_handle,
-    const string& result_tag, ExecutionProfile* profile) {
+    const std::string& result_tag, ExecutionProfile* profile) {
   // Set up streams.
   std::vector<StreamPool::Ptr> streams;
 
@@ -470,12 +473,13 @@ StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
 
   DeviceAssignment device_assignment(options_.number_of_replicas(),
                                      /*computation_count=*/1);
-  for (int64 replica = 0; replica < replicas.size(); ++replica) {
+  for (int64_t replica = 0; replica < replicas.size(); ++replica) {
     device_assignment(replica, 0) = replicas[replica]->device_ordinal();
   }
 
   // Set up run options.
   std::vector<ServiceExecutableRunOptions> run_options;
+  run_options.reserve(streams.size());
   for (const StreamPool::Ptr& stream : streams) {
     ExecutableRunOptions options;
     options.set_stream(stream.get());
@@ -509,8 +513,8 @@ StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
 }
 
 StatusOr<std::vector<se::StreamExecutor*>> Service::GetExecutors(
-    const ExecutionOptions& execution_options, int64 requests_size,
-    int64 request_index) const {
+    const ExecutionOptions& execution_options, int64_t requests_size,
+    int64_t request_index) const {
   if (execution_options.device_handles().empty()) {
     return FailedPrecondition(
         "device handles must be given to execute parallel computations");
@@ -557,7 +561,7 @@ Status Service::ExecuteGraphParallel(const ExecuteGraphParallelRequest* arg,
   std::vector<std::vector<se::StreamExecutor*>> all_executors;
   std::vector<const HloModuleProto*> module_protos;
   std::vector<std::unique_ptr<HloModuleConfig>> module_configs;
-  std::vector<string> computation_names;
+  std::vector<std::string> computation_names;
   std::vector<DeviceHandle> device_handles;
 
   int num_requested_devices =
@@ -572,7 +576,7 @@ Status Service::ExecuteGraphParallel(const ExecuteGraphParallelRequest* arg,
         num_requested_devices);
   }
 
-  for (int64 i = 0; i < arg->requests_size(); ++i) {
+  for (int64_t i = 0; i < arg->requests_size(); ++i) {
     // Get the stream executor for the i'th computation. This stream executor
     // is one of the executors to run the replicated computation.
     const ExecutionOptions& execution_options =
@@ -717,8 +721,8 @@ Status Service::ExecuteGraphParallel(const ExecuteGraphParallelRequest* arg,
 
 Status Service::GetDeviceHandles(const GetDeviceHandlesRequest* arg,
                                  GetDeviceHandlesResponse* result) {
-  const int64 available_device_count = execute_backend_->device_count();
-  const int64 replica_count = options_.number_of_replicas();
+  const int64_t available_device_count = execute_backend_->device_count();
+  const int64_t replica_count = options_.number_of_replicas();
   if (replica_count <= 0) {
     return FailedPrecondition("Replica count must be a positive integer");
   }
@@ -729,7 +733,7 @@ Status Service::GetDeviceHandles(const GetDeviceHandlesRequest* arg,
         arg->device_count(), replica_count, available_device_count);
   }
 
-  for (int64 i = 0; i < arg->device_count(); ++i) {
+  for (int64_t i = 0; i < arg->device_count(); ++i) {
     DeviceHandle device_handle;
     device_handle.set_handle(i);
     device_handle.set_device_count(arg->device_count());
@@ -822,14 +826,14 @@ Status Service::Execute(const ExecuteRequest* arg, ExecuteResponse* result) {
 
   // Check that the replicated_arguments has the same shape and layout as the
   // module config used when creating the executable.
-  const int64 num_module_args =
+  const int64_t num_module_args =
       executable->module_config().entry_computation_layout().parameter_count();
   if (num_module_args != arg->arguments_size()) {
     return InvalidArgument(
         "The executable expects %lld arguments, but sees %lld.",
         num_module_args, arg->arguments_size());
   }
-  for (int64 i = 0; i < num_module_args; i++) {
+  for (int64_t i = 0; i < num_module_args; i++) {
     const Shape& shape_module =
         executable->module_config().entry_computation_layout().parameter_shape(
             i);
@@ -940,6 +944,7 @@ Status Service::TransferToServer(const TransferToServerRequest* arg,
 
   // Allocate memory in each replica and transfer the data to all replicas.
   std::vector<ScopedShapedBuffer> replicated_buffers;
+  replicated_buffers.reserve(replicas.size());
   for (se::StreamExecutor* executor : replicas) {
     TF_ASSIGN_OR_RETURN(
         ScopedShapedBuffer shaped_buffer,
@@ -963,7 +968,7 @@ Status Service::TransferToServer(const TransferToServerRequest* arg,
 
 Status Service::TransferToInfeed(const TransferToInfeedRequest* arg,
                                  TransferToInfeedResponse* result) {
-  const int64 replica_count = options_.number_of_replicas();
+  const int64_t replica_count = options_.number_of_replicas();
   if (arg->replica_id() < 0 || arg->replica_id() >= replica_count) {
     return FailedPrecondition(
         "%s",
@@ -992,7 +997,7 @@ Status Service::TransferToInfeed(const TransferToInfeedRequest* arg,
 
 Status Service::TransferFromOutfeed(const TransferFromOutfeedRequest* arg,
                                     TransferFromOutfeedResponse* result) {
-  const int64 replica_count = options_.number_of_replicas();
+  const int64_t replica_count = options_.number_of_replicas();
   if (arg->replica_id() < 0 || arg->replica_id() >= replica_count) {
     return FailedPrecondition(
         "The replica_id=%d on TransferFromOutfeedRequest not in range [0, %d)",
@@ -1064,8 +1069,8 @@ Status Service::ComputeConstantGraph(const ComputeConstantGraphRequest* arg,
          absl::Span<const Literal*> operands) -> StatusOr<Literal> {
         if (custom_call->custom_call_target() == "SliceToDynamic") {
           auto result = operands[0]->Clone();
-          for (int64 i = 0; i < result.shape().rank(); ++i) {
-            result.SetDynamicSize(i, operands[1 + i]->Get<int32>({}));
+          for (int64_t i = 0; i < result.shape().rank(); ++i) {
+            result.SetDynamicSize(i, operands[1 + i]->Get<int32_t>({}));
           }
           return result.ToStatic();
         }

@@ -16,10 +16,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/tuple_ops.h"
 
 #include <stddef.h>
+
 #include <string>
 #include <vector>
 
 #include "llvm/IR/Instructions.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -39,12 +41,11 @@ void EmitTupleSelect(const IrArray& select, const IrArray& pred,
   llvm::Module* module = getModuleFromBuilder(b);
   CHECK(ShapeUtil::IsScalar(pred.GetShape()));
 
+  llvm::Type* pred_type = PrimitiveTypeToIrType(PRED, module);
   llvm::LoadInst* pred_value =
-      b->CreateLoad(pred.GetBasePointer(), "load_predicate_value");
+      b->CreateLoad(pred_type, pred.GetBasePointer(), "load_predicate_value");
   llvm::Value* pred_cond = b->CreateICmpNE(
-      pred_value,
-      llvm::ConstantInt::get(PrimitiveTypeToIrType(PRED, module), 0),
-      "boolean_predicate");
+      pred_value, llvm::ConstantInt::get(pred_type, 0), "boolean_predicate");
 
   VLOG(2) << "HandleSelect for tuple:";
   VLOG(2) << "  pred_value: " << DumpToString(*pred_value);
@@ -65,8 +66,9 @@ void EmitTuple(const IrArray& tuple, absl::Span<llvm::Value* const> operands,
     auto* cast =
         b->CreatePointerCast(operands[i], PrimitiveTypeToIrType(TUPLE, module));
     auto* store = b->CreateStore(
-        cast, b->CreateInBoundsGEP(tuple.GetBasePointer(),
-                                   {b->getInt64(0), b->getInt64(i)}));
+        cast, b->CreateInBoundsGEP(
+                  tuple.GetBasePointer()->getType()->getPointerElementType(),
+                  tuple.GetBasePointer(), {b->getInt64(0), b->getInt64(i)}));
     tuple.AnnotateLoadStoreInstructionWithMetadata(store);
   }
 }
@@ -112,8 +114,10 @@ llvm::Value* EmitGetTupleElement(const Shape& target_shape, int64_t index,
                                  llvm::IRBuilder<>* b) {
   llvm::Module* module = getModuleFromBuilder(b);
   llvm::Value* element_ptr =
-      b->CreateInBoundsGEP(operand, {b->getInt64(0), b->getInt64(index)});
-  llvm::LoadInst* src_buffer = b->CreateLoad(element_ptr);
+      b->CreateInBoundsGEP(operand->getType()->getPointerElementType(), operand,
+                           {b->getInt64(0), b->getInt64(index)});
+  llvm::LoadInst* src_buffer = b->CreateLoad(
+      element_ptr->getType()->getPointerElementType(), element_ptr);
 
   // Mark the loaded pointer as dereferenceable if we know its shape.
   if (!target_shape.IsOpaque()) {

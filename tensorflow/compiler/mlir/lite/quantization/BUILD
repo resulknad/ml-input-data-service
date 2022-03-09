@@ -1,18 +1,8 @@
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "filegroup")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_native_cc_binary")
-load(
-    "//tensorflow/core/platform:build_config.bzl",
-    "tf_proto_library",
-)
-load(
-    "@llvm-project//mlir:tblgen.bzl",
-    "gentbl_cc_library",
-)
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
+load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     default_visibility = [
@@ -23,7 +13,6 @@ package(
 
 package_group(
     name = "friends",
-    includes = ["@llvm-project//mlir:subpackages"],
     packages = ["//tensorflow/compiler/mlir/..."],
 )
 
@@ -33,10 +22,13 @@ exports_files([
     "quantization_utils.h",
 ])
 
-filegroup(
+td_library(
     name = "quantization_td_files",
     srcs = [
         "quantization.td",
+    ],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
         "@llvm-project//mlir:OpBaseTdFiles",
         "@llvm-project//mlir:QuantizationOpsTdFiles",
     ],
@@ -81,6 +73,7 @@ cc_library(
     deps = [
         ":quantization_info_proto_cc",
         "//tensorflow/compiler/mlir/tensorflow:import_utils",
+        "//tensorflow/compiler/mlir/tensorflow:location_utils",
         "//tensorflow/core:lib_proto_parsing",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -114,6 +107,7 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:StandardOps",

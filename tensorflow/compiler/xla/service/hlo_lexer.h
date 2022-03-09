@@ -80,7 +80,7 @@ enum class TokKind {
   kDecimal,        // 4.2
 };
 
-string TokKindToString(TokKind kind);
+std::string TokKindToString(TokKind kind);
 
 // Lexer for the HloModule::ToString() format text.
 //
@@ -95,7 +95,7 @@ class HloLexer {
   TokKind Lex() { return token_state_.current_kind = LexToken(); }
 
   TokKind GetKind() const { return token_state_.current_kind; }
-  string GetStrVal() const {
+  std::string GetStrVal() const {
     switch (GetKind()) {
       case TokKind::kName:
       case TokKind::kAttributeName:
@@ -109,7 +109,7 @@ class HloLexer {
         LOG(FATAL) << "This token does not have string value";
     }
   }
-  int64 GetInt64Val() const {
+  int64_t GetInt64Val() const {
     CHECK(GetKind() == TokKind::kInt) << TokKindToString(GetKind());
     return token_state_.int64_val;
   }
@@ -162,7 +162,7 @@ class HloLexer {
   TokKind LexNumberOrPattern();
   TokKind LexString();
 
-  absl::optional<int64> LexNanPayload(absl::string_view& consumable);
+  absl::optional<int64_t> LexNanPayload(absl::string_view& consumable);
 
   const absl::string_view buf_;
   const char* current_ptr_;
@@ -171,8 +171,8 @@ class HloLexer {
   struct TokenState {
     const char* token_start = nullptr;
     TokKind current_kind;
-    string str_val;
-    int64 int64_val;
+    std::string str_val;
+    int64_t int64_val;
     double decimal_val;
     PrimitiveType primitive_type_val;
   };

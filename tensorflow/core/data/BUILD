@@ -38,6 +38,8 @@ exports_files([
     "stats_utils.h",
     "unbounded_thread_pool.cc",
     "unbounded_thread_pool.h",
+    "utils.cc",
+    "utils.h",
 ])
 
 cc_library(
@@ -141,6 +143,7 @@ cc_library(
         "//tensorflow/core/platform:regexp",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -158,6 +161,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:str_util",
+        "//tensorflow/core/util:determinism_test_util",
         "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
@@ -176,6 +180,7 @@ cc_library(
         "//tensorflow/core/platform:regexp",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -425,6 +430,18 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "finalization_utils",
+    srcs = ["finalization_utils.cc"],
+    hdrs = ["finalization_utils.h"],
+    deps = [
+        ":root_dataset",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:refcount",
+    ],
+)
+
 tf_cc_test(
     name = "unbounded_thread_pool_test",
     size = "small",
@@ -434,5 +451,14 @@ tf_cc_test(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
+    name = "utils",
+    srcs = ["utils.cc"],
+    hdrs = ["utils.h"],
+    deps = [
+        "//tensorflow/core:framework",
     ],
 )

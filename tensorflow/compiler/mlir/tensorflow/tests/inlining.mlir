@@ -5,6 +5,11 @@ func private @simple_callee() -> tensor<2xi32>  {
   return %cst : tensor<2xi32>
 }
 
+func private @simple_callee_with_noinline() -> tensor<2xi32> attributes {tf._noinline = true} {
+  %cst = "tf.Const"() { value = dense<2> : tensor<2xi32> } : () -> tensor<2xi32>
+  return %cst : tensor<2xi32>
+}
+
 // Test that simple TF operations can be inlined.
 
 // CHECK-LABEL: func @inline_simple(
@@ -15,7 +20,17 @@ func @inline_simple() -> tensor<2xi32> {
   return %result : tensor<2xi32>
 }
 
-// Test that TPUParitionedCallOp is not inlined.
+// Test that functions with 'tf._noinline' are not inlined.
+
+// CHECK-LABEL: func @dont_inline_func_with_noinline_attribute(
+func @dont_inline_func_with_noinline_attribute() -> tensor<2xi32> {
+  // CHECK-NEXT: %[[PARTITIONED_CALL:.*]] = "tf.PartitionedCall"
+  // CHECK-NEXT: return %[[PARTITIONED_CALL]]
+  %result = "tf.PartitionedCall"() {config = "", config_proto = "", executor_type = "", f = @simple_callee_with_noinline} : () -> tensor<2xi32>
+  return %result : tensor<2xi32>
+}
+
+// Test that TPUPartitionedCallOp is not inlined.
 
 
 // CHECK-LABEL: func @dont_inline_tpu_partitioned_call(
@@ -113,8 +128,8 @@ func @inline_into_island() -> (tensor<2xi32>, tensor<2xi32>) {
 
 func private @simple_callee_var() -> tensor<2xi32>  {
   %cst = "tf.Const"() { value = dense<2> : tensor<2xi32> } : () -> tensor<2xi32>
-  %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<!tf.resource<tensor<2xi32>>>
-  "tf.AssignVariableOp"(%0, %cst) {device = ""} : (tensor<!tf.resource<tensor<2xi32>>>, tensor<2xi32>) -> ()
+  %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<!tf_type.resource<tensor<2xi32>>>
+  "tf.AssignVariableOp"(%0, %cst) {device = ""} : (tensor<!tf_type.resource<tensor<2xi32>>>, tensor<2xi32>) -> ()
   return %cst : tensor<2xi32>
 }
 

@@ -212,7 +212,8 @@ bool HloOrdering::IsDefinedBefore(const HloValue& a, const HloValue& b) const {
 /* static */
 bool HloOrdering::UsesBeforeValueDefinition(
     absl::Span<const HloUse* const> uses, const HloValue& value,
-    const HloDataflowAnalysis& dataflow) const {
+    const HloDataflowAnalysis& dataflow,
+    bool use_is_always_before_def_in_same_instr) const {
   bool has_use_in_exclusive_branches = false;
   bool has_escaped_use_in_conditional = false;
   auto UseIsBeforeValueDefinition = [&](const HloUse& use) {
@@ -224,7 +225,8 @@ bool HloOrdering::UsesBeforeValueDefinition(
         // If the use is at the instruction where the value is defined, then the
         // use is before the def if the instruction allows buffer sharing (in
         // place computation).
-        if (dataflow.CanShareOperandBufferWithUser(
+        if (use_is_always_before_def_in_same_instr ||
+            dataflow.CanShareOperandBufferWithUser(
                 use.instruction->mutable_operand(use.operand_number),
                 use.operand_index, value.defining_instruction(),
                 value.defining_index())) {
@@ -261,6 +263,14 @@ bool HloOrdering::UsesBeforeValueDefinition(
             << "  use instruction executes before value-defining instruction";
         return true;
       case HloOrdering::ExecutionConstraint::kRunAfter:
+        // Treat CollectivePermuteDone as a special case as it shares the buffer
+        // from its operand (CollectivePermuteStart).
+        if (use_is_always_before_def_in_same_instr &&
+            use.instruction->opcode() == HloOpcode::kCollectivePermuteDone &&
+            use.instruction->operand(0) == value.instruction()) {
+          return true;
+        }
+        break;
       case HloOrdering::ExecutionConstraint::kUnordered:
         break;
     }
@@ -377,8 +387,8 @@ bool HloOrdering::UsesBeforeValueDefinition(
 }
 
 bool HloOrdering::LiveRangeStrictlyBefore(
-    const HloValue& a, const HloValue& b,
-    const HloDataflowAnalysis& dataflow) const {
+    const HloValue& a, const HloValue& b, const HloDataflowAnalysis& dataflow,
+    bool use_is_always_before_def_in_same_instr) const {
   VLOG(4) << "LiveRangeStrictlyBefore(a = " << a.ToShortString()
           << ", b = " << b.ToShortString() << ")";
   VLOG(4) << "Parent:" << a.instruction()->parent()->ToString() << "\n";
@@ -414,7 +424,8 @@ bool HloOrdering::LiveRangeStrictlyBefore(
     }
     uses.push_back(&use);
   }
-  if (!UsesBeforeValueDefinition(uses, b, dataflow)) {
+  if (!UsesBeforeValueDefinition(uses, b, dataflow,
+                                 use_is_always_before_def_in_same_instr)) {
     VLOG(4) << "uses of " << a << "not before " << b << " is defined";
     return false;
   }
@@ -451,8 +462,9 @@ bool PredecessorHloOrdering::ExecutesBeforeInSameComputation(
   return a != b && predecessors_.at(a->parent())->IsReachable(a, b);
 }
 
-string PredecessorHloOrdering::ToStringHelper(const string& name) const {
-  std::vector<string> pieces;
+std::string PredecessorHloOrdering::ToStringHelper(
+    const std::string& name) const {
+  std::vector<std::string> pieces;
   pieces.push_back(name);
   for (auto* computation : module_->MakeNonfusionComputations()) {
     pieces.push_back(absl::StrFormat("computation %s:", computation->name()));
@@ -481,7 +493,7 @@ DependencyHloOrdering::DependencyHloOrdering(const HloModule* module)
   }
 }
 
-string DependencyHloOrdering::ToString() const {
+std::string DependencyHloOrdering::ToString() const {
   return ToStringHelper("DependencyHloOrdering");
 }
 
@@ -528,7 +540,7 @@ const HloInstructionSequence* SequentialHloOrdering::SequentialOrder(
              : nullptr;
 }
 
-string SequentialHloOrdering::ToString() const {
+std::string SequentialHloOrdering::ToString() const {
   return absl::StrCat("SequentialHloOrdering\n", schedule_.ToString());
 }
 

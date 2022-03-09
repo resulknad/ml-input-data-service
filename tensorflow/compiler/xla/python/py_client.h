@@ -151,12 +151,20 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
 
   StatusOr<std::shared_ptr<PyExecutable>> Compile(
       const XlaComputation& computation, CompileOptions options);
+  StatusOr<std::shared_ptr<PyExecutable>> CompileMlir(
+      absl::string_view mlir_module, CompileOptions options);
 
   StatusOr<pybind11::bytes> SerializeExecutable(
       const PyExecutable& executable) const;
   StatusOr<std::shared_ptr<PyExecutable>> DeserializeExecutable(
+      const std::string& serialized, CompileOptions options);
+
+  // TODO(skyewm): remove when jax stop providing hlo_module
+  StatusOr<std::shared_ptr<PyExecutable>> DeserializeExecutable(
       const std::string& serialized, std::shared_ptr<HloModule> hlo_module,
-      CompileOptions options);
+      CompileOptions options) {
+    return DeserializeExecutable(serialized, options);
+  }
 
   StatusOr<pybind11::bytes> HeapProfile();
 

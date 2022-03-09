@@ -23,6 +23,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/filecheck.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
+// TODO(b/210165681): The tests in this file are fragile to HLO op names.
+
 namespace xla {
 namespace gpu {
 namespace {
@@ -86,7 +88,7 @@ ENTRY %main {
 ; CHECK-LABEL: ENTRY %main
 ; CHECK-NEXT:    f16[2,14,14,672]{3,2,1,0} parameter(0)
 ; CHECK-NEXT:    bitcast(
-; CHECK-NEXT:    ROOT %fusion.4d.bitcast
+; CHECK-NEXT:    fusion(
       )");
   EXPECT_TRUE(filecheck_result.status().ok());
   EXPECT_TRUE(filecheck_result.ValueOrDie());
@@ -154,7 +156,7 @@ ENTRY %main {
 ; CHECK-NEXT:    f16[2,14,14,672]{3,2,1,0} parameter(0)
 ; CHECK-NEXT:    bitcast(
 ; CHECK-NEXT:    %param_1.1 = f32[] parameter(1)
-; CHECK-NEXT:    ROOT %fusion.4d.bitcast
+; CHECK-NEXT:    fusion(
       )");
   EXPECT_TRUE(filecheck_result.status().ok());
   EXPECT_TRUE(filecheck_result.ValueOrDie());
@@ -211,7 +213,7 @@ ENTRY %main {
 ; CHECK-NEXT:    f16[2,14,14,672]{3,2,1,0} parameter(0)
 ; CHECK-NEXT:    bitcast(
 ; CHECK-NEXT:    %param_1.1 = f32[672]{0} parameter(1)
-; CHECK-NEXT:    ROOT %fusion.4d.bitcast
+; CHECK-NEXT:    fusion(
       )");
   EXPECT_TRUE(filecheck_result.status().ok());
   EXPECT_TRUE(filecheck_result.ValueOrDie());
@@ -367,7 +369,7 @@ ENTRY %main {
 ; CHECK-NEXT:    f16[392,672]{1,0} parameter(0)
 ; CHECK-NEXT:    f32[1]{0} parameter(1)
 ; CHECK-NEXT:    bitcast(
-; CHECK-NEXT:    ROOT %fusion.bitcast
+; CHECK-NEXT:    fusion(
       )");
   EXPECT_TRUE(filecheck_result.status().ok());
   EXPECT_TRUE(filecheck_result.ValueOrDie());
@@ -455,7 +457,7 @@ ENTRY %main {
 ; CHECK-LABEL: ENTRY %main
 ; CHECK-COUNT-3: bitcast(
 ; CHECK-NOT:     bitcast(
-; CHECK:         ROOT %fusion.bitcast
+; CHECK:         fusion(
       )");
   EXPECT_TRUE(filecheck_result.status().ok());
   EXPECT_TRUE(filecheck_result.ValueOrDie());
@@ -546,10 +548,45 @@ ENTRY %main {
 ; CHECK-LABEL: ENTRY %main
 ; CHECK-COUNT-2: bitcast(
 ; CHECK-NOT:     bitcast(
-; CHECK:         ROOT %fusion.bitcast
+; CHECK:         fusion(
       )");
   EXPECT_TRUE(filecheck_result.status().ok());
   EXPECT_TRUE(filecheck_result.ValueOrDie());
+}
+
+TEST_F(FusionBitcastLiftTest, LayoutChangeNotSupported) {
+  const char* hlo_text = R"(
+HloModule bla
+
+add {
+  param0 = f32[] parameter(0)
+  param1 = f32[] parameter(1)
+  ROOT add = f32[] add(param0, param1)
+}
+
+fused_computation {
+  param_1.11485 = f32[1,1,1536,3072]{3,2,1,0} parameter(1)
+  copy.1383 = f32[1,1,1536,3072]{1,0,2,3} copy(param_1.11485)
+  param_0.7122 = f32[3072]{0} parameter(0)
+  constant.9031 = f32[] constant(0.000651041686)
+  broadcast.9040 = f32[3072]{0} broadcast(constant.9031), dimensions={}
+  multiply.7225 = f32[3072]{0} multiply(param_0.7122, broadcast.9040)
+  broadcast.9039 = f32[1,1,1536,3072]{1,0,2,3} broadcast(multiply.7225), dimensions={3}
+  subtract.940 = f32[1,1,1536,3072]{1,0,2,3} subtract(copy.1383, broadcast.9039)
+  multiply.7224 = f32[1,1,1536,3072]{1,0,2,3} multiply(subtract.940, subtract.940)
+  bitcast.3805 = f32[3072,1536]{1,0} bitcast(multiply.7224)
+  constant.25971 = f32[] constant(0)
+  ROOT reduce.790 = f32[3072]{0} reduce(bitcast.3805, constant.25971), dimensions={1}, to_apply=add
+}
+
+ENTRY entry {
+  param_0.0 = f32[3072]{0} parameter(0)
+  param_1.0 = f32[1,1,1536,3072]{3,2,1,0} parameter(1)
+  ROOT fusion = f32[3072]{0} fusion(param_0.0, param_1.0), kind=kInput, calls=fused_computation
+}
+)";
+  auto module = ParseAndReturnVerifiedModule(hlo_text).ValueOrDie();
+  EXPECT_FALSE(FusionBitcastLift().Run(module.get()).ValueOrDie());
 }
 
 }  // namespace

@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/tpu_client.h"
 
 #include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
@@ -25,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/local_device_state.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_stream_executor_client.h"
 #include "tensorflow/compiler/xla/pjrt/tracked_device_buffer.h"
+#include "tensorflow/compiler/xla/pjrt/utils.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/service/tpu_computation_placer.h"
 #include "tensorflow/compiler/xla/shape.h"
@@ -82,7 +85,7 @@ PjRtTpuClient::PjRtTpuClient(
     LocalClient* client,
     std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
     int process_index)
-    : PjRtStreamExecutorClient(kTpuName, client, std::move(devices),
+    : PjRtStreamExecutorClient(TpuName(), client, std::move(devices),
                                process_index,
                                /*allocator=*/nullptr,
                                /*host_memory_allocator=*/nullptr,
@@ -98,7 +101,21 @@ PjRtTpuClient::PjRtTpuClient(
         return absl::StrCat(
             "libtpu version ", absl::StrJoin(version.version, "."), "\n",
             absl::string_view(version.metadata, version.metadata_size));
-      }()) {}
+      }()) {
+  // We always initialize the tpu client even if libtpu isn't linked in or
+  // initialized.
+  if (tf_tpu::ExecutorApiFn()->TpuAsyncCollectiveOffloadHelper_InitFn !=
+      nullptr) {
+    tf_tpu::ExecutorApiFn()->TpuAsyncCollectiveOffloadHelper_InitFn();
+  }
+}
+
+PjRtTpuClient::~PjRtTpuClient() {
+  if (tf_tpu::ExecutorApiFn()->TpuAsyncCollectiveOffloadHelper_ShutdownFn !=
+      nullptr) {
+    tf_tpu::ExecutorApiFn()->TpuAsyncCollectiveOffloadHelper_ShutdownFn();
+  }
+}
 
 StatusOr<DeviceAssignment> PjRtTpuClient::GetDefaultDeviceAssignment(
     int num_replicas, int num_partitions) const {
@@ -152,13 +169,26 @@ StatusOr<std::string> PjRtTpuClient::SerializeExecutable(
 }
 
 StatusOr<std::unique_ptr<PjRtExecutable>> PjRtTpuClient::DeserializeExecutable(
-    absl::string_view serialized, std::unique_ptr<HloModule> hlo_module,
-    CompileOptions options) {
+    absl::string_view serialized, CompileOptions options) {
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<TpuExecutable> tpu_executable,
+                      TpuExecutable::Deserialize(serialized));
+
   TF_ASSIGN_OR_RETURN(ExecutableExtras extras, GetExecutableExtras(&options));
 
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<TpuExecutable> tpu_executable,
-      TpuExecutable::Deserialize(serialized, std::move(hlo_module)));
+  // TODO(skyewm): can we streamline this? e.g. removing proto serialization
+  XlaComputation computation(tpu_executable->module().ToProto());
+  TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
+                      computation.GetProgramShape());
+  std::vector<const Shape*> unused_argument_layout_pointers;
+  TF_RETURN_IF_ERROR(DetermineArgumentLayoutsFromCompileOptions(
+      computation,
+      [local_client = client()](Shape shape) {
+        return local_client->backend()
+            .transfer_manager()
+            ->ChooseCompactLayoutForShape(shape);
+      },
+      options.argument_layouts, &options.executable_build_options,
+      &unused_argument_layout_pointers));
 
   auto local_executable = absl::make_unique<LocalExecutable>(
       std::move(tpu_executable), client_->mutable_backend(),

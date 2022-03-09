@@ -21,10 +21,12 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/delegates/serialization.h"
 #include "tensorflow/lite/nnapi/NeuralNetworksTypes.h"
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
 
 struct NnApiSLDriverImplFL5;
+struct NnapiDelegateVendorPlugin;
 typedef struct ANeuralNetworksMemory ANeuralNetworksMemory;
 
 namespace tflite {
@@ -136,6 +138,22 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
     // performance.
     // Default: Disabled for devices with NNAPI feature level 4 or lower.
     bool use_burst_computation = false;
+
+    // The optional null-terminated vendor specific compilation hints string.
+    // It is the vendor_plugin's responsibility to parse the hint string and
+    // decide whether the hints should be respected or not. If no vendor_plugin
+    // provided, the hints will be ignored.
+    const char* vendor_compilation_hints = nullptr;
+
+    // The optional null-terminated vendor specific execution hints string.
+    // It is the vendor_plugin's responsibility to parse the hint string and
+    // decide whether the hints should be respected or not. If no vendor_plugin
+    // provided, the hints will be ignored.
+    const char* vendor_execution_hints = nullptr;
+
+    // It is the users responsibility to make sure that
+    // vendor_plugin outlives the delegate instance.
+    NnapiDelegateVendorPlugin* vendor_plugin = nullptr;
   };
 
   // Uses default options.
@@ -233,6 +251,10 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
   static const std::vector<MemoryRegistration>& GetTensorMemoryMap(
       TfLiteDelegate* delegate);
 
+  // Returns ptr to delegates::Serialization, if caching is enabled by user via
+  // cache_dir & model_token.
+  static delegates::Serialization* GetCache(TfLiteDelegate* delegate);
+
   // Returns the int value of the ResultCode returned by the latest
   // failed call to NNAPI, if any. Zero only in case of NO failed calls since
   // the construction of this instance of StatefulNnApiDelegate.
@@ -291,10 +313,22 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
     bool allow_dynamic_dimensions = false;
     // Whether to use NNAPI Burst mode.
     bool use_burst_computation = false;
+    // The null-terminated vendor specific compilation hints string
+    const char* vendor_compilation_hints = nullptr;
+    // The null-terminated vendor specific execution hints string.
+    const char* vendor_execution_hints = nullptr;
+
+    // It is the users responsibility to make sure that
+    // vendor_plugin outlives the delegate instance.
+    NnapiDelegateVendorPlugin* vendor_plugin = nullptr;
 
     // Smart pointer for automatically cleaning up NnApi structure in case the
     // delegate was constructed from an NNAPI support library
     std::unique_ptr<const NnApi> owned_nnapi = nullptr;
+
+    // TFLite Serialization in case caching has been enabled by the user through
+    // Options.
+    std::unique_ptr<delegates::Serialization> cache;
 
     explicit Data(const NnApi* nnapi);
     explicit Data(std::unique_ptr<const NnApi> nnapi);
@@ -375,8 +409,8 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
 //
 // Returns a singleton delegate that can be used to use the NN API.
 // e.g.
-//   NnApiDelegate* delegate = NnApiDelegate();
-//   interpreter->ModifyGraphWithDelegate(&delegate);
+//   TfLiteDelegate* delegate = NnApiDelegate();
+//   interpreter->ModifyGraphWithDelegate(delegate);
 // NnApiDelegate() returns a singleton, so you should not free this
 // pointer or worry about its lifetime.
 TfLiteDelegate* NnApiDelegate();

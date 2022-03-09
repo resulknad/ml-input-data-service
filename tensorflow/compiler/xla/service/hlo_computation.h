@@ -67,7 +67,7 @@ class HloComputation {
   // Builder class for HloComputation.
   class Builder {
    public:
-    explicit Builder(const string& name,
+    explicit Builder(const std::string& name,
                      HloInstruction* fusion_instruction = nullptr)
         : name_(name),
           last_added_instruction_(nullptr),
@@ -98,7 +98,7 @@ class HloComputation {
     }
 
    private:
-    const string name_;
+    const std::string name_;
     HloInstruction* last_added_instruction_;
     HloInstruction* fusion_instruction_;
     std::vector<std::unique_ptr<HloInstruction>> instructions_;
@@ -134,13 +134,13 @@ class HloComputation {
   // Replace the old parameter at index param_no with
   // `instruction`. Updates uses and root instruction. Removes old
   // instruction from computation. No check is done on the shape.
-  HloInstruction* ReplaceParameter(int64 param_no,
+  HloInstruction* ReplaceParameter(int64_t param_no,
                                    std::unique_ptr<HloInstruction> instruction);
 
   // Remove the param_no'th parameter from the computation.
   // Note this is only applicatable to the computation for the fusion
   // instruction.
-  Status RemoveParameter(int64 param_no);
+  Status RemoveParameter(int64_t param_no);
 
   // Remove unused parameters from the computation.
   // Note this is only applicatable to the computation for the fusion
@@ -169,7 +169,7 @@ class HloComputation {
   // Replaces an old parameter with a new parameter. Adds the new parameter
   // instruction to the entry computation.  Updates users instruction.
   Status ReplaceEntryComputationParameter(
-      int64 param_no, HloInstruction* old_instruction,
+      int64_t param_no, HloInstruction* old_instruction,
       std::unique_ptr<HloInstruction> instruction);
 
   // Remove an instruction from the computation. The instruction must have no
@@ -202,12 +202,12 @@ class HloComputation {
   HloInstruction* root_instruction() const { return root_instruction_; }
 
   // Returns the number of parameters for this computation.
-  int64 num_parameters() const { return param_instructions_.size(); }
+  int64_t num_parameters() const { return param_instructions_.size(); }
 
   // Returns the parameter instruction for the given parameter number.
-  HloInstruction* parameter_instruction(int64 param_no) const {
+  HloInstruction* parameter_instruction(int64_t param_no) const {
     CHECK_GE(param_no, 0);
-    CHECK_LT(param_no, static_cast<int64>(param_instructions_.size()))
+    CHECK_LT(param_no, static_cast<int64_t>(param_instructions_.size()))
         << "Computation " << name() << " has no parameter number " << param_no;
     return param_instructions_[param_no];
   }
@@ -216,7 +216,7 @@ class HloComputation {
     return param_instructions_;
   }
 
-  const string& name() const { return name_; }
+  const std::string& name() const { return name_; }
 
   // Use the given NameUniquer to select a unique name for the computation based
   // on the computation's existing name.
@@ -226,11 +226,11 @@ class HloComputation {
   //
   // (We express the default options using an overload rather than a default
   // param because gdb ignores default params, but does resolve overloads.)
-  string ToString() const { return ToString(HloPrintOptions()); }
-  string ToString(const HloPrintOptions& options) const;
+  std::string ToString() const { return ToString(HloPrintOptions()); }
+  std::string ToString(const HloPrintOptions& options) const;
 
   // Overload which accepts an order to emit the instructions in.
-  string ToString(
+  std::string ToString(
       const HloPrintOptions& options,
       absl::Span<const HloInstruction* const> instruction_order) const;
 
@@ -245,7 +245,7 @@ class HloComputation {
   //     calls.
   static StatusOr<std::unique_ptr<HloComputation>> CreateFromProto(
       const HloComputationProto& proto,
-      const absl::flat_hash_map<int64, HloComputation*>& computation_map,
+      const absl::flat_hash_map<int64_t, HloComputation*>& computation_map,
       bool prohibit_empty_literal = true);
 
   using InstructionSequence = tensorflow::gtl::iterator_range<
@@ -275,7 +275,7 @@ class HloComputation {
   // this order, definitions of values always appear before their uses.
   std::vector<HloInstruction*> MakeInstructionPostOrder() const;
 
-  int64 instruction_count() const { return instruction_iterators_.size(); }
+  int64_t instruction_count() const { return instruction_iterators_.size(); }
 
   // Creates and returns a list of the embedded computations called by this
   // computation. This includes all embedded computations called directly or
@@ -398,7 +398,7 @@ class HloComputation {
   // If the clone context is specified, it will be populated with the cloned
   // object mappings, and its module() will be used to add new computations
   // into.
-  std::unique_ptr<HloComputation> Clone(const string& suffix = "clone",
+  std::unique_ptr<HloComputation> Clone(const std::string& suffix = "clone",
                                         HloCloneContext* context = nullptr);
 
   // Like Clone(), but if an instruction is present in replacement_map, we use
@@ -419,7 +419,7 @@ class HloComputation {
                           std::unique_ptr<HloInstruction>>
           replacements,
       absl::Span<const HloInstruction* const> extra_parameters = {},
-      HloCloneContext* context = nullptr, const string& suffix = "clone",
+      HloCloneContext* context = nullptr, const std::string& suffix = "clone",
       const HloInstruction* new_root = nullptr);
 
   // Convenience overloads for CloneWithReplacements.  You want to do
@@ -433,16 +433,16 @@ class HloComputation {
   //
   std::unique_ptr<HloComputation> CloneWithReplacementPairs(
       std::pair<const HloInstruction*, std::unique_ptr<HloInstruction>> r1,
-      HloCloneContext* context = nullptr, const string& suffix = "clone");
+      HloCloneContext* context = nullptr, const std::string& suffix = "clone");
   std::unique_ptr<HloComputation> CloneWithReplacementPairs(
       std::pair<const HloInstruction*, std::unique_ptr<HloInstruction>> r1,
       std::pair<const HloInstruction*, std::unique_ptr<HloInstruction>> r2,
-      HloCloneContext* context = nullptr, const string& suffix = "clone");
+      HloCloneContext* context = nullptr, const std::string& suffix = "clone");
   std::unique_ptr<HloComputation> CloneWithReplacementPairs(
       std::pair<const HloInstruction*, std::unique_ptr<HloInstruction>> r1,
       std::pair<const HloInstruction*, std::unique_ptr<HloInstruction>> r2,
       std::pair<const HloInstruction*, std::unique_ptr<HloInstruction>> r3,
-      HloCloneContext* context = nullptr, const string& suffix = "clone");
+      HloCloneContext* context = nullptr, const std::string& suffix = "clone");
 
   // Returns true if the given instruction can be removed from the computation.
   // Parameter instructions cannot be removed without violating invariants of
@@ -462,7 +462,7 @@ class HloComputation {
   // dependency purposes. Send and RecvDone are in the group, and AllReduces
   // with the same channel id are in the group.
   using ChannelDependencyGroup =
-      absl::flat_hash_map<int64, absl::InlinedVector<HloInstruction*, 1>>;
+      absl::flat_hash_map<int64_t, absl::InlinedVector<HloInstruction*, 1>>;
   ChannelDependencyGroup ComputeChannelDependencies() const;
 
   // Returns true if this computation has a side effect. A computation has a
@@ -508,7 +508,7 @@ class HloComputation {
   void ClearUniqueIdInternal() { unique_id_ = -1; }
 
   // The id of this computation should be unique within the module.
-  void SetUniqueId(int64 id) {
+  void SetUniqueId(int64_t id) {
     CHECK_EQ(unique_id_, -1);
     CHECK_GE(id, 0);
     unique_id_ = id;
@@ -518,7 +518,7 @@ class HloComputation {
   // null if there is no such computation.
   HloInstruction* GetInstructionWithName(absl::string_view name);
 
-  int64 unique_id() const { return unique_id_; }
+  int64_t unique_id() const { return unique_id_; }
 
   // Deallocate instructions that are marked by "RemoveInstruction". The two
   // stage clean up process is designed such that HloPass can have stable
@@ -531,7 +531,7 @@ class HloComputation {
 
  private:
   explicit HloComputation(
-      const string& name, int parameter_count,
+      const std::string& name, int parameter_count,
       std::vector<std::unique_ptr<HloInstruction>>* instructions,
       HloInstruction* root_instruction, HloInstruction* fusion_instruction);
 
@@ -572,8 +572,8 @@ class HloComputation {
   Status RemoveInstructionImpl(HloInstruction* instruction,
                                bool ignore_safety_check);
 
-  string name_;
-  int64 unique_id_;
+  std::string name_;
+  int64_t unique_id_;
   HloInstruction* root_instruction_;
 
   // If this computation is a fusion computation, this field points to the

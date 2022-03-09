@@ -509,8 +509,7 @@ class InferenceRunnerImpl : public CLInferenceRunner {
       return absl::NotFoundError(
           absl::StrCat("Input id ", index, " is an invalid input index."));
     }
-    RETURN_IF_ERROR(inputs_[index]->CopyFromExternalObject());
-    return queue_->WaitForCompletion();
+    return inputs_[index]->CopyFromExternalObject();
   }
 
   absl::Status CopyToExternalOutput(int index) override {
@@ -518,8 +517,7 @@ class InferenceRunnerImpl : public CLInferenceRunner {
       return absl::NotFoundError(
           absl::StrCat("Output id ", index, " is an invalid output index"));
     }
-    RETURN_IF_ERROR(outputs_[index]->CopyToExternalObject());
-    return queue_->WaitForCompletion();
+    return outputs_[index]->CopyToExternalObject();
   }
 
   absl::Status Run() override {
@@ -664,7 +662,7 @@ class InferenceBuilderImpl : public InferenceBuilder {
                           const InferenceEnvironmentOptions& env_options,
                           const GraphFloat32& graph) {
     context_ = absl::make_unique<InferenceContext>();
-    InferenceContext::CreateInferenceInfo create_info;
+    CreateGpuModelInfo create_info;
     create_info.precision = GetPrecision(*environment_, options);
     create_info.storage_type =
         GetStorageTypeFromOptions(*environment_, options);
@@ -925,7 +923,7 @@ class InferenceEnvironmentImpl : public InferenceEnvironment {
 
     RETURN_IF_ERROR(RunGraphTransforms(&model));
     InferenceContext context;
-    InferenceContext::CreateInferenceInfo create_info;
+    CreateGpuModelInfo create_info;
     create_info.precision = GetPrecision(environment_, options);
     create_info.storage_type = GetStorageTypeFromOptions(environment_, options);
     if (options.usage == InferenceUsage::FAST_SINGLE_ANSWER) {

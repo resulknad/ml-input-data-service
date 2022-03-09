@@ -196,6 +196,7 @@ REGISTER_OP("AssignVariableOp")
     .Input("resource: resource")
     .Input("value: dtype")
     .Attr("dtype: type")
+    .Attr("validate_shape: bool = false")
     .SetShapeFn(CreateAssignShapeFn);
 
 REGISTER_OP("AssignAddVariableOp")
@@ -250,7 +251,7 @@ REGISTER_OP("ResourceGather")
       ShapeHandle indices_shape = c->input(1);
 
       ShapeHandle unused;
-      int32 batch_dims;
+      int32_t batch_dims;
       TF_RETURN_IF_ERROR(c->GetAttr("batch_dims", &batch_dims));
       if (batch_dims < 0)
         return errors::InvalidArgument("batch_dims is negative (", batch_dims,
@@ -407,6 +408,7 @@ REGISTER_OP("MutexLock")
     .Input("mutex: resource")
     .Output("mutex_lock: variant")
     .SetIsStateful()
+    .SetTypeConstructor(full_type::Nullary(TFT_MUTEX_LOCK))
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->Scalar());
       return Status::OK();

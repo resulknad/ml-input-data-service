@@ -103,7 +103,7 @@ WhileUtil::MakeInstructionsLiveIn(
     absl::Span<HloInstruction* const> instructions) {
   CHECK(while_instr->shape().IsTuple());
 
-  int64 elements_in_old_while_shape = while_instr->shape().tuple_shapes_size();
+  int elements_in_old_while_shape = while_instr->shape().tuple_shapes_size();
   Shape new_while_shape = while_instr->shape();
   for (auto* instruction : instructions) {
     *new_while_shape.add_tuple_shapes() = instruction->shape();
@@ -136,7 +136,7 @@ WhileUtil::MakeInstructionsLiveIn(
 
   HloInstruction* while_body_param = new_while_body->parameter_instruction(0);
   std::vector<HloInstruction*> live_in_instructions;
-  for (int64 i = elements_in_old_while_shape;
+  for (int64_t i = elements_in_old_while_shape;
        i < new_while_shape.tuple_shapes_size(); i++) {
     live_in_instructions.push_back(
         new_while_body->AddInstruction(HloInstruction::CreateGetTupleElement(
@@ -156,15 +156,16 @@ WhileUtil::MakeInstructionsLiveIn(
 
 static StatusOr<std::unique_ptr<HloComputation>>
 MakeCountedLoopConditionComputation(const Shape& loop_state_shape,
-                                    int32 trip_count) {
+                                    int32_t trip_count) {
   Shape scalar_pred = ShapeUtil::MakeShape(PRED, {});
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloComputation> cond_computation,
                       CreateComputationWithSignature(
                           {&loop_state_shape}, scalar_pred, "while_cond"));
 
-  HloInstruction* trip_count_constant = cond_computation->AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(trip_count)));
+  HloInstruction* trip_count_constant =
+      cond_computation->AddInstruction(HloInstruction::CreateConstant(
+          LiteralUtil::CreateR0<int32_t>(trip_count)));
 
   HloInstruction* param = cond_computation->parameter_instruction(0);
   TF_ASSIGN_OR_RETURN(HloInstruction * indvar,
@@ -185,7 +186,7 @@ static StatusOr<std::unique_ptr<HloComputation>> MakeCountedLoopBodyComputation(
                       CreateComputationWithSignature(
                           {&loop_state_shape}, loop_state_shape, "while_body"));
   HloInstruction* one = body_computation->AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(1)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(1)));
   HloInstruction* param = body_computation->parameter_instruction(0);
   TF_ASSIGN_OR_RETURN(HloInstruction * indvar,
                       MakeGetTupleElementHlo(param, 0));
@@ -193,7 +194,7 @@ static StatusOr<std::unique_ptr<HloComputation>> MakeCountedLoopBodyComputation(
                       MakeBinaryHlo(HloOpcode::kAdd, indvar, one));
 
   std::vector<HloInstruction*> loop_body_generator_args;
-  for (int64 i = 1, e = loop_state_shape.tuple_shapes_size(); i < e; i++) {
+  for (int i = 1, e = loop_state_shape.tuple_shapes_size(); i < e; i++) {
     TF_ASSIGN_OR_RETURN(HloInstruction * tuple_element,
                         MakeGetTupleElementHlo(param, i));
     loop_body_generator_args.push_back(tuple_element);
@@ -214,7 +215,7 @@ MakeInitTupleFromInitValues(const WhileUtil::LoopStateTy& init_values) {
   std::vector<HloInstruction*> init_values_with_indvar;
   init_values_with_indvar.reserve(init_values.size() + 1);
   std::unique_ptr<HloInstruction> zero =
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(0));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(0));
   init_values_with_indvar.push_back(zero.get());
   absl::c_copy(init_values, std::back_inserter(init_values_with_indvar));
   return std::make_pair(std::move(zero),
@@ -242,7 +243,7 @@ static Shape MakeLoopStateShapeWithLayout(
 }
 
 /*static*/ StatusOr<WhileUtil::OwningLoopStateTy> WhileUtil::MakeCountedLoop(
-    HloModule* module, int32 trip_count,
+    HloModule* module, int32_t trip_count,
     const WhileUtil::LoopStateTy& init_values,
     const WhileUtil::LoopBodyGeneratorTy& loop_body_generator,
     const OpMetadata& metadata) {
@@ -273,7 +274,7 @@ static Shape MakeLoopStateShapeWithLayout(
   owned.push_back(std::move(owned_init_tuple));
   owned.push_back(std::move(owned_while));
   std::vector<HloInstruction*> while_results;
-  for (int64 i = 0, e = init_values.size(); i < e; i++) {
+  for (int64_t i = 0, e = init_values.size(); i < e; i++) {
     std::unique_ptr<HloInstruction> user_state =
         HloInstruction::CreateGetTupleElement(init_values[i]->shape(),
                                               while_instr, i + 1);
@@ -284,7 +285,7 @@ static Shape MakeLoopStateShapeWithLayout(
 }
 
 /*static*/ StatusOr<WhileUtil::LoopStateTy> WhileUtil::MakeCountedLoop(
-    HloComputation* computation, int32 trip_count,
+    HloComputation* computation, int32_t trip_count,
     const WhileUtil::LoopStateTy& init_values,
     const WhileUtil::LoopBodyGeneratorTy& loop_body_generator,
     const OpMetadata& metadata) {
@@ -314,10 +315,10 @@ static Shape MakeLoopStateShapeWithLayout(
   return result;
 }
 
-/*static*/ absl::flat_hash_map<int64, absl::InlinedVector<HloInstruction*, 1>>
+/*static*/ absl::flat_hash_map<int64_t, absl::InlinedVector<HloInstruction*, 1>>
 WhileUtil::GetGTEsMapForWhileConditional(
     const HloComputation& while_conditional) {
-  absl::flat_hash_map<int64, absl::InlinedVector<HloInstruction*, 1>> result;
+  absl::flat_hash_map<int64_t, absl::InlinedVector<HloInstruction*, 1>> result;
   for (HloInstruction* user :
        while_conditional.parameter_instruction(0)->users()) {
     if (user->opcode() == HloOpcode::kGetTupleElement) {

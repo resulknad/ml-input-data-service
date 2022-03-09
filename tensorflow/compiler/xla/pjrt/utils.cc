@@ -44,7 +44,9 @@ StatusOr<Shape> GetShardedShape(const Shape& shape,
           sharding.DebugString(), shape.ToString());
     }
     std::vector<Shape> sharded_subshapes;
-    for (int i = 0; i < shape.tuple_shapes_size(); ++i) {
+    const int tuple_shapes_size = shape.tuple_shapes_size();
+    sharded_subshapes.reserve(tuple_shapes_size);
+    for (int i = 0; i < tuple_shapes_size; ++i) {
       TF_ASSIGN_OR_RETURN(
           Shape sharded_subshape,
           GetShardedShape(shape.tuple_shapes(i), sharding.tuple_shardings(i)));
@@ -273,6 +275,26 @@ int DefaultThreadPoolSize() {
     return std::max(0, nproc);
   }
   return tensorflow::port::MaxParallelism();
+}
+
+bool HasMajorToMinorLayout(PrimitiveType type, absl::Span<int64_t const> dims,
+                           absl::Span<int64_t const> byte_strides) {
+  CHECK_EQ(dims.size(), byte_strides.size());
+  // If the array is size 0, the strides are irrelevant.
+  if (absl::c_find(dims, 0) != dims.end()) {
+    return true;
+  }
+  int64_t stride = primitive_util::ByteWidth(type);
+  for (int i = static_cast<int>(dims.size()) - 1; i >= 0; --i) {
+    // If a dimension is of size 1, its stride is irrelevant.
+    if (dims[i] != 1) {
+      if (byte_strides[i] != stride) {
+        return false;
+      }
+      stride *= dims[i];
+    }
+  }
+  return true;
 }
 
 }  // namespace xla
