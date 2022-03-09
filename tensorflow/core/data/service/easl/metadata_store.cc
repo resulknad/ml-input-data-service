@@ -1,7 +1,6 @@
 #include "tensorflow/core/data/service/easl/metadata_store.h"
 
 #include <memory>
-#include <sstream>
 #include <ostream>
 #include <fstream>
 
