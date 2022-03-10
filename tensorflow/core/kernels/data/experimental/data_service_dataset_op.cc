@@ -427,30 +427,35 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
-      VLOG(3) << "Calling GetNext in data service dataset's iterator.";
+      VLOG(0) << "Calling GetNext in data service dataset's iterator.";
       mutex_lock l(mu_);
       EnsureThreadsStarted(ctx);
+      Result result;
+
+      VLOG(0) << "HERE " << 1;
 
       // EASL - metrics collection
       ++num_elements_;
       uint64 time_now = Env::Default()->NowMicros();
       batch_timestamps_us_.push_back(time_now);
       // batch_timestamps_us_duplicate_.push_back(time_now);
+      VLOG(0) << "HERE " << 2;
 
       bool hadToWait = false;
       int64 start_us = Env::Default()->NowMicros();
 
-      Result result;
       do {
         uint64 wait_time = Env::Default()->NowMicros(); // EASL metrics
         result_queue_size_.push_back(results_.size()); // EASL metrics
         // result_queue_size_duplicate_.push_back(results_.size()); // EASL metrics
+        VLOG(0) << "HERE " << 3;
 
         while (!ResultReady() && !Finished() && !cancelled_ && status_.ok()) {
-          VLOG(3) << "Blocking in GetNext: " << DebugString();
+          VLOG(0) << "Blocking in GetNext: " << DebugString();
           hadToWait = true; // EASL - metrics collection.
           get_next_cv_.wait(l);
         }
+        VLOG(0) << "HERE " << 4;
 
         wait_time = Env::Default()->NowMicros() - wait_time; // EASL metrics
         double wait_time_computation = (double)(wait_time)
@@ -459,17 +464,29 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         //  wait_times_ms_duplicate_.push_back(wait_time_computation); // EASL metrics
         had_to_wait_.push_back(hadToWait); // EASL metrics
         //  had_to_wait_duplicate_.push_back(hadToWait); // EASL metrics
+        VLOG(0) << "HERE " << 5;
 
         if (cancelled_) {
-          VLOG(3) << "Returning from GetNext due to cancellation";
+          VLOG(0) << "Returning from GetNext due to cancellation";
           return errors::Cancelled("Data service iterator was cancelled");
         }
+        VLOG(0) << "HERE " << 6;
+
         if (!status_.ok()) {
           VLOG(0) << "Returning from GetNext with error " << status_;
           return status_;
         }
+        VLOG(0) << "HERE " << 7;
+
+        if (results_.empty() && local_results_buffer_.empty()) {
+          *end_of_sequence = true;
+          VLOG(0) << "Returning from GetNext with end_of_sequence";
+          return Status::OK();
+        }
+        VLOG(0) << "HERE " << 8;
+
         if(job_finished_) {
-          VLOG(3) << "Job Finished in GetNext. results_.size():"
+          VLOG(0) << "Job Finished in GetNext. results_.size():"
                   << results_.size()
                   << " results_.front().ready:"
                   << (!results_.empty() && results_.front().ready)
@@ -481,13 +498,14 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
                   << " time_milisec:"
                   << Env::Default()->NowMicros() / EnvTime::kMillisToMicros;
         }
-        if (results_.empty() && local_results_buffer_.empty()) {
-          *end_of_sequence = true;
-          VLOG(3) << "Returning from GetNext with end_of_sequence";
-          return Status::OK();
-        }
+        VLOG(0) << "HERE " << 8;
+
         result = PopNextResult();
+        VLOG(0) << "HERE " << 9;
+
         worker_thread_cv_.notify_one();
+        VLOG(0) << "HERE " << 10;
+
       } while (result.skip);
 
       // Discard scalability metrics at epoch start or after scale change
@@ -495,28 +513,35 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         if (buffer_period > 0) {
           --buffer_period;
         }
+        VLOG(0) << "HERE " << 11;
+
         RemoveLastScalabilityMetrics();
       }
+      VLOG(0) << "HERE " << 12;
+
 
       *end_of_sequence = result.end_of_sequence;
+      VLOG(0) << "HERE " << 13;
+
       if (!*end_of_sequence) {
-        VLOG(1) << "Returning the next element from data service dataset's "
+        VLOG(0) << "Returning the next element from data service dataset's "
                 << "Iterator: task " << result.task_id << ", element "
                 << result.element_index;
         if (StrictRoundRobin()) {
-          VLOG(1) << "Consumer " << dataset()->consumer_index_.value()
+          VLOG(0) << "Consumer " << dataset()->consumer_index_.value()
                   << ": Result " << get_next_index_++;
         }
         out_tensors->swap(result.element);
       }
+      VLOG(0) << "HERE " << 14;
+
 
       // EASL - metrics logging.
       int64 wait_us = Env::Default()->NowMicros() - start_us;
-      VLOG(3) << "EASL, data_service_client, GetNextInternal, "
+      VLOG(0) << "EASL, data_service_client, GetNextInternal, "
               << wait_us << ", " << hadToWait;
+      VLOG(0) << "HERE " << 15;
 
-      results_.pop();
-      worker_thread_cv_.notify_one();
 
       return Status::OK();
     }
