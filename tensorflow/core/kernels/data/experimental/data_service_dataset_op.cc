@@ -1429,7 +1429,12 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
                       Result& result) TF_LOCKS_EXCLUDED(mu_) {
       GetElementResult get_element_result;
       for (int num_retries = 0;; ++num_retries) {
+        VLOG(0) << "(GetElement) Get element for task " << task->info.task_id()
+                     << "\n > retry number " << num_retries;
         Status s = TryGetElement(*task, get_element_result);
+        VLOG(0) << "(GetElement) Get element for task " << task->info.task_id()
+                << "\n > retry number " << num_retries
+                << "\n > return ok? " << s.ok() << " " << s.ToString();
         if (s.ok()) break;
         // Retry all errors that could indicate preemption.
         if (!errors::IsUnavailable(s) && !errors::IsCancelled(s) &&
