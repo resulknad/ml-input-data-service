@@ -1101,7 +1101,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           mutex_lock l(mu_);
           if (task_to_process) {
             task_to_process->in_use = false;
-            RemoveOutstandingRequest(*task_to_process);
+//            RemoveOutstandingRequest(*task_to_process);
+            task_to_process->num_outstanding_requests--;
             task_to_process = nullptr;
             worker_thread_cv_.notify_one();
           }
@@ -1118,7 +1119,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             if (task_to_process) {
               break;
             }
-            VLOG(1) << "Thread waiting for task or space in buffer, outstanding_requests_: "
+            VLOG(0) << "Thread waiting for task or space in buffer, outstanding_requests_: "
             << outstanding_requests_ << " results_.size(): " << results_.size();
             worker_thread_cv_.wait(l);
           }
@@ -1133,7 +1134,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
           DCHECK(task_to_process); // (damien-aymon) This will never segfault..
           task_to_process->in_use = true;
-          AddOutstandingRequest(*task_to_process);
+//          AddOutstandingRequest(*task_to_process);
+          task_to_process->num_outstanding_requests++;
 
           VLOG(3) << "Processing task " << task_to_process->info.task_id();
         }
@@ -1152,7 +1154,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           VLOG(0) << "Failed to get element from worker "
                   << task_to_process->info.worker_address() << ": " << s;
           task_to_process->in_use = false;
-          RemoveOutstandingRequest(*task_to_process);
+//          RemoveOutstandingRequest(*task_to_process);
+          task_to_process->num_outstanding_requests--;
           status_ = errors::CreateWithUpdatedMessage(
               s, absl::StrCat("Failed to get element from worker ",
                               task_to_process->info.worker_address(), ": ",
