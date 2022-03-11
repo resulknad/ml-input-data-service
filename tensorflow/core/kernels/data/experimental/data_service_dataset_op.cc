@@ -1324,7 +1324,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       {
         // FIXME(DanGraur): In the original codebase there's no lock being used
         //  here; could this be redundant?
-        mutex_lock l(mu_);
+//        mutex_lock l(mu_);
         req.set_task_id(task.info.task_id());
         req.set_skipped_previous_round(task.skipped_previous_round);
         absl::optional<int64_t> round_index;
