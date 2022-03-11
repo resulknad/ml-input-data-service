@@ -1169,14 +1169,15 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     // Searches for a task to process, returning nullptr if none is found.
     std::shared_ptr<Task> GetTaskToProcess() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       if (!ShouldProcessTask()) {
+        VLOG(0) << "(GetTaskToProcess) !ShouldProcessTask";
         return nullptr;
       }
 
-      VLOG(4) << "Searching for the next task to process.";
+      VLOG(0) << "Searching for the next task to process.";
       if (ShouldProcessLocalTask()) {
         std::shared_ptr<Task> task = GetLocalTaskToProcess();
         if (task) {
-          VLOG(3) << "Selected a local task to process: "
+          VLOG(0) << "Selected a local task to process: "
                   << task->info.ShortDebugString();
           return task;
         }
