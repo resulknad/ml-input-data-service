@@ -1207,9 +1207,14 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       // `results_` as well as in-progress requests.
       // If there are any local tasks, we allocate additional buffers for them
       // to improve utilization of local resources.
-      return local_results_buffer_.size() + outstanding_local_requests_ +
-                 results_.size() + outstanding_requests_ <
-             max_outstanding_requests_;
+//      return local_results_buffer_.size() + outstanding_local_requests_ +
+//                 results_.size() + outstanding_requests_ <
+//             max_outstanding_requests_;
+      VLOG(0) << "(ShouldProcessTask) Values "
+        << local_results_buffer_.size() << " + " << outstanding_local_requests_
+        << " + " << results_.size() << " + " <<  outstanding_requests_ << " <? "
+        << max_outstanding_requests_;
+        return true;
     }
 
     // Prefers reading from local tasks if they exist.
