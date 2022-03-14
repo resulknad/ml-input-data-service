@@ -432,15 +432,11 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       EnsureThreadsStarted(ctx);
       Result result;
 
-      VLOG(0) << "HERE " << 1;
-
       // EASL - metrics collection
       ++num_elements_;
       uint64 time_now = Env::Default()->NowMicros();
       batch_timestamps_us_.push_back(time_now);
       // batch_timestamps_us_duplicate_.push_back(time_now);
-      VLOG(0) << "HERE " << 2;
-
       bool hadToWait = false;
       int64 start_us = Env::Default()->NowMicros();
 
@@ -448,15 +444,11 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         uint64 wait_time = Env::Default()->NowMicros(); // EASL metrics
         result_queue_size_.push_back(results_.size()); // EASL metrics
         // result_queue_size_duplicate_.push_back(results_.size()); // EASL metrics
-        VLOG(0) << "HERE " << 3;
-
         while (!ResultReady() && !Finished() && !cancelled_ && status_.ok()) {
           VLOG(0) << "Blocking in GetNext: " << DebugString();
           hadToWait = true; // EASL - metrics collection.
           get_next_cv_.wait(l);
         }
-        VLOG(0) << "HERE " << 4;
-
         wait_time = Env::Default()->NowMicros() - wait_time; // EASL metrics
         double wait_time_computation = (double)(wait_time)
           / EnvTime::kMillisToMicros;
@@ -464,27 +456,19 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         //  wait_times_ms_duplicate_.push_back(wait_time_computation); // EASL metrics
         had_to_wait_.push_back(hadToWait); // EASL metrics
         //  had_to_wait_duplicate_.push_back(hadToWait); // EASL metrics
-        VLOG(0) << "HERE " << 5;
-
         if (cancelled_) {
           VLOG(0) << "Returning from GetNext due to cancellation";
           return errors::Cancelled("Data service iterator was cancelled");
         }
-        VLOG(0) << "HERE " << 6;
-
         if (!status_.ok()) {
           VLOG(0) << "Returning from GetNext with error " << status_;
           return status_;
         }
-        VLOG(0) << "HERE " << 7;
-
         if (results_.empty() && local_results_buffer_.empty()) {
           *end_of_sequence = true;
           VLOG(0) << "Returning from GetNext with end_of_sequence";
           return Status::OK();
         }
-        VLOG(0) << "HERE " << 8;
-
         if(job_finished_) {
           VLOG(0) << "Job Finished in GetNext. results_.size():"
                   << results_.size()
@@ -498,14 +482,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
                   << " time_milisec:"
                   << Env::Default()->NowMicros() / EnvTime::kMillisToMicros;
         }
-        VLOG(0) << "HERE " << 8;
-
         result = PopNextResult();
-        VLOG(0) << "HERE " << 9;
-
         worker_thread_cv_.notify_one();
-        VLOG(0) << "HERE " << 10;
-
       } while (result.skip);
 
       // Discard scalability metrics at epoch start or after scale change
@@ -513,16 +491,10 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         if (buffer_period > 0) {
           --buffer_period;
         }
-        VLOG(0) << "HERE " << 11;
-
         RemoveLastScalabilityMetrics();
       }
-      VLOG(0) << "HERE " << 12;
-
 
       *end_of_sequence = result.end_of_sequence;
-      VLOG(0) << "HERE " << 13;
-
       if (!*end_of_sequence) {
         VLOG(0) << "Returning the next element from data service dataset's "
                 << "Iterator: task " << result.task_id << ", element "
@@ -533,15 +505,11 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         }
         out_tensors->swap(result.element);
       }
-      VLOG(0) << "HERE " << 14;
-
 
       // EASL - metrics logging.
       int64 wait_us = Env::Default()->NowMicros() - start_us;
       VLOG(0) << "EASL, data_service_client, GetNextInternal, "
               << wait_us << ", " << hadToWait;
-      VLOG(0) << "HERE " << 15;
-
 
       return Status::OK();
     }
@@ -1101,8 +1069,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           mutex_lock l(mu_);
           if (task_to_process) {
             task_to_process->in_use = false;
-//            RemoveOutstandingRequest(*task_to_process);
             task_to_process->num_outstanding_requests--;
+            --outstanding_requests_;
             task_to_process = nullptr;
             worker_thread_cv_.notify_one();
           }
@@ -1124,8 +1092,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             worker_thread_cv_.wait(l);
           }
           DCHECK(task_to_process != nullptr);
+          ++outstanding_requests_;
           task_to_process->in_use = true;
-          AddOutstandingRequest(*task_to_process);
           if (StrictRoundRobin()) {
             // Reserve a spot in the results_ queue.
             results_.emplace();
@@ -1134,7 +1102,6 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
           DCHECK(task_to_process); // (damien-aymon) This will never segfault..
           task_to_process->in_use = true;
-//          AddOutstandingRequest(*task_to_process);
           task_to_process->num_outstanding_requests++;
 
           VLOG(3) << "Processing task " << task_to_process->info.task_id();
@@ -1154,8 +1121,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           VLOG(0) << "Failed to get element from worker "
                   << task_to_process->info.worker_address() << ": " << s;
           task_to_process->in_use = false;
-//          RemoveOutstandingRequest(*task_to_process);
           task_to_process->num_outstanding_requests--;
+          --outstanding_requests_;
           status_ = errors::CreateWithUpdatedMessage(
               s, absl::StrCat("Failed to get element from worker ",
                               task_to_process->info.worker_address(), ": ",
@@ -1207,14 +1174,20 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       // `results_` as well as in-progress requests.
       // If there are any local tasks, we allocate additional buffers for them
       // to improve utilization of local resources.
-//      return local_results_buffer_.size() + outstanding_local_requests_ +
-//                 results_.size() + outstanding_requests_ <
-//             max_outstanding_requests_;
       VLOG(0) << "(ShouldProcessTask) Values "
         << local_results_buffer_.size() << " + " << outstanding_local_requests_
         << " + " << results_.size() << " + " <<  outstanding_requests_ << " <? "
         << max_outstanding_requests_;
-        return true;
+
+      // Below is the original return value
+      //      return local_results_buffer_.size() + outstanding_local_requests_ +
+      //      results_.size() + outstanding_requests_ <
+      //      max_outstanding_requests_;
+
+      // Note: I removed the outstanding_local_requests_ variable as that
+      // became obsolete in master after v2.8 release
+      return local_results_buffer_.size() + results_.size()
+             + outstanding_requests_ < max_outstanding_requests_;
     }
 
     // Prefers reading from local tasks if they exist.
