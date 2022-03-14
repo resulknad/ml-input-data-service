@@ -291,7 +291,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           &deregister_fn_));
       dispatcher_ = absl::make_unique<DataServiceDispatcherClient>(
           dataset()->address_, dataset()->protocol_);
-      int64 deadline_micros = kint64max;
+      int64 deadline_micros = 60000000; //kint64max;
       absl::optional<JobKey> key;
       if (!dataset()->job_name_.empty()) {
         key.emplace();
@@ -1089,7 +1089,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         int64 backoff_until = std::min(
             deadline_micros,
             now_micros + ::tensorflow::ComputeBackoffMicroseconds(num_retries));
-        VLOG(0) << "Failed to get an element from worker "
+        VLOG(0) << "Failed to get an element from worker (DBK) "
                 << task->info.worker_address() << ": " << s
                 << ". Will retry in " << (backoff_until - now_micros)
                 << " microseconds";
