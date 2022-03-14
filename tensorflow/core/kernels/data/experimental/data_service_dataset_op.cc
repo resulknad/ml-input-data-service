@@ -291,7 +291,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           &deregister_fn_));
       dispatcher_ = absl::make_unique<DataServiceDispatcherClient>(
           dataset()->address_, dataset()->protocol_);
-      int64 deadline_micros = 60000000; //kint64max;
+      int64 deadline_micros = kint64max; // 60000000; //kint64max;
       absl::optional<JobKey> key;
       if (!dataset()->job_name_.empty()) {
         key.emplace();
@@ -931,7 +931,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           task_to_process->num_outstanding_requests++;
           VLOG(3) << "Processing task " << task_to_process->info.task_id();
         }
-        int64 deadline_micros = kint64max;
+        int64 deadline_micros = 60000000; //kint64max;
         Status s;
         if (StrictRoundRobin()) {
           s = GetElementTraced(task_to_process.get(), deadline_micros,
@@ -943,7 +943,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         }
         if (!s.ok()) {
           mutex_lock l(mu_);
-          VLOG(0) << "Failed to get element from worker "
+          VLOG(0) << "Failed to get element from worker (DBK) "
                   << task_to_process->info.worker_address() << ": " << s;
           task_to_process->in_use = false; // only holds for round robin
           task_to_process->num_outstanding_requests--;
