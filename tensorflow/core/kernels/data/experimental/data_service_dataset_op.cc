@@ -649,7 +649,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         // Protect the metrics
         mutex_lock l(mu_);
         if (had_to_wait_.size() >= BATCH_INTERVAL) {
-          VLOG(0) << "EASL (Heartbeat) - Enough measurements for "
+          VLOG(0) << "EASL (Heartbeat) - (DBK) Enough measurements for "
                        << "scalability metrics";
           // Compute the last x batch time
           int32 metrics_count = had_to_wait_.size();
