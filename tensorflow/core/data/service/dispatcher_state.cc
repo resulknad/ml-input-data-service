@@ -240,8 +240,8 @@ void DispatcherState::ClientHeartbeat(
   if (client_heartbeat.has_task_rejected()) {
     task.failures++;
     VLOG(0) << "DBK (ClientHeartbeat): task failures " << task.failures
-            << " for task " << task->task_id << " on worker "
-            << task->worker_address;
+            << " for task " << task.task_id << " on worker "
+            << task.worker_address;
     task.ready_consumers.clear();
     task.target_round = client_heartbeat.task_rejected().new_target_round();
   }
