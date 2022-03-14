@@ -427,7 +427,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
-      VLOG(0) << "Calling GetNext in data service dataset's iterator.";
+      VLOG(3) << "Calling GetNext in data service dataset's iterator.";
       mutex_lock l(mu_);
       EnsureThreadsStarted(ctx);
       Result result;
@@ -445,7 +445,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         result_queue_size_.push_back(results_.size()); // EASL metrics
         // result_queue_size_duplicate_.push_back(results_.size()); // EASL metrics
         while (!ResultReady() && !Finished() && !cancelled_ && status_.ok()) {
-          VLOG(0) << "Blocking in GetNext: " << DebugString();
+          VLOG(3) << "Blocking in GetNext: " << DebugString();
           hadToWait = true; // EASL - metrics collection.
           get_next_cv_.wait(l);
         }
@@ -457,7 +457,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         had_to_wait_.push_back(hadToWait); // EASL metrics
         //  had_to_wait_duplicate_.push_back(hadToWait); // EASL metrics
         if (cancelled_) {
-          VLOG(0) << "Returning from GetNext due to cancellation";
+          VLOG(3) << "Returning from GetNext due to cancellation";
           return errors::Cancelled("Data service iterator was cancelled");
         }
         if (!status_.ok()) {
@@ -470,7 +470,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           return Status::OK();
         }
         if(job_finished_) {
-          VLOG(0) << "Job Finished in GetNext. results_.size():"
+          VLOG(3) << "Job Finished in GetNext. results_.size():"
                   << results_.size()
                   << " results_.front().ready:"
                   << (!results_.empty() && results_.front().ready)
@@ -496,11 +496,11 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
       *end_of_sequence = result.end_of_sequence;
       if (!*end_of_sequence) {
-        VLOG(0) << "Returning the next element from data service dataset's "
+        VLOG(1) << "Returning the next element from data service dataset's "
                 << "Iterator: task " << result.task_id << ", element "
                 << result.element_index;
         if (StrictRoundRobin()) {
-          VLOG(0) << "Consumer " << dataset()->consumer_index_.value()
+          VLOG(1) << "Consumer " << dataset()->consumer_index_.value()
                   << ": Result " << get_next_index_++;
         }
         out_tensors->swap(result.element);
@@ -508,7 +508,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
       // EASL - metrics logging.
       int64 wait_us = Env::Default()->NowMicros() - start_us;
-      VLOG(0) << "EASL, data_service_client, GetNextInternal, "
+      VLOG(3) << "EASL, data_service_client, GetNextInternal, "
               << wait_us << ", " << hadToWait;
 
       return Status::OK();
@@ -1087,7 +1087,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             if (task_to_process) {
               break;
             }
-            VLOG(0) << "Thread waiting for task or space in buffer, outstanding_requests_: "
+            VLOG(1) << "Thread waiting for task or space in buffer, outstanding_requests_: "
             << outstanding_requests_ << " results_.size(): " << results_.size();
             worker_thread_cv_.wait(l);
           }
@@ -1136,15 +1136,14 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     // Searches for a task to process, returning nullptr if none is found.
     std::shared_ptr<Task> GetTaskToProcess() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       if (!ShouldProcessTask()) {
-        VLOG(0) << "(GetTaskToProcess) !ShouldProcessTask";
         return nullptr;
       }
 
-      VLOG(0) << "Searching for the next task to process.";
+      VLOG(4) << "Searching for the next task to process.";
       if (ShouldProcessLocalTask()) {
         std::shared_ptr<Task> task = GetLocalTaskToProcess();
         if (task) {
-          VLOG(0) << "Selected a local task to process: "
+          VLOG(4) << "Selected a local task to process: "
                   << task->info.ShortDebugString();
           return task;
         }
@@ -1169,23 +1168,27 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       if (StrictRoundRobin()) {
         return results_.size() < max_outstanding_requests_;
       }
-      // Otherwise, results aren't added to `results_` until the data has been
-      // successfully retrieved. We need to count requests already added to
-      // `results_` as well as in-progress requests.
-      // If there are any local tasks, we allocate additional buffers for them
-      // to improve utilization of local resources.
-      VLOG(0) << "(ShouldProcessTask) Values "
-        << local_results_buffer_.size() << " + " << outstanding_local_requests_
-        << " + " << results_.size() << " + " <<  outstanding_requests_ << " <? "
-        << max_outstanding_requests_;
 
       // Below is the original return value
       //      return local_results_buffer_.size() + outstanding_local_requests_ +
       //      results_.size() + outstanding_requests_ <
       //      max_outstanding_requests_;
 
+      // Otherwise, results aren't added to `results_` until the data has been
+      // successfully retrieved. We need to count requests already added to
+      // `results_` as well as in-progress requests.
+      // If there are any local tasks, we allocate additional buffers for them
+      // to improve utilization of local resources.
+
       // Note: I removed the outstanding_local_requests_ variable as that
       // became obsolete in master after v2.8 release
+      VLOG(3) << "(ShouldProcessTask) Values "
+              << local_results_buffer_.size() << " + "
+              << outstanding_local_requests_
+              << " + " << results_.size() << " + "
+              <<  outstanding_requests_ << " <? "
+              << max_outstanding_requests_;
+
       return local_results_buffer_.size() + results_.size()
              + outstanding_requests_ < max_outstanding_requests_;
     }
@@ -1411,12 +1414,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
                       Result& result) TF_LOCKS_EXCLUDED(mu_) {
       GetElementResult get_element_result;
       for (int num_retries = 0;; ++num_retries) {
-        VLOG(0) << "(GetElement) Get element for task " << task->info.task_id()
-                     << "\n > retry number " << num_retries;
         Status s = TryGetElement(*task, get_element_result);
-        VLOG(0) << "(GetElement) Get element for task " << task->info.task_id()
-                << "\n > retry number " << num_retries
-                << "\n > return ok? " << s.ok() << " " << s.ToString();
         if (s.ok()) break;
         // Retry all errors that could indicate preemption.
         if (!errors::IsUnavailable(s) && !errors::IsCancelled(s) &&
