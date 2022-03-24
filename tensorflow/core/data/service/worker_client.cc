@@ -100,7 +100,7 @@ class GrpcDataTransferClient : public DataTransferClient {
 
   Status GetElement(const GetElementRequest& req,
                     GetElementResult& result) override {
-    VLOG(3) << "GetElement for task " << req.task_id() << " from gRPC worker "
+    VLOG(0) << "GetElement for task " << req.task_id() << " from gRPC worker "
             << "server.";
     {
       mutex_lock l(mu_);
@@ -122,6 +122,7 @@ class GrpcDataTransferClient : public DataTransferClient {
     GetElementResponse resp;
     grpc::Status s = stub_->GetElement(&ctx, req, &resp);
     result.end_of_sequence = resp.end_of_sequence();
+    result.element_index = resp.element_index();
     result.skip = resp.skip_task();
     switch (resp.element_case()) {
       case GetElementResponse::kCompressed: {

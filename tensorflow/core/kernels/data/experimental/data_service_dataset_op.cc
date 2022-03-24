@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/data/captured_function.h"
+#include "tensorflow/core/data/compression_utils.h"
 #include "tensorflow/core/data/dataset.pb.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
@@ -562,6 +563,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       const std::unique_ptr<DataServiceWorkerClient> worker;
       // The next round to read from the task.
       int64_t round = 0;
+      int64_t next_index = 0;
       // Whether the task has been removed. The task will eventually be
       // deleted from `tasks_` on the next dispatcher heartbeat.
       bool removed = false;
@@ -1104,7 +1106,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           task_to_process->in_use = true;
           task_to_process->num_outstanding_requests++;
 
-          VLOG(3) << "Processing task " << task_to_process->info.task_id();
+          VLOG(0) << "Processing task " << task_to_process->info.task_id();
         }
         int64_t deadline_micros = kint64max;
         Status s;
@@ -1129,6 +1131,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
                               s.error_message()));
           get_next_cv_.notify_all();
           return;
+        } else {
+          VLOG(0) << "Got element for task " << task_to_process->info.task_id();
         }
       }
     }
@@ -1357,7 +1361,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     Status GetElementTraced(Task* task, int64_t deadline_micros,
                             bool enqueue_result, Result& result)
     TF_LOCKS_EXCLUDED(mu_) {
-      VLOG(3) << "Getting an element for task id " << task->info.task_id();
+      VLOG(0) << "Getting an element for task id " << task->info.task_id();
       tensorflow::profiler::TraceMe activity(
           "GetDataServiceElement", tensorflow::profiler::TraceMeLevel::kInfo);
       activity.AppendMetadata([&]() {
@@ -1365,7 +1369,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             {{"address", task->info.worker_address()}});
       });
       if (StrictRoundRobin()) {
-        VLOG(3) << "Requesting element from consumer index "
+        VLOG(0) << "Requesting element from consumer index "
                 << dataset()->consumer_index_.value() << ", round "
                 << task->round;
         activity.AppendMetadata([&]() {
@@ -1376,7 +1380,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       }
       Status s = GetElement(task, deadline_micros, enqueue_result, result);
       mutex_lock l(mu_);
-      VLOG(3) << "Got an element for task id " << task->info.task_id();
+      VLOG(0) << "Got an element for task id " << task->info.task_id();
       return s;
     }
 
@@ -1415,10 +1419,43 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       GetElementResult get_element_result;
       for (int num_retries = 0;; ++num_retries) {
         Status s = TryGetElement(*task, get_element_result);
+        
+        if (!getenv("DBK_DISABLE_SKIPPING")) {
+          if (s.ok() 
+              && !get_element_result.end_of_sequence && !get_element_result.skip) {
+            if (get_element_result.element_index != task->next_index) {
+              VLOG(0) << "Got element index " << (int64) get_element_result.element_index << ". " << (int64_t) get_element_result.element_index << " but as looking for " << task->next_index << " (Task: " << task->info.task_id() << ")";
+
+              if (get_element_result.components.size() > 0) {
+                Variant x = get_element_result.components.at(0);
+                Variant extracted = x.get<Tensor>()->flat<Variant>()(0);
+                CompressedElement *i = extracted.get<CompressedElement>();
+                std::vector<Tensor> out;
+                UncompressElement(*i, &out);
+                VLOG(0) << "Got i=" << get_element_result.element_index <<
+                  ", expected i= " << task->next_index<< " => skipping "
+                  << ". [El: " << out.at(0).SummarizeValue(100)
+                  << ", Worker: " << task->info.worker_address()
+                  << ", Task: " << task->info.task_id() << "]";
+              }
+              VLOG(0) << "Size of components: " << get_element_result.components.size();
+              s = Status(tensorflow::error::ALREADY_EXISTS, "Was expecting different index for element. Will skip this element.");
+              get_element_result.components.clear();
+            } else {
+              VLOG(0) << "Got element index " << (int64) get_element_result.element_index << ", which is perfect. " << " (Task: " << task->info.task_id() << ")";
+              task->next_index++;
+            }
+          }
+        } else {
+          VLOG(0) << "(DBK): Skipping disabled by env DBK_DISABLE_SKIPPING";
+        }
+
+
+
         if (s.ok()) break;
         // Retry all errors that could indicate preemption.
         if (!errors::IsUnavailable(s) && !errors::IsCancelled(s) &&
-            !errors::IsAborted(s) && !errors::IsDeadlineExceeded(s)) {
+            !errors::IsAborted(s) && !errors::IsDeadlineExceeded(s) && !errors::IsAlreadyExists(s)) {
           // EASL - added deadline exceeded.
           return s;
         }
@@ -1442,6 +1479,13 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         int64_t backoff_until = std::min(
             deadline_micros,
             now_micros + ::tensorflow::ComputeBackoffMicroseconds(num_retries));
+
+        // do not wait when skipping element
+        if (errors::IsAlreadyExists(s)) {
+          backoff_until = now_micros;
+          num_retries--;
+        }
+
         VLOG(0) << "Failed to get an element from worker "
                 << task->info.worker_address() << ": " << s
                 << ". Will retry in " << (backoff_until - now_micros)

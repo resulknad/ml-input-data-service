@@ -272,7 +272,7 @@ void DispatcherState::CreateTask(const CreateTaskUpdate& create_task) {
 }
 
 void DispatcherState::FinishTask(const FinishTaskUpdate& finish_task) {
-  VLOG(2) << "Marking task " << finish_task.task_id() << " as finished";
+  VLOG(0) << "Marking task " << finish_task.task_id() << " as finished";
   int64_t task_id = finish_task.task_id();
   auto& task = tasks_[task_id];
   DCHECK(task != nullptr);
@@ -584,6 +584,10 @@ Status DispatcherState::TaskFromId(int64_t id,
   task = it->second;
   return Status::OK();
 }
+
+void DispatcherState::SetTaskJustReconnected(int64_t tid, bool val) {
+  tasks_.at(tid)->just_reconnected = val;
+} 
 
 Status DispatcherState::TasksForJob(
     int64_t job_id, std::vector<std::shared_ptr<const Task>>& tasks) const {

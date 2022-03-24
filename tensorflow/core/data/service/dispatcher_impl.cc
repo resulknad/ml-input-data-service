@@ -324,6 +324,7 @@ Status DataServiceDispatcherImpl::FindTasksToDelete(
   }
   for (int64_t current_task : current_tasks) {
     if (!assigned_ids.contains(current_task)) {
+      VLOG(0) << "Assigning task to delete " << current_task;
       response->add_tasks_to_delete(current_task);
     }
   }
@@ -340,8 +341,20 @@ Status DataServiceDispatcherImpl::FindNewTasks(
   absl::flat_hash_set<int64_t> assigned_job_ids;
   for (const auto& task : assigned_tasks) {
     assigned_job_ids.insert(task->job->job_id);
+    if (!current_tasks.contains(task->task_id)) {
+      VLOG(0) << "(DBK) Task with ID " << task->task_id << " is not in current but in assigned. For worker: " << worker_address << ". Setting just_reconnected = True";
+      state_.SetTaskJustReconnected(task->task_id, true);
+    }
   }
   for (const auto& job : state_.ListJobsForWorker(worker_address)) {
+    VLOG(0) << "(DBK) Job with ID " << job->job_id << " at worker "<< worker_address
+      << " has finished set to " << job->finished 
+      << " and is contained in assigned_job_ids: " << assigned_job_ids.contains(job->job_id);
+
+    if (!assigned_job_ids.contains(job->job_id) && !job->finished) {
+      VLOG(0) << "(DBK) Worker " << worker_address << " reconnected because it does not know about a task it was assigned to previously, JobID: " << job->job_id;
+    }
+
     if (!assigned_job_ids.contains(job->job_id) && job->IsRoundRobin() &&
         !job->finished) {
       if(job->IsRoundRobin()) {
@@ -349,6 +362,7 @@ Status DataServiceDispatcherImpl::FindNewTasks(
                 << worker_address;
         TF_RETURN_IF_ERROR(CreatePendingTask(job, worker_address));
       }
+
       /*} else {
         VLOG(0) << "EASL - Creating Task for free worker";
         TF_RETURN_IF_ERROR(CreateTask(job, worker_address));
@@ -406,8 +420,8 @@ Status DataServiceDispatcherImpl::ReassignFreeWorkersAndCreateTasks() TF_EXCLUSI
 Status DataServiceDispatcherImpl::WorkerHeartbeat(
     const WorkerHeartbeatRequest* request, WorkerHeartbeatResponse* response) {
   TF_RETURN_IF_ERROR(CheckStarted());
-  VLOG(4) << "Received worker heartbeat request from worker "
-          << request->worker_address();
+//  VLOG(0) << "Received worker heartbeat request from worker "
+//          << request->worker_address();
   mutex_lock l(mu_);
   const std::string& worker_address = request->worker_address();
   // Assigned tasks from the perspective of the dispatcher.
@@ -615,8 +629,45 @@ Status DataServiceDispatcherImpl::GetSplit(const GetSplitRequest* request,
   int64_t task_id = request->task_id();
   int64_t repetition = request->repetition();
   int64_t provider_index = request->split_provider_index();
-  VLOG(3) << "Received GetSplit request for job " << job_id << ", repetition "
-          << repetition << ", split provider index " << provider_index;
+  VLOG(0) << "(DBK) Received GetSplit request for job " << job_id << ", repetition "
+          << repetition << ", split provider index " << provider_index << ", and task: " << task_id;
+  
+    std::shared_ptr<const Task> task;
+    state_.TaskFromId(task_id, task);
+
+  if (!getenv("DBK_DISABLE_SPLIT_RECOVERY")) {
+    if (task && task->just_reconnected) {
+      if ((task->splits_by_provider->count(provider_index)) && (*task->splits_by_provider)[provider_index].size()) {
+      VLOG(0) << "Getting split for just reconnected worker!! For taskID" << task_id << " serving from cached map";
+      Tensor t = Tensor();
+      auto res = (*task->splits_by_provider)[provider_index].front();
+      t.FromProto(res);
+      t.AsProtoTensorContent(response->mutable_split());
+
+
+      VLOG(0) << "Parsing tensor proto: " << (t.FromProto(res));
+      VLOG(0) << "And parsing result: " << t.DebugString() << " (which is what we are supposed to return at this point)";
+
+      VLOG(0) << "Serving split index=" << t.SummarizeValue(100, true) << " for recovered worker from recovery-store"
+                  << "[Worker: " << task->worker_address
+                  << ", Task: " << task_id << "]";
+      
+      VLOG(0) << "popping front of split provider with index " << provider_index << " for current task";
+      (*task->splits_by_provider)[provider_index].pop_front(); 
+      return Status::OK();
+      } else {
+        VLOG(0) << "Problem, the splits by provider does not contain the provider index... " << provider_index << " or list is empty. Continuing with normal execution...";
+      // if (!) {
+      //   VLOG(0) << "Cache is empty, so returning EOS for task "  << task_id;
+      //   response->set_end_of_splits(true);
+      //   return Status::OK();
+      // }
+
+      }
+    }
+  } else {
+    VLOG(0) << "(DBK): Disabled split recovery by env DBK_DISABLE_SPLIT_RECOVERY";
+  }
   std::shared_ptr<const Job> job;
   TF_RETURN_IF_ERROR(state_.JobFromId(job_id, job));
   if (!job->distributed_epoch_state.has_value()) {
@@ -674,8 +725,42 @@ Status DataServiceDispatcherImpl::GetSplit(const GetSplitRequest* request,
     TF_RETURN_IF_ERROR(split_providers_[job_id][provider_index]->Reset());
   } else {
     split.AsProtoTensorContent(response->mutable_split());
+    std::string tensor_summary = split.SummarizeValue(100);
+    VLOG(0) << "(GetSplit) Returning (DBK) Contents: {" << tensor_summary << "}";
+    
+    std::shared_ptr<const Task> task;
+    state_.TaskFromId(task_id, task);
+
+//  SplitsByProviderId = std::unordered_map<int64_t, std::shared_ptr<std::list<TensorProto>>>;
+
+    /*auto empty_list = std::list<TensorProto>({});
+ 
+    auto loc2 = task->splits_by_provider;
+    (*task).splits_by_provider.insert({(int64_t) provider_index, empty_list});
+    (*task).splits_by_provider;
+
+    loc2.at(provider_index).push_back(*(response->mutable_split()));
+    VLOG(0) << "(DBK) inserted tensor into list. List size: " << loc2.at(provider_index).size()
+      << ", provider:" << provider_index << ", job: " << job_id;*/
+    VLOG(0) << "(DBK) pre push";
+    task->splits->push_back(*response->mutable_split());
+    VLOG(0) << "(DBK) post push. Inserted tensor into list. List size: " << task->splits->size()
+      << ", provider:" << provider_index << ", job: " << job_id;
+
+    if (!task->just_reconnected) {
+      auto empty_list = std::list<TensorProto>({});
+      task->splits_by_provider->insert({(int64_t) provider_index, empty_list});
+      task->splits_by_provider->at(provider_index).push_back(*(response->mutable_split()));
+      VLOG(0) << "(DBK) inserted tensor into list. List size: " << task->splits_by_provider->at(provider_index).size()
+        << ", provider:" << provider_index << ", job: " << job_id;
+    } else {
+      //TODO: support recovering a recovering worker. basically having a pointer instead of this queue, or copying the queue...
+      VLOG(0) << "(DBK) not inserting bc we are recovering currently";
+    }
+
   }
-  VLOG(3) << "Returning from GetSplit, end_of_splits=" << end_of_splits;
+
+  VLOG(0) << "Returning from GetSplit, end_of_splits=" << end_of_splits;
   return Status::OK();
 }
 

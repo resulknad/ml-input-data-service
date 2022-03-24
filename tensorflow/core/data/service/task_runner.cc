@@ -17,10 +17,13 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "tensorflow/core/data/compression_utils.h"
+#include "tensorflow/core/data/dataset.pb.h"
 #include "tensorflow/core/data/service/thread_safe_buffer.h"
 #include "tensorflow/core/data/standalone.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/env.h"
@@ -93,6 +96,27 @@ FirstComeFirstServedTaskRunner::~FirstComeFirstServedTaskRunner() { Cancel(); }
 Status FirstComeFirstServedTaskRunner::GetNext(const GetElementRequest& req,
                                                GetElementResult& result) {
   TF_ASSIGN_OR_RETURN(result, buffer_.Pop());
+
+  VLOG(0) << "(DBK) GetNext in task runner element index: " << (int64_t) result.element_index << ", components size: " << result.components.size();
+  if (result.components.size() > 0) {
+    Variant x = result.components.at(0);
+    VLOG(0) << "x: " << x.DebugString();
+    Variant extracted = x.get<Tensor>()->flat<Variant>()(0);
+    VLOG(0) << "extracted: " << extracted.DebugString();
+    CompressedElement *i = extracted.get<CompressedElement>();
+    VLOG(0) << "iptr " << i;
+    std::vector<Tensor> out;
+//    UncompressElement(const CompressedElement &compressed, std::vector<Tensor> *out)
+    UncompressElement(*i, &out);
+    VLOG(0) << "vec len after decompress " << out.size();
+
+    VLOG(0) << "vec el 0 " << " descibe " << out.at(0).SummarizeValue(100);
+    VLOG(0) << "Produced element=" << out.at(0).SummarizeValue(100, true)  
+                << "[i=" << result.element_index
+                << ", Task: " <<  req.task_id() << "]";
+    VLOG(0) << "(DBK) componentv2: " << result.components.at(0).SummarizeValue(100, true) << ", " << i << " for task " << result.element_index;
+  }
+
   return Status::OK();
 }
 

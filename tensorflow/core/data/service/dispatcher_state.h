@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/journal.h"
 #include "tensorflow/core/data/service/journal.pb.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
@@ -199,6 +200,7 @@ class DispatcherState {
     int64_t current_worker_count = 0;
   };
 
+  using SplitsByProviderId = std::map<int64_t, std::list<TensorProto>>;
   struct Task {
     template <class T>
     explicit Task(const T& create_task_update, const std::shared_ptr<Job>& job)
@@ -209,7 +211,10 @@ class DispatcherState {
           worker_tags(create_task_update.worker_tags().begin(),
                       create_task_update.worker_tags().end()),
           worker_uid(create_task_update.worker_uid()),
-          dataset_key(create_task_update.dataset_key()) {}
+          dataset_key(create_task_update.dataset_key()),
+          splits (std::make_shared<std::list<TensorProto>>()),
+          splits_by_provider (std::make_shared<SplitsByProviderId>())
+          {}
 
     const int64_t task_id;
     const std::shared_ptr<Job> job;
@@ -220,8 +225,13 @@ class DispatcherState {
     int64_t starting_round = 0;
     bool finished = false;
     bool removed = false;
+
     // EASL
     const std::string dataset_key;
+
+    bool just_reconnected = false;
+    const std::shared_ptr<std::list<TensorProto>> splits;
+    const std::shared_ptr<SplitsByProviderId> splits_by_provider;
   };
 
   using TasksById = absl::flat_hash_map<int64_t, std::shared_ptr<Task>>;
@@ -301,6 +311,8 @@ class DispatcherState {
   // returns the worker index according to the list. This is useful for
   // deterministically sharding a dataset among a fixed set of workers.
   StatusOr<int64_t> GetWorkerIndex(absl::string_view worker_address) const;
+
+  void SetTaskJustReconnected(int64_t tid, bool val);
 
  private:
   void RegisterDataset(const RegisterDatasetUpdate& register_dataset);

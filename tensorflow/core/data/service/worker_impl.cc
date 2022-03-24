@@ -215,6 +215,7 @@ Status DataServiceWorkerImpl::GetElementResult(
       // We need to reject requests until the worker has registered with the
       // dispatcher, so that we don't return NOT_FOUND for tasks that the worker
       // had before preemption.
+      VLOG(0) << "(DBK): Worker not yet registered with dispatcher";
       return errors::Unavailable(
           "Worker has not yet registered with dispatcher.");
     }
@@ -229,14 +230,14 @@ Status DataServiceWorkerImpl::GetElementResult(
             "it repeatedly inside a loop.");
       }
       if (finished_tasks_.contains(request->task_id())) {
-        VLOG(3) << "Task is already finished";
+        VLOG(0) << "Task is already finished";
         result->end_of_sequence = true;
         result->skip = false;
         return Status::OK();
       } else {
         // Perhaps the workers hasn't gotten the task from the dispatcher yet.
         // Return Unavailable so that the client knows to continue retrying.
-        VLOG(1) << "Task not found (probably not received from dispatcher yet";
+        VLOG(0) << "Task not found (probably not received from dispatcher yet";
         return errors::Unavailable("Task ", request->task_id(), " not found");
       }
       // Perhaps the worker hasn't gotten the task from the dispatcher yet.
@@ -395,15 +396,16 @@ void DataServiceWorkerImpl::StopTask(Task& task) TF_LOCKS_EXCLUDED(mu_) {
 
 Status DataServiceWorkerImpl::GetElement(const GetElementRequest* request,
                                          GetElementResponse* response) {
-  VLOG(3) << "Received GetElement request for task " << request->task_id();
+  VLOG(0) << "Received GetElement request for task " << request->task_id();
   struct GetElementResult result;
   TF_RETURN_IF_ERROR(GetElementResult(request, &result));
+  response->set_element_index(result.element_index);
   response->set_end_of_sequence(result.end_of_sequence);
   response->set_skip_task(result.skip);
   if (!response->end_of_sequence() && !response->skip_task()) {
     TF_RETURN_IF_ERROR(
         MoveElementToResponse(std::move(result.components), *response));
-    VLOG(3) << "Producing an element for task " << request->task_id();
+    VLOG(0) << "Producing an element for task " << request->task_id();
   }
   return Status::OK();
 }
@@ -507,29 +509,33 @@ void DataServiceWorkerImpl::HeartbeatThread() TF_LOCKS_EXCLUDED(mu_) {
 }
 
 Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
+//  VLOG(0) << "(DBK) Worker preparing to send hearbeat";
   std::vector<int64_t> current_tasks;
+  string tasks_desc;
   absl::flat_hash_map<int64, model::Model::ModelMetrics> tasks_metrics;
   {
-    VLOG(1) << "(DataServiceWorkerImpl::Heartbeat) Starting heartbeat" << std::flush;
+//    VLOG(0) << "(DataServiceWorkerImpl::Heartbeat) Starting heartbeat" << std::flush;
     mutex_lock l(mu_);
     for (const auto& task : tasks_) {
       current_tasks.push_back(task.first);
-
+      tasks_desc.append(std::to_string(task.first) + " (Job: " + std::to_string(task.second->task_def.job_id()) + "), ");
       // Get the metrics
       mutex_lock l(task.second->mu);
       if (task.second->initialized) {
-        VLOG(3) << "Getting metrics in heartbeat";
-        VLOG(1) << "worker heartbeat - task.outstanding_requests: " << task.second->outstanding_requests;
+        VLOG(0) << "Getting metrics in heartbeat";
+        VLOG(0) << "worker heartbeat - task.outstanding_requests: " << task.second->outstanding_requests;
 
         auto metrics = task.second->task_runner->GetMetrics();
         if (metrics) {
           tasks_metrics[task.first] = metrics;
         }
       } else {
-        VLOG(1) << "Not getting metrics in heartbeat";
+        VLOG(0) << "Not getting metrics in heartbeat";
       }
     }
   }
+
+  VLOG(0)<<"(DBK): Worker HB, tasks: " << tasks_desc;
 
   WorkerHeartbeatRequest request;
   request.set_worker_address(worker_address_);
@@ -568,6 +574,7 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
     }
   }
 
+  VLOG(0) << "(DBK) Calling dispatcher WorkerHeartbeat...";
   TF_ASSIGN_OR_RETURN(WorkerHeartbeatResponse response,
                       dispatcher_->WorkerHeartbeat(request));
 
@@ -575,11 +582,13 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
   {
     mutex_lock l(mu_);
     for (const auto& task : response.new_tasks()) {
-      VLOG(1) << "Received new task from dispatcher with id " << task.task_id();
+      VLOG(0) << "Received new task from dispatcher with id " << task.task_id();
       if (deleted_tasks_.contains(task.task_id())) {
+        VLOG(0) << "(DBK) Found task id " << task.task_id() << " in deleted tasks";
         continue;
       }
       Status s = ProcessTaskInternal(task);
+      VLOG(0) << "(DBK) Processing (new) task id " << task.task_id() << " returned status " << s;
       if (!s.ok() && !errors::IsAlreadyExists(s)) {
         LOG(WARNING) << "Failed to start processing task " << task.task_id()
                      << ": " << s;
@@ -587,9 +596,10 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
     }
     tasks_to_delete.reserve(response.tasks_to_delete_size());
     for (int64_t task_id : response.tasks_to_delete()) {
-      VLOG(3) << "Deleting task " << task_id
+      VLOG(0) << "Deleting task " << task_id
               << " at the request of the dispatcher";
       if (!tasks_.contains(task_id)) {
+        VLOG(0) << "Did not find task locally... ";
         continue;
       }
       tasks_to_delete.push_back(std::move(tasks_[task_id]));
@@ -598,6 +608,7 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
     }
   }
   for (const auto& task : tasks_to_delete) {
+    VLOG(0) << "(DBK) Stopping task " << task->task_def.task_id();
     StopTask(*task);
   }
 

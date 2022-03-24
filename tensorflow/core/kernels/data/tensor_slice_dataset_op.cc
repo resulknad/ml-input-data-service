@@ -159,10 +159,13 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
                            bool* end_of_sequence) override {
       Tensor split;
       TF_RETURN_IF_ERROR(split_provider_->GetNext(&split, end_of_sequence));
+
       if (*end_of_sequence) {
+        VLOG(0) << "(DBK) TensorSliceDatasetOp::GetNextInternal is EOS";
         return Status::OK();
       }
       int64_t index = split.scalar<int64_t>()();
+      VLOG(0) << "(DBK) TensorSliceDatasetOp::GetNextInternal got index: " << index << ". (not EOS)";
       out_tensors->reserve(dataset()->tensors_.size());
       for (size_t i = 0; i < dataset()->tensors_.size(); ++i) {
         out_tensors->push_back(
