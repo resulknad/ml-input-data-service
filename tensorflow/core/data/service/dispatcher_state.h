@@ -131,6 +131,17 @@ class DispatcherState {
     // Number of splits produced so far by each split provider.
     std::vector<int64_t> indices;
   };
+  
+  struct TaskSplitProviderState {
+    explicit TaskSplitProviderState(int64_t task_id, int64_t split_provider_index)
+      : task_id(task_id), split_provider_index(split_provider_index), indices(0), worker_cursor(0) {}
+    const int64_t task_id;
+    const int64_t split_provider_index;
+
+    std::vector<TensorProto> indices;
+
+    int64_t worker_cursor;
+  };
 
   struct Task;
 
@@ -214,7 +225,17 @@ class DispatcherState {
           dataset_key(create_task_update.dataset_key()),
           splits (std::make_shared<std::list<TensorProto>>()),
           splits_by_provider (std::make_shared<SplitsByProviderId>())
-          {}
+          {
+            if (job && job->distributed_epoch_state) {
+              auto num_split_providers = (job->distributed_epoch_state->indices.size());
+              split_provider_state = std::vector<TaskSplitProviderState>();
+              split_provider_state.reserve(num_split_providers);
+
+              for (int i=0; i<num_split_providers; i++) {
+                split_provider_state.push_back(TaskSplitProviderState(task_id, i));
+              }
+            }
+          }
 
     const int64_t task_id;
     const std::shared_ptr<Job> job;
@@ -229,9 +250,12 @@ class DispatcherState {
     // EASL
     const std::string dataset_key;
 
+    // TODO: remove, PoC
     bool just_reconnected = false;
     const std::shared_ptr<std::list<TensorProto>> splits;
     const std::shared_ptr<SplitsByProviderId> splits_by_provider;
+
+    std::vector<TaskSplitProviderState> split_provider_state;
   };
 
   using TasksById = absl::flat_hash_map<int64_t, std::shared_ptr<Task>>;
@@ -332,6 +356,8 @@ class DispatcherState {
   // EASL
   void ReassignFreeWorkers();
   void UpdateJobTargetWorkerCount(const JobTargetWorkerCountUpdate job_target_worker_count_update);
+  void UpdateTaskSplitProviderState(const TaskSplitProviderUpdate task_split_provider_update);
+
 
   int64_t next_available_dataset_id_ = 1000;
   // Registered datasets, keyed by dataset ids.

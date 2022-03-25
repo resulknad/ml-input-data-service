@@ -331,6 +331,16 @@ Status DataServiceDispatcherImpl::FindTasksToDelete(
   return Status::OK();
 }
 
+Status DataServiceDispatcherImpl::ResetAllWorkerCursorsForTask(int64_t task_id) {
+  std::shared_ptr<const Task> task;
+  state_.TaskFromId(task_id, task);
+
+  for (auto split_provider : task->split_provider_state) {
+      TF_RETURN_IF_ERROR(UpdateTaskSplitProviderState(task_id, split_provider.split_provider_index, 0, NULL));
+  }
+  return Status::OK();
+}
+
 Status DataServiceDispatcherImpl::FindNewTasks(
     const std::string& worker_address,
     const absl::flat_hash_set<int64_t>& current_tasks,
@@ -342,8 +352,9 @@ Status DataServiceDispatcherImpl::FindNewTasks(
   for (const auto& task : assigned_tasks) {
     assigned_job_ids.insert(task->job->job_id);
     if (!current_tasks.contains(task->task_id)) {
-      VLOG(0) << "(DBK) Task with ID " << task->task_id << " is not in current but in assigned. For worker: " << worker_address << ". Setting just_reconnected = True";
-      state_.SetTaskJustReconnected(task->task_id, true);
+      VLOG(0) << "(DBK) Task with ID " << task->task_id << " is not in current but in assigned. For worker: " << worker_address << ". Setting worker_cursor = 0";
+      TF_RETURN_IF_ERROR(ResetAllWorkerCursorsForTask(task->task_id));
+//      state_.SetTaskJustReconnected(task->task_id, true);
     }
   }
   for (const auto& job : state_.ListJobsForWorker(worker_address)) {
@@ -420,8 +431,8 @@ Status DataServiceDispatcherImpl::ReassignFreeWorkersAndCreateTasks() TF_EXCLUSI
 Status DataServiceDispatcherImpl::WorkerHeartbeat(
     const WorkerHeartbeatRequest* request, WorkerHeartbeatResponse* response) {
   TF_RETURN_IF_ERROR(CheckStarted());
-//  VLOG(0) << "Received worker heartbeat request from worker "
-//          << request->worker_address();
+  VLOG(0) << "Received worker heartbeat request from worker "
+          << request->worker_address();
   mutex_lock l(mu_);
   const std::string& worker_address = request->worker_address();
   // Assigned tasks from the perspective of the dispatcher.
@@ -591,6 +602,8 @@ Status DataServiceDispatcherImpl::WorkerUpdate(
           TF_RETURN_IF_ERROR(metadata_store_.DumpJobMetricsToFile(job->job_id, config_.log_dir()));
           easl::TerminateJobMetricsAppendDumps(job->job_id, config_.log_dir());
         }
+      VLOG(0) << "Job " << task->job->job_id
+              << " removed from metadata store";
         TF_RETURN_IF_ERROR(metadata_store_.RemoveJob(job->job_id));
 
       }
@@ -623,24 +636,29 @@ Status DataServiceDispatcherImpl::GetDatasetDef(
 
 Status DataServiceDispatcherImpl::GetSplit(const GetSplitRequest* request,
                                            GetSplitResponse* response) {
+//TODO: address dispatcher failures in this method
   TF_RETURN_IF_ERROR(CheckStarted());
   mutex_lock l(mu_);
   int64_t job_id = request->job_id();
   int64_t task_id = request->task_id();
   int64_t repetition = request->repetition();
   int64_t provider_index = request->split_provider_index();
+
   VLOG(0) << "(DBK) Received GetSplit request for job " << job_id << ", repetition "
           << repetition << ", split provider index " << provider_index << ", and task: " << task_id;
   
-    std::shared_ptr<const Task> task;
-    state_.TaskFromId(task_id, task);
+  std::shared_ptr<const Task> task;
+  state_.TaskFromId(task_id, task);
 
+  auto provider_state = &task->split_provider_state.at(provider_index);
+  
   if (!getenv("DBK_DISABLE_SPLIT_RECOVERY")) {
-    if (task && task->just_reconnected) {
-      if ((task->splits_by_provider->count(provider_index)) && (*task->splits_by_provider)[provider_index].size()) {
+    if (provider_state->worker_cursor < provider_state->indices.size()) {
+      auto res = provider_state->indices[provider_state->worker_cursor];
+      TF_RETURN_IF_ERROR(UpdateTaskSplitProviderState(task_id, provider_index, provider_state->worker_cursor+1, NULL));
+       
       VLOG(0) << "Getting split for just reconnected worker!! For taskID" << task_id << " serving from cached map";
       Tensor t = Tensor();
-      auto res = (*task->splits_by_provider)[provider_index].front();
       t.FromProto(res);
       t.AsProtoTensorContent(response->mutable_split());
 
@@ -652,18 +670,17 @@ Status DataServiceDispatcherImpl::GetSplit(const GetSplitRequest* request,
                   << "[Worker: " << task->worker_address
                   << ", Task: " << task_id << "]";
       
-      VLOG(0) << "popping front of split provider with index " << provider_index << " for current task";
-      (*task->splits_by_provider)[provider_index].pop_front(); 
       return Status::OK();
       } else {
-        VLOG(0) << "Problem, the splits by provider does not contain the provider index... " << provider_index << " or list is empty. Continuing with normal execution...";
+        VLOG(0) << "Problem, the splits by provider does not contain the provider index... " << provider_index << " or list is empty. Continuing with normal execution..." 
+          << "Cursor is " << provider_state->worker_cursor << ", list size: " << provider_state->indices.size();
       // if (!) {
       //   VLOG(0) << "Cache is empty, so returning EOS for task "  << task_id;
       //   response->set_end_of_splits(true);
       //   return Status::OK();
       // }
 
-      }
+      
     }
   } else {
     VLOG(0) << "(DBK): Disabled split recovery by env DBK_DISABLE_SPLIT_RECOVERY";
@@ -691,28 +708,36 @@ Status DataServiceDispatcherImpl::GetSplit(const GetSplitRequest* request,
   Tensor split;
   bool end_of_splits = false;
   TF_RETURN_IF_ERROR(split_provider->GetNext(&split, &end_of_splits));
-  bool scaling;
-  string execution_mode;
-  TF_RETURN_IF_ERROR(metadata_store_.IsJobScaling(job_id, scaling));
-  TF_RETURN_IF_ERROR(metadata_store_.GetJobTypeByJobId(job_id, execution_mode));
-  // FIXME: Make sure to keep an eye out for the 2nd part of this condition
-  //        It should not block scaling for a new client's job if the data
-  //        is cached; still make sure this makes sense
-  if (end_of_splits && scaling && execution_mode != "PUT"
-    && execution_mode != "PUT_SOURCE") {
-    split_provider->Reset();
-    split_provider->GetNext(&split, &end_of_splits);
-    VLOG(0) << "(GetSplit) Reached EOS while still scaling in " << job_id
-                 << " at provider index " << provider_index;
+  
 
-    // EASL: Logging stuff
-    if (kEnableEventLogging) {
-      std::shared_ptr<const Dataset> dataset;
-      state_.DatasetFromId(job->dataset_id, dataset);
-      string job_name = job->named_job_key->name;
-      RecordEvent(dataset->fingerprint, dataset->dataset_id, job_name, job_id,
-                  "extended_epoch");
+  std::shared_ptr<easl::JobMetrics> job_metrics;
+  if (metadata_store_.GetJobMetrics(job_id, job_metrics).ok()) {
+    bool scaling;
+    string execution_mode;
+    TF_RETURN_IF_ERROR(metadata_store_.IsJobScaling(job_id, scaling));
+    TF_RETURN_IF_ERROR(metadata_store_.GetJobTypeByJobId(job_id, execution_mode));
+    // FIXME: Make sure to keep an eye out for the 2nd part of this condition
+    //        It should not block scaling for a new client's job if the data
+    //        is cached; still make sure this makes sense
+    if (end_of_splits && scaling && execution_mode != "PUT"
+      && execution_mode != "PUT_SOURCE") {
+      split_provider->Reset();
+      split_provider->GetNext(&split, &end_of_splits);
+      VLOG(0) << "(GetSplit) Reached EOS while still scaling in " << job_id
+                   << " at provider index " << provider_index;
+
+      // EASL: Logging stuff
+      if (kEnableEventLogging) {
+        std::shared_ptr<const Dataset> dataset;
+        state_.DatasetFromId(job->dataset_id, dataset);
+        string job_name = job->named_job_key->name;
+        RecordEvent(dataset->fingerprint, dataset->dataset_id, job_name, job_id,
+                    "extended_epoch");
+      }
     }
+  } else {
+    VLOG(0) << "WARNING!! metadata store does not contain job " << job_id
+      << ". This may happen due to partial recovery from journal...";
   }
 
   TF_RETURN_IF_ERROR(RecordSplitProduced(
@@ -742,21 +767,13 @@ Status DataServiceDispatcherImpl::GetSplit(const GetSplitRequest* request,
     loc2.at(provider_index).push_back(*(response->mutable_split()));
     VLOG(0) << "(DBK) inserted tensor into list. List size: " << loc2.at(provider_index).size()
       << ", provider:" << provider_index << ", job: " << job_id;*/
-    VLOG(0) << "(DBK) pre push";
-    task->splits->push_back(*response->mutable_split());
-    VLOG(0) << "(DBK) post push. Inserted tensor into list. List size: " << task->splits->size()
-      << ", provider:" << provider_index << ", job: " << job_id;
 
-    if (!task->just_reconnected) {
-      auto empty_list = std::list<TensorProto>({});
-      task->splits_by_provider->insert({(int64_t) provider_index, empty_list});
-      task->splits_by_provider->at(provider_index).push_back(*(response->mutable_split()));
-      VLOG(0) << "(DBK) inserted tensor into list. List size: " << task->splits_by_provider->at(provider_index).size()
-        << ", provider:" << provider_index << ", job: " << job_id;
-    } else {
-      //TODO: support recovering a recovering worker. basically having a pointer instead of this queue, or copying the queue...
-      VLOG(0) << "(DBK) not inserting bc we are recovering currently";
-    }
+
+
+    VLOG(0) << "(DBK) pre push. Inserted tensor into list. List size: " << provider_state->indices.size();
+    TF_RETURN_IF_ERROR(UpdateTaskSplitProviderState(task_id, provider_index, provider_state->worker_cursor+1, response->mutable_split()));
+    VLOG(0) << "(DBK) post push. Inserted tensor into list. List size: " << provider_state->indices.size()
+      << ", provider:" << provider_index << ", job: " << job_id;
 
   }
 
@@ -1295,6 +1312,23 @@ Status DataServiceDispatcherImpl::CreateTask(std::shared_ptr<const Job> job,
   TF_RETURN_IF_ERROR(state_.TaskFromId(task_id, task));
 
   return Status::OK();
+}
+
+Status DataServiceDispatcherImpl::UpdateTaskSplitProviderState(int64_t task_id,
+  int64_t split_provider_index, int64_t worker_cursor, TensorProto* split)
+  TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    Update update;
+    TaskSplitProviderUpdate* update_split_state = update.mutable_task_split_provider_update();
+    update_split_state->set_task_id(task_id);
+    update_split_state->set_split_provider_index(split_provider_index);
+    update_split_state->set_worker_cursor(worker_cursor);
+    if (split) {
+      update_split_state->add_additional_indices();
+      auto new_split = update_split_state->mutable_additional_indices(0);
+      *new_split = *split;
+    }
+    TF_RETURN_IF_ERROR(Apply(update));
+    return Status::OK();
 }
 
 Status DataServiceDispatcherImpl::AssignTasks(

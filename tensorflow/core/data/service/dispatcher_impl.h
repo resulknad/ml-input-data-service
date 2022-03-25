@@ -129,6 +129,7 @@ namespace data {
 //
 class DataServiceDispatcherImpl {
  public:
+  mutex mu_;
   explicit DataServiceDispatcherImpl(
       const experimental::DispatcherConfig& config);
 
@@ -173,6 +174,7 @@ class DataServiceDispatcherImpl {
                     GetWorkersResponse* response);
 
  private:
+
   // Restores split providers from the state in `job` and stores them in
   // `restored`.
   Status RestoreSplitProviders(
@@ -290,6 +292,11 @@ class DataServiceDispatcherImpl {
 
   // Scans for old jobs and marks them as finished.
   Status GcOldJobs() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  Status UpdateTaskSplitProviderState(int64_t task_id,
+  int64_t split_provider_index, int64_t worker_cursor, TensorProto* split)
+  TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  Status ResetAllWorkerCursorsForTask(int64_t task_id);
   
   // EASL
   // A thread which periodically decides which jobs to cache or use cache on 
@@ -313,7 +320,7 @@ class DataServiceDispatcherImpl {
   const experimental::DispatcherConfig config_;
   Env* env_;
 
-  mutex mu_;
+
   bool started_ TF_GUARDED_BY(mu_) = false;
   bool cancelled_ TF_GUARDED_BY(mu_) = false;
 

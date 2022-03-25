@@ -135,7 +135,7 @@ DataServiceWorkerImpl::~DataServiceWorkerImpl() {
 
 Status DataServiceWorkerImpl::Start(const std::string& worker_address,
                                     const std::string& transfer_address) {
-  VLOG(3) << "Starting tf.data service worker at address " << worker_address;
+  VLOG(0) << "Starting tf.data service worker at address " << worker_address;
   TF_RETURN_IF_ERROR(ValidateWorkerConfig());
   worker_address_ = worker_address;
   transfer_address_ = transfer_address;
@@ -148,6 +148,7 @@ Status DataServiceWorkerImpl::Start(const std::string& worker_address,
   while (!s.ok()) {
     if (!errors::IsUnavailable(s) && !errors::IsAborted(s) &&
         !errors::IsCancelled(s)) {
+      VLOG(0) << "Stop trying to register because of " << s;
       return s;
     }
     LOG(WARNING) << "Failed to register with dispatcher at "
@@ -156,6 +157,9 @@ Status DataServiceWorkerImpl::Start(const std::string& worker_address,
     s = Heartbeat();
   }
   LOG(INFO) << "Worker registered with dispatcher running at "
+            << config_.dispatcher_address();
+  VLOG(0) << "Worker registered with dispatcher running at "
+
             << config_.dispatcher_address();
   task_completion_thread_ = absl::WrapUnique(
       Env::Default()->StartThread({}, "data-service-worker-task-completion",
@@ -493,16 +497,17 @@ void DataServiceWorkerImpl::HeartbeatThread() TF_LOCKS_EXCLUDED(mu_) {
                                std::chrono::microseconds(time_to_wait_micros));
       }
       if (cancelled_) {
-        VLOG(3) << "Heartbeat thread shutting down";
+        VLOG(0) << "Heartbeat thread shutting down";
         return;
       }
       if (!registered_) {
-        VLOG(1) << "Not performing heartbeat; worker is not yet registered";
+        VLOG(0) << "Not performing heartbeat; worker is not yet registered";
         continue;
       }
     }
     Status s = Heartbeat();
     if (!s.ok()) {
+      VLOG(0) << "Failed to send heartbeat to dispatcher: " << s;
       LOG(WARNING) << "Failed to send heartbeat to dispatcher: " << s;
     }
   }

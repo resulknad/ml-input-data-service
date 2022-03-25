@@ -87,6 +87,9 @@ Status DispatcherState::Apply(const Update& update) {
     case Update::kJobTargetWorkerCountUpdate:
       UpdateJobTargetWorkerCount(update.job_target_worker_count_update());
       break;
+    case Update::kTaskSplitProviderUpdate:
+      UpdateTaskSplitProviderState(update.task_split_provider_update());
+      break;
     case Update::UPDATE_TYPE_NOT_SET:
       return errors::Internal("Update type not set.");
   }
@@ -497,6 +500,38 @@ void DispatcherState::UpdateJobTargetWorkerCount(
   }
   job->target_worker_count = job_target_worker_count_update.target_worker_count();
 
+}
+
+void DispatcherState::UpdateTaskSplitProviderState(
+    const TaskSplitProviderUpdate task_split_provider_update) {
+  
+  // int64 task_id = 1;
+  // int64 split_provider_index = 2;
+  // int64 worker_cursor = 3;
+  // repeated TensorProto additional_indices = 4;
+
+  int64_t task_id = task_split_provider_update.task_id();
+  auto& task = tasks_[task_id];
+  DCHECK_NE(task, nullptr);
+
+  int64_t split_provider_index = task_split_provider_update.split_provider_index();
+
+  DCHECK_LT(split_provider_index, task->split_provider_state.size());
+  auto split_state = &task->split_provider_state[split_provider_index];
+  DCHECK_NE(split_state, nullptr);
+  
+  // update the mandatory worker_cursor
+  split_state->worker_cursor = task_split_provider_update.worker_cursor();
+
+  auto indices = &split_state->indices;
+  // append any new indices
+  for (int i=0; i<task_split_provider_update.additional_indices_size(); i++) {
+    auto split = task_split_provider_update.additional_indices(i);
+    indices->push_back(split);
+  }
+  split_state->worker_cursor = task_split_provider_update.worker_cursor();
+
+  VLOG(0) << "DispatcherState: Task" << task_id << ", cursor:"<<split_state->worker_cursor<<", list_length"<<split_state->indices.size();
 }
 
 std::vector<std::shared_ptr<const DispatcherState::Job>>

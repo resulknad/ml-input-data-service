@@ -50,6 +50,9 @@ StatusOr<WorkerHeartbeatResponse> DataServiceDispatcherClient::WorkerHeartbeat(
   WorkerHeartbeatResponse response;
 
   grpc::ClientContext client_ctx;
+  std::chrono::time_point<std::chrono::system_clock> deadline = std::chrono::system_clock::now() +
+      std::chrono::seconds(10);
+  client_ctx.set_deadline(deadline);
   grpc::Status status = stub_->WorkerHeartbeat(&client_ctx, request, &response);
   if (!status.ok()) {
     return grpc_util::WrapError("Failed to perform worker heartbeat", status);
