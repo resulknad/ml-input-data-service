@@ -100,8 +100,8 @@ class GrpcDataTransferClient : public DataTransferClient {
 
   Status GetElement(const GetElementRequest& req,
                     GetElementResult& result) override {
-    VLOG(0) << "GetElement for task " << req.task_id() << " from gRPC worker "
-            << "server.";
+    // VLOG(0) << "GetElement for task " << req.task_id() << " from gRPC worker "
+    //         << "server.";
     {
       mutex_lock l(mu_);
       if (cancelled_) {

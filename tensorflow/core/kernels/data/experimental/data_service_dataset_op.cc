@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/experimental/data_service_dataset_op.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <fstream>
 #include <limits>
 #include <map>
@@ -558,9 +559,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
            std::unique_ptr<DataServiceWorkerClient> worker)
           : info(info), worker(std::move(worker)) {}
 
-      const TaskInfo info;
+      TaskInfo info;
       // Client for fetching task elements from the tf.data service worker.
-      const std::unique_ptr<DataServiceWorkerClient> worker;
+      std::unique_ptr<DataServiceWorkerClient> worker;
       // The next round to read from the task.
       int64_t round = 0;
       int64_t next_index = 0;
@@ -914,6 +915,26 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         if (task_id_to_task.contains(task->info.task_id())) {
           // Remove already-known tasks from `task_id_to_task`, so that at the
           // end of the loop, only new tasks remain.
+
+          auto new_info = task_id_to_task[task->info.task_id()];
+          if (task->info.worker_address() != new_info.worker_address()) {
+            VLOG(0) << "For task " << task->info.task_id() << " we got a new address : "
+              << new_info.worker_address() << " (prev: " << task->info.worker_address() << ")";
+            // update worker address
+            task->worker->TryCancel();
+            task->info = new_info;
+            auto statusor = CreateDataServiceWorkerClient(new_info.transfer_address(),
+                                            dataset()->protocol_,
+                                            dataset()->data_transfer_protocol_);
+            if (!statusor.ok()) {
+              VLOG(0) << "Error creating new data service worker client " << statusor.status();
+              return;
+            }
+            task->worker = std::move(statusor.ValueOrDie());
+          }
+
+          //tasks_.push_back(std::make_shared<Task>(new_info, std::move(worker)));
+
           task_id_to_task.erase(task->info.task_id());
           ++index;
         } else {
@@ -1106,7 +1127,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           task_to_process->in_use = true;
           task_to_process->num_outstanding_requests++;
 
-          VLOG(0) << "Processing task " << task_to_process->info.task_id();
+          // VLOG(0) << "Processing task " << task_to_process->info.task_id();
         }
         int64_t deadline_micros = kint64max;
         Status s;
@@ -1114,11 +1135,17 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           s = GetElementTraced(task_to_process.get(), deadline_micros,
               /*enqueue_result=*/false, *result);
         } else {
+          auto timeout_str = getenv("DBK_GET_ELEMENT_TIMEOUT");
+          int64_t timeout = strtoul(timeout_str, NULL, 10);
+          // VLOG(0) << "read timeout val of " << timeout << " from env";
+          int64_t deadline_for_non_rr = Env::Default()->NowMicros() + timeout;
           Result r;
-          s = GetElementTraced(task_to_process.get(), deadline_micros,
+          s = GetElementTraced(task_to_process.get(), deadline_for_non_rr,
               /*enqueue_result=*/true, r);
         }
-        if (!s.ok()) {
+        if (errors::IsDeadlineExceeded(s) && !StrictRoundRobin()) {
+          VLOG(0) << "(DBK): got deadline exceeded, but catching that error and making it non-fatal in order to wait for the dispatcher to reassign task to different worker. [" << s << "]";
+        } else if (!s.ok()) {
           mutex_lock l(mu_);
           VLOG(0) << "Failed to get element from worker "
                   << task_to_process->info.worker_address() << ": " << s;
@@ -1132,7 +1159,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           get_next_cv_.notify_all();
           return;
         } else {
-          VLOG(0) << "Got element for task " << task_to_process->info.task_id();
+          // VLOG(0) << "Got element for task " << task_to_process->info.task_id();
         }
       }
     }
@@ -1361,7 +1388,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     Status GetElementTraced(Task* task, int64_t deadline_micros,
                             bool enqueue_result, Result& result)
     TF_LOCKS_EXCLUDED(mu_) {
-      VLOG(0) << "Getting an element for task id " << task->info.task_id();
+      // VLOG(0) << "Getting an element for task id " << task->info.task_id();
       tensorflow::profiler::TraceMe activity(
           "GetDataServiceElement", tensorflow::profiler::TraceMeLevel::kInfo);
       activity.AppendMetadata([&]() {
@@ -1380,7 +1407,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       }
       Status s = GetElement(task, deadline_micros, enqueue_result, result);
       mutex_lock l(mu_);
-      VLOG(0) << "Got an element for task id " << task->info.task_id();
+      // VLOG(0) << "Got an element for task id " << task->info.task_id();
       return s;
     }
 
@@ -1424,7 +1451,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           if (s.ok() 
               && !get_element_result.end_of_sequence && !get_element_result.skip) {
             if (get_element_result.element_index != task->next_index) {
-              VLOG(0) << "Got element index " << (int64) get_element_result.element_index << ". " << (int64_t) get_element_result.element_index << " but as looking for " << task->next_index << " (Task: " << task->info.task_id() << ")";
+ //             VLOG(0) << "Got element index " << (int64) get_element_result.element_index << ". " << (int64_t) get_element_result.element_index << " but as looking for " << task->next_index << " (Task: " << task->info.task_id() << ")";
 
               if (get_element_result.components.size() > 0) {
                 Variant x = get_element_result.components.at(0);
@@ -1442,7 +1469,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
               s = Status(tensorflow::error::ALREADY_EXISTS, "Was expecting different index for element. Will skip this element.");
               get_element_result.components.clear();
             } else {
-              VLOG(0) << "Got element index " << (int64) get_element_result.element_index << ", which is perfect. " << " (Task: " << task->info.task_id() << ")";
+//              VLOG(0) << "Got element index " << (int64) get_element_result.element_index << ", which is perfect. " << " (Task: " << task->info.task_id() << ")";
               task->next_index++;
             }
           }
@@ -1467,7 +1494,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         }
         int64_t now_micros = Env::Default()->NowMicros();
         if (now_micros > deadline_micros) {
-          return s;
+          return errors::DeadlineExceeded(absl::Substitute(
+                    "GetElement exceeded deadline after $0 retries",
+                    num_retries));
         }
         if (StrictRoundRobin() && num_retries > 0) {
           TF_RETURN_IF_ERROR(MaybeRemoveTask(*task, deadline_micros, result));
@@ -1489,7 +1518,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         VLOG(0) << "Failed to get an element from worker "
                 << task->info.worker_address() << ": " << s
                 << ". Will retry in " << (backoff_until - now_micros)
-                << " microseconds";
+                << " microseconds" << ". num_retries: " << num_retries;
         Env::Default()->SleepForMicroseconds(backoff_until - now_micros);
       }
       ProcessGetElementResponse(enqueue_result, get_element_result, result,

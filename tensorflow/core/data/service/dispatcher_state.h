@@ -239,8 +239,8 @@ class DispatcherState {
 
     const int64_t task_id;
     const std::shared_ptr<Job> job;
-    const std::string worker_address;
-    const std::string transfer_address;
+    std::string worker_address;
+    std::string transfer_address;
     const std::vector<std::string> worker_tags;
     const int64_t worker_uid;
     int64_t starting_round = 0;
@@ -357,7 +357,6 @@ class DispatcherState {
   void ReassignFreeWorkers();
   void UpdateJobTargetWorkerCount(const JobTargetWorkerCountUpdate job_target_worker_count_update);
   void UpdateTaskSplitProviderState(const TaskSplitProviderUpdate task_split_provider_update);
-
 
   int64_t next_available_dataset_id_ = 1000;
   // Registered datasets, keyed by dataset ids.

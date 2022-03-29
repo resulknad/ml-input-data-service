@@ -223,6 +223,11 @@ class DataServiceDispatcherImpl {
       const absl::flat_hash_set<int64_t>& current_tasks,
       std::vector<std::shared_ptr<const DispatcherState::Task>>& assigned_tasks,
       WorkerHeartbeatResponse* response);
+
+  // Reassing task to different workers which have timed out
+  // (meaning too many missed heartbeats)
+  Status ReassignTimedOutTasks()
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // EASL - Reassigns free workers to existing jobs that have less tasks than
   // required by the elasticity policy
   Status ReassignFreeWorkersAndCreateTasks() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
@@ -245,6 +250,11 @@ class DataServiceDispatcherImpl {
                     const std::string& worker_address,
                     std::shared_ptr<const DispatcherState::Task>& task)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  Status UpdateTaskWorkerAddress(const std::string& worker_address,
+                                             const std::string& transfer_address,
+                                             std::shared_ptr<const DispatcherState::Task>& task)
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Creates a pending task for a round robin job. All consumers need to agree
   // on which round to add the task in before the pending task can be promoted
   // to a regular task.
@@ -286,6 +296,7 @@ class DataServiceDispatcherImpl {
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // A thread which periodically checks for jobs to clean up.
   void JobGcThread();
+  void ReassignTimedOutTasksThread();
 
   // Releases job clients that haven't heartbeated recently.
   Status ReleaseMissingClients() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
@@ -344,6 +355,9 @@ class DataServiceDispatcherImpl {
   // Map from client id to the time of the client's last heartbeat.
   absl::flat_hash_map<int64_t, absl::Time> latest_client_heartbeats_time_
       TF_GUARDED_BY(mu_);
+  // Map from worker id to the time of the worker's last heartbeat.
+  absl::flat_hash_map<std::string, absl::Time> latest_worker_heartbeats_time_
+      TF_GUARDED_BY(mu_);
 
   absl::optional<std::unique_ptr<JournalWriter>> journal_writer_
       TF_GUARDED_BY(mu_);
@@ -356,6 +370,8 @@ class DataServiceDispatcherImpl {
   std::unique_ptr<Thread> job_gc_thread_;
   condition_variable log_dumps_thread_cv_;
   std::unique_ptr<Thread> log_dumps_thread_;
+  condition_variable reassign_timedout_thread_cv_;
+  std::unique_ptr<Thread> reassign_timedout_thread_;
 
   // EASL: Logging stuff
   absl::flat_hash_map<string, uint64> last_scale_;

@@ -228,6 +228,9 @@ Status DataServiceDispatcherImpl::Start() {
         env_->StartThread({}, "job-gc-thread", [&] { JobGcThread(); }));
   }
 
+  reassign_timedout_thread_ = absl::WrapUnique(
+      env_->StartThread({}, "job-timedout-thread", [&] { ReassignTimedOutTasksThread(); }));
+
   if (config_.work_dir().empty()) {
     if (config_.fault_tolerant_mode()) {
       return errors::InvalidArgument(
@@ -271,6 +274,12 @@ Status DataServiceDispatcherImpl::Start() {
     // Conservatively pretend we just received a heartbeat from all clients, so
     // that we don't garbage collect jobs too early.
     latest_client_heartbeats_time_[client_id] =
+        absl::FromUnixMicros(env_->NowMicros());
+  }
+  for (const auto& worker : state_.ListWorkers()) {
+    // Conservatively pretend we just received a heartbeat from all clients, so
+    // that we don't garbage collect jobs too early.
+    latest_worker_heartbeats_time_[worker->address] =
         absl::FromUnixMicros(env_->NowMicros());
   }
   // Initialize the journal writer in `Start` so that we fail fast in case it
@@ -431,13 +440,24 @@ Status DataServiceDispatcherImpl::ReassignFreeWorkersAndCreateTasks() TF_EXCLUSI
 Status DataServiceDispatcherImpl::WorkerHeartbeat(
     const WorkerHeartbeatRequest* request, WorkerHeartbeatResponse* response) {
   TF_RETURN_IF_ERROR(CheckStarted());
-  VLOG(0) << "Received worker heartbeat request from worker "
-          << request->worker_address();
+  // VLOG(0) << "Received worker heartbeat request from worker "
+  //         << request->worker_address();
   mutex_lock l(mu_);
   const std::string& worker_address = request->worker_address();
   // Assigned tasks from the perspective of the dispatcher.
   std::vector<std::shared_ptr<const Task>> assigned_tasks;
   Status s = state_.TasksForWorker(worker_address, assigned_tasks);
+
+  std::shared_ptr<const Worker> worker;
+  s = state_.WorkerFromAddress(worker_address, worker);
+  if (s.ok()) {
+    latest_worker_heartbeats_time_[worker->address] = absl::FromUnixMicros(env_->NowMicros());
+    VLOG(1) << "Set heratbeat TS to " << env_->NowMicros() << " for " << worker_address;
+  } else {
+    VLOG(0) << "failed to update ts for " << worker_address;
+  }
+
+
   if (!s.ok()) {
     if (!errors::IsNotFound(s)) {
       return s;
@@ -1138,7 +1158,7 @@ Status DataServiceDispatcherImpl::CreateJob(
   worker_count = job_metrics->target_worker_count_;
 
   if (config_.scaling_policy() == 2) {
-    worker_count = 100;
+    worker_count = 2;
   }
 
   if (job_type == "PUT" || job_type == "PUT_SOURCE") {
@@ -1281,6 +1301,22 @@ Status DataServiceDispatcherImpl::CreatePendingTask(
   create_task->set_dataset_key(dataset_key);
 
   TF_RETURN_IF_ERROR(Apply(update));
+  return Status::OK();
+}
+
+
+Status DataServiceDispatcherImpl::UpdateTaskWorkerAddress(const std::string& worker_address,
+                                             const std::string& transfer_address,
+                                             std::shared_ptr<const Task>& task)
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  Update update;
+  CreateTaskUpdate* create_task = update.mutable_create_task();
+  create_task->set_task_id(task->task_id);
+  create_task->set_worker_address(worker_address);
+  create_task->set_transfer_address(transfer_address);
+  std::shared_ptr<const Worker> worker;
+  TF_RETURN_IF_ERROR(Apply(update));
+
   return Status::OK();
 }
 
@@ -1656,6 +1692,29 @@ Status DataServiceDispatcherImpl::Apply(const Update& update)
   return state_.Apply(update);
 }
 
+void DataServiceDispatcherImpl::ReassignTimedOutTasksThread() {
+  int64_t next_check_micros = 0;
+  while (true) {
+    mutex_lock l(mu_);
+    while (!cancelled_ && env_->NowMicros() < next_check_micros) {
+      int64 remaining_micros = next_check_micros - env_->NowMicros();
+      reassign_timedout_thread_cv_.wait_for(l,
+                                 std::chrono::microseconds(remaining_micros));
+    }
+    if (cancelled_) {
+      return;
+    }
+    {
+      Status s = ReassignTimedOutTasks();
+      if (!s.ok()) {
+        LOG(WARNING) << "Error Reassigning timed out tasks: " << s;
+      }
+    }
+    next_check_micros =
+        env_->NowMicros() + (5000 * 1000);
+  }
+}
+
 void DataServiceDispatcherImpl::JobGcThread() {
   int64_t next_check_micros = 0;
   while (true) {
@@ -1674,6 +1733,7 @@ void DataServiceDispatcherImpl::JobGcThread() {
         LOG(WARNING) << "Error releasing missing clients: " << s;
       }
     }
+
     {
       Status s = GcOldJobs();
       if (!s.ok()) {
@@ -1687,6 +1747,50 @@ void DataServiceDispatcherImpl::JobGcThread() {
       LOG(WARNING) << "Error reassigning free workers in gc thread: " << s;
     }
   }
+}
+
+Status DataServiceDispatcherImpl::ReassignTimedOutTasks()
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  VLOG(0) << "ReassignTimedOutTasks. start";
+  VLOG(0) << "List worker size" << state_.ListWorkers().size();
+
+  for (auto worker : state_.ListWorkers()) {
+    VLOG(0) << "first worker is: " << worker->address;
+    VLOG(0) << "Checking " << worker->address;
+    if (latest_worker_heartbeats_time_.contains(worker->address)) {
+      auto last_hb = latest_worker_heartbeats_time_[worker->address];
+      if (last_hb < absl::FromUnixMicros(env_->NowMicros()) - absl::Seconds(15)) {
+        VLOG(0)<<"Worker with address " << worker->address << " timed out. Reassigning all tasks.";
+        std::vector<std::shared_ptr<const Task>> tasks;
+        auto s = state_.TasksForWorker(worker->address, tasks);
+        if (!s.ok()) {
+          VLOG(0) << "Error. Could not get tasks for worker " << worker->address << ", " << s;
+          continue;
+        }
+        
+        // find free worker to failover to
+        auto avail_workers = state_.ListAvailableWorkers();
+        if (avail_workers.size() == 0) {
+          VLOG(0) << "Error. There are no available workers to failover to. Returning now.";
+          return Status::OK();
+        }
+
+        auto worker = avail_workers[0];
+        // reassign all tasks
+
+        for (auto task : tasks) {
+          VLOG(0) << "Reassigning task " << task->task_id
+            << " to worker " << worker->address
+            << " with transfer address " << worker->transfer_address;
+          UpdateTaskWorkerAddress(worker->address,worker->transfer_address, task);
+        }
+        
+      }
+    } else {
+        VLOG(0)<<"Worker with address " << worker->address << " does not have a last heartbeat...";
+    }
+  }
+  return Status::OK();
 }
 
 Status DataServiceDispatcherImpl::ReleaseMissingClients()

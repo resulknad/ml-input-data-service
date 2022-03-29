@@ -264,14 +264,24 @@ void DispatcherState::ClientHeartbeat(
 void DispatcherState::CreateTask(const CreateTaskUpdate& create_task) {
   int64_t task_id = create_task.task_id();
   auto& task = tasks_[task_id];
-  DCHECK_EQ(task, nullptr);
-  auto& job = jobs_[create_task.job_id()];
-  DCHECK_NE(job, nullptr);
-  task = std::make_shared<Task>(create_task, job);
-  job->current_worker_count++;
-  tasks_by_job_[create_task.job_id()][task->task_id] = task;
-  tasks_by_worker_[create_task.worker_address()][task->task_id] = task;
-  next_available_task_id_ = std::max(next_available_task_id_, task_id + 1);
+  if (task != nullptr) {
+    VLOG(0) << "DispatcherState: updating task worker address / worker. Previously: "
+      << task->worker_address << ", current/new: " << create_task.worker_address();
+    tasks_by_worker_[task->worker_address].erase(task->task_id);
+
+    task->worker_address = create_task.worker_address();
+    task->transfer_address = create_task.transfer_address();
+    tasks_by_worker_[create_task.worker_address()][task->task_id] = task;
+  } else {
+    DCHECK_EQ(task, nullptr);
+    auto& job = jobs_[create_task.job_id()];
+    DCHECK_NE(job, nullptr);
+    task = std::make_shared<Task>(create_task, job);
+    job->current_worker_count++;
+    tasks_by_job_[create_task.job_id()][task->task_id] = task;
+    tasks_by_worker_[create_task.worker_address()][task->task_id] = task;
+    next_available_task_id_ = std::max(next_available_task_id_, task_id + 1);
+  }
 }
 
 void DispatcherState::FinishTask(const FinishTaskUpdate& finish_task) {
@@ -533,6 +543,7 @@ void DispatcherState::UpdateTaskSplitProviderState(
 
   VLOG(0) << "DispatcherState: Task" << task_id << ", cursor:"<<split_state->worker_cursor<<", list_length"<<split_state->indices.size();
 }
+
 
 std::vector<std::shared_ptr<const DispatcherState::Job>>
 DispatcherState::ListJobs() {
