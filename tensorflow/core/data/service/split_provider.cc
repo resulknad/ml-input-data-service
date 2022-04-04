@@ -29,42 +29,77 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
-
+namespace {
+  constexpr char kRepetition[] = "repetition";
+  constexpr char kTargetIndex[] = "index";
+}
 Status DataServiceSplitProvider::GetNext(Tensor* split, bool* end_of_splits) {
   mutex_lock l(mu_);
+  if (skip_all_) {
+    *end_of_splits = true;
+    VLOG(0) << "skipping because skip_all_";
+    return Status::OK();
+  }
   if (!dispatcher_) {
     dispatcher_ =
         absl::make_unique<DataServiceDispatcherClient>(address_, protocol_);
   }
-  return grpc_util::Retry(
-      [this, split, end_of_splits] {
-        return dispatcher_->GetSplit(job_id_, task_id_, repetition_,
-                                     split_provider_index_, *split,
-                                     *end_of_splits);
-      },
-      "get next split",
-      /*deadline_micros=*/Env::Default()->NowMicros() +
-          (timeout_ms_ * EnvTime::kMillisToMicros));
+
+  tensorflow::Status status;
+
+  // here we skip until target index
+  while (index_ <= target_index_) {
+    VLOG(0) << "index:" << index_ <<", target_index:" << target_index_;
+    status = grpc_util::Retry(
+        [this, split, end_of_splits] {
+          return dispatcher_->GetSplit(job_id_, task_id_, repetition_,
+                                       split_provider_index_, *split,
+                                       *end_of_splits);
+        },
+        "get next split",
+        /*deadline_micros=*/Env::Default()->NowMicros() +
+            (timeout_ms_ * EnvTime::kMillisToMicros));
+    TF_RETURN_IF_ERROR(status);
+    index_++;
+  }
+
+  target_index_++;
+  return status;
 }
 
 Status DataServiceSplitProvider::Reset() {
   mutex_lock l(mu_);
   repetition_++;
+  index_ = 0;
+  target_index_ = 0;
   return Status::OK();
 }
 
 Status DataServiceSplitProvider::Save(
     std::function<std::string(std::string)> full_name,
     IteratorStateWriter* writer) {
-  return errors::Unimplemented(
-      "Save is not implemented for DataServiceSplitProvider");
+  VLOG(0) << "data service split saving";
+  auto s1 = (writer->WriteScalar(full_name(kTargetIndex), target_index_));
+  VLOG(0) << "post split saving";
+  VLOG(0) << "data service split saving, s1:" << s1;
+  auto s2 = writer->WriteScalar(full_name(kRepetition), repetition_);
+  VLOG(0) << "data service split saving, s1:" << s1 << ", s2:" << s2;
+  return s2;
 }
 
 Status DataServiceSplitProvider::Restore(
     std::function<std::string(std::string)> full_name,
     IteratorStateReader* reader) {
-  return errors::Unimplemented(
-      "Restore is not implemented for DataServiceSplitProvider");
+  if (!reader->Contains(full_name(kRepetition))) {
+    // must have been destroyed when checkpointing...
+    // thus we are out of elements -> skip all
+    skip_all_ = true; 
+    return Status::OK();
+  }
+  VLOG(0) << "data service split writing";
+  TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kTargetIndex), &target_index_));
+  VLOG(0) << "data service split writing " << target_index_;
+  return reader->ReadScalar(full_name(kRepetition), &repetition_);
 }
 
 }  // namespace data

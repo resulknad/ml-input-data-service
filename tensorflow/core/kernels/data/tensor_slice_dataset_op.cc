@@ -145,9 +145,11 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
 
     Status Initialize(IteratorContext* ctx) override {
       if (ctx->split_providers().empty()) {
+        VLOG(0) << "(DBK) TensorSliceDataset: creating indexplistprovider because context split providers is emtpy...";
         split_provider_ = std::make_shared<IndexSplitProvider>(
             dataset()->tensors_[0].dim_size(0));
       } else {
+        VLOG(0) << "(DBK) TensorSliceDataset: getting split provider from ctx/dataset";
         TF_ASSIGN_OR_RETURN(split_provider_,
                             GetSingleSplitProvider(ctx, dataset()));
       }
@@ -183,6 +185,7 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
 
     Status SaveInternal(SerializationContext* ctx,
                         IteratorStateWriter* writer) override {
+      VLOG(0) << "save internal in tensor slice dataset. calling on split provider... which is: " << split_provider_;
       return split_provider_->Save(
           [this](const std::string& key) { return full_name(key); }, writer);
     }

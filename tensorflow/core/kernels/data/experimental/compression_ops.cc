@@ -21,8 +21,11 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
+static RegisterClass rc("abc");
+
 namespace data {
 namespace experimental {
+
 
 CompressElementOp::CompressElementOp(OpKernelConstruction* ctx)
     : OpKernel(ctx) {}
@@ -38,6 +41,8 @@ void CompressElementOp::Compute(OpKernelContext* ctx) {
   Tensor* output;
   OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));
   output->scalar<Variant>()() = std::move(compressed);
+
+
 }
 
 UncompressElementOp::UncompressElementOp(OpKernelConstruction* ctx)
@@ -88,6 +93,16 @@ REGISTER_KERNEL_BUILDER(Name("CompressElement").Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(Name("UncompressElement").Device(DEVICE_CPU),
                         UncompressElementOp);
 
+
+
+
+
 }  // namespace experimental
 }  // namespace data
+
+
+// REGISTER_UNARY_VARIANT_DECODE_FUNCTION(data::experimental::CompressedElementVariant,
+//     "tensorflow.data.CompressedElement");
+//   static ::tensorflow::variant_op_registry_fn_registration::UnaryVariantDecodeRegistration<> register_unary_variant_op_decoder_fn_1;
+
 }  // namespace tensorflow

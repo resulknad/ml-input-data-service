@@ -63,6 +63,7 @@ CreateDataServiceWorkerClient(const std::string& address,
 
 Status DataServiceWorkerClient::GetElement(const GetElementRequest& req,
                                            GetElementResult& result) {
+  // VLOG(0)<<"data service worker client get element";
   TF_RETURN_IF_ERROR(EnsureInitialized());
   return client_->GetElement(req, result);
 }

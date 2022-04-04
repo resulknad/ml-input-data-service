@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/data/serialization_utils.h"
 #include "tensorflow/core/data/unbounded_thread_pool.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
@@ -79,11 +80,16 @@ class Iterator {
 
   // EASL
   model::Model::ModelMetrics GetMetrics();
+  Status Save(SerializationContext* ctx, IteratorStateWriter* writer);
+  Status Restore(IteratorContext* ctx, IteratorStateReader* reader);
+
 
  private:
   friend class Dataset;
 
+
   Iterator(IteratorBase* iterator, IteratorContext* ctx);
+
 
   std::unique_ptr<IteratorBase> iterator_;
   std::unique_ptr<IteratorContext> ctx_;
@@ -111,17 +117,38 @@ class Dataset {
       std::vector<std::unique_ptr<SplitProvider>> split_providers,
       std::unique_ptr<Iterator>* result);
 
+  Status MakeIteratorFromCheckpoint(
+      std::vector<std::unique_ptr<SplitProvider>> split_providers,
+      IteratorStateReader* reader,
+      std::unique_ptr<Iterator>* result);
+
+  Status MakeIteratorFromCheckpoint(
+      IteratorStateReader* reader,
+      std::unique_ptr<Iterator>* result) {
+    MakeIteratorFromCheckpoint({}, reader, result);
+  }
+
+
+/*
+  Status MakeIteratorFromCheckpoint(
+      const string& output_prefix,
+      IteratorStateReader* reader,
+      std::unique_ptr<IteratorBase>* iterator) const;*/
+
   // Creates split providers for this dataset.
   Status MakeSplitProviders(
       std::vector<std::unique_ptr<SplitProvider>>* result);
   // Returns a pointer to the underlying dataset.
   const DatasetBase* Get() const;
 
+
+
  private:
   Dataset(DatasetBase* dataset, DeviceMgr* device_mgr,
           ProcessFunctionLibraryRuntime* pflr,
           FunctionLibraryDefinition* flib_def, thread::ThreadPool* pool,
           std::function<void(std::function<void()>)> runner);
+  IteratorContext* MakeIteratorContext(std::vector<std::unique_ptr<SplitProvider>> split_providers);
 
   DatasetBase* dataset_;  // owned
   std::unique_ptr<DeviceMgr> device_mgr_;

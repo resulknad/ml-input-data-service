@@ -311,14 +311,18 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(ctx->HandleCheckExternalStateStatus(
           dataset()->captured_func_->CheckExternalState()));
       mutex_lock l(*mu_);
+      VLOG(0) << "entering parallel map save internal";
       // Wait for all in-flight calls to complete.
+      VLOG(0) << "num_calls_ " << num_calls_;
       while (num_calls_ > 0) {
+        VLOG(0) << "num_calls_ " << num_calls_ << " need to wait...";
         cond_var_->wait(l);
       }
       if (num_calls_ != 0) {
         return errors::FailedPrecondition(
             "Unexpected outstanding calls encountered.");
       }
+      VLOG(0) << "Calling SaveInput... ";
       TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       TF_RETURN_IF_ERROR(
           writer->WriteScalar(absl::StrCat(prefix(), "::", kInvocationResults),
@@ -341,6 +345,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
               writer->WriteScalar(element_prefix, kEndOfInput, ""));
         }
       }
+      VLOG(0) << "End saveinternal parallel map...";
       return Status::OK();
     }
 

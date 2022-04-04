@@ -194,7 +194,9 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
 
       Status SaveInternal(SerializationContext* ctx,
                           IteratorStateWriter* writer) override {
+        VLOG(0) << "Save internal on unbatch dataset.";
         mutex_lock l(mu_);
+        VLOG(0) << "unbatch dataset: have lock and call save input";
         if (input_impl_) {
           TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
         } else {
@@ -211,6 +213,7 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
                 full_name(strings::StrCat("tensors[", i, "]")), tensors_[i]));
           }
         }
+        VLOG(0) << "unbatch dataset: done.";
         return Status::OK();
       }
 

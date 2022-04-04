@@ -366,6 +366,8 @@ class UnaryVariantDecodeRegistration {
     // any other way.
     UnaryVariantOpRegistry::Global()->RegisterDecodeFn(
         type_name, [type_name](Variant* v) -> bool {
+          if (v != nullptr)
+            VLOG(0) << "Variant Debug Str:" << v->DebugString();
           DCHECK_NE(v, nullptr);
           VariantTensorDataProto* t = v->get<VariantTensorDataProto>();
           if (t == nullptr) {

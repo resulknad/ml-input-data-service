@@ -1108,6 +1108,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             }
             task_to_process = GetTaskToProcess();
             if (task_to_process) {
+              // VLOG(0) << "got task to process ";
               break;
             }
             VLOG(1) << "Thread waiting for task or space in buffer, outstanding_requests_: "
@@ -1136,8 +1137,13 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
               /*enqueue_result=*/false, *result);
         } else {
           auto timeout_str = getenv("DBK_GET_ELEMENT_TIMEOUT");
-          int64_t timeout = strtoul(timeout_str, NULL, 10);
-          // VLOG(0) << "read timeout val of " << timeout << " from env";
+          int64_t timeout = 10000000;
+          if (timeout_str != nullptr) {
+            timeout = strtoul(timeout_str, NULL, 10);
+            // VLOG(0) << "read timeout val of " << timeout << " from env";
+          } else {
+            // VLOG(0) << "no timeout val read, used default";
+          }
           int64_t deadline_for_non_rr = Env::Default()->NowMicros() + timeout;
           Result r;
           s = GetElementTraced(task_to_process.get(), deadline_for_non_rr,
@@ -1183,7 +1189,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       if (ShouldProcessAnyTask()) {
         std::shared_ptr<Task> task = GetAnyTaskToProcess();
         if (task) {
-          VLOG(3) << "Selected a task to process: "
+          VLOG(0) << "Selected a task to process: "
                   << task->info.ShortDebugString();
           return task;
         }
@@ -1450,8 +1456,13 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         if (!getenv("DBK_DISABLE_SKIPPING")) {
           if (s.ok() 
               && !get_element_result.end_of_sequence && !get_element_result.skip) {
+                Variant x = get_element_result.components.at(0);
+                Variant extracted = x.get<Tensor>()->flat<Variant>()(0);
+                CompressedElement *i = extracted.get<CompressedElement>();
+                std::vector<Tensor> out;
+                UncompressElement(*i, &out);
             if (get_element_result.element_index != task->next_index) {
- //             VLOG(0) << "Got element index " << (int64) get_element_result.element_index << ". " << (int64_t) get_element_result.element_index << " but as looking for " << task->next_index << " (Task: " << task->info.task_id() << ")";
+              VLOG(0) << "Got element index " << (int64) get_element_result.element_index << ". " << (int64_t) get_element_result.element_index << " but as looking for " << task->next_index << " (Task: " << task->info.task_id() << ")";
 
               if (get_element_result.components.size() > 0) {
                 Variant x = get_element_result.components.at(0);
@@ -1469,7 +1480,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
               s = Status(tensorflow::error::ALREADY_EXISTS, "Was expecting different index for element. Will skip this element.");
               get_element_result.components.clear();
             } else {
-//              VLOG(0) << "Got element index " << (int64) get_element_result.element_index << ", which is perfect. " << " (Task: " << task->info.task_id() << ")";
+              // VLOG(0) << "Got element index " << (int64) get_element_result.element_index << ", which is perfect. " << " (Task: " << task->info.task_id() << ")";
               task->next_index++;
             }
           }

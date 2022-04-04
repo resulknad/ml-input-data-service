@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "tensorflow/core/data/serialization_utils.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/data_transfer.h"
 #include "tensorflow/core/data/service/thread_safe_buffer.h"
@@ -49,6 +50,7 @@ class TaskIterator {
 
   // EASL - Gets a metrics dump from the underlying iterator.
   virtual model::Model::ModelMetrics GetMetrics() = 0;
+  virtual Status Save(SerializationContext* ctx, IteratorStateWriter* writer) = 0;
 };
 
 // Implementation of TaskIterator wrapping a standalone iterator.
@@ -64,10 +66,12 @@ class StandaloneTaskIterator : public TaskIterator {
 
   // EASL - Gets a metrics dump from the underlying iterator.
   model::Model::ModelMetrics GetMetrics() override;
+  Status Save(SerializationContext* ctx, IteratorStateWriter* writer) override;
 
  private:
   std::unique_ptr<standalone::Dataset> dataset_;
   std::unique_ptr<standalone::Iterator> iterator_;
+//  std::unique_ptr<VariantTensorDataWriter> writer_;
 };
 
 // Interface for providing elements to task consumers.
@@ -78,12 +82,21 @@ class TaskRunner {
                        const TaskDef& task_def,
                        std::unique_ptr<TaskIterator> iterator,
                        std::unique_ptr<TaskRunner>& out);
+
+  static Status CreateFromCheckpoint(const experimental::WorkerConfig& worker_config,
+                       const TaskDef& task_def,
+                       std::unique_ptr<TaskIterator> iterator,
+                       std::unique_ptr<TaskRunner>& out,
+                       VariantTensorDataReader* reader);
   virtual ~TaskRunner() = default;
   // Gets the next element for the given request.
   virtual Status GetNext(const GetElementRequest& req,
                          GetElementResult& result) = 0;
   // Cancels in-progress `GetNext` requests.
   virtual void Cancel() = 0;
+
+  virtual Status Save(SerializationContext* ctx, IteratorStateWriter* writer) = 0;
+  virtual Status Restore(VariantTensorDataReader* reader) = 0;
 
   // EASL - Gets a metrics dump from the underlying TaskIterator
   virtual model::Model::ModelMetrics GetMetrics() = 0;
@@ -100,6 +113,8 @@ class FirstComeFirstServedTaskRunner : public TaskRunner {
   Status GetNext(const GetElementRequest& req,
                  GetElementResult& result) override;
   void Cancel() override;
+  Status Save(SerializationContext* ctx, IteratorStateWriter* writer) override;
+  Status Restore(VariantTensorDataReader* reader) override;
 
   model::Model::ModelMetrics GetMetrics() override;
 
@@ -199,6 +214,8 @@ class RoundRobinTaskRunner : public TaskRunner {
                  GetElementResult& result) override;
   void Cancel() override;
 
+  Status Save(SerializationContext* ctx, IteratorStateWriter* writer) override;
+  Status Restore(VariantTensorDataReader* reader) override;
   model::Model::ModelMetrics GetMetrics() override;
 
  private:

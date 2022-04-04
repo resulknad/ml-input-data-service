@@ -15,7 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_DATA_EXPERIMENTAL_COMPRESSION_OPS_H_
 #define TENSORFLOW_CORE_KERNELS_DATA_EXPERIMENTAL_COMPRESSION_OPS_H_
 
+#include "tensorflow/core/data/dataset.pb.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/variant_op_registry.h"
 
 namespace tensorflow {
 namespace data {
@@ -44,6 +46,24 @@ class UncompressElementOp : public OpKernel {
 
 }  // namespace experimental
 }  // namespace data
+
+class RegisterClass {
+  public:
+    RegisterClass(std::string a) {
+      VLOG(0) << "registered fn1" << a;
+      UnaryVariantOpRegistry::Global()->RegisterDecodeFn(
+          "tensorflow.data.CompressedElement", [](Variant* v) -> bool {
+            // VLOG(0) << "NOOP decompiler for " << v->DebugString();
+            string md = v->get<VariantTensorDataProto>()->metadata();
+            data::CompressedElement ce;
+            ce.ParseFromString(md);
+            Variant vv(ce);
+            std::swap(*v, vv) ;
+            // VLOG(0) << "get metadata debug string" << ce.DebugString() << " other debug string " << v->DebugString(); 
+            return true;
+        });
+    }
+};
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_KERNELS_DATA_EXPERIMENTAL_COMPRESSION_OPS_H_

@@ -49,11 +49,47 @@ StandaloneTaskIterator::StandaloneTaskIterator(
 
 Status StandaloneTaskIterator::GetNext(std::vector<Tensor>& element,
                                        bool& end_of_sequence) {
-  return iterator_->GetNext(&element, &end_of_sequence);
+  // SAVING BUSINESS
+  // VLOG(0) << "DBK: entering GetNext";
+  // VariantTensorDataWriter writer;
+  // std::unique_ptr<SerializationContext> serialization_ctx;
+  // serialization_ctx = absl::make_unique<SerializationContext>(SerializationContext::Params{});
+  // VLOG(0) << "DBK: calling iterator_->Save";
+  // TF_RETURN_IF_ERROR(iterator_->Save(serialization_ctx.get(), &writer));
+
+
+  // VLOG(0) << "DBK: calling get data on writer";
+  // std::vector<const VariantTensorData*> data;
+  // writer.GetData(&data);
+  // VariantTensorDataReader reader(data);
+
+  // this should not be on the iterator
+  // restore should be exposed on the standalone dataset...
+
+  // lets leak some memory
+//  iterator_.release();
+/*  VLOG(0) << "DBK: post reset";
+  VLOG(0) << "DBK: making split providers";
+  std::vector<std::unique_ptr<SplitProvider>> providers;
+  TF_RETURN_IF_ERROR(dataset_->MakeSplitProviders(&providers));
+  
+  VLOG(0) << "DBK: make iterator from checkpoint";
+
+  TF_RETURN_IF_ERROR(dataset_->MakeIteratorFromCheckpoint(std::move(providers), &reader, &iterator_));*/
+//  TF_RETURN_IF_ERROR(iterator_->Restore(&reader, dataset_.get()));
+
+  // VLOG(0) << "DBK: returning get next";
+  auto status = iterator_->GetNext(&element, &end_of_sequence);
+  // VLOG(0) << "DBK: done with iterator_->getnext";
+  return status;
 }
 
 int64_t StandaloneTaskIterator::Cardinality() const {
   return dataset_->Get()->Cardinality();
+}
+
+Status StandaloneTaskIterator::Save(SerializationContext* ctx, IteratorStateWriter* writer) {
+  return iterator_->Save(ctx, writer);
 }
 
 model::Model::ModelMetrics StandaloneTaskIterator::GetMetrics() {
@@ -85,10 +121,38 @@ Status TaskRunner::Create(const experimental::WorkerConfig& worker_config,
   return Status::OK();
 }
 
+Status TaskRunner::CreateFromCheckpoint(const experimental::WorkerConfig& worker_config,
+                       const TaskDef& task_def,
+                       std::unique_ptr<TaskIterator> iterator,
+                       std::unique_ptr<TaskRunner>& out,
+                       VariantTensorDataReader* reader) {
+  TF_RETURN_IF_ERROR(Create(worker_config,task_def,std::move(iterator),out));
+  return out->Restore(reader);
+}
+
 FirstComeFirstServedTaskRunner::FirstComeFirstServedTaskRunner(
     std::unique_ptr<TaskIterator> iterator)
     : iterator_(std::move(iterator)), buffer_(/*buffer_size=*/1) {
   RunPrefetchThread();
+}
+
+
+
+Status FirstComeFirstServedTaskRunner::Save(SerializationContext* ctx, IteratorStateWriter* writer)
+    TF_LOCKS_EXCLUDED(mu_) {
+  mutex_lock l(mu_);
+
+  auto status = iterator_->Save(ctx, writer);
+  VLOG(0) << "DBK: done with iterator saving";
+
+  TF_RETURN_IF_ERROR(writer->WriteScalar(FullName("TaskRunner", "firstcomefirstserve.element_index"), this->element_index_));
+  VLOG(0) << "DBK: saving element index";
+  return status;
+}
+
+Status FirstComeFirstServedTaskRunner::Restore(VariantTensorDataReader* reader) {
+  auto status = reader->ReadScalar(FullName("TaskRunner", "firstcomefirstserve.element_index"), &this->element_index_);
+  VLOG(0) << "restoring element index in FCSFS: " << element_index_;
 }
 
 FirstComeFirstServedTaskRunner::~FirstComeFirstServedTaskRunner() { Cancel(); }
@@ -122,7 +186,15 @@ Status FirstComeFirstServedTaskRunner::GetNext(const GetElementRequest& req,
 
 Status FirstComeFirstServedTaskRunner::PrefetchFn() {
   while (true) {
-    TF_RETURN_IF_ERROR(buffer_.Push(GetNextFromInputIterator()));
+    auto status = (buffer_.Push(GetNextFromInputIterator()));
+    if (!status.ok()) {
+      // the last element doesn't count since we did not manage to enqueue it...
+      // element_index_--;
+      // VLOG(0) << "FCFS: element index decrease...";
+      return status;
+    }
+    
+    // VLOG(0) << "FCFS prefetch thread fetching...";
   }
   return Status::OK();
 }
@@ -150,6 +222,7 @@ FirstComeFirstServedTaskRunner::GetNextFromInputIterator()
     mutex_lock l(mu_);
     TF_RETURN_IF_ERROR(iterator_->GetNext(element, end_of_task));
     result.end_of_sequence = end_of_task;
+    // VLOG(0) << "DBK: incrementing element index";
     result.element_index = element_index_++;
   }
   if (!end_of_task) {
@@ -176,6 +249,14 @@ RoundRobinTaskRunner::RoundRobinTaskRunner(
       prefetch_thread_(std::move(iterator), num_consumers_) {
   VLOG(1) << "Creating task runner for distributing data round-robin to "
           << num_consumers << " consumers";
+}
+
+Status RoundRobinTaskRunner::Save(SerializationContext* ctx, IteratorStateWriter* writer) {
+  return prefetch_thread_.iterator_->Save(ctx, writer);
+}
+
+Status RoundRobinTaskRunner::Restore(VariantTensorDataReader* reader) {
+  return Status::OK();
 }
 
 Status RoundRobinTaskRunner::ValidateRequest(const GetElementRequest& req) {

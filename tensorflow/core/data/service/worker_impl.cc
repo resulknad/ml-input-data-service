@@ -18,6 +18,8 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <thread>
+#include <chrono>
 
 #include "grpcpp/create_channel.h"
 #include "absl/algorithm/container.h"
@@ -46,6 +48,7 @@ limitations under the License.
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/kernels/data/model_dataset_op.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/zlib_outputbuffer.h"
@@ -60,6 +63,7 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tensorflow/core/util/tensor_bundle/tensor_bundle.h"
 
 namespace tensorflow {
 namespace data {
@@ -292,6 +296,7 @@ Status DataServiceWorkerImpl::ProcessTaskInternal(const TaskDef& task_def)
   return Status::OK();
 }
 
+
 Status DataServiceWorkerImpl::EnsureTaskInitialized(
     DataServiceWorkerImpl::Task& task) {
   if (task.task_def.worker_address() != worker_address_) {
@@ -304,18 +309,116 @@ Status DataServiceWorkerImpl::EnsureTaskInitialized(
   if (task.initialized) {
     return Status::OK();
   }
+
+
+
   TF_ASSIGN_OR_RETURN(DatasetDef dataset_def, GetDatasetDef(task.task_def));
   TF_ASSIGN_OR_RETURN(std::unique_ptr<standalone::Dataset> dataset,
                       MakeDataset(dataset_def, task.task_def));
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<standalone::Iterator> iterator,
-                      MakeDatasetIterator(*dataset, task.task_def));
-  auto task_iterator = absl::make_unique<StandaloneTaskIterator>(
-      std::move(dataset), std::move(iterator));
-  TF_RETURN_IF_ERROR(TaskRunner::Create(
-      config_, task.task_def, std::move(task_iterator), task.task_runner));
+
+  std::unique_ptr<standalone::Iterator> iterator;
+
+  /*
+  auto env = tensorflow::Env::Default();
+
+  std::vector<const VariantTensorData*> checkpoint_data  {};
+  writer->GetData(&checkpoint_data);
+  string out_dir = strings::StrCat("checkpoints/", task_id, "/");
+  env->CreateDir(out_dir);
+  
+  for (int i=0; i<checkpoint_data.size(); i++) {
+    auto str_data = checkpoint_data.at(i)->SerializeAsString();
+
+    string file_path = strings::StrCat(out_dir, i);
+    std::unique_ptr<WritableFile> ptr;
+    env->NewWritableFile(file_path, &ptr);
+    ptr->Append(str_data);
+    ptr->Close();
+    VLOG(0) << "Wrote " << file_path;
+  }*/
+
+  auto env = tensorflow::Env::Default();
+  string checkpoint_dir = strings::StrCat("checkpoints/", task.task_def.task_id(), "/");
+  if (env->IsDirectory(checkpoint_dir).ok()) {
+    // iterate from 0 to ... until file does not exist, build the vector of varianttensordata s
+    int i = 0;
+    string checkpoint_file = strings::StrCat(checkpoint_dir, i);
+
+    std::vector<const VariantTensorData*> checkpoint_data_ptrs {};
+    std::vector<std::unique_ptr<VariantTensorData>> checkpoint_data {};
+    while (env->FileExists(checkpoint_file).ok()) {
+
+// Status Env::GetFileSize(const string& fname, uint64* file_size) {
+      uint64 fsize;
+      TF_RETURN_IF_ERROR(env->GetFileSize(checkpoint_file, &fsize));
+      std::unique_ptr<RandomAccessFile> readable_file;
+      TF_RETURN_IF_ERROR(env->NewRandomAccessFile(checkpoint_file, &readable_file));
+/*
+  virtual tensorflow::Status Read(uint64 offset, size_t n, StringPiece* result,
+                                  char* scratch) const = 0;
+                                  */
+
+      StringPiece res;
+      std::unique_ptr<char> scratch = std::unique_ptr<char>(new char[fsize]);
+      TF_RETURN_IF_ERROR(readable_file->Read(0, fsize, &res, scratch.get()));
+      
+      std::unique_ptr<VariantTensorData> vtd(new VariantTensorData());
+      if (!vtd->ParseFromString(std::string(res))) {
+        return errors::Internal(strings::StrCat("Failed to parse variant tensor from string... ", i));
+      }
+      checkpoint_data.push_back(std::move(vtd));
+      checkpoint_data_ptrs.push_back(checkpoint_data[checkpoint_data.size()-1].get());
+      // VLOG(0) << checkpoint_data_ptrs.size()-1 <<": " << "DebugString: " << checkpoint_data_ptrs[checkpoint_data_ptrs.size()-1]->DebugString();
+      // VLOG(0) << "Metadata: " << checkpoint_data_ptrs[checkpoint_data_ptrs.size()-1]->metadata_;
+
+      i++;
+      checkpoint_file = strings::StrCat(checkpoint_dir, i);
+    }
+
+    VLOG(0) << "DBK: Have checkpoint for task!! Trying to read that... godspeed";
+  //  auto writer = std::move(checkpoints.at(task.task_def.task_id()));
+  //  checkpoints.erase(task.task_def.task_id());
+    
+  //  writer->GetData(&data);
+  // writer.ReleaseData(&data);
+    VLOG(0) << "read some data from file: " << checkpoint_data_ptrs.size() << ", " << checkpoint_data.size();
+    VariantTensorDataReader reader(checkpoint_data_ptrs);
+    VLOG(0) << "read some data from file: " << checkpoint_data_ptrs.size() << ", " << checkpoint_data.size();
+
+    VLOG(0) << "dataset: " << (dataset==nullptr) << ", task.task_def: "; //<< task.task_def.DebugString();
+    // possibly need to use MOVE here...
+    TF_ASSIGN_OR_RETURN(iterator,
+                        MakeDatasetIteratorFromCheckpoint(*dataset, task.task_def, &reader));
+    auto task_iterator = absl::make_unique<StandaloneTaskIterator>(
+        std::move(dataset), std::move(iterator));
+
+    TF_RETURN_IF_ERROR(TaskRunner::Create(
+        config_, task.task_def, std::move(task_iterator), task.task_runner));
+    task.task_runner->Restore(&reader);
+  } else {
+    VLOG(0) << "DBK: no checkpoint in map. creating iterator as usual...";
+    TF_ASSIGN_OR_RETURN(iterator,
+                        MakeDatasetIterator(*dataset, task.task_def));
+    auto task_iterator = absl::make_unique<StandaloneTaskIterator>(
+        std::move(dataset), std::move(iterator));
+
+    TF_RETURN_IF_ERROR(TaskRunner::Create(
+        config_, task.task_def, std::move(task_iterator), task.task_runner));
+  }
+  
+
 
   task.initialized = true;
-  VLOG(3) << "Created iterator for task " << task.task_def.task_id();
+  VLOG(0) << "Created iterator for task " << task.task_def.task_id();
+    std::thread t([&task,this](){
+        while (true) {
+          VLOG(0) << "checkpoint thread started. sleeping for some time";
+          std::this_thread::sleep_for(std::chrono::seconds(5));
+          VLOG(0) << "save and delete task...";
+          VLOG(0) << "Save and del ret val: " << SaveAndDeleteTask(task);
+        }
+    });
+    t.detach();
   return Status::OK();
 }
 
@@ -357,6 +460,41 @@ DataServiceWorkerImpl::MakeDataset(const DatasetDef& dataset_def,
 }
 
 StatusOr<std::unique_ptr<standalone::Iterator>>
+DataServiceWorkerImpl::MakeDatasetIteratorFromCheckpoint(standalone::Dataset& dataset,
+                                           const TaskDef& task_def,
+                                           IteratorStateReader* reader) const {
+  std::unique_ptr<standalone::Iterator> iterator;
+
+  if (IsNoShard(task_def.processing_mode_def()) ||
+      IsStaticShard(task_def.processing_mode_def())) {
+    TF_RETURN_IF_ERROR(dataset.MakeIteratorFromCheckpoint(reader, &iterator));
+    return iterator;
+  }
+
+  if (IsDynamicShard(task_def.processing_mode_def())) {
+    std::vector<std::unique_ptr<SplitProvider>> split_providers;
+    split_providers.reserve(task_def.num_split_providers());
+    for (int i = 0; i < task_def.num_split_providers(); ++i) {
+      split_providers.push_back(absl::make_unique<DataServiceSplitProvider>(
+          config_.dispatcher_address(), config_.protocol(), task_def.job_id(),
+          i, config_.dispatcher_timeout_ms(), task_def.task_id()));
+    }
+    /*
+
+    IteratorContext* ctx, const string& output_prefix,
+    IteratorStateReader* reader,
+    std::unique_ptr<IteratorBase>* iterator) const {
+    */
+    VLOG(0) << "make iterator from checkpoiint call on dataset";
+    TF_RETURN_IF_ERROR(dataset.MakeIteratorFromCheckpoint(std::move(split_providers), reader, &iterator));
+    return iterator;
+  }
+
+  return errors::InvalidArgument("Unrecognized processing mode: ",
+                                 task_def.processing_mode_def().DebugString());
+}
+
+StatusOr<std::unique_ptr<standalone::Iterator>>
 DataServiceWorkerImpl::MakeDatasetIterator(standalone::Dataset& dataset,
                                            const TaskDef& task_def) const {
   std::unique_ptr<standalone::Iterator> iterator;
@@ -384,6 +522,80 @@ DataServiceWorkerImpl::MakeDatasetIterator(standalone::Dataset& dataset,
                                  task_def.processing_mode_def().DebugString());
 }
 
+
+
+Status DataServiceWorkerImpl::SaveAndDeleteTask(Task& task) TF_LOCKS_EXCLUDED(mu_) { 
+
+  /*
+    std::unique_ptr<WritableFile> dump_file;
+    string file_name = strings::StrCat(gpu_memory_map_file, "_", Name(), ".",
+                                       Env::Default()->NowMicros());
+    Status status = Env::Default()->NewWritableFile(file_name, &dump_file);
+
+  FileOutputBuffer(WritableFile* file, size_t buffer_size);
+Status WriteVariantTensor(const Tensor& val, FileOutputBuffer* out,
+                          size_t* bytes_written, uint32* crc32c) {
+*/
+  auto task_id = task.task_def.task_id();
+  if (!tasks_.count(task_id)) {
+    return errors::InvalidArgument("Passed task which is not running anymore to SaveAndDeleteTask");
+  }
+
+  // VLOG(0) << "Stopping task" << task_id;
+  // StopTask(task);
+
+  VLOG(0) << "Acquiring locks...";
+  mutex_lock l(task.mu);
+  mutex_lock l2(mu_);
+  VLOG(0) << "Acquired locks...";
+
+  // SAVING BUSINESS
+  VLOG(0) << "DBK: entering SaveAndDeleteTask";
+  std::unique_ptr<VariantTensorDataWriter> writer = std::unique_ptr<VariantTensorDataWriter>(new VariantTensorDataWriter());
+  std::unique_ptr<SerializationContext> serialization_ctx;
+  serialization_ctx = absl::make_unique<SerializationContext>(SerializationContext::Params{});
+  VLOG(0) << "DBK: calling iterator_->Save";
+  TF_RETURN_IF_ERROR(task.task_runner->Save(serialization_ctx.get(), writer.get()));
+
+  // VLOG(0) << "DBK: calling get data on writer";
+  // std::vector<std::unique_ptr<VariantTensorData>> data;
+  // writer.ReleaseData(&data);
+
+  //VLOG(0) << "DBK: storing varianttensordata in checkpoints...";
+  // checkpoints[task_id] = std::move(writer);
+  // VLOG(0) << "DBK: checkpoints size " << checkpoints.size();
+
+  auto env = tensorflow::Env::Default();
+
+  std::vector<const VariantTensorData*> checkpoint_data  {};
+  writer->GetData(&checkpoint_data);
+  string out_dir = strings::StrCat("checkpoints/", task_id, "/");
+
+  if (env->IsDirectory(out_dir).ok()) {
+    VLOG(0) << "deleting checkpoint ( there was one before) " << out_dir;
+    int64_t undeleted_dirs, undeleted_files;
+    TF_RETURN_IF_ERROR(env->DeleteRecursively(out_dir, &undeleted_dirs, &undeleted_files)); 
+  }
+  env->RecursivelyCreateDir(out_dir);
+  
+  for (int i=0; i<checkpoint_data.size(); i++) {
+    auto str_data = checkpoint_data.at(i)->SerializeAsString();
+    // VLOG(0) << "DebugString: " << checkpoint_data[i]->DebugString();
+    // VLOG(0) << "Metadata: " << checkpoint_data[i]->metadata_;
+
+    string file_path = strings::StrCat(out_dir, i);
+    std::unique_ptr<WritableFile> ptr;
+    env->NewWritableFile(file_path, &ptr);
+    ptr->Append(str_data);
+    ptr->Close();
+    VLOG(0) << "Wrote " << file_path;
+  }
+
+  // VLOG(0) << "DBK: erasing task";
+  // tasks_.erase(task_id);
+  return Status::OK(); 
+}
+
 void DataServiceWorkerImpl::StopTask(Task& task) TF_LOCKS_EXCLUDED(mu_) {
   {
     mutex_lock l(task.mu);
@@ -409,7 +621,7 @@ Status DataServiceWorkerImpl::GetElement(const GetElementRequest* request,
   if (!response->end_of_sequence() && !response->skip_task()) {
     TF_RETURN_IF_ERROR(
         MoveElementToResponse(std::move(result.components), *response));
-    VLOG(0) << "Producing an element for task " << request->task_id();
+    // VLOG(0) << "Producing an element for task " << request->task_id();
   }
   return Status::OK();
 }

@@ -768,7 +768,7 @@ class IteratorBase {
   virtual Status Save(SerializationContext* ctx, IteratorStateWriter* writer) {
     int64_t start_us = EnvTime::NowMicros();
     TF_RETURN_IF_ERROR(SaveInternal(ctx, writer));
-    VLOG(1) << "Saved " << prefix() << " in "
+    VLOG(0) << "Saved " << prefix() << " in "
             << (EnvTime::NowMicros() - start_us) << "us";
     return Status::OK();
   }

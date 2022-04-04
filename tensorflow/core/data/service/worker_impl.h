@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/core/data/serialization_utils.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/data_transfer.h"
 #include "tensorflow/core/data/service/dispatcher.grpc.pb.h"
@@ -81,7 +82,10 @@ class DataServiceWorkerImpl {
   Status GetWorkerTasks(const GetWorkerTasksRequest* request,
                         GetWorkerTasksResponse* response);
 
+
  private:
+  std::map<int64_t, std::unique_ptr<VariantTensorDataWriter>> checkpoints;
+
   struct Task {
     explicit Task(TaskDef task_def) : task_def(std::move(task_def)) {}
 
@@ -91,6 +95,8 @@ class DataServiceWorkerImpl {
     int64_t outstanding_requests TF_GUARDED_BY(&DataServiceWorkerImpl::mu_) = 0;
     std::unique_ptr<TaskRunner> task_runner;
   };
+
+  Status SaveAndDeleteTask(Task& task) TF_LOCKS_EXCLUDED(mu_);
 
   // Validates the worker config.
   Status ValidateWorkerConfig() const;
@@ -117,6 +123,11 @@ class DataServiceWorkerImpl {
   // Creates an iterator for `dataset`.
   StatusOr<std::unique_ptr<standalone::Iterator>> MakeDatasetIterator(
       standalone::Dataset& dataset, const TaskDef& task_def) const;
+
+  StatusOr<std::unique_ptr<standalone::Iterator>> MakeDatasetIteratorFromCheckpoint(standalone::Dataset& dataset,
+                                           const TaskDef& task_def,
+                                           IteratorStateReader* reader) const;
+
 
   const experimental::WorkerConfig config_;
   // Worker Borg job UID for telemetry. -1 if not supported.

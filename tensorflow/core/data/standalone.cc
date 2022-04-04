@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/data/root_dataset.h"
+#include "tensorflow/core/data/serialization_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/graph/graph.h"
@@ -64,6 +65,20 @@ Status Iterator::GetNext(std::vector<Tensor>* outputs, bool* end_of_input) {
   return iterator_->GetNext(ctx_.get(), outputs, end_of_input);
 }
 
+/*
+Status Iterator::Restore(IteratorContext* ctx, IteratorStateReader* reader) {
+  VLOG(0) << "Trying to Restore iterator using Restore fn";
+  iterator_->Restore(ctx, reader);
+}*/
+
+Status Iterator::Save(SerializationContext* ctx, IteratorStateWriter* writer) {
+  std::unique_ptr<SerializationContext> serialization_ctx;
+  serialization_ctx = absl::make_unique<SerializationContext>(SerializationContext::Params{});
+  TF_RETURN_IF_ERROR(iterator_->Save(serialization_ctx.get(), writer));
+  return Status::OK();
+//return iterator_->Save(ctx, writer);
+}
+
 model::Model::ModelMetrics Iterator::GetMetrics() {
   auto model = ctx_.get()->model();
   //auto model = 
@@ -79,6 +94,31 @@ model::Model::ModelMetrics Iterator::GetMetrics() {
 
 Iterator::Iterator(IteratorBase* iterator, IteratorContext* ctx)
     : iterator_(iterator), ctx_(ctx) {}
+
+Status Dataset::MakeIteratorFromCheckpoint(
+    std::vector<std::unique_ptr<SplitProvider>> split_providers,
+    IteratorStateReader* reader,
+    std::unique_ptr<Iterator>* result) {
+
+  auto ctx = MakeIteratorContext(std::move(split_providers));
+  if (ctx == nullptr) {
+    VLOG(0) << "make interator context returned nullptr!!";
+  }
+  std::unique_ptr<IteratorBase> iterator;
+
+  if (reader == nullptr) {
+    VLOG(0) << "ERROR! reader is nullptr";
+  }
+
+
+  TF_RETURN_IF_ERROR(dataset_->MakeIteratorFromCheckpoint(ctx, "Iterator", reader, &iterator));
+  if (iterator == nullptr) {
+    VLOG(0) << "iterator is nullptr!!";
+  }
+
+  *result = WrapUnique(new Iterator(iterator.release(), ctx));
+  return Status::OK();
+}
 
 Status Dataset::FromGraph(Params params, const GraphDef& graph_def,
                           std::unique_ptr<Dataset>* result) {
@@ -139,12 +179,11 @@ Status Dataset::FromGraph(Params params, const GraphDef& graph_def,
   return Status::OK();
 }  // static
 
-Status Dataset::MakeIterator(
-    std::vector<std::unique_ptr<SplitProvider>> split_providers,
-    std::unique_ptr<Iterator>* result) {
+IteratorContext* Dataset::MakeIteratorContext(std::vector<std::unique_ptr<SplitProvider>> split_providers) {
+  VLOG(0) << "making iterator context start";
   // Create an `IteratorContext`, which bundles together the necessary runtime
   // support to create and get elements from an iterator.
-  std::unique_ptr<IteratorContext> ctx;
+  IteratorContext* ctx;
   // NOTE(mrry): In the current API, an `IteratorContext` is always initially
   // created from an `OpKernelContext*`, so we need to create `OpKernelContext`
   // with a valid subset of parameters.
@@ -159,20 +198,32 @@ Status Dataset::MakeIterator(
             std::back_inserter(params.split_providers));
   params.thread_factory = unbounded_thread_pool_.get_thread_factory();
   params.thread_pool = &unbounded_thread_pool_;
-  ctx = absl::make_unique<IteratorContext>(std::move(params));
+  //TODO: make unique ptr out of this...
+  ctx = new IteratorContext(std::move(params));
+  VLOG(0) << "end making iterator context start";
+  
+  return ctx;
+}
 
+Status Dataset::MakeIterator(
+    std::vector<std::unique_ptr<SplitProvider>> split_providers,
+    std::unique_ptr<Iterator>* result) {
+  VLOG(0) << "calling make iterator...";
+
+  auto ctx = MakeIteratorContext(std::move(split_providers));
   // Create the iterator from the dataset.
   std::unique_ptr<IteratorBase> iterator;
-  TF_RETURN_IF_ERROR(dataset_->MakeIterator(ctx.get(), /*parent=*/nullptr,
+  TF_RETURN_IF_ERROR(dataset_->MakeIterator(ctx, /*parent=*/nullptr,
                                             "Iterator", &iterator));
-  *result = WrapUnique(new Iterator(iterator.release(), ctx.release()));
-
+  *result = WrapUnique(new Iterator(iterator.release(), ctx));
   return Status::OK();
 }
 
 Status Dataset::MakeIterator(std::unique_ptr<Iterator>* result) {
   return MakeIterator(/*split_providers=*/{}, result);
 }
+
+
 
 Status Dataset::MakeSplitProviders(
     std::vector<std::unique_ptr<SplitProvider>>* result) {

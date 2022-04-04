@@ -804,8 +804,8 @@ bool Tensor::RefCountIsOne() const {
   }
 
 #define CASES(TYPE_ENUM, STMTS)                                      \
-  CASES_WITH_DEFAULT(TYPE_ENUM, STMTS, LOG(FATAL) << "Type not set"; \
-                     , LOG(FATAL) << "Unexpected type: " << TYPE_ENUM;)
+  CASES_WITH_DEFAULT(TYPE_ENUM, STMTS, VLOG(0) << "Type not set"; \
+                     , VLOG(0) << "Unexpected type: " << TYPE_ENUM;)
 
 Tensor::Tensor(Allocator* a, DataType type, const TensorShape& shape)
     : shape_(shape), buf_(nullptr) {
@@ -1007,9 +1007,11 @@ bool Tensor::FromProto(Allocator* a, const TensorProto& proto) {
 }
 
 void Tensor::AsProtoField(TensorProto* proto) const {
+
   proto->Clear();
   shape_.AsProto(proto->mutable_tensor_shape());
   proto->set_dtype(dtype());
+  VLOG(0) << " as proto field of " << dtype() << " shape num elements; " << shape_.num_elements();
   if (buf_) {
     CASES(dtype(), ToProtoField<T>(*buf_, shape_.num_elements(), proto));
   }

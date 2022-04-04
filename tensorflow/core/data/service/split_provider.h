@@ -61,6 +61,9 @@ class DataServiceSplitProvider : public SplitProvider {
 
   mutex mu_;
   int64_t repetition_ = 0;
+  int64_t index_ = 0;
+  int64_t target_index_ = 0;
+  bool skip_all_ = false;
   std::unique_ptr<DataServiceDispatcherClient> dispatcher_;
 };
 

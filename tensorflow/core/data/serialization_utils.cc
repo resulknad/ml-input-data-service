@@ -150,14 +150,20 @@ Status WriteElementsToCheckpoint(
 VariantTensorDataReader::VariantTensorDataReader(
     const std::vector<const tensorflow::VariantTensorData*>& data) {
   for (const auto& d : data) {
+    // VLOG(0) << "start reading";
     string metadata;
+    // VLOG(0) << "pre metadata";
     d->get_metadata(&metadata);
+    // VLOG(0) << "got metadata" << metadata;
     auto keys = str_util::Split(metadata, kDelimiter, str_util::SkipEmpty());
+    // VLOG(0) << "split";
     const string name = keys[0];
     data_[name] = d;
     map_[name] = std::map<string, size_t>();
+    // VLOG(0) << "assigned / created the map";
     for (size_t i = 1; i < keys.size(); ++i) {
       map_[name][keys[i]] = i - 1;
+    // VLOG(0) << "assigning to map";
     }
   }
 }
