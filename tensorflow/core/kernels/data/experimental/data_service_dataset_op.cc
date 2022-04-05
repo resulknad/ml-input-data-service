@@ -930,7 +930,6 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
               AdvanceTaskIndex();
             }
           } else {
-            ++index;
             VLOG(0) << "Avoided removing task which is not done..";
           }
         }
