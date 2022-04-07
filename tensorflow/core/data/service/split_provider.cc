@@ -31,6 +31,7 @@ namespace tensorflow {
 namespace data {
 namespace {
   constexpr char kRepetition[] = "repetition";
+  constexpr char kSkipAll[] = "skipall";
   constexpr char kTargetIndex[] = "index";
 }
 Status DataServiceSplitProvider::GetNext(Tensor* split, bool* end_of_splits) {
@@ -84,13 +85,17 @@ Status DataServiceSplitProvider::Save(
   VLOG(0) << "data service split saving, s1:" << s1;
   auto s2 = writer->WriteScalar(full_name(kRepetition), repetition_);
   VLOG(0) << "data service split saving, s1:" << s1 << ", s2:" << s2;
+  if (skip_all_) {
+    TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kSkipAll), skip_all_));
+    VLOG(0) << "data service split saving, s1:" << s1 << ", s2:" << s2;
+  }
   return s2;
 }
 
 Status DataServiceSplitProvider::Restore(
     std::function<std::string(std::string)> full_name,
     IteratorStateReader* reader) {
-  if (!reader->Contains(full_name(kRepetition))) {
+  if (!reader->Contains(full_name(kRepetition)) || reader->Contains(full_name(kSkipAll))) {
     // must have been destroyed when checkpointing...
     // thus we are out of elements -> skip all
     skip_all_ = true; 

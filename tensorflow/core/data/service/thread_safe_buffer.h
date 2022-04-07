@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <deque>
 
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
@@ -32,6 +33,9 @@ class ThreadSafeBuffer final {
   // Creates a buffer with the specified `buffer_size`.
   // REQUIRES: buffer_size > 0
   explicit ThreadSafeBuffer(size_t buffer_size);
+
+  // Gets the next element. Does not block if empty, but returns emoty status.
+  StatusOr<const T*> Peek();
 
   // Gets the next element. Blocks if the buffer is empty. Returns an error if
   // a non-OK status was pushed or the buffer has been cancelled.
@@ -64,6 +68,21 @@ ThreadSafeBuffer<T>::ThreadSafeBuffer(size_t buffer_size)
   DCHECK_GT(buffer_size, 0)
       << "ThreadSafeBuffer must have a postive buffer size. Got " << buffer_size
       << ".";
+}
+
+template <class T>
+StatusOr<const T*> ThreadSafeBuffer<T>::Peek() {
+  mutex_lock l(mu_);
+  if (results_.empty()) {
+    return errors::Unavailable("Buffer is empty");
+  }
+  
+  StatusOr<T>* front_el = &results_.front();
+  if (!front_el->ok()) {
+    return errors::Unavailable("Buffer has error status. Use pop to retrieve.");
+  }
+
+  return StatusOr<const T*> (&front_el->ValueOrDie());
 }
 
 template <class T>

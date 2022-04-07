@@ -1011,7 +1011,7 @@ void Tensor::AsProtoField(TensorProto* proto) const {
   proto->Clear();
   shape_.AsProto(proto->mutable_tensor_shape());
   proto->set_dtype(dtype());
-  VLOG(0) << " as proto field of " << dtype() << " shape num elements; " << shape_.num_elements();
+//  VLOG(0) << " as proto field of " << dtype() << " shape num elements; " << shape_.num_elements();
   if (buf_) {
     CASES(dtype(), ToProtoField<T>(*buf_, shape_.num_elements(), proto));
   }

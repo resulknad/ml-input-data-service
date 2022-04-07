@@ -84,7 +84,6 @@ class DataServiceWorkerImpl {
 
 
  private:
-  std::map<int64_t, std::unique_ptr<VariantTensorDataWriter>> checkpoints;
 
   struct Task {
     explicit Task(TaskDef task_def) : task_def(std::move(task_def)) {}
@@ -94,9 +93,22 @@ class DataServiceWorkerImpl {
     bool initialized TF_GUARDED_BY(mu) = false;
     int64_t outstanding_requests TF_GUARDED_BY(&DataServiceWorkerImpl::mu_) = 0;
     std::unique_ptr<TaskRunner> task_runner;
+
+
+    // A thread for doing the regular checkpointing
+    std::unique_ptr<Thread> task_checkpointing_thread;
+    condition_variable task_checkpointing_cv_ TF_GUARDED_BY(mu_);
+    bool cancelled = false;
   };
 
-  Status SaveAndDeleteTask(Task& task) TF_LOCKS_EXCLUDED(mu_);
+  Status SaveCheckpointToDisk(Task& task) TF_LOCKS_EXCLUDED(mu_);
+
+Status GetCheckpointFromDisk(
+    DataServiceWorkerImpl::Task& task,
+    std::shared_ptr<VariantTensorDataReader>* reader,
+    std::vector<std::unique_ptr<VariantTensorData>>* checkpoint_data_scratch,
+    bool* checkpoint_available)
+    TF_EXCLUSIVE_LOCKS_REQUIRED(task.mu);
 
   // Validates the worker config.
   Status ValidateWorkerConfig() const;
@@ -109,6 +121,8 @@ class DataServiceWorkerImpl {
   // Stops a task, cancelling the task's outstanding requests and waiting for
   // them to finish.
   void StopTask(Task& task) TF_LOCKS_EXCLUDED(mu_);
+  // A thread for regularily checkpointing some task
+  void TaskCheckpointingThread(Task& task) TF_LOCKS_EXCLUDED(mu_);
   // A thread for notifying the dispatcher when tasks complete.
   void TaskCompletionThread() TF_LOCKS_EXCLUDED(mu_);
   // A thread for doing periodic heartbeats to the dispatcher.
@@ -128,6 +142,7 @@ class DataServiceWorkerImpl {
                                            const TaskDef& task_def,
                                            IteratorStateReader* reader) const;
 
+  int64_t UpdateMinElementIndex(int64_t task_id, int64_t element_index);
 
   const experimental::WorkerConfig config_;
   // Worker Borg job UID for telemetry. -1 if not supported.
@@ -140,6 +155,9 @@ class DataServiceWorkerImpl {
 
   mutex mu_;
   condition_variable cv_;
+  // The minimum element index a client has requested per task
+  mutex element_index_for_task_mu_;
+  absl::flat_hash_map<int64_t, int64_t> element_index_for_task_ TF_GUARDED_BY(element_index_for_task_mu_);
   // Information about tasks, keyed by task ids. The tasks are updated based on
   // the heartbeat responses from the dispatcher.
   absl::flat_hash_map<int64_t, std::shared_ptr<Task>> tasks_ TF_GUARDED_BY(mu_);
@@ -156,9 +174,11 @@ class DataServiceWorkerImpl {
   // A thread for notifying the dispatcher when tasks complete.
   std::unique_ptr<Thread> task_completion_thread_;
   condition_variable task_completion_cv_ TF_GUARDED_BY(mu_);
+
   // A thread for performing regular heartbeats to the dispatcher.
   std::unique_ptr<Thread> heartbeat_thread_;
   condition_variable heartbeat_cv_ TF_GUARDED_BY(mu_);
+
   int64_t outstanding_requests_ TF_GUARDED_BY(mu_) = 0;
   CancellationManager cancellation_manager_;
 
@@ -194,6 +214,7 @@ class LocalWorkers {
   static mutex mu_;
   static AddressToWorkerMap* local_workers_ TF_GUARDED_BY(mu_);
 };
+
 
 }  // namespace data
 }  // namespace tensorflow

@@ -1298,7 +1298,9 @@ class DatasetIterator : public DatasetBaseIterator {
 
   explicit DatasetIterator(const Params& params)
       : DatasetBaseIterator({params.dataset, params.prefix}),
-        typed_dataset_(params.dataset) {}
+        typed_dataset_(params.dataset) {
+          VLOG(0) << params.prefix;
+        }
 
   // The dataset from which this iterator was created.
   const DatasetType* dataset() const final { return typed_dataset_; }

@@ -29,6 +29,9 @@ class TensorSliceDatasetOp : public DatasetOpKernel {
   static constexpr const char* const kIsFiles = "is_files";
 
   explicit TensorSliceDatasetOp(OpKernelConstruction* ctx);
+  ~TensorSliceDatasetOp() {
+    VLOG(0) << "Destructing TensorSliceDatasetOp";
+  };
 
  protected:
   void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override;

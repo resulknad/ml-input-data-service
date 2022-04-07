@@ -97,6 +97,7 @@ class TaskRunner {
 
   virtual Status Save(SerializationContext* ctx, IteratorStateWriter* writer) = 0;
   virtual Status Restore(VariantTensorDataReader* reader) = 0;
+  virtual int64_t GetNextElementIndex() = 0;
 
   // EASL - Gets a metrics dump from the underlying TaskIterator
   virtual model::Model::ModelMetrics GetMetrics() = 0;
@@ -115,6 +116,7 @@ class FirstComeFirstServedTaskRunner : public TaskRunner {
   void Cancel() override;
   Status Save(SerializationContext* ctx, IteratorStateWriter* writer) override;
   Status Restore(VariantTensorDataReader* reader) override;
+  int64_t GetNextElementIndex() override;
 
   model::Model::ModelMetrics GetMetrics() override;
 
@@ -164,6 +166,7 @@ class PrefetchThread {
   // signals to wait indefinitely.
   Status FillBuffer(int64_t wait_us,
                     std::vector<std::unique_ptr<Element>>& out);
+
   // Returns the status for any failures encountered by the prefetch thread.
   Status GetStatus();
 
@@ -216,6 +219,7 @@ class RoundRobinTaskRunner : public TaskRunner {
 
   Status Save(SerializationContext* ctx, IteratorStateWriter* writer) override;
   Status Restore(VariantTensorDataReader* reader) override;
+  int64_t GetNextElementIndex() override;
   model::Model::ModelMetrics GetMetrics() override;
 
  private:

@@ -401,6 +401,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
           AddToShuffleBuffer(ctx, std::move(input_element));
           continue;
         }
+        VLOG(0) << "resetting input_impl_";
         input_impl_.reset();
         // Reached end of input_impl_.
         if (ctx->split_providers().empty() && !data_produced_ &&

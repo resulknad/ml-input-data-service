@@ -137,6 +137,13 @@ FirstComeFirstServedTaskRunner::FirstComeFirstServedTaskRunner(
 }
 
 
+int64_t FirstComeFirstServedTaskRunner::GetNextElementIndex() {
+  auto buffer_el = buffer_.Peek();
+  if (buffer_el.ok()) {
+    return std::min(buffer_el.ValueOrDie()->element_index, element_index_);
+  }
+  return element_index_;
+}
 
 Status FirstComeFirstServedTaskRunner::Save(SerializationContext* ctx, IteratorStateWriter* writer)
     TF_LOCKS_EXCLUDED(mu_) {
@@ -145,13 +152,13 @@ Status FirstComeFirstServedTaskRunner::Save(SerializationContext* ctx, IteratorS
   auto status = iterator_->Save(ctx, writer);
   VLOG(0) << "DBK: done with iterator saving";
 
-  TF_RETURN_IF_ERROR(writer->WriteScalar(FullName("TaskRunner", "firstcomefirstserve.element_index"), this->element_index_));
+  TF_RETURN_IF_ERROR(writer->WriteScalar(FullName("TaskRunner", "FirstComeFirstServed.element_index"), this->element_index_));
   VLOG(0) << "DBK: saving element index";
   return status;
 }
 
 Status FirstComeFirstServedTaskRunner::Restore(VariantTensorDataReader* reader) {
-  auto status = reader->ReadScalar(FullName("TaskRunner", "firstcomefirstserve.element_index"), &this->element_index_);
+  auto status = reader->ReadScalar(FullName("TaskRunner", "FirstComeFirstServed.element_index"), &this->element_index_);
   VLOG(0) << "restoring element index in FCSFS: " << element_index_;
 }
 
@@ -187,6 +194,7 @@ Status FirstComeFirstServedTaskRunner::GetNext(const GetElementRequest& req,
 Status FirstComeFirstServedTaskRunner::PrefetchFn() {
   while (true) {
     auto status = (buffer_.Push(GetNextFromInputIterator()));
+    
     if (!status.ok()) {
       // the last element doesn't count since we did not manage to enqueue it...
       // element_index_--;
@@ -232,7 +240,7 @@ FirstComeFirstServedTaskRunner::GetNextFromInputIterator()
 }
 
 void FirstComeFirstServedTaskRunner::Cancel() {
-  VLOG(2) << "Cancelling tf.data service FCFS task.";
+  VLOG(0) << "Cancelling tf.data service FCFS task.";
   buffer_.Cancel(errors::Cancelled("tf.data service FCFS task is cancelled."));
 }
 
@@ -249,6 +257,12 @@ RoundRobinTaskRunner::RoundRobinTaskRunner(
       prefetch_thread_(std::move(iterator), num_consumers_) {
   VLOG(1) << "Creating task runner for distributing data round-robin to "
           << num_consumers << " consumers";
+}
+
+int64_t RoundRobinTaskRunner::GetNextElementIndex() {
+  VLOG(0) << "RoundRobinTaskRunner does not implement GetNextElementIndex. Terminating!";
+  std::terminate();
+  return 0;
 }
 
 Status RoundRobinTaskRunner::Save(SerializationContext* ctx, IteratorStateWriter* writer) {

@@ -1349,6 +1349,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 //        mutex_lock l(mu_);
         req.set_task_id(task.info.task_id());
         req.set_skipped_previous_round(task.skipped_previous_round);
+        req.set_element_index(task.next_index);
         absl::optional<int64_t> round_index;
         if (StrictRoundRobin()) {
           round_index = task.round;

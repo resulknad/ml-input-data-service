@@ -72,9 +72,8 @@ Status Iterator::Restore(IteratorContext* ctx, IteratorStateReader* reader) {
 }*/
 
 Status Iterator::Save(SerializationContext* ctx, IteratorStateWriter* writer) {
-  std::unique_ptr<SerializationContext> serialization_ctx;
-  serialization_ctx = absl::make_unique<SerializationContext>(SerializationContext::Params{});
-  TF_RETURN_IF_ERROR(iterator_->Save(serialization_ctx.get(), writer));
+  VLOG(0) << "Save size split providers: " << ctx_->split_providers().size();
+  TF_RETURN_IF_ERROR(iterator_->Save(ctx, writer));
   return Status::OK();
 //return iterator_->Save(ctx, writer);
 }

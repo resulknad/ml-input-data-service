@@ -28,6 +28,8 @@ message GetElementRequest {
   bool skipped_previous_round = 4;
   // Whether to skip the round if data isn't ready fast enough.
   bool allow_skip = 5;
+  // The index of the element the client is looking for
+  int64 element_index = 6;
 }
 
 message GetElementResponse {

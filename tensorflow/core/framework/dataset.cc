@@ -873,7 +873,7 @@ DatasetBaseIterator::DatasetBaseIterator(const BaseParams& params)
 }
 
 DatasetBaseIterator::~DatasetBaseIterator() {
-  VLOG(2) << prefix() << " destructor";
+  VLOG(0) << prefix() << " destructor";
   params_.dataset->Unref();
 }
 
