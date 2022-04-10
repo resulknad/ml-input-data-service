@@ -223,7 +223,7 @@ class DataServiceDispatcherImpl {
       WorkerHeartbeatResponse* response);
   // EASL - Reassigns free workers to existing jobs that have less tasks than
   // required by the elasticity policy
-  Status ReassignFreeWorkersAndCreateTasks() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  Status ReassignFreeWorkersAndCreateTasks() TF_LOCKS_EXCLUDED(mu_);
   // Acquires a job client id to read from the given job and sets
   // `job_client_id`.
   Status AcquireJobClientId(

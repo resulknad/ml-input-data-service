@@ -367,33 +367,37 @@ Status DataServiceDispatcherImpl::FindNewTasks(
   return Status::OK();
 }
 
-Status DataServiceDispatcherImpl::ReassignFreeWorkersAndCreateTasks() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+Status DataServiceDispatcherImpl::ReassignFreeWorkersAndCreateTasks() TF_LOCKS_EXCLUDED(mu_) {
   std::vector<std::shared_ptr<const Task>> tasks;
   // Get list of free workers
-  std::vector<std::shared_ptr<const DispatcherState::Worker>>old_avail_workers =
-      state_.ListAvailableWorkers();
-  // Reassign workers
-  Update reassign_update;
-  reassign_update.mutable_reassign_free_workers()->set_set(true);
-  TF_RETURN_IF_ERROR(state_.Apply(reassign_update));
-  // Create tasks if needed.
-  for (const auto& worker : old_avail_workers) {
-    // Create list of already assigned tasks
-    std::vector<std::shared_ptr<const Task>> tasks_for_worker;
-    Status s = state_.TasksForWorker(worker->address, tasks_for_worker);
-    absl::flat_hash_set<int64> assigned_job_ids;
-    if (!errors::IsNotFound(s)) {
-      for (const auto& task : tasks_for_worker) {
-        assigned_job_ids.insert(task->job->job_id);
+  {
+    mutex_lock l(mu_);
+
+    std::vector<std::shared_ptr<const DispatcherState::Worker>>old_avail_workers =
+        state_.ListAvailableWorkers();
+    // Reassign workers
+    Update reassign_update;
+    reassign_update.mutable_reassign_free_workers()->set_set(true);
+    TF_RETURN_IF_ERROR(state_.Apply(reassign_update));
+    // Create tasks if needed.
+    for (const auto& worker : old_avail_workers) {
+      // Create list of already assigned tasks
+      std::vector<std::shared_ptr<const Task>> tasks_for_worker;
+      Status s = state_.TasksForWorker(worker->address, tasks_for_worker);
+      absl::flat_hash_set<int64> assigned_job_ids;
+      if (!errors::IsNotFound(s)) {
+        for (const auto& task : tasks_for_worker) {
+          assigned_job_ids.insert(task->job->job_id);
+        }
       }
-    }
-    // Create task if worker does not have a task for a job it should have one for
-    for (const auto& new_job : state_.ListJobsForWorker(worker->address)){
-      if (!assigned_job_ids.contains(new_job->job_id) && !new_job->finished){
-        // CreateTask
-        std::shared_ptr<const Task> task;
-        TF_RETURN_IF_ERROR(CreateTask(new_job, worker->address, task));
-        tasks.push_back(task);
+      // Create task if worker does not have a task for a job it should have one for
+      for (const auto& new_job : state_.ListJobsForWorker(worker->address)){
+        if (!assigned_job_ids.contains(new_job->job_id) && !new_job->finished){
+          // CreateTask
+          std::shared_ptr<const Task> task;
+          TF_RETURN_IF_ERROR(CreateTask(new_job, worker->address, task));
+          tasks.push_back(task);
+        }
       }
     }
   }
@@ -535,55 +539,58 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
 Status DataServiceDispatcherImpl::WorkerUpdate(
     const WorkerUpdateRequest* request, WorkerUpdateResponse* response) {
   TF_RETURN_IF_ERROR(CheckStarted());
-  mutex_lock l(mu_);
   bool do_reassign_free_workers = false;
-  for (auto& update : request->updates()) {
-    int64 task_id = update.task_id();
-    std::shared_ptr<const Task> task;
-    TF_RETURN_IF_ERROR(state_.TaskFromId(task_id, task));
-    if (update.completed()) {
-      if (task->finished) {
-        VLOG(1) << "Received completion update for already-finished task "
-                << task->task_id << " on worker " << task->worker_address;
-        continue;
-      }
-      Update update;
-      update.mutable_finish_task()->set_task_id(task_id);
-      TF_RETURN_IF_ERROR(Apply(update));
+  {
+    mutex_lock l(mu_);
 
-      // EASL - Set dataset as cached if this was a caching job and the job is finished.
-      std::shared_ptr<Job> job = task->job;
-      if(job->job_type == "PUT" && job->finished) {
-        std::shared_ptr<const Dataset> dataset;
-        TF_RETURN_IF_ERROR(state_.DatasetFromId(task->job->dataset_id, dataset));
-        cache_state_.SetDatasetCached(dataset->fingerprint);
-
-        VLOG(0) << "Dataset with fingerprint " << dataset->fingerprint
-                << "has been added to cache.";
-      } else if(job->job_type == "PUT_SOURCE" && job->finished){
-        std::shared_ptr<const Dataset> dataset;
-        TF_RETURN_IF_ERROR(state_.DatasetFromId(task->job->dataset_id, dataset));
-        cache_state_.SetDatasetSourceCached(dataset->fingerprint);
-
-        VLOG(0) << "Dataset with fingerprint " << dataset->fingerprint
-                << "has been added to source cache.";
-      }
-      // Update metadata store directly, quicker than waiting for the GCOldJobs to run.
-      if(job->finished){
-        do_reassign_free_workers = true;
-        TF_RETURN_IF_ERROR(metadata_store_.UpdateFingerprintNameKeyJobMetrics(
-            job->job_id));
-        if(log_dumps_enabled_){
-          TF_RETURN_IF_ERROR(metadata_store_.DumpJobMetricsToFile(job->job_id, config_.log_dir()));
-          easl::TerminateJobMetricsAppendDumps(job->job_id, config_.log_dir());
+    for (auto& update : request->updates()) {
+      int64 task_id = update.task_id();
+      std::shared_ptr<const Task> task;
+      TF_RETURN_IF_ERROR(state_.TaskFromId(task_id, task));
+      if (update.completed()) {
+        if (task->finished) {
+          VLOG(1) << "Received completion update for already-finished task "
+                  << task->task_id << " on worker " << task->worker_address;
+          continue;
         }
-        TF_RETURN_IF_ERROR(metadata_store_.RemoveJob(job->job_id));
+        Update update;
+        update.mutable_finish_task()->set_task_id(task_id);
+        TF_RETURN_IF_ERROR(Apply(update));
 
+        // EASL - Set dataset as cached if this was a caching job and the job is finished.
+        std::shared_ptr<Job> job = task->job;
+        if(job->job_type == "PUT" && job->finished) {
+          std::shared_ptr<const Dataset> dataset;
+          TF_RETURN_IF_ERROR(state_.DatasetFromId(task->job->dataset_id, dataset));
+          cache_state_.SetDatasetCached(dataset->fingerprint);
+
+          VLOG(0) << "Dataset with fingerprint " << dataset->fingerprint
+                  << "has been added to cache.";
+        } else if(job->job_type == "PUT_SOURCE" && job->finished){
+          std::shared_ptr<const Dataset> dataset;
+          TF_RETURN_IF_ERROR(state_.DatasetFromId(task->job->dataset_id, dataset));
+          cache_state_.SetDatasetSourceCached(dataset->fingerprint);
+
+          VLOG(0) << "Dataset with fingerprint " << dataset->fingerprint
+                  << "has been added to source cache.";
+        }
+        // Update metadata store directly, quicker than waiting for the GCOldJobs to run.
+        if(job->finished){
+          do_reassign_free_workers = true;
+          TF_RETURN_IF_ERROR(metadata_store_.UpdateFingerprintNameKeyJobMetrics(
+              job->job_id));
+          if(log_dumps_enabled_){
+            TF_RETURN_IF_ERROR(metadata_store_.DumpJobMetricsToFile(job->job_id, config_.log_dir()));
+            easl::TerminateJobMetricsAppendDumps(job->job_id, config_.log_dir());
+          }
+          TF_RETURN_IF_ERROR(metadata_store_.RemoveJob(job->job_id));
+
+        }
+
+        // TODO revert to 3
+        VLOG(0) << "Task " << task_id << " from job " << task->job->job_id
+                << " completed";
       }
-
-      // TODO revert to 3
-      VLOG(0) << "Task " << task_id << " from job " << task->job->job_id
-              << " completed";
     }
   }
   if (do_reassign_free_workers) {
@@ -631,6 +638,15 @@ Status DataServiceDispatcherImpl::GetSplit(const GetSplitRequest* request,
     VLOG(0) << "Returning end_of_splits since current repetition "
             << current_repetition
             << " is greater than the requested repetition " << repetition;
+    return Status::OK();
+  }
+
+  // EASL - Check if this is not a "early ended" task
+  bool is_early_ended;
+  TF_RETURN_IF_ERROR(state_.IsEarlyEndedTask(job_id, task_id, is_early_ended));
+  if (is_early_ended) {
+    VLOG(0) << "EASL - Split provider returning eos for early terminated task " << task_id;
+    response->set_end_of_splits(true);
     return Status::OK();
   }
 
@@ -926,26 +942,28 @@ Status DataServiceDispatcherImpl::ReleaseJobClient(
     const ReleaseJobClientRequest* request,
     ReleaseJobClientResponse* response) {
   TF_RETURN_IF_ERROR(CheckStarted());
-  mutex_lock l(mu_);
-  int64_t job_client_id = request->job_client_id();
   std::shared_ptr<const Job> job;
-  // TODO(DanGraur): Changed the scope of the lock from easl_2.7
-  TF_RETURN_IF_ERROR(state_.JobForJobClientId(job_client_id, job));
-  Update update;
-  ReleaseJobClientUpdate* release_job_client =
-      update.mutable_release_job_client();
-  release_job_client->set_job_client_id(job_client_id);
-  release_job_client->set_time_micros(env_->NowMicros());
-  TF_RETURN_IF_ERROR(Apply(update));
+  {
+    mutex_lock l(mu_);
+    int64_t job_client_id = request->job_client_id();
 
-  if (job->num_clients <=0) {
+    // TODO(DanGraur): Changed the scope of the lock from easl_2.7
+    TF_RETURN_IF_ERROR(state_.JobForJobClientId(job_client_id, job));
     Update update;
-    update.mutable_garbage_collect_job()->set_job_id(job->job_id);
-    TF_RETURN_IF_ERROR(state_.Apply(update));
-    VLOG(0) << "EASL - (ReleaseJobClient): Overwrite job_gc_timeout_ms and garbage collect job "
-            << job->DebugString();
-  }
+    ReleaseJobClientUpdate* release_job_client =
+        update.mutable_release_job_client();
+    release_job_client->set_job_client_id(job_client_id);
+    release_job_client->set_time_micros(env_->NowMicros());
+    TF_RETURN_IF_ERROR(Apply(update));
 
+    if (job->num_clients <=0) {
+      Update update;
+      update.mutable_garbage_collect_job()->set_job_id(job->job_id);
+      TF_RETURN_IF_ERROR(state_.Apply(update));
+      VLOG(0) << "EASL - (ReleaseJobClient): Overwrite job_gc_timeout_ms and garbage collect job "
+              << job->DebugString();
+    }
+  }
   if (job->num_clients <= 0) {
     TF_RETURN_IF_ERROR(ReassignFreeWorkersAndCreateTasks());
   }
@@ -1422,10 +1440,12 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
   if (!job->pending_tasks.empty()) {
     response->set_block_round(job->pending_tasks.front().target_round);
   }
-
+  
   // TODO(DanGraur): Could the deadlock stem from here?
   if (do_reassign_workers) {
+    l.mutex()->unlock();
     ReassignFreeWorkersAndCreateTasks();
+    l.mutex()->lock();
   }
 
   std::vector<std::shared_ptr<const Task>> tasks;
@@ -1540,29 +1560,31 @@ Status DataServiceDispatcherImpl::Apply(const Update& update)
 void DataServiceDispatcherImpl::JobGcThread() {
   int64_t next_check_micros = 0;
   while (true) {
-    mutex_lock l(mu_);
-    while (!cancelled_ && env_->NowMicros() < next_check_micros) {
-      int64 remaining_micros = next_check_micros - env_->NowMicros();
-      job_gc_thread_cv_.wait_for(l,
-                                 std::chrono::microseconds(remaining_micros));
-    }
-    if (cancelled_) {
-      return;
-    }
     {
-      Status s = ReleaseMissingClients();
-      if (!s.ok()) {
-        LOG(WARNING) << "Error releasing missing clients: " << s;
+      mutex_lock l(mu_);
+      while (!cancelled_ && env_->NowMicros() < next_check_micros) {
+        int64 remaining_micros = next_check_micros - env_->NowMicros();
+        job_gc_thread_cv_.wait_for(l,
+                                   std::chrono::microseconds(remaining_micros));
       }
-    }
-    {
-      Status s = GcOldJobs();
-      if (!s.ok()) {
-        LOG(WARNING) << "Error garbage collecting old jobs: " << s;
+      if (cancelled_) {
+        return;
       }
+      {
+        Status s = ReleaseMissingClients();
+        if (!s.ok()) {
+          LOG(WARNING) << "Error releasing missing clients: " << s;
+        }
+      }
+      {
+        Status s = GcOldJobs();
+        if (!s.ok()) {
+          LOG(WARNING) << "Error garbage collecting old jobs: " << s;
+        }
+      }
+        next_check_micros =
+            env_->NowMicros() + (config_.job_gc_check_interval_ms() * 1000);
     }
-      next_check_micros =
-          env_->NowMicros() + (config_.job_gc_check_interval_ms() * 1000);
     Status s = ReassignFreeWorkersAndCreateTasks();
     if (!s.ok()) {
       LOG(WARNING) << "Error reassigning free workers in gc thread: " << s;
