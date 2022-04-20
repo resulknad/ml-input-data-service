@@ -402,7 +402,7 @@ Status DataServiceDispatcherImpl::ReassignFreeWorkersAndCreateTasks() TF_LOCKS_E
     }
   }
   TF_RETURN_IF_ERROR(AssignTasks(tasks));
-  VLOG(3) << "EASL - Reassigned free workers and created " << tasks.size() << " new tasks";
+  VLOG(0) << "EASL - Reassigned free workers and created " << tasks.size() << " new tasks";
 
   return Status::OK();
 };
@@ -1457,6 +1457,8 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
 
   std::vector<std::shared_ptr<const Task>> tasks;
   TF_RETURN_IF_ERROR(state_.TasksForJob(job->job_id, tasks));
+  VLOG(0) << "The number of tasks for this job (" << job->job_id << ") is: "
+    << tasks.size();
   for (const auto& task : tasks) {
     TaskInfo* task_info = response->mutable_task_info()->Add();
     task_info->set_worker_address(task->worker_address);
