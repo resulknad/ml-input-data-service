@@ -138,6 +138,7 @@ DataServiceWorkerImpl::DataServiceWorkerImpl(const WorkerConfig& config)
 
 DataServiceWorkerImpl::~DataServiceWorkerImpl() {
   mutex_lock l(mu_);
+  DBK_TRACE(" END");
   cancelled_ = true;
   task_completion_cv_.notify_one();
   heartbeat_cv_.notify_one();
@@ -145,6 +146,7 @@ DataServiceWorkerImpl::~DataServiceWorkerImpl() {
 
 Status DataServiceWorkerImpl::Start(const std::string& worker_address,
                                     const std::string& transfer_address) {
+  DBK_TRACE(" START");
   VLOG(0) << "Starting tf.data service worker at address " << worker_address;
   TF_RETURN_IF_ERROR(ValidateWorkerConfig());
   worker_address_ = worker_address;
@@ -294,7 +296,7 @@ Status DataServiceWorkerImpl::GetElementResult(
     }
     task = it->second.get();
     
-    UpdateMinElementIndex(request->task_id(), request->element_index());
+    UpdateMostRecentElementIndex(request->task_id(), request->element_index());
     TF_RETURN_IF_ERROR(EnsureTaskInitialized(*task));
     
     auto next_available_element = task->task_runner->GetNextElementIndex();
@@ -306,7 +308,11 @@ Status DataServiceWorkerImpl::GetElementResult(
       // 1. the element we can produce is larger than the one we want
       // 2. if we have some checkpoint available with which we could prevent unnecessarily recomputing some of the elements
       if (request->element_index() < task->task_runner->GetNextElementIndex()
-          || (avail_checkpoint.ok() && avail_checkpoint.ValueOrDie().second > next_available_element)) {
+          || (avail_checkpoint.ok() && avail_checkpoint.ValueOrDie().second > next_available_element 
+            //DBK: the +2 is a "fix" to prevent it recovering from the checkpoint it just made
+            // until the checkpointing has been fixed not to "jump" one elmeent due to locking
+            // want next checkpoint to be "worth it..."
+            + 2)) {
         VLOG(0) << " would like to stop task at this point...";
         VLOG(0) << " next avail element from task runner is " << next_available_element << " while checkpoint val: " << avail_checkpoint.ValueOrDie().second;
         stop_task = true;
@@ -342,6 +348,7 @@ Status DataServiceWorkerImpl::GetElementResult(
     pending_completed_tasks_.insert(request->task_id());
     task_completion_cv_.notify_one();
   }
+  heartbeat_cv_.notify_one();
   return Status::OK();
 }
 
@@ -492,8 +499,8 @@ Status DataServiceWorkerImpl::EnsureTaskInitialized(
       VLOG(0) << "DBK: Have checkpoint for task!! Trying to read that... godspeed";
       VLOG(0) << "dataset: " << (dataset==nullptr) << ", task.task_def: "; //<< task.task_def.DebugString();
       // possibly need to use MOVE here...
-      TF_ASSIGN_OR_RETURN(iterator,
-                          MakeDatasetIteratorFromCheckpoint(*dataset, task.task_def, reader.get()));
+      TF_ASSIGN_OR_RETURN(iterator, MakeDatasetIteratorFromCheckpoint(*dataset, task.task_def, reader.get()));
+
       task_iterator = absl::make_unique<StandaloneTaskIterator>(
           std::move(dataset), std::move(iterator));
     
@@ -501,6 +508,7 @@ Status DataServiceWorkerImpl::EnsureTaskInitialized(
       VLOG(0) << "DBK: no checkpoint in map. creating iterator as usual...";
       TF_ASSIGN_OR_RETURN(iterator,
                           MakeDatasetIterator(*dataset, task.task_def));
+      iterator->SetTaskID(task.task_def.task_id());
       task_iterator = absl::make_unique<StandaloneTaskIterator>(
           std::move(dataset), std::move(iterator));
     }
@@ -515,9 +523,9 @@ Status DataServiceWorkerImpl::EnsureTaskInitialized(
   }
 
   // if checkpoint is already available, there is no need to checkpoint again at this point
-  if (!checkpoint_available) {
+/*  if (!checkpoint_available) {
     VLOG(0) << "SaveCheckpointToDisk ret val: " << SaveCheckpointToDisk(task);
-  }
+  }*/
   // make initial checkpoint
   // TODO: start prefetch thread only after checkpoint was done... otherwise we do not get it at element index 0...
   {
@@ -532,23 +540,59 @@ Status DataServiceWorkerImpl::EnsureTaskInitialized(
 }
 
 void DataServiceWorkerImpl::TaskCheckpointingThread(Task& task) TF_LOCKS_EXCLUDED(mu_) {
+  auto checkpoint_freq_str = getenv("DBK_CHECKPOINT_FREQ_MS");
+  int64_t checkpoint_freq_ms = 1000;
+  if (checkpoint_freq_str != nullptr) {
+    checkpoint_freq_ms = strtoul(checkpoint_freq_str, NULL, 10);
+     VLOG(0) << "read checkpoint freq val of " << checkpoint_freq_ms << " from env";
+  } else {
+     VLOG(0) << "no checkpoint freq val read, used default";
+  }
+  // make a checkpoint right away...
+  int64_t next_checkpoint = Env::Default()->NowMicros();
   VLOG(0) << "Starting chkpting thread for " << task.task_def.task_id();
+
   while (true) {
     {
       {
         mutex_lock l(task.mu); 
         // wait for either timer or cancelled
-        task.task_checkpointing_cv_.wait_for(l, std::chrono::milliseconds(1000));
+        int64_t wait_for = next_checkpoint - (int64_t) Env::Default()->NowMicros();
+        if (wait_for < 0) {
+          DBK_TRACE(" CHECKPOINT_FREQ_TOO_HIGH");
+          VLOG(0) << "(DBK) Can't keep up, checkpointing frequency too high." << wait_for;
+          wait_for = 0;
+        }
+
+        while (wait_for > 0 || !task.initialized) {
+          task.task_checkpointing_cv_.wait_for(l, std::chrono::microseconds(wait_for));
+          wait_for = next_checkpoint - (int64_t) Env::Default()->NowMicros();
+          if (!task.initialized) {
+            VLOG(0) << "task not initialized...";
+          }
+          if (task.cancelled) {
+            VLOG(0) << "Task " << task.task_def.task_id() << " checkpointing thread cancelled";
+            return;
+          }
+        } 
         if (task.cancelled) {
           VLOG(0) << "Task " << task.task_def.task_id() << " checkpointing thread cancelled";
           return;
         }
+
+
+
+        next_checkpoint = Env::Default()->NowMicros() + checkpoint_freq_ms*1000; 
       }
-      VLOG(0) << "Starting SaveAndDelete";
-      VLOG(0) << "SaveCheckpointToDisk ret val: " << SaveCheckpointToDisk(task);
+
+      DBK_TRACE(" CHECKPOINT_START");
+      auto s = SaveCheckpointToDisk(task);
+      VLOG(0) << "SaveCheckpointToDisk ret val: " << s;
+      DBK_TRACE(" CHECKPOINT_END");
     }
   }
 }
+
 StatusOr<DatasetDef> DataServiceWorkerImpl::GetDatasetDef(
     const TaskDef& task_def) const {
   switch (task_def.dataset_case()) {
@@ -594,7 +638,7 @@ DataServiceWorkerImpl::MakeDatasetIteratorFromCheckpoint(standalone::Dataset& da
 
   if (IsNoShard(task_def.processing_mode_def()) ||
       IsStaticShard(task_def.processing_mode_def())) {
-    TF_RETURN_IF_ERROR(dataset.MakeIteratorFromCheckpoint(reader, &iterator));
+    TF_RETURN_IF_ERROR(dataset.MakeIteratorFromCheckpoint(reader, task_def.task_id(), &iterator));
     return iterator;
   }
 
@@ -613,7 +657,7 @@ DataServiceWorkerImpl::MakeDatasetIteratorFromCheckpoint(standalone::Dataset& da
     std::unique_ptr<IteratorBase>* iterator) const {
     */
     VLOG(0) << "make iterator from checkpoiint call on dataset";
-    TF_RETURN_IF_ERROR(dataset.MakeIteratorFromCheckpoint(std::move(split_providers), reader, &iterator));
+    TF_RETURN_IF_ERROR(dataset.MakeIteratorFromCheckpoint(std::move(split_providers), task_def.task_id(), reader, &iterator));
     return iterator;
   }
 
@@ -628,7 +672,7 @@ DataServiceWorkerImpl::MakeDatasetIterator(standalone::Dataset& dataset,
 
   if (IsNoShard(task_def.processing_mode_def()) ||
       IsStaticShard(task_def.processing_mode_def())) {
-    TF_RETURN_IF_ERROR(dataset.MakeIterator(&iterator));
+    TF_RETURN_IF_ERROR(dataset.MakeIterator(task_def.task_id(), &iterator));
     return iterator;
   }
 
@@ -641,7 +685,7 @@ DataServiceWorkerImpl::MakeDatasetIterator(standalone::Dataset& dataset,
           i, config_.dispatcher_timeout_ms(), task_def.task_id()));
     }
     TF_RETURN_IF_ERROR(
-        dataset.MakeIterator(std::move(split_providers), &iterator));
+        dataset.MakeIterator(std::move(split_providers), task_def.task_id(), &iterator));
     return iterator;
   }
 
@@ -651,7 +695,7 @@ DataServiceWorkerImpl::MakeDatasetIterator(standalone::Dataset& dataset,
 
 
 
-Status DataServiceWorkerImpl::SaveCheckpointToDisk(Task& task) TF_LOCKS_EXCLUDED(mu_) { 
+Status DataServiceWorkerImpl::SaveCheckpointToDisk(Task& task) { 
 
   /*
     std::unique_ptr<WritableFile> dump_file;
@@ -709,8 +753,13 @@ Status WriteVariantTensor(const Tensor& val, FileOutputBuffer* out,
   TF_RETURN_IF_ERROR(reader.ReadTensor(FullName("TaskRunner", "FirstComeFirstServed.element_index"), &element_index_tensor));
 
   int64_t element_index = element_index_tensor.scalar<int64_t>()();
-  string out_dir_tmp = io::JoinPath("checkpoints", std::to_string(task_id), strings::StrCat("tmp.", element_index, ""));
+  string out_dir_tmp = io::JoinPath("checkpoints", std::to_string(task_id), strings::StrCat("tmp.", element_index, Env::Default()->NowMicros()));
+  string out_dir = io::JoinPath("checkpoints", std::to_string(task_id), strings::StrCat("checkpoint.", element_index));
 
+  if (env->IsDirectory(out_dir).ok()) {
+    VLOG(0) << "stopping with checkpointing (there already is a checkpoint)";
+    return Status::OK();
+  }
   if (env->IsDirectory(out_dir_tmp).ok()) {
     VLOG(0) << "deleting checkpoint ( there was one before) " << out_dir_tmp;
     int64_t undeleted_dirs, undeleted_files;
@@ -728,11 +777,13 @@ Status WriteVariantTensor(const Tensor& val, FileOutputBuffer* out,
     env->NewWritableFile(file_path, &ptr);
     ptr->Append(str_data);
     ptr->Close();
-    VLOG(0) << "Wrote " << file_path;
+    // VLOG(0) << "Wrote " << file_path;
   }
-  string out_dir = io::JoinPath("checkpoints", std::to_string(task_id), strings::StrCat("checkpoint.", element_index));
+
   
+  VLOG(0) << "renaming";
   TF_RETURN_IF_ERROR(env->RenameFile(out_dir_tmp, out_dir));
+  VLOG(0) << "post renaming";
   // VLOG(0) << "DBK: erasing task";
   // tasks_.erase(task_id);
   return Status::OK(); 
@@ -755,15 +806,15 @@ void DataServiceWorkerImpl::StopTask(Task& task) TF_LOCKS_EXCLUDED(mu_) {
   }
 }
 
-int64_t DataServiceWorkerImpl::UpdateMinElementIndex(int64_t task_id, int64_t element_index) {
+int64_t DataServiceWorkerImpl::UpdateMostRecentElementIndex(int64_t task_id, int64_t element_index) {
   mutex_lock l(element_index_for_task_mu_);
-  auto old_index = element_index_for_task_.contains(task_id) ? element_index_for_task_[task_id] : kint64max; 
+//  auto old_index = element_index_for_task_.contains(task_id) ? element_index_for_task_[task_id] : kint64max; 
 
-  if (old_index > element_index) {
+//  if (old_index > element_index) {
     element_index_for_task_.insert_or_assign(task_id, element_index);
-  }
+//  }
 
-  VLOG(0) << "(DBK): min requested element index for task " << task_id << " is " << element_index_for_task_[task_id];
+  VLOG(0) << "(DBK): most recent requested element index for task " << task_id << " is " << element_index_for_task_[task_id];
   return element_index_for_task_[task_id];
 }
 
@@ -857,7 +908,9 @@ void DataServiceWorkerImpl::HeartbeatThread() TF_LOCKS_EXCLUDED(mu_) {
     int64_t next_heartbeat_micros =
         Env::Default()->NowMicros() + (config_.heartbeat_interval_ms() * 1000);
     {
+      VLOG(0) << "Heartbeat thread acquiring lock";
       mutex_lock l(mu_);
+      VLOG(0) << "Heartbeat thread acquired lock";
       while (!cancelled_ &&
              Env::Default()->NowMicros() < next_heartbeat_micros) {
         int64_t time_to_wait_micros =
@@ -888,8 +941,9 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
   string tasks_desc;
   absl::flat_hash_map<int64, model::Model::ModelMetrics> tasks_metrics;
   {
-//    VLOG(0) << "(DataServiceWorkerImpl::Heartbeat) Starting heartbeat" << std::flush;
+    VLOG(0) << "(DataServiceWorkerImpl::Heartbeat) Starting heartbeat" << std::flush;
     mutex_lock l(mu_);
+    VLOG(0) << "(DataServiceWorkerImpl::Heartbeat) Acquired lock" << std::flush;
     for (const auto& task : tasks_) {
       current_tasks.push_back(task.first);
       tasks_desc.append(std::to_string(task.first) + " (Job: " + std::to_string(task.second->task_def.job_id()) + "), ");
@@ -988,7 +1042,7 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
     VLOG(0) << "(DBK) Stopping task " << task->task_def.task_id();
     StopTask(*task);
   }
-
+  VLOG(0) << "(DataServiceWorkerImpl::Heartbeat) Done with heartbeat" << std::flush;
   return Status::OK();
 }
 

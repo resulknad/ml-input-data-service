@@ -202,6 +202,10 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
 
     Status Initialize(IteratorContext* ctx) override {
       mutex_lock l(mu_);
+      if (!input_impl_) {
+        TF_RETURN_IF_ERROR(PrepareNextEpoch(ctx));
+      }
+      VLOG(0) << "Initialize";
       seed_generator_->GenerateSeeds(&seed_, &seed2_);
       ResetRngs();
       return Status::OK();
@@ -243,6 +247,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
     }
 
     void ResetRngs() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      VLOG(0) << "ResetRngs";
       // Reset the generators based on the current iterator seeds.
       parent_generator_ = random::PhiloxRandom(seed_, seed2_);
       generator_ =
@@ -260,6 +265,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
       TF_RETURN_IF_ERROR(writer->WriteScalar(this->full_name(kNumRandomSamples),
                                              num_random_samples_));
       TF_RETURN_IF_ERROR(writer->WriteScalar(this->full_name(kSeed), seed_));
+      VLOG(0) << "SaveInternal seed:" << seed_;
       TF_RETURN_IF_ERROR(writer->WriteScalar(this->full_name(kSeed2), seed2_));
 
       // Save input iterator if it hasn't been exhausted else write
@@ -308,6 +314,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
                                             &num_random_samples_));
       TF_RETURN_IF_ERROR(reader->ReadScalar(this->full_name(kSeed), &seed_));
       TF_RETURN_IF_ERROR(reader->ReadScalar(this->full_name(kSeed2), &seed2_));
+      VLOG(0) << "RestoreInternal seed:" << seed_;
       ResetRngs();
 
       // Restore the input iterator if it wasn't already exhausted.

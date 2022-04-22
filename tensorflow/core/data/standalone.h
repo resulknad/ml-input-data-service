@@ -80,6 +80,7 @@ class Iterator {
 
   // EASL
   model::Model::ModelMetrics GetMetrics();
+  void SetTaskID(int64_t task_id);
   Status Save(SerializationContext* ctx, IteratorStateWriter* writer);
   Status Restore(IteratorContext* ctx, IteratorStateReader* reader);
 
@@ -111,21 +112,22 @@ class Dataset {
   ~Dataset();
 
   // Creates an iterator for this dataset.
-  Status MakeIterator(std::unique_ptr<Iterator>* result);
+  Status MakeIterator(int64_t task_id, std::unique_ptr<Iterator>* result);
   // Creates an iterator, optionally with a split provider.
   Status MakeIterator(
-      std::vector<std::unique_ptr<SplitProvider>> split_providers,
+      std::vector<std::unique_ptr<SplitProvider>> split_providers, int64_t task_id,
       std::unique_ptr<Iterator>* result);
-
   Status MakeIteratorFromCheckpoint(
-      std::vector<std::unique_ptr<SplitProvider>> split_providers,
+      std::vector<std::unique_ptr<SplitProvider>> split_providers, int64_t task_id,
       IteratorStateReader* reader,
       std::unique_ptr<Iterator>* result);
 
   Status MakeIteratorFromCheckpoint(
       IteratorStateReader* reader,
-      std::unique_ptr<Iterator>* result) {
-    MakeIteratorFromCheckpoint({}, reader, result);
+      int64_t task_id,
+      std::unique_ptr<Iterator>* result
+      ) {
+    MakeIteratorFromCheckpoint({}, task_id, reader, result);
   }
 
 

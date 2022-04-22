@@ -100,7 +100,7 @@ constexpr const char kBytesPerS[] = "bytes_per_s";
 constexpr const char kActiveTime[] = "active_time";
 constexpr const char kWorkingTime[] = "working_time";
 
-const uint64 kElementThreshold = 300;
+const uint64 kElementThreshold = 30;
 const bool kEnableEventLogging = false;
 
 using DispatcherConfig = experimental::DispatcherConfig;
@@ -213,7 +213,9 @@ DataServiceDispatcherImpl::~DataServiceDispatcherImpl() {
 }
 
 Status DataServiceDispatcherImpl::Start() {
+  VLOG(0) << "before lock start";
   mutex_lock l(mu_);
+  VLOG(0) << "after lock start";
 
   // EASL - Enable logging if a logging directory is provided:
   if(!config_.log_dir().empty()){
@@ -228,8 +230,6 @@ Status DataServiceDispatcherImpl::Start() {
         env_->StartThread({}, "job-gc-thread", [&] { JobGcThread(); }));
   }
 
-  reassign_timedout_thread_ = absl::WrapUnique(
-      env_->StartThread({}, "job-timedout-thread", [&] { ReassignTimedOutTasksThread(); }));
 
   if (config_.work_dir().empty()) {
     if (config_.fault_tolerant_mode()) {
@@ -257,6 +257,7 @@ Status DataServiceDispatcherImpl::Start() {
   if (errors::IsNotFound(s)) {
     LOG(INFO) << "No journal found. Starting dispatcher from new state.";
   } else if (!s.ok()) {
+    VLOG(0) << s;
     return s;
   } else {
     while (!end_of_journal) {
@@ -264,27 +265,40 @@ Status DataServiceDispatcherImpl::Start() {
       TF_RETURN_IF_ERROR(reader.Read(update, end_of_journal));
     }
   }
+  VLOG(0) << "applied all journal updates";
   for (const auto& job : state_.ListJobs()) {
     if (IsDynamicShard(job->processing_mode)) {
+    VLOG(0) << "before restore split providers";
       TF_RETURN_IF_ERROR(
           RestoreSplitProviders(*job, split_providers_[job->job_id]));
+    VLOG(0) << "after restore split providers";
     }
   }
   for (const auto& client_id : state_.ListActiveClientIds()) {
     // Conservatively pretend we just received a heartbeat from all clients, so
     // that we don't garbage collect jobs too early.
+    VLOG(0) << "pretend just received heartbeat from client";
     latest_client_heartbeats_time_[client_id] =
         absl::FromUnixMicros(env_->NowMicros());
   }
+  VLOG(0) << "post client heartbeat";
+
   for (const auto& worker : state_.ListWorkers()) {
     // Conservatively pretend we just received a heartbeat from all clients, so
     // that we don't garbage collect jobs too early.
+    VLOG(0) << "pretend just received heartbeat from worker";
     latest_worker_heartbeats_time_[worker->address] =
         absl::FromUnixMicros(env_->NowMicros());
   }
+  VLOG(0) << "post worker heartbeat";
   // Initialize the journal writer in `Start` so that we fail fast in case it
   // can't be initialized.
+  VLOG(0) << "ensure initialized";
   TF_RETURN_IF_ERROR(journal_writer_.value()->EnsureInitialized());
+  VLOG(0) << "post initialized";
+
+  reassign_timedout_thread_ = absl::WrapUnique(
+      env_->StartThread({}, "job-timedout-thread", [&] { ReassignTimedOutTasksThread(); }));
   started_ = true;
   return Status::OK();
 }
@@ -401,33 +415,36 @@ Status DataServiceDispatcherImpl::FindNewTasks(
   return Status::OK();
 }
 
-Status DataServiceDispatcherImpl::ReassignFreeWorkersAndCreateTasks() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+Status DataServiceDispatcherImpl::ReassignFreeWorkersAndCreateTasks() TF_LOCKS_EXCLUDED(mu_) {
   std::vector<std::shared_ptr<const Task>> tasks;
-  // Get list of free workers
-  std::vector<std::shared_ptr<const DispatcherState::Worker>>old_avail_workers =
-      state_.ListAvailableWorkers();
-  // Reassign workers
-  Update reassign_update;
-  reassign_update.mutable_reassign_free_workers()->set_set(true);
-  TF_RETURN_IF_ERROR(state_.Apply(reassign_update));
-  // Create tasks if needed.
-  for (const auto& worker : old_avail_workers) {
-    // Create list of already assigned tasks
-    std::vector<std::shared_ptr<const Task>> tasks_for_worker;
-    Status s = state_.TasksForWorker(worker->address, tasks_for_worker);
-    absl::flat_hash_set<int64> assigned_job_ids;
-    if (!errors::IsNotFound(s)) {
-      for (const auto& task : tasks_for_worker) {
-        assigned_job_ids.insert(task->job->job_id);
+  {
+    mutex_lock l(mu_);
+    // Get list of free workers
+    std::vector<std::shared_ptr<const DispatcherState::Worker>>old_avail_workers =
+        state_.ListAvailableWorkers();
+    // Reassign workers
+    Update reassign_update;
+    reassign_update.mutable_reassign_free_workers()->set_set(true);
+    TF_RETURN_IF_ERROR(state_.Apply(reassign_update));
+    // Create tasks if needed.
+    for (const auto& worker : old_avail_workers) {
+      // Create list of already assigned tasks
+      std::vector<std::shared_ptr<const Task>> tasks_for_worker;
+      Status s = state_.TasksForWorker(worker->address, tasks_for_worker);
+      absl::flat_hash_set<int64> assigned_job_ids;
+      if (!errors::IsNotFound(s)) {
+        for (const auto& task : tasks_for_worker) {
+          assigned_job_ids.insert(task->job->job_id);
+        }
       }
-    }
-    // Create task if worker does not have a task for a job it should have one for
-    for (const auto& new_job : state_.ListJobsForWorker(worker->address)){
-      if (!assigned_job_ids.contains(new_job->job_id) && !new_job->finished){
-        // CreateTask
-        std::shared_ptr<const Task> task;
-        TF_RETURN_IF_ERROR(CreateTask(new_job, worker->address, task));
-        tasks.push_back(task);
+      // Create task if worker does not have a task for a job it should have one for
+      for (const auto& new_job : state_.ListJobsForWorker(worker->address)){
+        if (!assigned_job_ids.contains(new_job->job_id) && !new_job->finished){
+          // CreateTask
+          std::shared_ptr<const Task> task;
+          TF_RETURN_IF_ERROR(CreateTask(new_job, worker->address, task));
+          tasks.push_back(task);
+        }
       }
     }
   }
@@ -439,10 +456,14 @@ Status DataServiceDispatcherImpl::ReassignFreeWorkersAndCreateTasks() TF_EXCLUSI
 
 Status DataServiceDispatcherImpl::WorkerHeartbeat(
     const WorkerHeartbeatRequest* request, WorkerHeartbeatResponse* response) {
+  // VLOG(0) << "before check";
   TF_RETURN_IF_ERROR(CheckStarted());
+  // VLOG(0) << "after check";
   // VLOG(0) << "Received worker heartbeat request from worker "
-  //         << request->worker_address();
+           // << request->worker_address();
   mutex_lock l(mu_);
+  // VLOG(0) << "Acquired worker heratbeat lock...";
+
   const std::string& worker_address = request->worker_address();
   // Assigned tasks from the perspective of the dispatcher.
   std::vector<std::shared_ptr<const Task>> assigned_tasks;
@@ -452,9 +473,9 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
   s = state_.WorkerFromAddress(worker_address, worker);
   if (s.ok()) {
     latest_worker_heartbeats_time_[worker->address] = absl::FromUnixMicros(env_->NowMicros());
-    VLOG(1) << "Set heratbeat TS to " << env_->NowMicros() << " for " << worker_address;
+    // VLOG(0) << "Set heratbeat TS to " << env_->NowMicros() << " for " << worker_address;
   } else {
-    VLOG(0) << "failed to update ts for " << worker_address;
+    VLOG(0) << "failed to update ts for " << worker_address << " (" << s << ")";
   }
 
 
@@ -580,57 +601,60 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
 Status DataServiceDispatcherImpl::WorkerUpdate(
     const WorkerUpdateRequest* request, WorkerUpdateResponse* response) {
   TF_RETURN_IF_ERROR(CheckStarted());
-  mutex_lock l(mu_);
   bool do_reassign_free_workers = false;
-  for (auto& update : request->updates()) {
-    int64 task_id = update.task_id();
-    std::shared_ptr<const Task> task;
-    TF_RETURN_IF_ERROR(state_.TaskFromId(task_id, task));
-    if (update.completed()) {
-      if (task->finished) {
-        VLOG(1) << "Received completion update for already-finished task "
-                << task->task_id << " on worker " << task->worker_address;
-        continue;
-      }
-      Update update;
-      update.mutable_finish_task()->set_task_id(task_id);
-      TF_RETURN_IF_ERROR(Apply(update));
+  {
+    mutex_lock l(mu_);
 
-      // EASL - Set dataset as cached if this was a caching job and the job is finished.
-      std::shared_ptr<Job> job = task->job;
-      if(job->job_type == "PUT" && job->finished) {
-        std::shared_ptr<const Dataset> dataset;
-        TF_RETURN_IF_ERROR(state_.DatasetFromId(task->job->dataset_id, dataset));
-        cache_state_.SetDatasetCached(dataset->fingerprint);
-
-        VLOG(0) << "Dataset with fingerprint " << dataset->fingerprint
-                << "has been added to cache.";
-      } else if(job->job_type == "PUT_SOURCE" && job->finished){
-        std::shared_ptr<const Dataset> dataset;
-        TF_RETURN_IF_ERROR(state_.DatasetFromId(task->job->dataset_id, dataset));
-        cache_state_.SetDatasetSourceCached(dataset->fingerprint);
-
-        VLOG(0) << "Dataset with fingerprint " << dataset->fingerprint
-                << "has been added to source cache.";
-      }
-      // Update metadata store directly, quicker than waiting for the GCOldJobs to run.
-      if(job->finished){
-        do_reassign_free_workers = true;
-        TF_RETURN_IF_ERROR(metadata_store_.UpdateFingerprintNameKeyJobMetrics(
-            job->job_id));
-        if(log_dumps_enabled_){
-          TF_RETURN_IF_ERROR(metadata_store_.DumpJobMetricsToFile(job->job_id, config_.log_dir()));
-          easl::TerminateJobMetricsAppendDumps(job->job_id, config_.log_dir());
+    for (auto& update : request->updates()) {
+      int64 task_id = update.task_id();
+      std::shared_ptr<const Task> task;
+      TF_RETURN_IF_ERROR(state_.TaskFromId(task_id, task));
+      if (update.completed()) {
+        if (task->finished) {
+          VLOG(1) << "Received completion update for already-finished task "
+                  << task->task_id << " on worker " << task->worker_address;
+          continue;
         }
-      VLOG(0) << "Job " << task->job->job_id
-              << " removed from metadata store";
-        TF_RETURN_IF_ERROR(metadata_store_.RemoveJob(job->job_id));
+        Update update;
+        update.mutable_finish_task()->set_task_id(task_id);
+        TF_RETURN_IF_ERROR(Apply(update));
 
+        // EASL - Set dataset as cached if this was a caching job and the job is finished.
+        std::shared_ptr<Job> job = task->job;
+        if(job->job_type == "PUT" && job->finished) {
+          std::shared_ptr<const Dataset> dataset;
+          TF_RETURN_IF_ERROR(state_.DatasetFromId(task->job->dataset_id, dataset));
+          cache_state_.SetDatasetCached(dataset->fingerprint);
+
+          VLOG(0) << "Dataset with fingerprint " << dataset->fingerprint
+                  << "has been added to cache.";
+        } else if(job->job_type == "PUT_SOURCE" && job->finished){
+          std::shared_ptr<const Dataset> dataset;
+          TF_RETURN_IF_ERROR(state_.DatasetFromId(task->job->dataset_id, dataset));
+          cache_state_.SetDatasetSourceCached(dataset->fingerprint);
+
+          VLOG(0) << "Dataset with fingerprint " << dataset->fingerprint
+                  << "has been added to source cache.";
+        }
+        // Update metadata store directly, quicker than waiting for the GCOldJobs to run.
+        if(job->finished){
+          do_reassign_free_workers = true;
+          TF_RETURN_IF_ERROR(metadata_store_.UpdateFingerprintNameKeyJobMetrics(
+              job->job_id));
+          if(log_dumps_enabled_){
+            TF_RETURN_IF_ERROR(metadata_store_.DumpJobMetricsToFile(job->job_id, config_.log_dir()));
+            easl::TerminateJobMetricsAppendDumps(job->job_id, config_.log_dir());
+          }
+        VLOG(0) << "Job " << task->job->job_id
+                << " removed from metadata store";
+          TF_RETURN_IF_ERROR(metadata_store_.RemoveJob(job->job_id));
+
+        }
+
+        // TODO revert to 3
+        VLOG(0) << "Task " << task_id << " from job " << task->job->job_id
+                << " completed";
       }
-
-      // TODO revert to 3
-      VLOG(0) << "Task " << task_id << " from job " << task->job->job_id
-              << " completed";
     }
   }
   if (do_reassign_free_workers) {
@@ -683,8 +707,8 @@ Status DataServiceDispatcherImpl::GetSplit(const GetSplitRequest* request,
       t.AsProtoTensorContent(response->mutable_split());
 
 
-      VLOG(0) << "Parsing tensor proto: " << (t.FromProto(res));
-      VLOG(0) << "And parsing result: " << t.DebugString() << " (which is what we are supposed to return at this point)";
+      // VLOG(0) << "Parsing tensor proto: " << (t.FromProto(res));
+      // VLOG(0) << "And parsing result: " << t.DebugString() << " (which is what we are supposed to return at this point)";
 
       VLOG(0) << "Serving split index=" << t.SummarizeValue(100, true) << " for recovered worker from recovery-store"
                   << "[Worker: " << task->worker_address
@@ -692,16 +716,9 @@ Status DataServiceDispatcherImpl::GetSplit(const GetSplitRequest* request,
       
       return Status::OK();
       } else {
-        VLOG(0) << "Problem, the splits by provider does not contain the provider index... " << provider_index << " or list is empty. Continuing with normal execution..." 
+        VLOG(0) << "Do not have anything in split recovert store for " << provider_index << "Continuing with normal execution..." 
           << "Cursor is " << provider_state->worker_cursor << ", list size: " << provider_state->indices.size();
-      // if (!) {
-      //   VLOG(0) << "Cache is empty, so returning EOS for task "  << task_id;
-      //   response->set_end_of_splits(true);
-      //   return Status::OK();
-      // }
-
-      
-    }
+}
   } else {
     VLOG(0) << "(DBK): Disabled split recovery by env DBK_DISABLE_SPLIT_RECOVERY";
   }
@@ -722,11 +739,22 @@ Status DataServiceDispatcherImpl::GetSplit(const GetSplitRequest* request,
     return Status::OK();
   }
 
+  // EASL - Check if this is not a "early ended" task
+  bool is_early_ended;
+  TF_RETURN_IF_ERROR(state_.IsEarlyEndedTask(job_id, task_id, is_early_ended));
+  if (is_early_ended) {
+    VLOG(0) << "EASL - Split provider returning eos for early terminated task " << task_id;
+    response->set_end_of_splits(true);
+    return Status::OK();
+  }
+
   SplitProvider* split_provider =
       split_providers_[job_id][provider_index].get();
   DCHECK(split_provider != nullptr);
   Tensor split;
   bool end_of_splits = false;
+
+
   TF_RETURN_IF_ERROR(split_provider->GetNext(&split, &end_of_splits));
   
 
@@ -741,10 +769,10 @@ Status DataServiceDispatcherImpl::GetSplit(const GetSplitRequest* request,
     //        is cached; still make sure this makes sense
     if (end_of_splits && scaling && execution_mode != "PUT"
       && execution_mode != "PUT_SOURCE") {
-      split_provider->Reset();
-      split_provider->GetNext(&split, &end_of_splits);
+      /* split_provider->Reset();
+      split_provider->GetNext(&split, &end_of_splits);*/
       VLOG(0) << "(GetSplit) Reached EOS while still scaling in " << job_id
-                   << " at provider index " << provider_index;
+                   << " at provider index " << provider_index << " NOT RESETTING SPLIT PROVIDER because of EXACTLY ONCE... ";
 
       // EASL: Logging stuff
       if (kEnableEventLogging) {
@@ -759,6 +787,7 @@ Status DataServiceDispatcherImpl::GetSplit(const GetSplitRequest* request,
     VLOG(0) << "WARNING!! metadata store does not contain job " << job_id
       << ". This may happen due to partial recovery from journal...";
   }
+
 
   TF_RETURN_IF_ERROR(RecordSplitProduced(
       job_id, repetition, request->split_provider_index(), end_of_splits));
@@ -1048,26 +1077,29 @@ Status DataServiceDispatcherImpl::ReleaseJobClient(
     const ReleaseJobClientRequest* request,
     ReleaseJobClientResponse* response) {
   TF_RETURN_IF_ERROR(CheckStarted());
-  mutex_lock l(mu_);
-  int64_t job_client_id = request->job_client_id();
   std::shared_ptr<const Job> job;
-  // TODO(DanGraur): Changed the scope of the lock from easl_2.7
-  TF_RETURN_IF_ERROR(state_.JobForJobClientId(job_client_id, job));
-  Update update;
-  ReleaseJobClientUpdate* release_job_client =
-      update.mutable_release_job_client();
-  release_job_client->set_job_client_id(job_client_id);
-  release_job_client->set_time_micros(env_->NowMicros());
-  TF_RETURN_IF_ERROR(Apply(update));
+  {
+    mutex_lock l(mu_);
+    int64_t job_client_id = request->job_client_id();
 
-  if (job->num_clients <=0) {
+    // TODO(DanGraur): Changed the scope of the lock from easl_2.7
+    TF_RETURN_IF_ERROR(state_.JobForJobClientId(job_client_id, job));
     Update update;
-    update.mutable_garbage_collect_job()->set_job_id(job->job_id);
-    TF_RETURN_IF_ERROR(state_.Apply(update));
-    VLOG(0) << "EASL - (ReleaseJobClient): Overwrite job_gc_timeout_ms and garbage collect job "
-            << job->DebugString();
-  }
+    ReleaseJobClientUpdate* release_job_client =
+        update.mutable_release_job_client();
+    release_job_client->set_job_client_id(job_client_id);
+    release_job_client->set_time_micros(env_->NowMicros());
+    TF_RETURN_IF_ERROR(Apply(update));
 
+    if (job->num_clients <=0) {
+      Update update;
+      update.mutable_garbage_collect_job()->set_job_id(job->job_id);
+      TF_RETURN_IF_ERROR(state_.Apply(update));
+      VLOG(0) << "EASL - (ReleaseJobClient): Overwrite job_gc_timeout_ms and garbage collect job "
+              << job->DebugString();
+    }
+
+  }
   if (job->num_clients <= 0) {
     TF_RETURN_IF_ERROR(ReassignFreeWorkersAndCreateTasks());
   }
@@ -1158,7 +1190,7 @@ Status DataServiceDispatcherImpl::CreateJob(
   worker_count = job_metrics->target_worker_count_;
 
   if (config_.scaling_policy() == 2) {
-    worker_count = 2;
+    worker_count = 100;
   }
 
   if (job_type == "PUT" || job_type == "PUT_SOURCE") {
@@ -1437,170 +1469,195 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
     const ClientHeartbeatRequest* request, ClientHeartbeatResponse* response) {
   TF_RETURN_IF_ERROR(CheckStarted());
   bool do_reassign_workers = false;
-  mutex_lock l(mu_);
-  VLOG(4) << "Received heartbeat from client id " << request->job_client_id();
-
   std::shared_ptr<const Job> job;
-  Status s = state_.JobForJobClientId(request->job_client_id(), job);
+  {
+    // VLOG(0) << "Acquiring lock for ..." << request->job_client_id();
+    mutex_lock l(mu_);
+    // VLOG(0) << "Received heartbeat from client id " << request->job_client_id();
 
-  if (errors::IsNotFound(s) && !config_.fault_tolerant_mode()) {
-    return errors::NotFound(
-        "Unknown job client id ", request->job_client_id(),
-        ". The dispatcher is not configured to be fault tolerant, so this "
-        "could be caused by a dispatcher restart.");
-  }
-  TF_RETURN_IF_ERROR(s);
 
-  // EASL: Update the client metrics
-  int64 job_target_worker_count;
-  string job_type;
-  string job_name = job->named_job_key->name;
-  metadata_store_.GetJobTypeByJobId(job->job_id, job_type);
-  // FIXME: Note that we're only checking the first split provider
-  if (config_.scaling_policy() == 1 &&
-      job_type != "PROFILE" &&
-      request->has_scalability_metrics() &&
-      job->distributed_epoch_state.value().repetitions[0] == 0) {
-    easl::ModelMetrics::Metrics metrics(
-      request->worker_count(),
-      request->last_x_batch_time_ms(),
-      request->relative_wait_fraction(),
-      request->result_queue_size());
+    Status s = state_.JobForJobClientId(request->job_client_id(), job);
 
-    s = metadata_store_.UpdateModelMetrics(
-        job->job_id, request->job_client_id(), metrics);
-    // Ignore metrics for jobs which do not have metrics anymore
-    // report error otherwise.
-    if(!s.ok()){
-      VLOG(0) << "EASL (ClientHeartbeat) - metadatastore error code " << s.code();
-      VLOG(0) << s.ToString();
-      VLOG(0) << errors::IsNotFound(s);
+    if (errors::IsNotFound(s) && !config_.fault_tolerant_mode()) {
+      return errors::NotFound(
+          "Unknown job client id ", request->job_client_id(),
+          ". The dispatcher is not configured to be fault tolerant, so this "
+          "could be caused by a dispatcher restart.");
     }
-    if (!s.ok() && !errors::IsNotFound(s)) { return s; }
+    TF_RETURN_IF_ERROR(s);
 
-    // EASL - Determine updated target number of workers
-    int64 target_worker_count;
-    TF_RETURN_IF_ERROR(
-        service::easl::scaling_utils::DynamicWorkerCountUpdate(
-            job->job_type, job->job_id, config_, metadata_store_, target_worker_count));
-    do_reassign_workers = target_worker_count > job->current_worker_count;
-    VLOG(0) << "(ClientHeartbeat) After DynamicWorkerCountUpdate; "
-            << "target_worker_count = " << target_worker_count
-            << "; job->target_worker_count = " << job->target_worker_count;
+    // EASL: Update the client metrics
+    int64 job_target_worker_count;
+    string job_type;
+    string job_name = job->named_job_key->name;
+    metadata_store_.GetJobTypeByJobId(job->job_id, job_type);
+    bool job_removed = false;
+    TF_RETURN_IF_ERROR(metadata_store_.IsJobRemoved(job->job_id, job_removed));
+    // VLOG(0) << "DBK: job_removed is " << job_removed;
 
-    // Re-adjust the worker count in the metrics is not equal to what we
-    // want it to be
-    if (target_worker_count != metrics.worker_count()) {
+    // FIXME: Note that we're only checking the first split provider
+    if (config_.scaling_policy() == 1 &&
+        job_type != "PROFILE" &&
+        request->has_scalability_metrics() &&
+        !job_removed) {
+       // job->distributed_epoch_state.value().repetitions[0] == 0) {
+      easl::ModelMetrics::Metrics metrics(
+        request->worker_count(),
+        request->last_x_batch_time_ms(),
+        request->relative_wait_fraction(),
+        request->result_queue_size());
+
+      s = metadata_store_.UpdateModelMetrics(
+          job->job_id, request->job_client_id(), metrics);
+
+      // Ignore metrics for jobs which do not have metrics anymore
+      // report error otherwise.
+      if(!s.ok()){
+        VLOG(0) << "EASL (ClientHeartbeat) - metadatastore error code " << s.code();
+        VLOG(0) << s.ToString();
+        VLOG(0) << errors::IsNotFound(s);
+      }
+
+      //DBK: after dispatcher recovery the metastore will miss some entries
+      // need to make this non-fatal...
+      if (!errors::IsNotFound(s)) {
+        if (!s.ok()) { return s; }
+
+
+        // EASL - Determine updated target number of workers
+        int64 target_worker_count;
+        TF_RETURN_IF_ERROR(
+            service::easl::scaling_utils::DynamicWorkerCountUpdate(
+                job->job_type, job->job_id, config_, metadata_store_, target_worker_count));
+        do_reassign_workers = target_worker_count > job->current_worker_count;
+        // VLOG(0) << "(ClientHeartbeat) After DynamicWorkerCountUpdate; "
+        //         << "target_worker_count = " << target_worker_count
+        //         << "; job->target_worker_count = " << job->target_worker_count;
+
+        // Re-adjust the worker count in the metrics is not equal to what we
+        // want it to be
+        if (target_worker_count != metrics.worker_count()) {
+          Update update;
+          JobTargetWorkerCountUpdate *job_target_worker_count_update =
+              update.mutable_job_target_worker_count_update();
+          job_target_worker_count_update->set_job_id(job->job_id);
+          job_target_worker_count_update->set_target_worker_count(target_worker_count);
+          state_.Apply(update);
+
+          // EASL: Logging stuff
+          if (kEnableEventLogging &&
+            last_scale_[job_name] != target_worker_count) {
+            string scale_type = target_worker_count > last_scale_[job_name] ?
+                                "scale_up" : "scale_down";
+            last_scale_[job_name] = target_worker_count;
+            std::shared_ptr<const Dataset> dataset;
+            TF_RETURN_IF_ERROR(state_.DatasetFromId(job->dataset_id, dataset));
+            RecordEvent(dataset->fingerprint, dataset->dataset_id,
+              job->named_job_key->name, job->job_id, scale_type,
+              std::to_string(target_worker_count));
+          }
+          }
+        } else {
+          VLOG(0) << "DBK: metastore returned not found for job " << job->job_id << " status: " << s;
+          s = Status::OK();
+        }
+      } else if (config_.scaling_policy() == 2) {
+        metadata_store_.UnsetJobIsScaling(job->job_id);
+        int64 target_worker_count = state_.ListWorkers().size();
+        if (job->target_worker_count != target_worker_count) {
+          Update update;
+          JobTargetWorkerCountUpdate *job_target_worker_count_update =
+              update.mutable_job_target_worker_count_update();
+          job_target_worker_count_update->set_job_id(job->job_id);
+          job_target_worker_count_update->set_target_worker_count(
+              target_worker_count);
+          state_.Apply(update);
+        }
+      }
+
+
+    if (job->garbage_collected) {
+      return errors::FailedPrecondition(
+          "The requested job has been garbage collected due to inactivity. "
+          "Consider configuring the dispatcher with a higher "
+          "`job_gc_timeout_ms`.");
+    }
+    if (request->optional_current_round_case() ==
+        ClientHeartbeatRequest::kCurrentRound) {
+      round_robin_rounds_[request->job_client_id()] =
+          std::max(round_robin_rounds_[request->job_client_id()],
+                   request->current_round());
+    }
+    if (!job->pending_tasks.empty()) {
+      const auto &task = job->pending_tasks.front();
       Update update;
-      JobTargetWorkerCountUpdate *job_target_worker_count_update =
-          update.mutable_job_target_worker_count_update();
-      job_target_worker_count_update->set_job_id(job->job_id);
-      job_target_worker_count_update->set_target_worker_count(target_worker_count);
-      state_.Apply(update);
-
-      // EASL: Logging stuff
-      if (kEnableEventLogging &&
-        last_scale_[job_name] != target_worker_count) {
-        string scale_type = target_worker_count > last_scale_[job_name] ?
-                            "scale_up" : "scale_down";
-        last_scale_[job_name] = target_worker_count;
-        std::shared_ptr<const Dataset> dataset;
-        TF_RETURN_IF_ERROR(state_.DatasetFromId(job->dataset_id, dataset));
-        RecordEvent(dataset->fingerprint, dataset->dataset_id,
-          job->named_job_key->name, job->job_id, scale_type,
-          std::to_string(target_worker_count));
+      ClientHeartbeatUpdate *client_heartbeat = update.mutable_client_heartbeat();
+      bool apply_update = false;
+      client_heartbeat->set_job_client_id(request->job_client_id());
+      absl::optional<int64> blocked_round;
+      if (request->optional_blocked_round_case() ==
+          ClientHeartbeatRequest::kBlockedRound) {
+        blocked_round = request->blocked_round();
+      }
+      VLOG(1) << "Handling pending task in job client heartbeat. job_client_id: "
+              << request->job_client_id()
+              << ". current_round: " << request->current_round()
+              << ". blocked_round: " << blocked_round.value_or(-1)
+              << ". target_round: " << task.target_round;
+      if (request->current_round() >= task.target_round) {
+        TaskRejected *rejected = client_heartbeat->mutable_task_rejected();
+        // Exponentially try later and later rounds until consumers all agree.
+        int64 round_offset = 2;
+        for (int i = 0; i < task.failures; ++i) {
+          round_offset *= 2;
+        }
+        rejected->set_new_target_round(
+            round_robin_rounds_[request->job_client_id()] + round_offset);
+        apply_update = true;
+      }
+      if (blocked_round.has_value() &&
+          blocked_round.value() <= task.target_round &&
+          !task.ready_consumers.contains(request->job_client_id())) {
+        client_heartbeat->set_task_accepted(true);
+        apply_update = true;
+      }
+      if (apply_update) {
+        TF_RETURN_IF_ERROR(Apply(update));
       }
     }
-  } else if (config_.scaling_policy() == 2) {
-    metadata_store_.UnsetJobIsScaling(job->job_id);
-    int64 target_worker_count = state_.ListWorkers().size();
-    if (job->target_worker_count != target_worker_count) {
-      Update update;
-      JobTargetWorkerCountUpdate *job_target_worker_count_update =
-          update.mutable_job_target_worker_count_update();
-      job_target_worker_count_update->set_job_id(job->job_id);
-      job_target_worker_count_update->set_target_worker_count(
-          target_worker_count);
-      state_.Apply(update);
+    if (!job->pending_tasks.empty()) {
+      response->set_block_round(job->pending_tasks.front().target_round);
     }
   }
 
-  if (job->garbage_collected) {
-    return errors::FailedPrecondition(
-        "The requested job has been garbage collected due to inactivity. "
-        "Consider configuring the dispatcher with a higher "
-        "`job_gc_timeout_ms`.");
-  }
-  if (request->optional_current_round_case() ==
-      ClientHeartbeatRequest::kCurrentRound) {
-    round_robin_rounds_[request->job_client_id()] =
-        std::max(round_robin_rounds_[request->job_client_id()],
-                 request->current_round());
-  }
-  if (!job->pending_tasks.empty()) {
-    const auto &task = job->pending_tasks.front();
-    Update update;
-    ClientHeartbeatUpdate *client_heartbeat = update.mutable_client_heartbeat();
-    bool apply_update = false;
-    client_heartbeat->set_job_client_id(request->job_client_id());
-    absl::optional<int64> blocked_round;
-    if (request->optional_blocked_round_case() ==
-        ClientHeartbeatRequest::kBlockedRound) {
-      blocked_round = request->blocked_round();
-    }
-    VLOG(1) << "Handling pending task in job client heartbeat. job_client_id: "
-            << request->job_client_id()
-            << ". current_round: " << request->current_round()
-            << ". blocked_round: " << blocked_round.value_or(-1)
-            << ". target_round: " << task.target_round;
-    if (request->current_round() >= task.target_round) {
-      TaskRejected *rejected = client_heartbeat->mutable_task_rejected();
-      // Exponentially try later and later rounds until consumers all agree.
-      int64 round_offset = 2;
-      for (int i = 0; i < task.failures; ++i) {
-        round_offset *= 2;
-      }
-      rejected->set_new_target_round(
-          round_robin_rounds_[request->job_client_id()] + round_offset);
-      apply_update = true;
-    }
-    if (blocked_round.has_value() &&
-        blocked_round.value() <= task.target_round &&
-        !task.ready_consumers.contains(request->job_client_id())) {
-      client_heartbeat->set_task_accepted(true);
-      apply_update = true;
-    }
-    if (apply_update) {
-      TF_RETURN_IF_ERROR(Apply(update));
-    }
-  }
-  if (!job->pending_tasks.empty()) {
-    response->set_block_round(job->pending_tasks.front().target_round);
-  }
-
+  // VLOG(0) << "Pre reassign free workers";
   // TODO(DanGraur): Could the deadlock stem from here?
   if (do_reassign_workers) {
+    // VLOG(0) << "Pre reassign free workers, in branch";
     ReassignFreeWorkersAndCreateTasks();
   }
+  // VLOG(0) << "Post reassign free workers";
 
-  std::vector<std::shared_ptr<const Task>> tasks;
-  TF_RETURN_IF_ERROR(state_.TasksForJob(job->job_id, tasks));
-  for (const auto& task : tasks) {
-    TaskInfo* task_info = response->mutable_task_info()->Add();
-    task_info->set_worker_address(task->worker_address);
-    task_info->set_transfer_address(task->transfer_address);
-    *task_info->mutable_worker_tags() = {task->worker_tags.begin(),
-                                         task->worker_tags.end()};
-    task_info->set_task_id(task->task_id);
-    task_info->set_job_id(job->job_id);
-    task_info->set_worker_uid(task->worker_uid);
-    task_info->set_starting_round(task->starting_round);
+  {
+    mutex_lock l(mu_);
+    std::vector<std::shared_ptr<const Task>> tasks;
+    TF_RETURN_IF_ERROR(state_.TasksForJob(job->job_id, tasks));
+    for (const auto& task : tasks) {
+      TaskInfo* task_info = response->mutable_task_info()->Add();
+      task_info->set_worker_address(task->worker_address);
+      task_info->set_transfer_address(task->transfer_address);
+      *task_info->mutable_worker_tags() = {task->worker_tags.begin(),
+                                           task->worker_tags.end()};
+      task_info->set_task_id(task->task_id);
+      task_info->set_job_id(job->job_id);
+      task_info->set_worker_uid(task->worker_uid);
+      task_info->set_starting_round(task->starting_round);
+    }
+    response->set_job_finished(job->finished);
+    response->set_deployment_mode(config_.deployment_mode());
+    // VLOG(0) << "Found " << response->task_info_size()
+    //         << " tasks for job client id " << request->job_client_id();
   }
-  response->set_job_finished(job->finished);
-  response->set_deployment_mode(config_.deployment_mode());
-  VLOG(4) << "Found " << response->task_info_size()
-          << " tasks for job client id " << request->job_client_id();
-
   return Status::OK();
 }
 
@@ -1695,8 +1752,10 @@ Status DataServiceDispatcherImpl::Apply(const Update& update)
 void DataServiceDispatcherImpl::ReassignTimedOutTasksThread() {
   int64_t next_check_micros = 0;
   while (true) {
+    VLOG(0) << "reassign thread start";
     mutex_lock l(mu_);
     while (!cancelled_ && env_->NowMicros() < next_check_micros) {
+    VLOG(0) << "waiting thread start";
       int64 remaining_micros = next_check_micros - env_->NowMicros();
       reassign_timedout_thread_cv_.wait_for(l,
                                  std::chrono::microseconds(remaining_micros));
@@ -1705,9 +1764,10 @@ void DataServiceDispatcherImpl::ReassignTimedOutTasksThread() {
       return;
     }
     {
+
       Status s = ReassignTimedOutTasks();
       if (!s.ok()) {
-        LOG(WARNING) << "Error Reassigning timed out tasks: " << s;
+        VLOG(0) << "Error Reassigning timed out tasks: " << s;
       }
     }
     next_check_micros =
@@ -1718,30 +1778,34 @@ void DataServiceDispatcherImpl::ReassignTimedOutTasksThread() {
 void DataServiceDispatcherImpl::JobGcThread() {
   int64_t next_check_micros = 0;
   while (true) {
-    mutex_lock l(mu_);
-    while (!cancelled_ && env_->NowMicros() < next_check_micros) {
-      int64 remaining_micros = next_check_micros - env_->NowMicros();
-      job_gc_thread_cv_.wait_for(l,
-                                 std::chrono::microseconds(remaining_micros));
-    }
-    if (cancelled_) {
-      return;
-    }
+    VLOG(0) << "enter GC thread";
     {
-      Status s = ReleaseMissingClients();
-      if (!s.ok()) {
-        LOG(WARNING) << "Error releasing missing clients: " << s;
+      mutex_lock l(mu_);
+      VLOG(0) << "GC thread got lock";
+      while (!cancelled_ && env_->NowMicros() < next_check_micros) {
+        int64 remaining_micros = next_check_micros - env_->NowMicros();
+        job_gc_thread_cv_.wait_for(l,
+                                   std::chrono::microseconds(remaining_micros));
       }
-    }
+      if (cancelled_) {
+        return;
+      }
+      {
+        Status s = ReleaseMissingClients();
+        if (!s.ok()) {
+          LOG(WARNING) << "Error releasing missing clients: " << s;
+        }
+      }
 
-    {
-      Status s = GcOldJobs();
-      if (!s.ok()) {
-        LOG(WARNING) << "Error garbage collecting old jobs: " << s;
+      {
+        Status s = GcOldJobs();
+        if (!s.ok()) {
+          LOG(WARNING) << "Error garbage collecting old jobs: " << s;
+        }
       }
+        next_check_micros =
+            env_->NowMicros() + (config_.job_gc_check_interval_ms() * 1000);
     }
-      next_check_micros =
-          env_->NowMicros() + (config_.job_gc_check_interval_ms() * 1000);
     Status s = ReassignFreeWorkersAndCreateTasks();
     if (!s.ok()) {
       LOG(WARNING) << "Error reassigning free workers in gc thread: " << s;
@@ -1759,8 +1823,16 @@ Status DataServiceDispatcherImpl::ReassignTimedOutTasks()
     VLOG(0) << "Checking " << worker->address;
     if (latest_worker_heartbeats_time_.contains(worker->address)) {
       auto last_hb = latest_worker_heartbeats_time_[worker->address];
-      if (last_hb < absl::FromUnixMicros(env_->NowMicros()) - absl::Seconds(15)) {
-        VLOG(0)<<"Worker with address " << worker->address << " timed out. Reassigning all tasks.";
+      auto timeout_str = getenv("DBK_WORKER_TIMEOUT");
+      int64_t timeout = 15;
+      if (timeout_str != nullptr) {
+        timeout = strtoul(timeout_str, NULL, 10);
+         VLOG(0) << "read timeout val of " << timeout << " from env";
+      } else {
+         VLOG(0) << "no timeout val read, used default";
+      }
+      if (last_hb < absl::FromUnixMicros(env_->NowMicros()) - absl::Seconds(timeout)) {
+        VLOG(0)<<"Worker with address " << worker->address << " timed out after " << timeout << " seconds. Reassigning all tasks.";
         std::vector<std::shared_ptr<const Task>> tasks;
         auto s = state_.TasksForWorker(worker->address, tasks);
         if (!s.ok()) {
@@ -1782,12 +1854,15 @@ Status DataServiceDispatcherImpl::ReassignTimedOutTasks()
           VLOG(0) << "Reassigning task " << task->task_id
             << " to worker " << worker->address
             << " with transfer address " << worker->transfer_address;
-          UpdateTaskWorkerAddress(worker->address,worker->transfer_address, task);
+
+          TF_RETURN_IF_ERROR(UpdateTaskWorkerAddress(worker->address,worker->transfer_address, task));
         }
         
       }
     } else {
-        VLOG(0)<<"Worker with address " << worker->address << " does not have a last heartbeat...";
+      VLOG(0)<<"Worker with address " << worker->address << " does not have a last heartbeat... Setting it to now...";
+      latest_worker_heartbeats_time_[worker->address] =
+          absl::FromUnixMicros(env_->NowMicros());
     }
   }
   return Status::OK();

@@ -6,6 +6,7 @@
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/kernels/data/experimental/easl_service/service_cache_util.h"
 #include "tensorflow/core/data/name_utils.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/tstring.h"
 
 
@@ -20,6 +21,8 @@ namespace easl{
 /* static */ constexpr const char* const ServiceCacheGetOp::kCacheCompression;
 /* static */ constexpr const char* const ServiceCacheGetOp::kParallelism;
 
+
+constexpr char kTargetElementIndex[] = "target_element_index";
 
 
 class ServiceCacheGetOp::Dataset : public DatasetBase {
@@ -89,6 +92,8 @@ class ServiceCacheGetOp::Dataset::Iterator : public DatasetIterator<Dataset> {
 
  private:
   mutex mu_;
+  int64_t element_index_ = 0;
+  int64_t target_element_index_ = 0;
   std::shared_ptr<SplitProvider> split_provider_;
   std::unique_ptr<tensorflow::data::easl::service_cache_util::Reader> reader_;
   TF_GUARDED_BY(mu_);
@@ -220,7 +225,6 @@ Status ServiceCacheGetOp::Dataset::Iterator::Initialize(
   VLOG(3) << "EASL - Initializing ServiceCacheGet iterator";
   VLOG(3) << "EASL - File format: " << dataset()->cache_format_;
   VLOG(3) << "EASL - Compression format: " << dataset()->cache_compression_;
-
   // If we're in distributed epoch mode we should have a split provider,
   // otherwise we create one.
   std::shared_ptr<SplitProvider> split_provider = nullptr;
@@ -247,11 +251,12 @@ Status ServiceCacheGetOp::Dataset::Iterator::Initialize(
     VLOG(3) << DataTypeString(dt);
   }*/
 
+
   reader_ =
       std::make_unique<tensorflow::data::easl::service_cache_util::Reader>(
           ctx->env(), split_provider, dataset()->path_,
           dataset()->output_dtypes_, dataset()->output_shapes_, 
-          dataset()->parallelism_, dataset()->cache_format_);
+          dataset()->parallelism_, dataset()->cache_format_, true, element_index_);
 
   return reader_->Initialize();
 }
@@ -263,18 +268,39 @@ ServiceCacheGetOp::Dataset::Iterator::~Iterator() {
 
 Status ServiceCacheGetOp::Dataset::Iterator::SaveInternal(
     SerializationContext* ctx, IteratorStateWriter* writer) {
-  return errors::Unimplemented("Checkpointing is currently not supported.");
+
+  mutex_lock l(mu_);
+  TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kTargetElementIndex), target_element_index_));
+ // TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kElementIndex), element_index_));
+  VLOG(0) << "saving cache get op";
+  // not saving input, because this op acts as a source
+  return Status::OK();
 }
 
 Status ServiceCacheGetOp::Dataset::Iterator::RestoreInternal(
     IteratorContext* ctx, IteratorStateReader* reader) {
-  return errors::Unimplemented("Checkpointing is currently not supported.");
+  mutex_lock l(mu_);
+  TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kTargetElementIndex), &target_element_index_));
+//  TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kElementIndex), &element_index_));
+  VLOG(0) << "restoring cache get op: (target:" << target_element_index_ << ", current:" << element_index_ << ")";
+  return Status::OK();
 }
 
 Status ServiceCacheGetOp::Dataset::Iterator::GetNextInternal(
     IteratorContext* ctx, std::vector<Tensor>* out_tensors,
     bool* end_of_sequence) {
-  return reader_->Read(out_tensors, end_of_sequence);
+
+  target_element_index_++;
+  while (target_element_index_ > element_index_) {
+
+    element_index_++;
+    TF_RETURN_IF_ERROR(reader_->Read(out_tensors, end_of_sequence));
+    if (target_element_index_ != element_index_) {
+      VLOG(0) << "Skipping " << element_index_-1;
+    }
+  }
+
+  return Status::OK();
 }
 
 namespace {

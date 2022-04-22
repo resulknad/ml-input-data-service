@@ -35,7 +35,7 @@ ArrowAsyncWriter::ArrowAsyncWriter(const int writer_count) : MultiThreadedAsyncW
 }
 
 Status ArrowAsyncWriter::WriterThread(Env* env, const std::string& shard_directory,
-                    uint64 writer_id, const std::string& compression,
+                    int64_t task_id, uint64 writer_id, const std::string& compression,
                     int64 version, DataTypeVector output_types) {
 
   uint64_t storageEstimate = 0; // estimated storage space on disk in bytes

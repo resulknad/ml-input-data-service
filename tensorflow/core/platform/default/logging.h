@@ -135,6 +135,8 @@ class LogMessageNull : public std::basic_ostringstream<char> {
 
 #endif
 
+#define DBK_TRACE(string) VLOG(0) << "DBKTRACE" << string;
+
 #define VLOG(level)                                              \
   TF_PREDICT_TRUE(!VLOG_IS_ON(level))                            \
   ? (void)0                                                      \

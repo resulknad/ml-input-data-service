@@ -74,7 +74,7 @@ Status ArrowAsyncReader::ReaderThread(
         }
 
         if(!tensors.empty()) {
-          Add(tensors);
+          Add(tensors, std::pair<int64_t,string>(0,std::string("")));
         }
       }
       LOG(INFO) << "(Reader_" << writer_id << ") Finished reading file " << file_path
@@ -86,7 +86,7 @@ Status ArrowAsyncReader::ReaderThread(
   std::vector<Tensor> tensors;
   metadata_->GetLastRowBatch(&tensors);  // only returns something if it is last reader registered
   if(!tensors.empty()) {
-    Add(tensors);
+    Add(tensors, std::pair<int64_t,string>(0,std::string("")));
   }
 
   mutex_lock l(mu_add_);

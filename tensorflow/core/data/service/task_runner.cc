@@ -133,7 +133,8 @@ Status TaskRunner::CreateFromCheckpoint(const experimental::WorkerConfig& worker
 FirstComeFirstServedTaskRunner::FirstComeFirstServedTaskRunner(
     std::unique_ptr<TaskIterator> iterator)
     : iterator_(std::move(iterator)), buffer_(/*buffer_size=*/1) {
-  RunPrefetchThread();
+      //TODO: restore prefetch here once initial checkpointing is fixed.
+  //RunPrefetchThread()
 }
 
 
@@ -147,13 +148,22 @@ int64_t FirstComeFirstServedTaskRunner::GetNextElementIndex() {
 
 Status FirstComeFirstServedTaskRunner::Save(SerializationContext* ctx, IteratorStateWriter* writer)
     TF_LOCKS_EXCLUDED(mu_) {
+  VLOG(0) << "DBK: need fcfs lock";
   mutex_lock l(mu_);
+
+
+  VLOG(0) << "DBK: got fcfs lock";
 
   auto status = iterator_->Save(ctx, writer);
   VLOG(0) << "DBK: done with iterator saving";
 
   TF_RETURN_IF_ERROR(writer->WriteScalar(FullName("TaskRunner", "FirstComeFirstServed.element_index"), this->element_index_));
   VLOG(0) << "DBK: saving element index";
+
+  if (!prefetch_thread_) {
+    VLOG(0) << "starting prefetch thread, after first save";
+    RunPrefetchThread();
+  }
   return status;
 }
 
@@ -166,27 +176,41 @@ FirstComeFirstServedTaskRunner::~FirstComeFirstServedTaskRunner() { Cancel(); }
 
 Status FirstComeFirstServedTaskRunner::GetNext(const GetElementRequest& req,
                                                GetElementResult& result) {
-  TF_ASSIGN_OR_RETURN(result, buffer_.Pop());
+/*
+  while ((result.components.empty() || result.element_index < req.element_index()) && !result.end_of_sequence) {
+ */   
+    DBK_TRACE(" BUFFER_POP_EL");
+    TF_ASSIGN_OR_RETURN(result, buffer_.Pop());
 
-//  VLOG(0) << "(DBK) GetNext in task runner element index: " << (int64_t) result.element_index << ", components size: " << result.components.size();
-  if (result.components.size() > 0) {
-//     Variant x = result.components.at(0);
-//     VLOG(0) << "x: " << x.DebugString();
-//     Variant extracted = x.get<Tensor>()->flat<Variant>()(0);
-//     VLOG(0) << "extracted: " << extracted.DebugString();
-//     CompressedElement *i = extracted.get<CompressedElement>();
-//     VLOG(0) << "iptr " << i;
-//     std::vector<Tensor> out;
-// //    UncompressElement(const CompressedElement &compressed, std::vector<Tensor> *out)
-//     UncompressElement(*i, &out);
-//     VLOG(0) << "vec len after decompress " << out.size();
+  //  VLOG(0) << "(DBK) GetNext in task runner element index: " << (int64_t) result.element_index << ", components size: " << result.components.size();
+    if (result.components.size() > 0) {
+  //     Variant x = result.components.at(0);
+  //     VLOG(0) << "x: " << x.DebugString();
+  //     Variant extracted = x.get<Tensor>()->flat<Variant>()(0);
+  //     VLOG(0) << "extracted: " << extracted.DebugString();
+  //     CompressedElement *i = extracted.get<CompressedElement>();
+  //     VLOG(0) << "iptr " << i;
+  //     std::vector<Tensor> out;
+  // //    UncompressElement(const CompressedElement &compressed, std::vector<Tensor> *out)
+  //     UncompressElement(*i, &out);
+  //     VLOG(0) << "vec len after decompress " << out.size();
 
-//    VLOG(0) << "vec el 0 " << " descibe " << out.at(0).SummarizeValue(100);
-    VLOG(0) << "Produced element=" //<< out.at(0).SummarizeValue(100, true)  
-                << "[i=" << result.element_index
-                << ", Task: " <<  req.task_id() << "]";
-    // VLOG(0) << "(DBK) componentv2: " << result.components.at(0).SummarizeValue(100, true) << ", " << i << " for task " << result.element_index;
-  }
+  //    VLOG(0) << "vec el 0 " << " descibe " << out.at(0).SummarizeValue(100);
+      VLOG(0) << "Produced element=" //<< out.at(0).SummarizeValue(100, true)  
+                  << "[i=" << result.element_index
+                  << ", Task: " <<  req.task_id()
+                  << ", EOS: " << result.end_of_sequence
+                  << "]";
+      // VLOG(0) << "(DBK) componentv2: " << result.components.at(0).SummarizeValue(100, true) << ", " << i << " for task " << result.element_index;
+    }
+    
+    if (result.element_index < req.element_index()) {
+      DBK_TRACE(" BUFFER_POP_EL_SKIPPED");
+    } else {
+      DBK_TRACE(" BUFFER_POP_EL_DONE");
+    }
+
+  //}
 
   return Status::OK();
 }

@@ -201,9 +201,12 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         resource_mgr_(ctx->resource_manager()),
         captured_uncompress_func_(std::move(captured_uncompress_func)),
         output_types_(output_types),
-        output_shapes_(output_shapes) {}
+        output_shapes_(output_shapes) {
+            DBK_TRACE(" START");
+        }
 
   ~Dataset() override {
+    DBK_TRACE(" END");
     iteration_counter_->Unref();
     if (owns_resource_) {
       Status s = resource_mgr_->Delete<IterationCounter>(
@@ -447,9 +450,11 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         result_queue_size_.push_back(results_.size()); // EASL metrics
         // result_queue_size_duplicate_.push_back(results_.size()); // EASL metrics
         while (!ResultReady() && !Finished() && !cancelled_ && status_.ok()) {
+          DBK_TRACE(" BLOCKING_IN_GETNEXT_START");
           VLOG(3) << "Blocking in GetNext: " << DebugString();
           hadToWait = true; // EASL - metrics collection.
           get_next_cv_.wait(l);
+          DBK_TRACE(" BLOCKING_IN_GETNEXT_END");
         }
         wait_time = Env::Default()->NowMicros() - wait_time; // EASL metrics
         double wait_time_computation = (double)(wait_time)
@@ -708,7 +713,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     void TaskThreadManager(std::shared_ptr<IteratorContext> ctx) {
       auto cleanup =
           gtl::MakeCleanup([] { VLOG(1) << "Task thread manager exiting"; });
-      VLOG(1) << "Starting task thread manager";
+      VLOG(0) << "Starting task thread manager. Refresh interval: " << dataset()->task_refresh_interval_ms_;
       uint64 next_check = Env::Default()->NowMicros();
 
       // Heartbeat
@@ -718,13 +723,13 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           // All units are microseconds.
           while (!cancelled_ && Env::Default()->NowMicros() < next_check) {
             int64_t remaining_time = next_check - Env::Default()->NowMicros();
-            VLOG(4) << "Task thread manager waiting for " << remaining_time
-                    << "us";
+            // VLOG(0) << "Task thread manager waiting for " << remaining_time
+            //         << "us";
             manager_thread_cv_.wait_for(
                 l, std::chrono::microseconds(remaining_time));
           }
           if (cancelled_) {
-            VLOG(3) << "Task thread manager finished";
+            VLOG(0) << "Task thread manager finished";
             return;
           }
         }
@@ -792,9 +797,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       ClientHeartbeatRequest req;
 
       if(num_elements_ == 0){
-        VLOG(3) << "EASL - client heartbeat: still no elements processed.";
+        // VLOG(0) << "EASL - client heartbeat: still no elements processed.";
       } else {
-        VLOG(3) << "heartbeat - num_elements_: " << num_elements_;
+        // VLOG(0) << "heartbeat - num_elements_: " << num_elements_;
       }
 
       // Add the scalability metrics if sufficient measurements have been retrieved
@@ -802,8 +807,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         // Protect the metrics
         mutex_lock l(mu_);
         if (had_to_wait_.size() >= BATCH_INTERVAL) {
-          VLOG(0) << "EASL (Heartbeat) - Enough measurements for "
-                       << "scalability metrics";
+          // VLOG(0) << "EASL (Heartbeat) - Enough measurements for "
+          //              << "scalability metrics";
           // Compute the last x batch time
           int32 metrics_count = had_to_wait_.size();
           double last_x_batch_time_ms =
@@ -861,6 +866,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           return;
         }
         mutex_lock l(mu_);
+        VLOG(0) << "(DBK) Heartbeat error: " << s;
         status_ = s;
         get_next_cv_.notify_all();
       }
@@ -875,6 +881,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       }
       UpdateTasks(resp);
       RecordTFMetrics(resp);
+      // VLOG(0) << "done with heartbeat";
     }
 
     void ClearScalabilityMetrics() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
@@ -970,6 +977,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         }
         Status s = AddTask(it->second);
         if (!s.ok()) {
+          VLOG(0) << "(DBK) Error in adding tasks " << s;
           status_ = s;
           get_next_cv_.notify_all();
           break;
@@ -1111,8 +1119,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
               // VLOG(0) << "got task to process ";
               break;
             }
-            VLOG(1) << "Thread waiting for task or space in buffer, outstanding_requests_: "
-            << outstanding_requests_ << " results_.size(): " << results_.size();
+            // VLOG(0) << "Thread waiting for task or space in buffer, outstanding_requests_: "
+            // << outstanding_requests_ << " results_.size(): " << results_.size();
             worker_thread_cv_.wait(l);
           }
           DCHECK(task_to_process != nullptr);
@@ -1189,8 +1197,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       if (ShouldProcessAnyTask()) {
         std::shared_ptr<Task> task = GetAnyTaskToProcess();
         if (task) {
-          VLOG(0) << "Selected a task to process: "
-                  << task->info.ShortDebugString();
+          // VLOG(0) << "Selected a task to process: "
+          //         << task->info.ShortDebugString();
           return task;
         }
       }
@@ -1682,9 +1690,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
     // Number of batches to sample before sending scalability metrics to dispatcher
     uint32 buffer_period;
-    const uint32 BATCH_INTERVAL = 100;
-    const uint32 RESCALE_BUFFER_INTERVAL = 150;
-    const uint32 EPOCH_START_BUFFER_INTERVAL = 200;
+    const uint32 BATCH_INTERVAL = 10;
+    const uint32 RESCALE_BUFFER_INTERVAL = 15;
+    const uint32 EPOCH_START_BUFFER_INTERVAL = 20;
 
     std::vector<uint64> batch_timestamps_us_ TF_GUARDED_BY(mu_);
     std::vector<double> wait_times_ms_ TF_GUARDED_BY(mu_);

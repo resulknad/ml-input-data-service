@@ -445,7 +445,9 @@ Status MetadataStore::RemoveJob(int64 job_id) {
   auto job_metrics = it->second;
 
   // Properly erase job.
+  removed_jobs_.insert(job_id);
   job_metadata_.erase(job_id);
+
   return Status::OK();
 }
 
@@ -726,6 +728,10 @@ Status MetadataStore::UnsetJobIsScaling(int64 job_id) {
   return Status::OK();
 }
 
+Status MetadataStore::IsJobRemoved(int64 job_id, bool& is_removed) {
+  is_removed = (bool) this->removed_jobs_.contains(job_id);
+  return Status::OK();
+}
 Status MetadataStore::IsJobScaling(int64 job_id, bool& is_scaling) {
   std::shared_ptr<JobMetrics> jobMetrics;
   TF_RETURN_IF_ERROR(GetJobMetrics(job_id, jobMetrics));

@@ -64,6 +64,7 @@ class DataServiceSplitProvider : public SplitProvider {
   int64_t index_ = 0;
   int64_t target_index_ = 0;
   bool skip_all_ = false;
+  bool initialized_ = false;
   std::unique_ptr<DataServiceDispatcherClient> dispatcher_;
 };
 

@@ -25,7 +25,7 @@ public:
 
     void Write(const std::vector<Tensor>& tensors) override TF_LOCKS_EXCLUDED(mu_);
 
-    Status WriterThread(Env* env, const std::string& shard_directory,
+    Status WriterThread(Env* env, const std::string& shard_directory,int64_t task_id, 
                         uint64 checkpoint_id, const std::string& compression,
                         int64 version, DataTypeVector output_types) override;
 private:

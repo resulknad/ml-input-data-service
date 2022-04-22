@@ -49,3 +49,6 @@ gradleBuild
 Podfile.lock
 Pods
 xcuserdata
+/external
+/compile_commands.json
+/.cache/

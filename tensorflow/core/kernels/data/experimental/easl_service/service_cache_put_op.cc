@@ -1,5 +1,7 @@
 #include "tensorflow/core/kernels/data/experimental/easl_service/service_cache_put_op.h"
 
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/tstring.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/core/data/name_utils.h"
@@ -18,6 +20,8 @@ namespace easl{
 /* static */ constexpr const char* const ServiceCachePutOp::kParallelism;
 
 
+constexpr char kElementIndex[] = "element_index";
+constexpr char kCacheFile[] = "cache_files";
 
 
 class ServiceCachePutOp::Dataset : public DatasetBase {
@@ -80,6 +84,9 @@ class ServiceCachePutOp::Dataset::Iterator : public DatasetIterator<Dataset> {
 
  private:
   mutex mu_;
+  int64_t element_index_ = 0;
+  int64_t task_id_ = 0;
+  Env* env_;
   std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
   std::unique_ptr<tensorflow::data::easl::service_cache_util::Writer> writer_ TF_GUARDED_BY(mu_); 
 };
@@ -210,15 +217,18 @@ ServiceCachePutOp::Dataset::Iterator::~Iterator(){
 
 Status ServiceCachePutOp::Dataset::Iterator::Initialize(
     IteratorContext* ctx) {
-  VLOG(0) << "EASL - Initializing ServiceCachePutOp iterator";
+  task_id_ = ctx->task_id();
+  env_ = ctx->env();
+  VLOG(0) << "EASL - Initializing ServiceCachePutOp iterator TaskID: " << task_id_;
   VLOG(3) << "EASL - File format: " << dataset()->cache_format_;
   VLOG(3) << "EASL - parallelism format: " << dataset()->parallelism_;
   // TODO (damien-aymon) compression and file format are available as fields of dataset().
   // Use them for setting up the writers properly.
 
+
   writer_ =
       std::make_unique<tensorflow::data::easl::service_cache_util::Writer>(
-          ctx->env(), dataset()->path_, dataset()->output_dtypes(),
+          env_, task_id_, dataset()->path_, dataset()->output_dtypes(),
           dataset()->output_shapes(), dataset()->parallelism_, dataset()->cache_format_);
 
   return dataset()->input_->MakeIterator(
@@ -227,17 +237,90 @@ Status ServiceCachePutOp::Dataset::Iterator::Initialize(
 
 Status ServiceCachePutOp::Dataset::Iterator::SaveInternal(
     SerializationContext* ctx, IteratorStateWriter* writer) {
-  return errors::Unimplemented("Checkpointing is currently not supported.");
+
+  mutex_lock l(mu_);
+  TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
+
+  if(writer_){
+    VLOG(0) << "Closing writer...";
+    TF_RETURN_IF_ERROR(writer_->Close());
+  } else {
+    VLOG(0) << "writer already closed";
+  }
+
+  // persisting list of files
+
+  // Find all the files of this dataset
+  std::vector<string> files;
+  TF_RETURN_IF_ERROR(env_->GetMatchingPaths(io::JoinPath(dataset()->path_, absl::StrCat(task_id_, "*\\.easl")),
+      &files));
+
+  int64_t fcount = static_cast<int64_t>(files.size());
+  TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(absl::StrCat(kCacheFile)), fcount));
+  VLOG(0) << "file count written: " << fcount;
+  VLOG(0) << "File count:" << files.size();
+  for (int i=0; i<files.size(); i++) {
+    TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(absl::StrCat(kCacheFile, ".", i)), files[i]));
+    VLOG(0) << "Writing " << files[i];
+  }
+
+  TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kElementIndex), element_index_));
+  VLOG(0) << "saving cache put op";
+
+  VLOG(0) << "Making new writer...";
+  if(writer_){
+    writer_ =
+        std::make_unique<tensorflow::data::easl::service_cache_util::Writer>(
+            env_, task_id_, dataset()->path_, dataset()->output_dtypes(),
+            dataset()->output_shapes(), dataset()->parallelism_, dataset()->cache_format_);
+  }
+
+
+  return Status::OK();
 }
 
 Status ServiceCachePutOp::Dataset::Iterator::RestoreInternal(
     IteratorContext* ctx, IteratorStateReader* reader) {
-  return errors::Unimplemented("Checkpointing is currently not supported.");
+  mutex_lock l(mu_);
+  TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
+  int64_t file_count;
+  TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kCacheFile), &file_count));
+
+  absl::flat_hash_set<string> files {};
+  for (uint64_t i=0; i<file_count; i++) {
+    auto key = full_name(absl::StrCat(kCacheFile, ".", i));
+    tstring file_name;
+    reader->ReadScalar(key, &file_name);
+    files.insert(std::string(file_name));
+    VLOG(0) << "Just read " << std::string(file_name) << " from storage (file count: " << file_count << ")";
+  }
+
+  std::vector<string> files_on_fs;
+  TF_RETURN_IF_ERROR(env_->GetMatchingPaths(io::JoinPath(dataset()->path_, absl::StrCat(task_id_, "*\\.easl")),
+      &files_on_fs));
+  
+  for (auto file_name : files_on_fs) {
+    if (!files.contains(file_name)) {
+      VLOG(0) << "Deleting " << file_name;
+      TF_RETURN_IF_ERROR(env_->DeleteFile(file_name));
+    } else {
+      files.erase(file_name);
+    }
+  }
+
+  if (files.size() != 0) {
+    return errors::FailedPrecondition("Cache dir is not consistent with what checkpoint expects: (amongst others)", *files.begin(), files.size());
+  }
+
+  TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kElementIndex), &element_index_));
+  VLOG(0) << "restoring cache put op: (element_index_: " << element_index_ << ")";
+  return Status::OK();
 }
 
 Status ServiceCachePutOp::Dataset::Iterator::GetNextInternal(
     IteratorContext* ctx, std::vector<Tensor>* out_tensors,
     bool* end_of_sequence) {
+  mutex_lock l(mu_);
   //VLOG(0) << "ServiceCachePutOp - Get next enter";
 
   if(writer_ && !writer_->Initialized()){
@@ -246,9 +329,8 @@ Status ServiceCachePutOp::Dataset::Iterator::GetNextInternal(
 
 
   TF_RETURN_IF_ERROR(input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
-  
+
   if(*end_of_sequence){
-    mutex_lock l(mu_);
     if(writer_){
       // (damien-aymon) will block until the underlying asyncWriter is done.
       writer_->Close();
@@ -264,8 +346,14 @@ Status ServiceCachePutOp::Dataset::Iterator::GetNextInternal(
     }
     return Status::OK();
   }
+
   std::vector<Tensor> tensors = *out_tensors;
-  return writer_->Write(tensors);
+  VLOG(0) << "before pushing el index tensor " << element_index_;
+  tensors.push_back(Tensor(element_index_));
+  TF_RETURN_IF_ERROR(writer_->Write(tensors));
+  VLOG(0) << "after writing el index tensor " << element_index_;
+  element_index_++; 
+  return Status::OK();
 }
 
 namespace {

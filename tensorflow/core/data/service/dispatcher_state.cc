@@ -487,9 +487,25 @@ void DispatcherState::UpdateJobTargetWorkerCount(
     // Remove only created tasks..
     VLOG(0) << "EASL (UpdateJobTargetWorkerCount) - Decreased worker count from "
             << job->current_worker_count << " to target " << job_target_worker_count_update.target_worker_count();
-    uint64 num_tasks_to_end  =
-        job->current_worker_count - job_target_worker_count_update.target_worker_count();
 
+
+
+    int64 tasks_currently_being_ended = 0;
+    for (auto task : tasks_by_job_[job_id]) {
+      if (ending_tasks_by_job_[job_id].contains(task.second->task_id)){
+        // task is still running (contained in tasks_by_job)
+        // but also in ending, which means we are waiting for it
+        // to finish processing all of its splits
+        tasks_currently_being_ended++;
+      }
+    }
+
+    int64 num_tasks_to_end  =
+        std::max((int64) 0,(int64) (job->current_worker_count - job_target_worker_count_update.target_worker_count() - tasks_currently_being_ended));
+    VLOG(0) << "EASL (UpdateJobTargetWorkerCount) - Tasks currently being ended: " << tasks_currently_being_ended
+        << ", so looking to end: " << num_tasks_to_end - tasks_currently_being_ended << " (after max: " << num_tasks_to_end << ")";
+     
+    
     // Find tasks to end early
     DCHECK(tasks_by_job_.contains(job_id));
     TasksById current_tasks = tasks_by_job_[job_id];

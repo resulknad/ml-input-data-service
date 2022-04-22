@@ -2,9 +2,11 @@
 #define TENSORFLOW_CORE_KERNELS_DATA_EXPERIMENTAL_EASL_SERVICE_SERVICE_CACHE_UTIL_
 
 
+#include <queue>
 #include "tensorflow/core/data/snapshot_utils.h"
 #include "tensorflow/core/data/split_utils.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/threadpool.h"
 
 namespace tensorflow {
@@ -29,12 +31,14 @@ namespace service_cache_util {
 class MultiThreadedAsyncWriter {
  public:
   MultiThreadedAsyncWriter(const int writer_count);
+  ~MultiThreadedAsyncWriter();
 
   void Initialize(Env* env, int64 file_index,
                   const std::string& shard_directory, uint64 checkpoint_id,
                   const std::string& compression, int64 version,
                   const DataTypeVector& output_types,
-                  std::function<void(Status)> done);
+                  std::function<void(Status)> done,
+                  int64_t task_id);
 
   // Writes the given tensors. The method is non-blocking and returns without
   // waiting for the element to be written.
@@ -51,6 +55,7 @@ class MultiThreadedAsyncWriter {
   void Consume(snapshot_util::ElementOrEOF* be) TF_LOCKS_EXCLUDED(mu_);
   bool ElementAvailable() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   virtual Status WriterThread(Env* env, const std::string& shard_directory,
+      int64_t task_id,
                       uint64 checkpoint_id, const std::string& compression,
                       int64 version, DataTypeVector output_types);
 
@@ -85,6 +90,7 @@ class MultiThreadedAsyncWriter {
 class Writer {
  public:
   Writer(Env* env,
+         const int64_t task_id,
          const std::string& target_dir,
          const DataTypeVector& output_dtypes,
          const std::vector<PartialTensorShape>& output_shapes,
@@ -106,6 +112,7 @@ class Writer {
       const std::vector<PartialTensorShape>& output_shapes);
 
   const int writer_version_;
+  const int64_t task_id_;
   bool initialized_ = false;
 
   Env* env_;
@@ -129,7 +136,13 @@ class MultiThreadedAsyncReader {
                            const std::string &target_dir,
                            const DataTypeVector &output_dtypes,
                            const std::vector<PartialTensorShape> &output_shapes,
-                           int reader_count = 8);
+                           int reader_count = 8,
+                           bool deterministic = true,
+                           int64_t element_index = 0) : env_(env), split_provider_(split_provider), output_dtypes_(output_dtypes), 
+    output_shapes_(output_shapes), target_dir_(target_dir), 
+    reader_count_(reader_count), num_readers_done_(0), end_of_sequence_(false),
+    deterministic_(deterministic), element_index_(element_index), running_readers_(0), blocked_readers_(0) { }
+
 
   Status Initialize();
 
@@ -142,15 +155,21 @@ class MultiThreadedAsyncReader {
  protected:
   mutex mu_;
   mutex mu_add_;
+  condition_variable mu_add_cv_;
+  bool deterministic_;
+  int64_t element_index_;
+  std::atomic_long blocked_readers_;
+  std::priority_queue<std::pair<int64_t, string>, std::vector<std::pair<int64_t,string>>, std::greater<std::pair<int64_t,string>>> element_index_avail_ {};
+  std::atomic_long running_readers_;
   condition_variable read_cv_ TF_GUARDED_BY(mu_);
   int file_count_;
-  const int reader_count_;
-  int8 num_readers_done_ TF_GUARDED_BY(mu_add_);
-  bool cancelled_ = false TF_GUARDED_BY(mu_add_);
+  int reader_count_;
+  int num_readers_done_ TF_GUARDED_BY(mu_add_);
+  bool cancelled_ TF_GUARDED_BY(mu_add_) = false;
 
   Status ReadAndParseMetadataFile();
   void Consume(string* s, bool* end_of_sequence) TF_LOCKS_EXCLUDED(mu_);
-  void Add(std::vector<Tensor>& tensors)  TF_LOCKS_EXCLUDED(mu_add_);
+  void Add(std::vector<Tensor>& tensors, std::pair<int64_t, string> element_identifier)  TF_LOCKS_EXCLUDED(mu_add_);
   void ReaderDone();
   bool ElementAvailable();
   virtual Status ReaderThread(Env *env, uint64 writer_id, int64 version,
@@ -186,7 +205,13 @@ public:
            const DataTypeVector& output_dtypes,
            const std::vector<PartialTensorShape>& output_shapes,
            const int reader_count = 8,
-           const int reader_version = 2);
+           const int reader_version = 2,
+           const bool deterministic = true,
+           const int64_t element_index = 0)
+  : target_dir_(target_dir), split_provider_(split_provider), env_(env), 
+    output_dtypes_(output_dtypes), reader_count_(reader_count), 
+    reader_version_(reader_version),
+    deterministic_(deterministic), element_index_(element_index_){};
 
     Status Initialize();
 
@@ -196,6 +221,8 @@ public:
 
 private:
     const int reader_version_;
+    const bool deterministic_;
+    const int64_t element_index_;
     Env* env_;
     const int reader_count_;
     const std::string target_dir_;

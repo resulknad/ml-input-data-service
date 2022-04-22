@@ -142,7 +142,7 @@ Status GetCheckpointFromDisk(
                                            const TaskDef& task_def,
                                            IteratorStateReader* reader) const;
 
-  int64_t UpdateMinElementIndex(int64_t task_id, int64_t element_index);
+  int64_t UpdateMostRecentElementIndex(int64_t task_id, int64_t element_index);
 
   const experimental::WorkerConfig config_;
   // Worker Borg job UID for telemetry. -1 if not supported.

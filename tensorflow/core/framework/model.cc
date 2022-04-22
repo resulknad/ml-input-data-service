@@ -1725,7 +1725,7 @@ Model::ModelMetrics Model::CollectMetrics() {
   Node::NodeValues node_times;
   Node::NodeValues final_times;
 
-  VLOG(3) << "EASL - Trying to collect metrics";
+  VLOG(0) << "EASL - Trying to collect metrics";
 
   FlushMetrics();
   {
@@ -1819,7 +1819,7 @@ Model::ModelMetrics Model::CollectMetrics() {
     entry.second.set_marker_node_name(marker_node_name);
   }
 
-  VLOG(3) << "EASL - Done collecting metrics, returning";
+  VLOG(0) << "EASL - Done collecting metrics, returning";
   return metrics;
 }
 

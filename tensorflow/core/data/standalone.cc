@@ -78,12 +78,16 @@ Status Iterator::Save(SerializationContext* ctx, IteratorStateWriter* writer) {
 //return iterator_->Save(ctx, writer);
 }
 
+void Iterator::SetTaskID(int64_t task_id) {
+  VLOG(0) << "setting task ID to " << task_id;
+  ctx_->set_task_id(task_id);
+}
 model::Model::ModelMetrics Iterator::GetMetrics() {
   auto model = ctx_.get()->model();
   //auto model = 
 
   if(model != nullptr){
-    VLOG(4) << "EASL - Standalone iterator GetMetrics, model found";
+    VLOG(0) << "EASL - Standalone iterator GetMetrics, model found";
     return model->CollectMetrics();
   } else {
     VLOG(0) << "EASL - Standalone iterator GetMetrics, no model found here.";
@@ -96,6 +100,7 @@ Iterator::Iterator(IteratorBase* iterator, IteratorContext* ctx)
 
 Status Dataset::MakeIteratorFromCheckpoint(
     std::vector<std::unique_ptr<SplitProvider>> split_providers,
+    int64_t task_id,
     IteratorStateReader* reader,
     std::unique_ptr<Iterator>* result) {
 
@@ -103,6 +108,7 @@ Status Dataset::MakeIteratorFromCheckpoint(
   if (ctx == nullptr) {
     VLOG(0) << "make interator context returned nullptr!!";
   }
+  ctx->set_task_id(task_id);
   std::unique_ptr<IteratorBase> iterator;
 
   if (reader == nullptr) {
@@ -206,10 +212,12 @@ IteratorContext* Dataset::MakeIteratorContext(std::vector<std::unique_ptr<SplitP
 
 Status Dataset::MakeIterator(
     std::vector<std::unique_ptr<SplitProvider>> split_providers,
+    int64_t task_id,
     std::unique_ptr<Iterator>* result) {
   VLOG(0) << "calling make iterator...";
 
   auto ctx = MakeIteratorContext(std::move(split_providers));
+  ctx->set_task_id(task_id);
   // Create the iterator from the dataset.
   std::unique_ptr<IteratorBase> iterator;
   TF_RETURN_IF_ERROR(dataset_->MakeIterator(ctx, /*parent=*/nullptr,
@@ -218,8 +226,8 @@ Status Dataset::MakeIterator(
   return Status::OK();
 }
 
-Status Dataset::MakeIterator(std::unique_ptr<Iterator>* result) {
-  return MakeIterator(/*split_providers=*/{}, result);
+Status Dataset::MakeIterator(int64_t task_id, std::unique_ptr<Iterator>* result) {
+  return MakeIterator(/*split_providers=*/{}, task_id, result);
 }
 
 

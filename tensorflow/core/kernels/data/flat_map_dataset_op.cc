@@ -70,8 +70,10 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
+    auto pfix = name_utils::IteratorPrefix(kDatasetType, prefix);
+    VLOG(0) << "MakeIteratorInternal pfix: " << pfix << " input prefix was " << prefix;
     return absl::make_unique<Iterator>(Iterator::Params{
-        this, name_utils::IteratorPrefix(kDatasetType, prefix)});
+        this, pfix});
   }
 
   const DataTypeVector& output_dtypes() const override { return output_types_; }
@@ -152,22 +154,29 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
             return Status::OK();
           }
 
+          VLOG(0) << "reset curr_el_iterator ";
           // We have reached the end of the current element, so maybe move on
           // to the next element.
           current_element_iterator_.reset();
         }
 
+        VLOG(0) << "cleared inputs";
         // Get the next element from the input dataset.
         inputs_.clear();
+        VLOG(0) << "get from input_impl_";
         TF_RETURN_IF_ERROR(
             input_impl_->GetNext(ctx, &inputs_, end_of_sequence));
+        VLOG(0) << "got from input_impl_";
         if (*end_of_sequence) {
+          VLOG(0) << "got EOS, resetting";
           input_impl_.reset();
           return Status::OK();
         }
 
+        VLOG(0) << "building new curr el iterator";
         TF_RETURN_IF_ERROR(
             BuildCurrentElementIteratorLocked(ctx, /*is_get_next=*/true));
+        VLOG(0) << "done building new curr el iterator";
       } while (true);
     }
 
@@ -221,7 +230,9 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
           dataset()->captured_func_->CheckExternalState()));
       mutex_lock l(mu_);
       if (input_impl_) {
+        VLOG(0) << "saving input impl " << full_name("");
         TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
+        VLOG(0) << "done saving input impl " << full_name("");
         TF_RETURN_IF_ERROR(
             writer->WriteScalar(full_name(kElementIndex), element_index_));
         if (current_element_iterator_) {
@@ -252,7 +263,9 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
       if (!reader->Contains(full_name(kExhausted))) {
         TF_RETURN_IF_ERROR(
             dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_));
+        VLOG(0) << "restoring input:" << full_name("");
         TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
+        VLOG(0) << "done restoring input:" << full_name("");
         {
           int64_t temp;
           TF_RETURN_IF_ERROR(
@@ -267,6 +280,7 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
             TF_RETURN_IF_ERROR(
                 reader->ReadScalar(full_name(kInputsSize), &temp));
             inputs_size = static_cast<size_t>(temp);
+            VLOG(0) << "inputs_size: " << inputs_size;
           }
           inputs_.reserve(inputs_size);
           for (int i = 0; i < inputs_size; i++) {
@@ -274,13 +288,18 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
             TF_RETURN_IF_ERROR(reader->ReadTensor(
                 ctx->flr(), full_name(strings::StrCat(kInputs, "[", i, "]")),
                 &inputs_.back()));
+            VLOG(0) << "just read from key:" << full_name(strings::StrCat(kInputs, "[", i, "]")) ;
           }
 
           element_index_--;
+          VLOG(0) << "building curr el iterator";
+           TF_RETURN_IF_ERROR(
+               BuildCurrentElementIteratorLocked(ctx, /*is_get_next=*/false));
+          VLOG(0) << "done building curr el iterator";
+          VLOG(0) << "calling restoreinput on current_elemnent_iterator_";
           TF_RETURN_IF_ERROR(
-              BuildCurrentElementIteratorLocked(ctx, /*is_get_next=*/false));
-          TF_RETURN_IF_ERROR(
-              RestoreInput(ctx, reader, current_element_iterator_));
+               RestoreInput(ctx, reader, current_element_iterator_));
+          VLOG(0) << "done calling restoreinput on current_elemnent_iterator_";
         }
       }
       return Status::OK();

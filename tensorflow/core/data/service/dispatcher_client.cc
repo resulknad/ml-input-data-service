@@ -51,7 +51,7 @@ StatusOr<WorkerHeartbeatResponse> DataServiceDispatcherClient::WorkerHeartbeat(
 
   grpc::ClientContext client_ctx;
   std::chrono::time_point<std::chrono::system_clock> deadline = std::chrono::system_clock::now() +
-      std::chrono::seconds(10);
+      std::chrono::seconds(30);
   client_ctx.set_deadline(deadline);
   grpc::Status status = stub_->WorkerHeartbeat(&client_ctx, request, &response);
   if (!status.ok()) {

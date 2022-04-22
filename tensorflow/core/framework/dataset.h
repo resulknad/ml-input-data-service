@@ -402,6 +402,7 @@ class IteratorContext {
           interleave_depth(ctx->interleave_depth()),
           is_restoring(ctx->is_restoring()),
           model(ctx->model()),
+          task_id(ctx->task_id()),
           options(ctx->options()),
           resource_mgr(ctx->resource_mgr()),
           runner(*(ctx->runner())),
@@ -468,6 +469,9 @@ class IteratorContext {
 
     // If non-null, identifies the object used for performance modeling.
     std::shared_ptr<model::Model> model = nullptr;
+
+    // EASL: to prefix cache files in CachePutOp
+    int64_t task_id = 0;
 
     // The input pipeline options.
     const Options* options = nullptr;
@@ -539,6 +543,11 @@ class IteratorContext {
   void set_model(std::shared_ptr<model::Model>& model){
     params_.model = model;
   }
+
+  void set_task_id(int64_t task_id){
+    VLOG(0) << "Setting task ID to " << task_id;
+    params_.task_id = task_id;
+  }
   const Options* options() { return params_.options; }
 
   ResourceMgr* resource_mgr() { return params_.resource_mgr; }
@@ -548,6 +557,8 @@ class IteratorContext {
   }
 
   int32 runner_threadpool_size() { return params_.runner_threadpool_size; }
+
+  int64_t task_id() { return params_.task_id; }
 
   std::vector<std::shared_ptr<SplitProvider>> split_providers() {
     return params_.split_providers;
@@ -782,7 +793,7 @@ class IteratorBase {
   virtual Status Restore(IteratorContext* ctx, IteratorStateReader* reader) {
     int64_t start_us = EnvTime::NowMicros();
     TF_RETURN_IF_ERROR(RestoreInternal(ctx, reader));
-    VLOG(1) << "Restored " << prefix() << " in "
+    VLOG(0) << "Restored " << prefix() << " in "
             << (EnvTime::NowMicros() - start_us) << "us";
     return Status::OK();
   }

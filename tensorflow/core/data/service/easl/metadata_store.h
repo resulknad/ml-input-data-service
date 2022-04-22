@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_DATA_SERVICE_EASL_METADATA_STORE_H_
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -315,6 +316,7 @@ class MetadataStore {
   Status SetJobIsScaling(int64 job_id);
   Status UnsetJobIsScaling(int64 job_id);
   Status IsJobScaling(int64 job_id, bool& is_scaling);
+  Status IsJobRemoved(int64 job_id, bool& is_removed);
 
   bool JobSeenBefore(int64 fingerprint);
 
@@ -345,6 +347,8 @@ class MetadataStore {
 
 
  private:
+  // Key is job id
+  absl::flat_hash_set<int64> removed_jobs_;
   // Key is job id
   absl::flat_hash_map<int64, std::shared_ptr<JobMetrics>> job_metadata_;
   // Key is fingerprint

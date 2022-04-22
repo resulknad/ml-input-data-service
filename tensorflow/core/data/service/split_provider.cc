@@ -38,7 +38,7 @@ Status DataServiceSplitProvider::GetNext(Tensor* split, bool* end_of_splits) {
   mutex_lock l(mu_);
   if (skip_all_) {
     *end_of_splits = true;
-    VLOG(0) << "skipping because skip_all_";
+    VLOG(0) << "skipping because skip_all_" << skip_all_;
     return Status::OK();
   }
   if (!dispatcher_) {
@@ -84,8 +84,9 @@ Status DataServiceSplitProvider::Save(
   VLOG(0) << "post split saving";
   VLOG(0) << "data service split saving, s1:" << s1;
   auto s2 = writer->WriteScalar(full_name(kRepetition), repetition_);
-  VLOG(0) << "data service split saving, s1:" << s1 << ", s2:" << s2;
+  VLOG(0) << "data service split saving, s1:" << s1 << ", s2:" << s2 << " name: " << full_name(kRepetition) << " val:" << repetition_;
   if (skip_all_) {
+    VLOG(0) << "data service split skipall";
     TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kSkipAll), skip_all_));
     VLOG(0) << "data service split saving, s1:" << s1 << ", s2:" << s2;
   }
@@ -95,9 +96,17 @@ Status DataServiceSplitProvider::Save(
 Status DataServiceSplitProvider::Restore(
     std::function<std::string(std::string)> full_name,
     IteratorStateReader* reader) {
+  if (initialized_) {
+    VLOG(0) << "Refusing to restore twice: " << full_name("") << ". first restore is what matters...";
+    return Status::OK();
+  }
+  initialized_ = true;
+  VLOG(0) << "Checking key " << full_name(kRepetition) << " local state: " << target_index_ << ", " << repetition_;
   if (!reader->Contains(full_name(kRepetition)) || reader->Contains(full_name(kSkipAll))) {
     // must have been destroyed when checkpointing...
     // thus we are out of elements -> skip all
+    VLOG(0) << "setting skip_all_. " << reader->Contains(full_name(kSkipAll))
+      << " because key " << full_name(kRepetition) << "  does not exist;";
     skip_all_ = true; 
     return Status::OK();
   }
