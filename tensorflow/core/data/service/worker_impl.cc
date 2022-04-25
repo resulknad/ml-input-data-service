@@ -133,7 +133,12 @@ LocalWorkers::AddressToWorkerMap* LocalWorkers::local_workers_ =
 
 DataServiceWorkerImpl::DataServiceWorkerImpl(const WorkerConfig& config)
     : config_(ApplyWorkerDefaults(config)), worker_uid_(port::JobUid()) {
+
   metrics::RecordTFDataServiceWorkerCreated();
+
+  auto checkpoint_env_dir = getenv("DBK_CHECKPOINT_DIR");
+  checkpoint_root_ = checkpoint_env_dir ? checkpoint_env_dir : "checkpoints/";
+  VLOG(0) << "CHECKPOINT DIR: " << checkpoint_root_;
 }
 
 DataServiceWorkerImpl::~DataServiceWorkerImpl() {
@@ -219,9 +224,11 @@ Status DataServiceWorkerImpl::ValidateWorkerConfig() const {
   return Status::OK();
 }
 
-StatusOr<std::pair<string,int64_t>> ClosestAvailableCheckpoint(int64_t task_id, int64_t desired_element_id) {
+
+StatusOr<std::pair<string,int64_t>> DataServiceWorkerImpl::ClosestAvailableCheckpoint(int64_t task_id, int64_t desired_element_id) {
   auto env = tensorflow::Env::Default();
-  string checkpoint_dir = io::JoinPath("checkpoints/", std::to_string(task_id));
+
+  string checkpoint_dir = io::JoinPath(checkpoint_root_, std::to_string(task_id));
 
   if (!env->IsDirectory(checkpoint_dir).ok()) {
     return errors::Unavailable("Directory ", checkpoint_dir, " does not exist.");
@@ -385,7 +392,7 @@ Status DataServiceWorkerImpl::GetCheckpointFromDisk(
 
 
   auto env = tensorflow::Env::Default();
-  string checkpoint_dir = io::JoinPath("checkpoints/", std::to_string(task_id));
+  string checkpoint_dir = io::JoinPath(checkpoint_root_, std::to_string(task_id));
 
 
   if (!env->IsDirectory(checkpoint_dir).ok()) {
@@ -753,8 +760,8 @@ Status WriteVariantTensor(const Tensor& val, FileOutputBuffer* out,
   TF_RETURN_IF_ERROR(reader.ReadTensor(FullName("TaskRunner", "FirstComeFirstServed.element_index"), &element_index_tensor));
 
   int64_t element_index = element_index_tensor.scalar<int64_t>()();
-  string out_dir_tmp = io::JoinPath("checkpoints", std::to_string(task_id), strings::StrCat("tmp.", element_index, Env::Default()->NowMicros()));
-  string out_dir = io::JoinPath("checkpoints", std::to_string(task_id), strings::StrCat("checkpoint.", element_index));
+  string out_dir_tmp = io::JoinPath(checkpoint_root_, std::to_string(task_id), strings::StrCat("tmp.", element_index, Env::Default()->NowMicros()));
+  string out_dir = io::JoinPath(checkpoint_root_, std::to_string(task_id), strings::StrCat("checkpoint.", element_index));
 
   if (env->IsDirectory(out_dir).ok()) {
     VLOG(0) << "stopping with checkpointing (there already is a checkpoint)";

@@ -142,6 +142,8 @@ Status GetCheckpointFromDisk(
                                            const TaskDef& task_def,
                                            IteratorStateReader* reader) const;
 
+  StatusOr<std::pair<string,int64_t>> ClosestAvailableCheckpoint(int64_t task_id, int64_t desired_element_id);
+
   int64_t UpdateMostRecentElementIndex(int64_t task_id, int64_t element_index);
 
   const experimental::WorkerConfig config_;
@@ -155,6 +157,7 @@ Status GetCheckpointFromDisk(
 
   mutex mu_;
   condition_variable cv_;
+  string checkpoint_root_;
   // The minimum element index a client has requested per task
   mutex element_index_for_task_mu_;
   absl::flat_hash_map<int64_t, int64_t> element_index_for_task_ TF_GUARDED_BY(element_index_for_task_mu_);
