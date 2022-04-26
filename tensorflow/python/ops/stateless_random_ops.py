@@ -251,7 +251,7 @@ def deterministic_random_uniform(shape,
                              alg="auto_select"):
   seed = ops.get_default_graph().seed
   ops.get_default_graph().seed = split(seed, num=1)[0, :]
-  return stateless_random_uniform(shape, minval=minval, maxval=maxval, dtype=dtype, name=name, alg=alg)
+  return stateless_random_uniform(shape, seed, minval=minval, maxval=maxval, dtype=dtype, name=name, alg=alg)
 
 
 
