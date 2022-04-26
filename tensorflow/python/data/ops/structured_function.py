@@ -277,16 +277,16 @@ class StructuredFunctionWrapper():
     if add_to_graph:
       self._function.add_to_graph(ops.get_default_graph())
 
-    if not use_legacy_function:
-      outer_graph_seed = ops.get_default_graph().seed
-      if outer_graph_seed and self._function.graph.seed == outer_graph_seed:
-        if self._function.graph._seed_used:
-          warnings.warn(
-              "Seed %s from outer graph might be getting used by function %s, "
-              "if the random op has not been provided any seed. Explicitly set "
-              "the seed in the function if this is not the intended behavior." %
-              (outer_graph_seed, func_name),
-              stacklevel=4)
+    # if not use_legacy_function:
+    #   outer_graph_seed = ops.get_default_graph().seed
+    #   if outer_graph_seed and self._function.graph.seed == outer_graph_seed:
+    #     if self._function.graph._seed_used:
+    #       warnings.warn(
+    #           "Seed %s from outer graph might be getting used by function %s, "
+    #           "if the random op has not been provided any seed. Explicitly set "
+    #           "the seed in the function if this is not the intended behavior." %
+    #           (outer_graph_seed, func_name),
+    #           stacklevel=4)
 
   @property
   def output_structure(self):
