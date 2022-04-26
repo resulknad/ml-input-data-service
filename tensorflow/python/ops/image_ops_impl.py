@@ -3415,6 +3415,8 @@ def sample_distorted_bounding_box_v2(image_size,
         name=name)
 
 
+@tf_export('image.deterministic_sample_distorted_bounding_box', v1=[])
+@dispatch.add_dispatch_support
 def deterministic_sample_distorted_bounding_box(image_size,
                                                 bounding_boxes,
                                                 min_object_covered=0.1,
