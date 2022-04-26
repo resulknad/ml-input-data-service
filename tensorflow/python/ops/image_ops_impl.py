@@ -420,7 +420,7 @@ def random_flip_left_right(image, seed=None):
 
 
 
-@tf_export('image.stateless_random_flip_left_right', v1=[])
+@tf_export('image.deterministic_random_flip_left_right', v1=[])
 @dispatch.add_dispatch_support
 def deterministic_random_flip_left_right(image):
   """Randomly flip an image horizontally (left to right) deterministically.
