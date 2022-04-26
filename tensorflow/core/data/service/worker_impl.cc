@@ -138,6 +138,7 @@ DataServiceWorkerImpl::DataServiceWorkerImpl(const WorkerConfig& config)
 
   auto checkpoint_env_dir = getenv("DBK_CHECKPOINT_DIR");
   checkpoint_root_ = checkpoint_env_dir ? checkpoint_env_dir : "checkpoints/";
+  VLOG(0) << "CHECKPOINT DIR: " << checkpoint_root_;
 }
 
 DataServiceWorkerImpl::~DataServiceWorkerImpl() {
