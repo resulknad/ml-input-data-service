@@ -412,6 +412,12 @@ def random_crop(value, size, seed=None, name=None):
     return array_ops.slice(value, offset, size, name=name)
 
 
+def deterministic_random_crop(value, size, name=None):
+  seed = ops.get_default_graph().seed
+  ops.get_default_graph().seed = stateless_random_ops.split(seed, num=1)[0, :]
+  return stateless_random_crop(value, size, seed, name=name)
+
+
 @tf_export("image.stateless_random_crop", v1=[])
 @dispatch.add_dispatch_support
 def stateless_random_crop(value, size, seed, name=None):
