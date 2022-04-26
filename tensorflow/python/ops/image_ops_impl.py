@@ -3415,6 +3415,27 @@ def sample_distorted_bounding_box_v2(image_size,
         name=name)
 
 
+def deterministic_sample_distorted_bounding_box(image_size,
+                                                bounding_boxes,
+                                                min_object_covered=0.1,
+                                                aspect_ratio_range=None,
+                                                area_range=None,
+                                                max_attempts=None,
+                                                use_image_if_no_bounding_boxes=None,
+                                                name=None):
+  seed = ops.get_default_graph().seed
+  ops.get_default_graph().seed = stateless_random_ops.split(seed, num=1)[0, :]
+  return stateless_sample_distorted_bounding_box(
+      image_size,
+      bounding_boxes,
+      seed,
+      min_object_covered=min_object_covered,
+      aspect_ratio_range=aspect_ratio_range,
+      area_range=area_range,
+      max_attempts=max_attempts,
+      use_image_if_no_bounding_boxes=use_image_if_no_bounding_boxes,
+      name=name)
+
 @tf_export('image.stateless_sample_distorted_bounding_box', v1=[])
 @dispatch.add_dispatch_support
 def stateless_sample_distorted_bounding_box(image_size,
