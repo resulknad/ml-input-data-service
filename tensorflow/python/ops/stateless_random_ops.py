@@ -241,6 +241,19 @@ def fold_in(seed, data, alg="auto_select"):
                                    minval=None, maxval=None, alg=alg)
   return array_ops.stack([seed1, data])
 
+@tf_export("random.deterministic_uniform")
+@dispatch.add_dispatch_support
+def deterministic_random_uniform(shape,
+                             minval=0,
+                             maxval=None,
+                             dtype=dtypes.float32,
+                             name=None,
+                             alg="auto_select"):
+  seed = ops.get_default_graph().seed
+  ops.get_default_graph().seed = split(seed, num=1)[0, :]
+  return stateless_random_uniform(shape, minval=minval, maxval=maxval, dtype=dtype, name=name, alg=alg)
+
+
 
 @tf_export("random.stateless_uniform")
 @dispatch.add_dispatch_support
