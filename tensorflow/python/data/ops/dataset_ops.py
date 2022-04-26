@@ -1865,7 +1865,8 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
           map_func,
           num_parallel_calls=None,
           deterministic=None,
-          name=None):
+          name=None,
+          deterministic_randomness=False):
     """Maps `map_func` across the elements of this dataset.
 
     This transformation applies `map_func` to each element of this dataset, and
@@ -2014,19 +2015,36 @@ name=None))
     Returns:
       Dataset: A `Dataset`.
     """
-    if num_parallel_calls is None or DEBUG_MODE:
-      if deterministic is not None and not DEBUG_MODE:
-        warnings.warn("The `deterministic` argument has no effect unless the "
-                      "`num_parallel_calls` argument is specified.")
-      return MapDataset(self, map_func, preserve_cardinality=True, name=name)
+    if deterministic_randomness:
+      if num_parallel_calls is None or DEBUG_MODE:
+        if deterministic is not None and not DEBUG_MODE:
+          warnings.warn("The `deterministic` argument has no effect unless the "
+                        "`num_parallel_calls` argument is specified.")
+        return DeterministicMapDataset(self, map_func, preserve_cardinality=True)
+      else:
+        return DeterministicParallelMapDataset(
+            self,
+            map_func,
+            num_parallel_calls,
+            deterministic,
+            preserve_cardinality=True)
     else:
-      return ParallelMapDataset(
-          self,
-          map_func,
-          num_parallel_calls,
-          deterministic,
-          preserve_cardinality=True,
-          name=name)
+      if num_parallel_calls is None or DEBUG_MODE:
+        if deterministic is not None and not DEBUG_MODE:
+          warnings.warn("The `deterministic` argument has no effect unless the "
+                        "`num_parallel_calls` argument is specified.")
+        return MapDataset(self, map_func, preserve_cardinality=True, name=name)
+      else:
+        return ParallelMapDataset(
+            self,
+            map_func,
+            num_parallel_calls,
+            deterministic,
+            preserve_cardinality=True,
+            name=name)
+
+  def deterministic(self):
+    return DeterministicDataset(self)
 
   def flat_map(self, map_func, name=None):
     """Maps `map_func` across this dataset and flattens the result.
@@ -5752,6 +5770,167 @@ class RandomDataset(DatasetSource):
   @property
   def element_spec(self):
     return tensor_spec.TensorSpec([], dtypes.int64)
+
+
+class DeterministicDataset(UnaryDataset):
+  """A `Dataset` that associates seed with any input dataset.
+     It does not take any arguments and is supposed to be called at the end
+     by the user in case they require a deterministic operation on the input dataset
+     Example of use:
+      inc_dataset = tf.data.Dataset.range(16).deterministic_dataset()
+     No Arguments expected.
+     Returns the dataset with elemnt seeds
+  """
+
+  def __init__(self,
+               input_dataset):
+
+    self._input_dataset = input_dataset
+
+    # Using the global seed to generate the element level seed
+
+    global_seed,op_level_seed = random_seed.get_seed(None)
+    # spec and dict needed for the random seeds to be generated, compulsory requirement!
+    seed_spec = tensor_spec.TensorSpec([],dtypes.int64)
+    seed_dict = {
+        "output_shapes": structure.get_flat_tensor_shapes(seed_spec),
+        "output_types": structure.get_flat_tensor_types(seed_spec),
+        }
+
+    element_seed = ged_ops.random_dataset(
+         global_seed, op_level_seed, **seed_dict)
+    # Compulsory requirement for the batch_op to create a drop_remainder
+    drop_remainder_defined = ops.convert_to_tensor(
+        True, dtype=dtypes.bool, name="drop_remainder")
+
+    # Seed requires two integers for the random generation algorithm to work
+    element_seed_batched = gen_dataset_ops.batch_dataset_v2(
+        element_seed,
+        batch_size=2,
+        drop_remainder=drop_remainder_defined,
+        **seed_dict)
+  #  logging_ops.print_v2 (variant_tensor_seed_batched)
+    #batch_size = tensor_util.constant_value(2)
+
+    # Find the structure after batching, essential for zipping the datasets
+
+    structure_batched = nest.map_structure(
+          lambda component_spec: component_spec._batch(2),
+          seed_spec)
+    #variant_tensor = zip(self._input_dataset._variant_tensor, variant_tensor_seed_batched)
+
+    # the pack operation needs to have a structure as a list of two datasets
+
+    self._structure = nest.pack_sequence_as(
+        {'element': 'a', 'element_seed':'b'},
+        [self._input_dataset.element_spec,structure_batched])
+    # self._structure = nest.pack_sequence_as(
+    #     ('a','b'),
+    #     [self._input_dataset.element_spec,structure_batched])
+
+    # flat structure internally calls the element|_spec property
+
+    variant_tensor = gen_dataset_ops.zip_dataset(
+        [self._input_dataset._variant_tensor, element_seed_batched],
+        **self._flat_structure)
+    #logging_ops.print_v2 (variant_tensor)
+    super(DeterministicDataset, self).__init__(input_dataset,
+                                                    variant_tensor)
+
+  @property
+  def element_spec(self):
+    return self._structure
+
+
+class DeterministicMapDataset(UnaryDataset):
+  """A `Dataset` that maps a function over elements in its input."""
+
+  def __init__(self,
+               input_dataset,
+               map_func,
+               use_inter_op_parallelism=True,
+               preserve_cardinality=False,
+               use_legacy_function=False):
+    """See `Dataset.map()` for details."""
+    self._input_dataset = input_dataset
+    self._use_inter_op_parallelism = use_inter_op_parallelism
+    self._preserve_cardinality = preserve_cardinality
+    #TODO Modify here, add the three arguments which will also serve as the function arguments
+
+    self._map_func = structured_function.DeterministicStructuredFunctionWrapper(
+        map_func,
+        self._transformation_name(),
+        dataset=input_dataset,
+        use_legacy_function=use_legacy_function)
+    variant_tensor = gen_dataset_ops.map_dataset(
+        input_dataset._variant_tensor,  # pylint: disable=protected-access
+        self._map_func.function.captured_inputs,
+        f=self._map_func.function,
+        use_inter_op_parallelism=self._use_inter_op_parallelism,
+        preserve_cardinality=self._preserve_cardinality,
+        **self._flat_structure)
+
+    super(DeterministicMapDataset, self).__init__(input_dataset, variant_tensor)
+
+  def _functions(self):
+    return [self._map_func]
+
+  @property
+  def element_spec(self):
+    return self._map_func.output_structure
+
+  def _transformation_name(self):
+    return "Dataset.map()"
+
+
+class DeterministicParallelMapDataset(UnaryDataset):
+  """A `Dataset` that maps a function over elements in its input in parallel."""
+
+  def __init__(self,
+               input_dataset,
+               map_func,
+               num_parallel_calls,
+               deterministic,
+               use_inter_op_parallelism=True,
+               preserve_cardinality=False,
+               use_legacy_function=False):
+    """See `Dataset.map()` for details."""
+    self._input_dataset = input_dataset
+    self._use_inter_op_parallelism = use_inter_op_parallelism
+    self._map_func = structured_function.DeterministicStructuredFunctionWrapper(
+        map_func,
+        self._transformation_name(),
+        dataset=input_dataset,
+        use_legacy_function=use_legacy_function)
+    if deterministic is None:
+      self._deterministic = "default"
+    elif deterministic:
+      self._deterministic = "true"
+    else:
+      self._deterministic = "false"
+    self._preserve_cardinality = preserve_cardinality
+    self._num_parallel_calls = ops.convert_to_tensor(
+        num_parallel_calls, dtype=dtypes.int64, name="num_parallel_calls")
+    variant_tensor = gen_dataset_ops.parallel_map_dataset_v2(
+        input_dataset._variant_tensor,  # pylint: disable=protected-access
+        self._map_func.function.captured_inputs,
+        f=self._map_func.function,
+        num_parallel_calls=self._num_parallel_calls,
+        deterministic=self._deterministic,
+        use_inter_op_parallelism=self._use_inter_op_parallelism,
+        preserve_cardinality=self._preserve_cardinality,
+        **self._flat_structure)
+    super(DeterministicParallelMapDataset, self).__init__(input_dataset, variant_tensor)
+
+  def _functions(self):
+    return [self._map_func]
+
+  @property
+  def element_spec(self):
+    return self._map_func.output_structure
+
+  def _transformation_name(self):
+    return "Dataset.map()"
 
 
 def _get_prob_original_static(initial_dist_t, target_dist_t):
