@@ -419,6 +419,36 @@ def random_flip_left_right(image, seed=None):
   return _random_flip(image, 1, random_func, 'random_flip_left_right')
 
 
+
+@tf_export('image.stateless_random_flip_left_right', v1=[])
+@dispatch.add_dispatch_support
+def deterministic_random_flip_left_right(image):
+  """Randomly flip an image horizontally (left to right) deterministically.
+
+  Guarantees the same results given the same `seed` independent of how many
+  times the function is called, and independent of global seed settings (e.g.
+  `tf.random.set_seed`).
+
+  Example usage:
+
+  >>> image = np.array([[[1], [2]], [[3], [4]]])
+  >>> seed = (2, 3)
+  >>> tf.image.stateless_random_flip_left_right(image, seed).numpy().tolist()
+  [[[2], [1]], [[4], [3]]]
+
+  Args:
+    image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
+      of shape `[height, width, channels]`.
+    seed: A shape [2] Tensor, the seed to the random number generator. Must have
+      dtype `int32` or `int64`. (When using XLA, only `int32` is allowed.)
+
+  Returns:
+    A tensor of the same type and shape as `image`.
+  """
+  random_func = functools.partial(stateless_random_ops.deterministic_random_uniform)
+  return _random_flip(image, 1, random_func, 'deterministic_random_flip_left_right')
+
+
 @tf_export('image.stateless_random_flip_left_right', v1=[])
 @dispatch.add_dispatch_support
 def stateless_random_flip_left_right(image, seed):
