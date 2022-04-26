@@ -493,8 +493,10 @@ Status MakeDeterministic::OptimizeAndCollectStats(Cluster* cluster,
       nodes_to_delete.insert(node.name());
     } else if (IsParallelBatch(node.op())) {
       TF_RETURN_IF_ERROR(ConvertBatch(node.name(), &graph));
+    } else if (IsParallelInterleave(node.op())) {
+      TF_RETURN_IF_ERROR(ConvertMapOrInterleave(node.name(), &graph));
     } else {
-      // DCHECK(IsParallelInterleave(node.op()) || IsParallelMap(node.op()));
+      DCHECK(IsParallelMap(node.op()));
       // TF_RETURN_IF_ERROR(ConvertMapOrInterleave(node.name(), &graph));
       num_changes = false;
     }
