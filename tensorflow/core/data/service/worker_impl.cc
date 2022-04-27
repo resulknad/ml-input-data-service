@@ -923,7 +923,7 @@ void DataServiceWorkerImpl::TaskCompletionThread() TF_LOCKS_EXCLUDED(mu_) {
 
     // EASL - Send heartbeat for metadata: makes sure the metrics have been sent
     // to the dispatcher at least once before the job gets deleted.
-    VLOG(1) << "EASL - calling heartbeat from taskCompletionThread";
+    VLOG(0) << "EASL - calling heartbeat from taskCompletionThread";
     Status s = Heartbeat();
     if (!s.ok()) {
       LOG(WARNING) << "Failed to send heartbeat to dispatcher: " << s;
@@ -945,7 +945,7 @@ Status DataServiceWorkerImpl::SendTaskUpdates() TF_LOCKS_EXCLUDED(mu_) {
   std::vector<TaskProgress> task_progress;
   {
     mutex_lock l(mu_);
-    VLOG(3) << "Sending " << pending_completed_tasks_.size()
+    VLOG(0) << "Sending " << pending_completed_tasks_.size()
             << " task updates to dispatcher";
     task_progress.reserve(pending_completed_tasks_.size());
     for (int task_id : pending_completed_tasks_) {
@@ -960,7 +960,7 @@ Status DataServiceWorkerImpl::SendTaskUpdates() TF_LOCKS_EXCLUDED(mu_) {
   for (const auto& update : task_progress) {
     pending_completed_tasks_.erase(update.task_id());
   }
-  VLOG(3) << "Sent " << task_progress.size() << " task updates ";
+  VLOG(0) << "Sent " << task_progress.size() << " task updates ";
   return Status::OK();
 }
 
@@ -1129,7 +1129,7 @@ void DataServiceWorkerImpl::DeleteLocalTask(const TaskInfo& task_info)
     deleted_tasks_.insert(task_info.task_id());
   }
 
-  VLOG(2) << "Delete local task " << task_info.task_id() << " from worker "
+  VLOG(0) << "Delete local task " << task_info.task_id() << " from worker "
           << worker_address_ << " at the request of the client.";
   StopTask(*task);
 }

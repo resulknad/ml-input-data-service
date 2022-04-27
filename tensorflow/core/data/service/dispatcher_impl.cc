@@ -629,7 +629,7 @@ Status DataServiceDispatcherImpl::WorkerUpdate(
       TF_RETURN_IF_ERROR(state_.TaskFromId(task_id, task));
       if (update.completed()) {
         if (task->finished) {
-          VLOG(1) << "Received completion update for already-finished task "
+          VLOG(0) << "Received completion update for already-finished task "
                   << task->task_id << " on worker " << task->worker_address;
           continue;
         }
