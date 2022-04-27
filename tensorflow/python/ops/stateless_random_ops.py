@@ -25,6 +25,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import bitwise_ops
+from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import gen_stateless_random_ops
 from tensorflow.python.ops import gen_stateless_random_ops_v2
 from tensorflow.python.ops import math_ops
@@ -250,7 +251,9 @@ def deterministic_random_uniform(shape,
                              name=None,
                              alg="auto_select"):
   seed = ops.get_default_graph().seed
+  logging_ops.print_v2(ops.get_default_graph().as_graph_def())
   ops.get_default_graph().seed = split(seed, num=1)[0, :]
+  logging_ops.print_v2(f"{seed} -> {ops.get_default_graph().seed}")
   return stateless_random_uniform(shape, seed, minval=minval, maxval=maxval, dtype=dtype, name=name, alg=alg)
 
 
