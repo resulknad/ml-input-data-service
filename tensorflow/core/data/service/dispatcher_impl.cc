@@ -473,8 +473,7 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
   // VLOG(0) << "before check";
   TF_RETURN_IF_ERROR(CheckStarted());
   // VLOG(0) << "after check";
-  // VLOG(0) << "Received worker heartbeat request from worker "
-  // << request->worker_address();
+
   mutex_lock l(mu_);
   // VLOG(0) << "Acquired worker heratbeat lock...";
 
@@ -482,6 +481,18 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
   // Assigned tasks from the perspective of the dispatcher.
   std::vector<std::shared_ptr<const Task>> assigned_tasks;
   Status s = state_.TasksForWorker(worker_address, assigned_tasks);
+
+  string tasks_desc;
+  for (const auto& task : request->current_tasks()) {
+    tasks_desc.append(std::to_string(task) + ", ");
+  }
+  string tasks_ass_desc;
+  for (const auto& task : assigned_tasks) {
+    tasks_ass_desc.append(std::to_string(task->task_id) + ", ");
+  }
+  VLOG(0) << "Received worker heartbeat request from worker "
+          << request->worker_address() << ", curr: " << tasks_desc
+          << "; assigned: " << tasks_ass_desc;
 
   std::shared_ptr<const Worker> worker;
   s = state_.WorkerFromAddress(worker_address, worker);
@@ -611,7 +622,7 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
     }
   }
 
-  VLOG(4) << "Finished worker heartbeat for worker at address "
+  VLOG(0) << "Finished worker heartbeat for worker at address "
           << request->worker_address();
   return Status::OK();
 }

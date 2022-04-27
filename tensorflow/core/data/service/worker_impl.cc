@@ -988,6 +988,7 @@ void DataServiceWorkerImpl::HeartbeatThread() TF_LOCKS_EXCLUDED(mu_) {
         continue;
       }
     }
+    VLOG(0) << "Heartbeat from HeartbeatThread";
     Status s = Heartbeat();
     if (!s.ok()) {
       VLOG(0) << "Failed to send heartbeat to dispatcher: " << s;
@@ -1079,7 +1080,8 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
     for (const auto& task : response.new_tasks()) {
       VLOG(0) << "Received new task from dispatcher with id " << task.task_id();
       if (deleted_tasks_.contains(task.task_id()) ||
-          finished_tasks_.contains(task.task_id())) {
+          finished_tasks_.contains(task.task_id()) ||
+          pending_completed_tasks_.contains(task.task_id())) {
         VLOG(0) << "(DBK) Found task id " << task.task_id()
                 << " in deleted or finished tasks";
         continue;
@@ -1101,8 +1103,8 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
         continue;
       }
       tasks_to_delete.push_back(std::move(tasks_[task_id]));
-      tasks_.erase(task_id);
       finished_tasks_.insert(task_id);
+      tasks_.erase(task_id);
     }
   }
   for (const auto& task : tasks_to_delete) {
