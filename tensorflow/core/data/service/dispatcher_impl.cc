@@ -1316,14 +1316,10 @@ Status DataServiceDispatcherImpl::CreateTasksForWorker(
       TF_RETURN_IF_ERROR(CreatePendingTask(job, worker_address));
       continue;
     }
-    // DBK: we need to be more careful here. worker assignement
-    // will be handeled by reassign free workers, which will also consider
-    // the target worker count
-
-    // std::shared_ptr<const Task> task;
-    // TF_RETURN_IF_ERROR(CreateTask(job, worker_address, task));
-    // VLOG(0) << "EASL - New task (job " << job->job_id
-    //         << ") created for joining worker at address " << worker_address;
+    std::shared_ptr<const Task> task;
+    TF_RETURN_IF_ERROR(CreateTask(job, worker_address, task));
+    VLOG(0) << "EASL - New task (job " << job->job_id
+            << ") created for joining worker at address " << worker_address;
   }
 
   return Status::OK();
@@ -1622,7 +1618,15 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
       }
     } else if (config_.scaling_policy() == 2) {
       metadata_store_.UnsetJobIsScaling(job->job_id);
-      int64 target_worker_count = state_.ListWorkers().size();
+      auto target_str = getenv("DBK_TARGET_WORKERS");
+      int64_t target = 100;
+      if (target_str != nullptr) {
+        target = strtoul(target_str, NULL, 10);
+        VLOG(0) << "read target worker val of " << target << " from env";
+      } else {
+        VLOG(0) << "no target worker val read, used default";
+      }
+      int64 target_worker_count = target;
       if (job->target_worker_count != target_worker_count) {
         Update update;
         JobTargetWorkerCountUpdate* job_target_worker_count_update =
