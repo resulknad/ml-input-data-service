@@ -1316,10 +1316,14 @@ Status DataServiceDispatcherImpl::CreateTasksForWorker(
       TF_RETURN_IF_ERROR(CreatePendingTask(job, worker_address));
       continue;
     }
-    std::shared_ptr<const Task> task;
-    TF_RETURN_IF_ERROR(CreateTask(job, worker_address, task));
-    VLOG(0) << "EASL - New task (job " << job->job_id
-            << ") created for joining worker at address " << worker_address;
+    // DBK: we need to be more careful here. worker assignement
+    // will be handeled by reassign free workers, which will also consider
+    // the target worker count
+
+    // std::shared_ptr<const Task> task;
+    // TF_RETURN_IF_ERROR(CreateTask(job, worker_address, task));
+    // VLOG(0) << "EASL - New task (job " << job->job_id
+    //         << ") created for joining worker at address " << worker_address;
   }
 
   return Status::OK();
