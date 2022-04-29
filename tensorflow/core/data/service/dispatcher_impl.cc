@@ -1236,7 +1236,15 @@ Status DataServiceDispatcherImpl::CreateJob(
   worker_count = job_metrics->target_worker_count_;
 
   if (config_.scaling_policy() == 2) {
-    worker_count = 100;
+    auto target_str = getenv("DBK_TARGET_WORKERS");
+    int64_t target = 100;
+    if (target_str != nullptr) {
+      target = strtoul(target_str, NULL, 10);
+      VLOG(0) << "read target worker val of " << target << " from env";
+    } else {
+      VLOG(0) << "no target worker val read, used default";
+    }
+    worker_count = target;
   }
 
   if (job_type == "PUT" || job_type == "PUT_SOURCE") {
