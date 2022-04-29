@@ -277,6 +277,7 @@ void DispatcherState::CreateTask(const CreateTaskUpdate& create_task) {
     task->worker_address = create_task.worker_address();
     task->transfer_address = create_task.transfer_address();
     tasks_by_worker_[create_task.worker_address()][task->task_id] = task;
+    avail_workers_.erase(create_task.worker_address());
   } else {
     DCHECK_EQ(task, nullptr);
     auto& job = jobs_[create_task.job_id()];
