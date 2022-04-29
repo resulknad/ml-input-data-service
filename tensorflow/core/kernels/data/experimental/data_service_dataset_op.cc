@@ -100,7 +100,6 @@ namespace data {
 /* static */ constexpr const char* const
     DataServiceDatasetOp::kMaxRequestPipeliningPerTask;
 
-
 namespace {
 // Default interval between task list refreshes.
 const int64_t kDefaultTaskRefreshIntervalMs = 500;  // 1 second. => now 0.5sec.
@@ -171,9 +170,11 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           const std::string& protocol,
           const std::string& data_transfer_protocol,
           const std::string& job_name, absl::optional<int64_t> consumer_index,
-          absl::optional<int64_t> num_consumers, int64_t max_outstanding_requests,
-      int64_t max_request_pipelining_per_task, int64_t task_refresh_interval_ms,
-          const TargetWorkers target_workers, const DataServiceMetadata& metadata,
+          absl::optional<int64_t> num_consumers,
+          int64_t max_outstanding_requests,
+          int64_t max_request_pipelining_per_task,
+          int64_t task_refresh_interval_ms, const TargetWorkers target_workers,
+          const DataServiceMetadata& metadata,
           IterationCounter* iteration_counter, bool owns_resource,
           ResourceHandle iteration_counter_handle,
           std::unique_ptr<CapturedFunction> captured_uncompress_func,
@@ -202,8 +203,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         captured_uncompress_func_(std::move(captured_uncompress_func)),
         output_types_(output_types),
         output_shapes_(output_shapes) {
-            DBK_TRACE(" START");
-        }
+    DBK_TRACE(" START");
+  }
 
   ~Dataset() override {
     DBK_TRACE(" END");
@@ -319,8 +320,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     inputs.push_back(max_outstanding_requests);
 
     Node* max_request_pipelining_per_task;
-    TF_RETURN_IF_ERROR(
-        b->AddScalar(max_request_pipelining_per_task_, &max_request_pipelining_per_task));
+    TF_RETURN_IF_ERROR(b->AddScalar(max_request_pipelining_per_task_,
+                                    &max_request_pipelining_per_task));
     inputs.push_back(max_request_pipelining_per_task);
 
     Node* iteration_counter_handle = nullptr;
@@ -374,8 +375,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         : DatasetIterator<Dataset>(params),
           iterator_index_(iterator_index),
           max_outstanding_requests_(params.dataset->max_outstanding_requests_),
-          max_request_pipelining_per_task_(params.dataset->max_request_pipelining_per_task_){
-    }
+          max_request_pipelining_per_task_(
+              params.dataset->max_request_pipelining_per_task_) {}
 
     ~Iterator() override {
       // TODO (DADA) - revert to 1
@@ -446,22 +447,24 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       int64 start_us = Env::Default()->NowMicros();
 
       do {
-        uint64 wait_time = Env::Default()->NowMicros(); // EASL metrics
-        result_queue_size_.push_back(results_.size()); // EASL metrics
-        // result_queue_size_duplicate_.push_back(results_.size()); // EASL metrics
+        uint64 wait_time = Env::Default()->NowMicros();  // EASL metrics
+        result_queue_size_.push_back(results_.size());   // EASL metrics
+        // result_queue_size_duplicate_.push_back(results_.size()); // EASL
+        // metrics
         while (!ResultReady() && !Finished() && !cancelled_ && status_.ok()) {
           DBK_TRACE(" BLOCKING_IN_GETNEXT_START");
           VLOG(3) << "Blocking in GetNext: " << DebugString();
-          hadToWait = true; // EASL - metrics collection.
+          hadToWait = true;  // EASL - metrics collection.
           get_next_cv_.wait(l);
           DBK_TRACE(" BLOCKING_IN_GETNEXT_END");
         }
-        wait_time = Env::Default()->NowMicros() - wait_time; // EASL metrics
-        double wait_time_computation = (double)(wait_time)
-          / EnvTime::kMillisToMicros;
-        wait_times_ms_.push_back(wait_time_computation); // EASL metrics
-        //  wait_times_ms_duplicate_.push_back(wait_time_computation); // EASL metrics
-        had_to_wait_.push_back(hadToWait); // EASL metrics
+        wait_time = Env::Default()->NowMicros() - wait_time;  // EASL metrics
+        double wait_time_computation =
+            (double)(wait_time) / EnvTime::kMillisToMicros;
+        wait_times_ms_.push_back(wait_time_computation);  // EASL metrics
+        //  wait_times_ms_duplicate_.push_back(wait_time_computation); // EASL
+        //  metrics
+        had_to_wait_.push_back(hadToWait);  // EASL metrics
         //  had_to_wait_duplicate_.push_back(hadToWait); // EASL metrics
         if (cancelled_) {
           VLOG(3) << "Returning from GetNext due to cancellation";
@@ -476,16 +479,14 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           VLOG(0) << "Returning from GetNext with end_of_sequence";
           return Status::OK();
         }
-        if(job_finished_) {
+        if (job_finished_) {
           VLOG(3) << "Job Finished in GetNext. results_.size():"
-                  << results_.size()
-                  << " results_.front().ready:"
+                  << results_.size() << " results_.front().ready:"
                   << (!results_.empty() && results_.front().ready)
                   << " job_finished_:" << job_finished_
                   << " num_running_worker_threads_:"
                   << num_running_worker_threads_
-                  << " outstanding_requests_:"
-                  << outstanding_requests_
+                  << " outstanding_requests_:" << outstanding_requests_
                   << " time_milisec:"
                   << Env::Default()->NowMicros() / EnvTime::kMillisToMicros;
         }
@@ -515,8 +516,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
       // EASL - metrics logging.
       int64 wait_us = Env::Default()->NowMicros() - start_us;
-      VLOG(3) << "EASL, data_service_client, GetNextInternal, "
-              << wait_us << ", " << hadToWait;
+      VLOG(3) << "EASL, data_service_client, GetNextInternal, " << wait_us
+              << ", " << hadToWait;
+      DBK_TRACE(" GOT_ELEMENT");
 
       return Status::OK();
     }
@@ -525,7 +527,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     std::shared_ptr<model::Node> CreateNode(
         IteratorContext* ctx, model::Node::Args args) const override {
       return model::MakeKnownRatioNode(std::move(args),
-          /*ratio=*/1);
+                                       /*ratio=*/1);
     }
 
     Status SaveInternal(SerializationContext* ctx,
@@ -548,13 +550,13 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       result.push_back(std::make_pair(
           "num_tasks",
           num_tasks == -1
-          ? kTraceInfoUnavailable
-          : strings::Printf("%lld", static_cast<long long>(num_tasks))));
+              ? kTraceInfoUnavailable
+              : strings::Printf("%lld", static_cast<long long>(num_tasks))));
       result.push_back(std::make_pair("job_name", dataset()->job_name_));
       result.push_back(std::make_pair(
           "max_outstanding_requests",
           strings::Printf("%lld", static_cast<long long>(
-              dataset()->max_outstanding_requests_))));
+                                      dataset()->max_outstanding_requests_))));
       return result;
     }
 
@@ -656,7 +658,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     }
 
     void EnsureThreadsStarted(IteratorContext* ctx)
-    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       if (!task_thread_manager_ && !cancelled_) {
         auto new_ctx = std::make_shared<IteratorContext>(*ctx);
         task_thread_manager_ =
@@ -713,7 +715,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     void TaskThreadManager(std::shared_ptr<IteratorContext> ctx) {
       auto cleanup =
           gtl::MakeCleanup([] { VLOG(1) << "Task thread manager exiting"; });
-      VLOG(0) << "Starting task thread manager. Refresh interval: " << dataset()->task_refresh_interval_ms_;
+      VLOG(0) << "Starting task thread manager. Refresh interval: "
+              << dataset()->task_refresh_interval_ms_;
       uint64 next_check = Env::Default()->NowMicros();
 
       // Heartbeat
@@ -738,7 +741,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         UpdateBufferSize();
         UpdateWorkerThreads(ctx.get());
         next_check = Env::Default()->NowMicros() +
-            dataset()->task_refresh_interval_ms_ * 1000;
+                     dataset()->task_refresh_interval_ms_ * 1000;
       }
     }
 
@@ -777,7 +780,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
                                         dataset()->data_transfer_protocol_));
       tasks_.push_back(std::make_shared<Task>(task_info, std::move(worker)));
       // EASL - notify kMaxParallelCallsPerTask threads to pipeline requests
-      for(int i=0; i++; i<max_request_pipelining_per_task_){
+      for (int i = 0; i++; i < max_request_pipelining_per_task_) {
         worker_thread_cv_.notify_one();
       }
       if (StrictRoundRobin()) {
@@ -796,13 +799,14 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     void Heartbeat(IteratorContext* ctx) TF_LOCKS_EXCLUDED(mu_) {
       ClientHeartbeatRequest req;
 
-      if(num_elements_ == 0){
+      if (num_elements_ == 0) {
         // VLOG(0) << "EASL - client heartbeat: still no elements processed.";
       } else {
         // VLOG(0) << "heartbeat - num_elements_: " << num_elements_;
       }
 
-      // Add the scalability metrics if sufficient measurements have been retrieved
+      // Add the scalability metrics if sufficient measurements have been
+      // retrieved
       {
         // Protect the metrics
         mutex_lock l(mu_);
@@ -812,15 +816,16 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           // Compute the last x batch time
           int32 metrics_count = had_to_wait_.size();
           double last_x_batch_time_ms =
-              ((double)(batch_timestamps_us_[metrics_count - 1])
-                  - batch_timestamps_us_[metrics_count - BATCH_INTERVAL])
-                  / EnvTime::kMillisToMicros;
+              ((double)(batch_timestamps_us_[metrics_count - 1]) -
+               batch_timestamps_us_[metrics_count - BATCH_INTERVAL]) /
+              EnvTime::kMillisToMicros;
 
-          // Compute the relative_wait_fraction & the average size of the result queue
+          // Compute the relative_wait_fraction & the average size of the result
+          // queue
           double relative_wait_fraction = 0.0;
           double result_queue_size = 0.0;
-          for (int32 i = metrics_count - BATCH_INTERVAL;
-            i < metrics_count; ++i) {
+          for (int32 i = metrics_count - BATCH_INTERVAL; i < metrics_count;
+               ++i) {
             relative_wait_fraction += wait_times_ms_[i];
             result_queue_size += result_queue_size_[i];
           }
@@ -838,7 +843,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           ClearScalabilityMetrics();
 
           // EASL: Logging stuff
-//          WriteMetrics();
+          //          WriteMetrics();
         } else {
           req.set_has_scalability_metrics(false);
         }
@@ -892,7 +897,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     }
 
     void RemoveLastScalabilityMetrics() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-      if(!batch_timestamps_us_.empty()) {
+      if (!batch_timestamps_us_.empty()) {
         batch_timestamps_us_.pop_back();
         wait_times_ms_.pop_back();
         result_queue_size_.pop_back();
@@ -925,22 +930,25 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
           auto new_info = task_id_to_task[task->info.task_id()];
           if (task->info.worker_address() != new_info.worker_address()) {
-            VLOG(0) << "For task " << task->info.task_id() << " we got a new address : "
-              << new_info.worker_address() << " (prev: " << task->info.worker_address() << ")";
+            VLOG(0) << "For task " << task->info.task_id()
+                    << " we got a new address : " << new_info.worker_address()
+                    << " (prev: " << task->info.worker_address() << ")";
             // update worker address
             task->worker->TryCancel();
             task->info = new_info;
-            auto statusor = CreateDataServiceWorkerClient(new_info.transfer_address(),
-                                            dataset()->protocol_,
-                                            dataset()->data_transfer_protocol_);
+            auto statusor = CreateDataServiceWorkerClient(
+                new_info.transfer_address(), dataset()->protocol_,
+                dataset()->data_transfer_protocol_);
             if (!statusor.ok()) {
-              VLOG(0) << "Error creating new data service worker client " << statusor.status();
+              VLOG(0) << "Error creating new data service worker client "
+                      << statusor.status();
               return;
             }
             task->worker = std::move(statusor.ValueOrDie());
           }
 
-          //tasks_.push_back(std::make_shared<Task>(new_info, std::move(worker)));
+          // tasks_.push_back(std::make_shared<Task>(new_info,
+          // std::move(worker)));
 
           task_id_to_task.erase(task->info.task_id());
           ++index;
@@ -951,7 +959,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           }
 
           // EASL - only remove task if end_of_sequence was actually reached.
-          if (task->end_of_sequence || task->removed){
+          if (task->end_of_sequence || task->removed) {
             tasks_.erase(tasks_.begin() + index);
             if (index < next_task_index_) {
               next_task_index_--;
@@ -1119,8 +1127,10 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
               // VLOG(0) << "got task to process ";
               break;
             }
-            // VLOG(0) << "Thread waiting for task or space in buffer, outstanding_requests_: "
-            // << outstanding_requests_ << " results_.size(): " << results_.size();
+            // VLOG(0) << "Thread waiting for task or space in buffer,
+            // outstanding_requests_: "
+            // << outstanding_requests_ << " results_.size(): " <<
+            // results_.size();
             worker_thread_cv_.wait(l);
           }
           DCHECK(task_to_process != nullptr);
@@ -1132,7 +1142,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             result = &results_.back();
           }
 
-          DCHECK(task_to_process); // (damien-aymon) This will never segfault..
+          DCHECK(task_to_process);  // (damien-aymon) This will never segfault..
           task_to_process->in_use = true;
           task_to_process->num_outstanding_requests++;
 
@@ -1142,7 +1152,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         Status s;
         if (StrictRoundRobin()) {
           s = GetElementTraced(task_to_process.get(), deadline_micros,
-              /*enqueue_result=*/false, *result);
+                               /*enqueue_result=*/false, *result);
         } else {
           auto timeout_str = getenv("DBK_GET_ELEMENT_TIMEOUT");
           int64_t timeout = 10000000;
@@ -1155,10 +1165,13 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           int64_t deadline_for_non_rr = Env::Default()->NowMicros() + timeout;
           Result r;
           s = GetElementTraced(task_to_process.get(), deadline_for_non_rr,
-              /*enqueue_result=*/true, r);
+                               /*enqueue_result=*/true, r);
         }
         if (errors::IsDeadlineExceeded(s) && !StrictRoundRobin()) {
-          VLOG(0) << "(DBK): got deadline exceeded, but catching that error and making it non-fatal in order to wait for the dispatcher to reassign task to different worker. [" << s << "]";
+          VLOG(0) << "(DBK): got deadline exceeded, but catching that error "
+                     "and making it non-fatal in order to wait for the "
+                     "dispatcher to reassign task to different worker. ["
+                  << s << "]";
         } else if (!s.ok()) {
           mutex_lock l(mu_);
           VLOG(0) << "Failed to get element from worker "
@@ -1173,7 +1186,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           get_next_cv_.notify_all();
           return;
         } else {
-          // VLOG(0) << "Got element for task " << task_to_process->info.task_id();
+          // VLOG(0) << "Got element for task " <<
+          // task_to_process->info.task_id();
         }
       }
     }
@@ -1215,8 +1229,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       }
 
       // Below is the original return value
-      //      return local_results_buffer_.size() + outstanding_local_requests_ +
-      //      results_.size() + outstanding_requests_ <
+      //      return local_results_buffer_.size() + outstanding_local_requests_
+      //      + results_.size() + outstanding_requests_ <
       //      max_outstanding_requests_;
 
       // Otherwise, results aren't added to `results_` until the data has been
@@ -1227,15 +1241,14 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
       // Note: I removed the outstanding_local_requests_ variable as that
       // became obsolete in master after v2.8 release
-      VLOG(3) << "(ShouldProcessTask) Values "
-              << local_results_buffer_.size() << " + "
-              << outstanding_local_requests_
-              << " + " << results_.size() << " + "
-              <<  outstanding_requests_ << " <? "
+      VLOG(3) << "(ShouldProcessTask) Values " << local_results_buffer_.size()
+              << " + " << outstanding_local_requests_ << " + "
+              << results_.size() << " + " << outstanding_requests_ << " <? "
               << max_outstanding_requests_;
 
-      return local_results_buffer_.size() + results_.size()
-             + outstanding_requests_ < max_outstanding_requests_;
+      return local_results_buffer_.size() + results_.size() +
+                 outstanding_requests_ <
+             max_outstanding_requests_;
     }
 
     // Prefers reading from local tasks if they exist.
@@ -1266,8 +1279,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         const auto& task = address_task.second;
         // EASL - request pipelining: change skipping condition.
         //  from: !task->in_use && !task->end_of_sequence && !task->removed
-        if (task->num_outstanding_requests < max_request_pipelining_per_task_
-          && !task->end_of_sequence && !task->removed) {
+        if (task->num_outstanding_requests < max_request_pipelining_per_task_ &&
+            !task->end_of_sequence && !task->removed) {
           return task;
         }
       }
@@ -1291,15 +1304,17 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           return nullptr;
         }
         // EASL - request pipelining: change skipping condition.
-        //if (current_round_ < task->info.starting_round() || task->in_use ||
-        if(current_round_ < task->info.starting_round() ||
-           task->num_outstanding_requests >= max_request_pipelining_per_task_ ||
-           task->end_of_sequence || task->removed) {
+        // if (current_round_ < task->info.starting_round() || task->in_use ||
+        if (current_round_ < task->info.starting_round() ||
+            task->num_outstanding_requests >=
+                max_request_pipelining_per_task_ ||
+            task->end_of_sequence || task->removed) {
           VLOG(3) << "Skipping task " << next_task_index_
                   << ". starting round: " << task->info.starting_round()
                   << ". current round: " << current_round_
                   << ". task->in_use: " << task->in_use
-                  << ". task->num_outstanding_requests: " << task->num_outstanding_requests
+                  << ". task->num_outstanding_requests: "
+                  << task->num_outstanding_requests
                   << ". end_of_sequence: " << task->end_of_sequence
                   << ". task->removed: " << task->removed;
           AdvanceTaskIndex();
@@ -1354,7 +1369,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       {
         // FIXME(DanGraur): In the original codebase there's no lock being used
         //  here; could this be redundant?
-//        mutex_lock l(mu_);
+        //        mutex_lock l(mu_);
         req.set_task_id(task.info.task_id());
         req.set_skipped_previous_round(task.skipped_previous_round);
         req.set_element_index(task.next_index);
@@ -1384,7 +1399,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       } else if (get_element_result.skip) {
         task.skipped_previous_round = true;
       } else {
-        if(!task.end_of_sequence){
+        if (!task.end_of_sequence) {
           finished_tasks_++;
         }
         task.end_of_sequence = true;
@@ -1402,7 +1417,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
     Status GetElementTraced(Task* task, int64_t deadline_micros,
                             bool enqueue_result, Result& result)
-    TF_LOCKS_EXCLUDED(mu_) {
+        TF_LOCKS_EXCLUDED(mu_) {
       // VLOG(0) << "Getting an element for task id " << task->info.task_id();
       tensorflow::profiler::TraceMe activity(
           "GetDataServiceElement", tensorflow::profiler::TraceMeLevel::kInfo);
@@ -1461,35 +1476,45 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       GetElementResult get_element_result;
       for (int num_retries = 0;; ++num_retries) {
         Status s = TryGetElement(*task, get_element_result);
-        
+
         if (!getenv("DBK_DISABLE_SKIPPING")) {
-          if (s.ok() 
-              && !get_element_result.end_of_sequence && !get_element_result.skip) {
-                Variant x = get_element_result.components.at(0);
-                Variant extracted = x.get<Tensor>()->flat<Variant>()(0);
-                CompressedElement *i = extracted.get<CompressedElement>();
-                std::vector<Tensor> out;
-                UncompressElement(*i, &out);
+          if (s.ok() && !get_element_result.end_of_sequence &&
+              !get_element_result.skip) {
+            Variant x = get_element_result.components.at(0);
+            Variant extracted = x.get<Tensor>()->flat<Variant>()(0);
+            CompressedElement* i = extracted.get<CompressedElement>();
+            std::vector<Tensor> out;
+            UncompressElement(*i, &out);
             if (get_element_result.element_index != task->next_index) {
-              VLOG(0) << "Got element index " << (int64) get_element_result.element_index << ". " << (int64_t) get_element_result.element_index << " but as looking for " << task->next_index << " (Task: " << task->info.task_id() << ")";
+              VLOG(0) << "Got element index "
+                      << (int64)get_element_result.element_index << ". "
+                      << (int64_t)get_element_result.element_index
+                      << " but as looking for " << task->next_index
+                      << " (Task: " << task->info.task_id() << ")";
 
               if (get_element_result.components.size() > 0) {
                 Variant x = get_element_result.components.at(0);
                 Variant extracted = x.get<Tensor>()->flat<Variant>()(0);
-                CompressedElement *i = extracted.get<CompressedElement>();
+                CompressedElement* i = extracted.get<CompressedElement>();
                 std::vector<Tensor> out;
                 UncompressElement(*i, &out);
-                VLOG(0) << "Got i=" << get_element_result.element_index <<
-                  ", expected i= " << task->next_index<< " => skipping "
-                  << ". [El: " << out.at(0).SummarizeValue(100)
-                  << ", Worker: " << task->info.worker_address()
-                  << ", Task: " << task->info.task_id() << "]";
+                VLOG(0) << "Got i=" << get_element_result.element_index
+                        << ", expected i= " << task->next_index
+                        << " => skipping "
+                        << ". [El: " << out.at(0).SummarizeValue(100)
+                        << ", Worker: " << task->info.worker_address()
+                        << ", Task: " << task->info.task_id() << "]";
               }
-              VLOG(0) << "Size of components: " << get_element_result.components.size();
-              s = Status(tensorflow::error::ALREADY_EXISTS, "Was expecting different index for element. Will skip this element.");
+              VLOG(0) << "Size of components: "
+                      << get_element_result.components.size();
+              s = Status(tensorflow::error::ALREADY_EXISTS,
+                         "Was expecting different index for element. Will skip "
+                         "this element.");
               get_element_result.components.clear();
             } else {
-              // VLOG(0) << "Got element index " << (int64) get_element_result.element_index << ", which is perfect. " << " (Task: " << task->info.task_id() << ")";
+              // VLOG(0) << "Got element index " << (int64)
+              // get_element_result.element_index << ", which is perfect. " << "
+              // (Task: " << task->info.task_id() << ")";
               task->next_index++;
             }
           }
@@ -1497,12 +1522,11 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           VLOG(0) << "(DBK): Skipping disabled by env DBK_DISABLE_SKIPPING";
         }
 
-
-
         if (s.ok()) break;
         // Retry all errors that could indicate preemption.
         if (!errors::IsUnavailable(s) && !errors::IsCancelled(s) &&
-            !errors::IsAborted(s) && !errors::IsDeadlineExceeded(s) && !errors::IsAlreadyExists(s)) {
+            !errors::IsAborted(s) && !errors::IsDeadlineExceeded(s) &&
+            !errors::IsAlreadyExists(s)) {
           // EASL - added deadline exceeded.
           return s;
         }
@@ -1515,8 +1539,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         int64_t now_micros = Env::Default()->NowMicros();
         if (now_micros > deadline_micros) {
           return errors::DeadlineExceeded(absl::Substitute(
-                    "GetElement exceeded deadline after $0 retries",
-                    num_retries));
+              "GetElement exceeded deadline after $0 retries", num_retries));
         }
         if (StrictRoundRobin() && num_retries > 0) {
           TF_RETURN_IF_ERROR(MaybeRemoveTask(*task, deadline_micros, result));
@@ -1538,7 +1561,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         VLOG(0) << "Failed to get an element from worker "
                 << task->info.worker_address() << ": " << s
                 << ". Will retry in " << (backoff_until - now_micros)
-                << " microseconds" << ". num_retries: " << num_retries;
+                << " microseconds"
+                << ". num_retries: " << num_retries;
         Env::Default()->SleepForMicroseconds(backoff_until - now_micros);
       }
       ProcessGetElementResponse(enqueue_result, get_element_result, result,
@@ -1579,14 +1603,14 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       // Check if file does not exist
       std::ofstream file(log_location, std::ios_base::app);
       if (!in.good()) {
-        file << "batch_timestamp_us,wait_time_ms,had_to_wait,result_queue_size\n";
+        file << "batch_timestamp_us,wait_time_ms,had_to_wait,result_queue_"
+                "size\n";
       }
 
       for (int i = 0; i < batch_timestamps_us_duplicate_.size(); ++i) {
         file << batch_timestamps_us_duplicate_[i] << ","
-             << wait_times_ms_duplicate_[i] << ","
-             << had_to_wait_duplicate_[i] << ","
-             << result_queue_size_duplicate_[i] << "\n";
+             << wait_times_ms_duplicate_[i] << "," << had_to_wait_duplicate_[i]
+             << "," << result_queue_size_duplicate_[i] << "\n";
       }
 
       // Flush and close
@@ -1688,7 +1712,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     // EASL metrics collection
     int64 num_elements_ = 0;
 
-    // Number of batches to sample before sending scalability metrics to dispatcher
+    // Number of batches to sample before sending scalability metrics to
+    // dispatcher
     uint32 buffer_period;
     const uint32 BATCH_INTERVAL = 10;
     const uint32 RESCALE_BUFFER_INTERVAL = 15;
@@ -1913,9 +1938,9 @@ void DataServiceDatasetOp::MakeDataset(OpKernelContext* ctx,
       ctx, op_version_, dataset_id, processing_mode, address, protocol,
       data_transfer_protocol_, job_name, consumer_index, num_consumers,
       max_outstanding_requests, max_request_pipelining_per_task,
-      task_refresh_interval_hint_ms_, target_workers_, *metadata, iteration_counter,
-      owns_resource, iteration_counter_handle, std::move(captured_uncompress_func),
-      output_types_, output_shapes_);
+      task_refresh_interval_hint_ms_, target_workers_, *metadata,
+      iteration_counter, owns_resource, iteration_counter_handle,
+      std::move(captured_uncompress_func), output_types_, output_shapes_);
 
   if (should_uncompress) {
     VLOG(2) << "Inserting a ParallelMap dataset to uncompress tf.data service "
