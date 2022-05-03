@@ -303,6 +303,23 @@ void DispatcherState::FinishTask(const FinishTaskUpdate& finish_task) {
             << all_finished;
     workers_by_job_[task->job->job_id].clear();
     ending_tasks_by_job_[task->job->job_id].clear(); // Or erase?
+
+    // Scaling out debugging
+    VLOG(0) << "(DispatcherState::FinishTask) Printing available workers "
+      << " (of total " << avail_workers_.size() << "):";
+    for (auto& worker : avail_workers_) {
+      VLOG(0) << " > " << worker.second->address;
+      for (auto& jjob : jobs_by_worker_[worker.second->address]) {
+        VLOG(0) << "\t> " << jjob.second->job_id << " with type "
+          << jjob.second->job_type;
+      }
+    }
+
+    VLOG(0) << "(DispatcherState::FinishTask) Printing workers by job "
+            << " (for job " << task->job->job_id << "):";
+    for (auto& worker : workers_by_job_[task->job->job_id]) {
+      VLOG(0) << " > " << worker.second->address;
+    }
   }
 }
 
@@ -416,28 +433,13 @@ void DispatcherState::ReassignFreeWorkers() {
     // Went through all jobs, can return
     return;
   }
-  VLOG(3) << "EASL (ReassignFreeWorkers) - avail_workers_.size() " << avail_workers_.size();
+  VLOG(0) << "EASL (ReassignFreeWorkers) - avail_workers_.size() "
+      << avail_workers_.size();
   for(auto it = avail_workers_.begin(); it != avail_workers_.end(); it++){
-    // Get a job in need of workers
+    // Get a job in need of workers (i.e. num_assigned_workers < job->target_worker_count)
     std::shared_ptr<Job> job = job_iter->second;
     int64 num_assigned_workers = workers_by_job_[job->job_id].size();
-    while (job->finished || num_assigned_workers == job->target_worker_count){
-      // Check if split provider has reached eos
-      if (job->distributed_epoch_state.has_value()){
-        for (auto repetition : job->distributed_epoch_state.value().repetitions){
-          if (repetition!=0){
-            // (Damien) We only allow for one repetitions per input pipeline.
-            job_iter++;
-            if(job_iter == jobs_.end()){
-              // Went through all jobs, can return
-              return;
-            }
-            continue;
-          }
-        }
-      } else {
-        VLOG(0) << "Dynamic scaling with parallel epochs mode may lead to infinite dataset.";
-      }
+    while (job->finished || num_assigned_workers >= job->target_worker_count){
       job_iter++;
       if(job_iter == jobs_.end()){
         // Went through all jobs, can return
@@ -446,7 +448,7 @@ void DispatcherState::ReassignFreeWorkers() {
       job = job_iter->second;
       num_assigned_workers = workers_by_job_[job->job_id].size();
     }
-    VLOG(3) << "EASL - (ReassignFreeWorkers) Reassigned worker "
+    VLOG(0) << "EASL - (ReassignFreeWorkers) Reassigned worker "
             << it->second->address << " to job " << job->job_id;
 
     // Assign one worker to the job
@@ -462,7 +464,7 @@ void DispatcherState::UpdateJobTargetWorkerCount(
   DCHECK(jobs_.contains(job_id));
   std::shared_ptr<Job> job = jobs_[job_id];
 
-  VLOG(3) << "Got request for worker count change:\n"
+  VLOG(0) << "Got request for worker count change:\n"
                << " > job_target: " << job->target_worker_count << "\n"
                << " > current: " << job->current_worker_count << "\n"
                << " > request: " << job_target_worker_count_update.target_worker_count();
@@ -476,7 +478,7 @@ void DispatcherState::UpdateJobTargetWorkerCount(
             << job->current_worker_count << " to target " << job_target_worker_count_update.target_worker_count();
     int64 tasks_currently_being_ended = 0;
     for (auto task : tasks_by_job_[job_id]) {
-      if (ending_tasks_by_job_[job_id].contains(task.second->task_id)){
+      if (ending_tasks_by_job_[job_id].contains(task.second->task_id)) {
         // task is still running (contained in tasks_by_job)
         // but also in ending, which means we are waiting for it
         // to finish processing all of its splits
@@ -508,7 +510,6 @@ void DispatcherState::UpdateJobTargetWorkerCount(
     }
   }
   job->target_worker_count = job_target_worker_count_update.target_worker_count();
-
 }
 
 std::vector<std::shared_ptr<const DispatcherState::Job>>
@@ -530,6 +531,7 @@ DispatcherState::ListJobsForWorker(const absl::string_view worker_address) {
             << " is not yet assigned to any jobs.";
   }
 
+  // FIXME(DanGraur): This will throw a nullptr exception if `it` is at end.
   const absl::flat_hash_map<int64, std::shared_ptr<Job>>& worker_jobs =
       it->second;
   jobs.reserve(worker_jobs.size());
