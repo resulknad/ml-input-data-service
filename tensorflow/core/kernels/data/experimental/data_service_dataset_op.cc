@@ -1035,9 +1035,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
     void UpdateWorkerThreads(IteratorContext* ctx) TF_LOCKS_EXCLUDED(mu_) {
       mutex_lock l(mu_);
-      const int64_t max_num_threads =
-          std::min<int64_t>(tasks_.size(), max_outstanding_requests_);
-      while (num_running_worker_threads_ < max_num_threads && !cancelled_ &&
+      while (num_running_worker_threads_ < max_outstanding_requests_ && !cancelled_ &&
              status_.ok() && !job_finished_) {
         VLOG(0) << "updateWorkerThread, num_running_worker_threads_: "
                 << num_running_worker_threads_
