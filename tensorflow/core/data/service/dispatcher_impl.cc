@@ -1458,7 +1458,7 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
 
   std::vector<std::shared_ptr<const Task>> tasks;
   TF_RETURN_IF_ERROR(state_.TasksForJob(job->job_id, tasks));
-  VLOG(0) << "The number of tasks for this job (" << job->job_id << ") is: "
+  VLOG(3) << "The number of tasks for this job (" << job->job_id << ") is: "
     << tasks.size();
   for (const auto& task : tasks) {
     TaskInfo* task_info = response->mutable_task_info()->Add();
@@ -1473,7 +1473,7 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
   }
   response->set_job_finished(job->finished);
   response->set_deployment_mode(config_.deployment_mode());
-  VLOG(0) << "Found " << response->task_info_size()
+  VLOG(3) << "Found " << response->task_info_size()
           << " tasks for job client id " << request->job_client_id();
 
   return Status::OK();
