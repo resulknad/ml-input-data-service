@@ -24,8 +24,8 @@ int MAX_WORKERS_PER_JOB = 100;
 double kMinBatchTimeRelativeImprovementUp = 0.07; // 7%
 double kMinBatchTimeRelativeImprovementDown = 0.03;
 uint32 kInStabilityBeforeScaling = 20;
-double kMinQueueSizeRelativeGrowth = 1.4; // +40%
-double kMinBatchTimeRelativeGrowth = 1.4; // +40%
+double kMinQueueSizeRelativeGrowth = 1.5; // +50%
+double kMinBatchTimeRelativeGrowth = 1.5; // +50%
 }
 
 
@@ -115,7 +115,7 @@ Status DynamicWorkerCountUpdate(
     double l_batch_time = last_metrics->last_x_batch_time_ms();
     double relative_improvement = 1.0 - l_batch_time / stl_batch_time;
 
-    if (relative_improvement > 1.2) {
+    if (relative_improvement > 1.2 || relative_improvement < -1.2) {
       VLOG(0) << "(EASL::DynamicWorkerCountUpdate) Relative improvement "
                    << "was unstable: " << relative_improvement
                    << "; discarding it...";

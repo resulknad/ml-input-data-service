@@ -1064,16 +1064,17 @@ Status DataServiceDispatcherImpl::CreateJob(
     worker_count = 100;
   }
 
-  if (job_type == "PUT" || job_type == "PUT_SOURCE") {
-    std::shared_ptr<easl::JobMetrics> dataset_fingerprint_metrics;
-    s = metadata_store_.GetJobMetricsByDatasetFingerprintAndName(
-        dataset_fingerprint, job_name, dataset_fingerprint_metrics);
-    if (s.ok()) {
-      worker_count = std::ceil(std::max(1.0,
-          dataset_fingerprint_metrics->target_worker_count_ * 1.5));
-    }
-    job_metrics->target_worker_count_ = worker_count;
-  }
+  // Increase the number of workers when puttiong to cache
+//  if (job_type == "PUT" || job_type == "PUT_SOURCE") {
+//    std::shared_ptr<easl::JobMetrics> dataset_fingerprint_metrics;
+//    s = metadata_store_.GetJobMetricsByDatasetFingerprintAndName(
+//        dataset_fingerprint, job_name, dataset_fingerprint_metrics);
+//    if (s.ok()) {
+//      worker_count = std::ceil(std::max(1.0,
+//          dataset_fingerprint_metrics->target_worker_count_ * 1.5));
+//    }
+//    job_metrics->target_worker_count_ = worker_count;
+//  }
 
   // EASL: Logging stuff
   if (kEnableEventLogging) {
