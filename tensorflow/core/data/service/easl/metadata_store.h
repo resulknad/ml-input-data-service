@@ -26,6 +26,9 @@ namespace tensorflow {
 namespace data {
 namespace easl {
 
+// This enum is used to register the last change in metrics
+enum LastPerformance { UP, DOWN, NA };
+
 class ModelMetrics {
   public:
     class Metrics {
@@ -219,6 +222,7 @@ class JobMetrics {
     void DumpToStream(std::stringstream& ss);
 
     bool is_scaling_;
+    LastPerformance last_performance_;
     string job_type_;
     string name_;
     uint64 same_scale_counter_;
@@ -315,6 +319,9 @@ class MetadataStore {
   Status SetJobIsScaling(int64 job_id);
   Status UnsetJobIsScaling(int64 job_id);
   Status IsJobScaling(int64 job_id, bool& is_scaling);
+
+  Status GetLastPerformance(int64 job_id, LastPerformance& last_performance);
+  Status SetLastPerformance(int64 job_id, LastPerformance last_performance);
 
   bool JobSeenBefore(int64 fingerprint);
 

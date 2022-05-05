@@ -125,7 +125,7 @@ Status DynamicWorkerCountUpdate(
 
     if (second_to_last_metrics->worker_count() < last_metrics->worker_count()) {
       // We are scaling up
-      if (relative_improvement > kMinBatchTimeRelativeImprovementUp){
+      if (relative_improvement > kMinBatchTimeRelativeImprovementUp) {
         worker_count = last_metrics->worker_count() + 1;
         VLOG(0) << "(EASL::DynamicWorkerCountUpdate::ScalingUp) "
                      << "Improvement large enough:\n"
