@@ -325,7 +325,7 @@ JobMetrics::JobMetrics(int64 job_id,
         is_scaling_(is_scaling),
         target_worker_count_(1),
         same_scale_counter_(0),
-        last_performance_(LastPerformance::NA) {
+        last_performance_(Performance::NA) {
           model_metrics_ = std::make_shared<ModelMetrics>();
           input_pipeline_metrics_ = std::make_shared<InputPipelineMetrics>();
         }
@@ -735,7 +735,7 @@ Status MetadataStore::IsJobScaling(int64 job_id, bool& is_scaling) {
 }
 
 Status MetadataStore::GetLastPerformance(int64 job_id,
-  LastPerformance& last_performance) {
+                                         Performance& last_performance) {
   std::shared_ptr<JobMetrics> jobMetrics;
   TF_RETURN_IF_ERROR(GetJobMetrics(job_id, jobMetrics));
   last_performance = jobMetrics->last_performance_;
@@ -744,7 +744,7 @@ Status MetadataStore::GetLastPerformance(int64 job_id,
 
 
 Status MetadataStore::SetLastPerformance(int64 job_id,
-                                         LastPerformance last_performance) {
+                                         Performance last_performance) {
   std::shared_ptr<JobMetrics> jobMetrics;
   TF_RETURN_IF_ERROR(GetJobMetrics(job_id, jobMetrics));
   jobMetrics->last_performance_ = last_performance;

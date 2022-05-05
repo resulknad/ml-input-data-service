@@ -27,7 +27,7 @@ namespace data {
 namespace easl {
 
 // This enum is used to register the last change in metrics
-enum LastPerformance { UP, DOWN, NA };
+enum Performance { UP, DOWN, NA };
 
 class ModelMetrics {
   public:
@@ -222,7 +222,7 @@ class JobMetrics {
     void DumpToStream(std::stringstream& ss);
 
     bool is_scaling_;
-    LastPerformance last_performance_;
+    Performance last_performance_;
     string job_type_;
     string name_;
     uint64 same_scale_counter_;
