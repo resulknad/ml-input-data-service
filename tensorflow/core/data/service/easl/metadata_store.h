@@ -320,8 +320,8 @@ class MetadataStore {
   Status UnsetJobIsScaling(int64 job_id);
   Status IsJobScaling(int64 job_id, bool& is_scaling);
 
-  Status GetLastPerformance(int64 job_id, LastPerformance& last_performance);
-  Status SetLastPerformance(int64 job_id, LastPerformance last_performance);
+  Status GetLastPerformance(int64 job_id, Performance& last_performance);
+  Status SetLastPerformance(int64 job_id, Performance last_performance);
 
   bool JobSeenBefore(int64 fingerprint);
 
