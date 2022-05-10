@@ -10,7 +10,7 @@ To minimize end-to-end training time and cost, Cachew jointly optimizes:
 
 Cachew builds on top of the [tf.data](http://vldb.org/pvldb/vol14/p2945-klimovic.pdf) data loading framework in [TensorFlow](https://github.com/tensorflow/tensorflow), extending [tf.data service](https://www.tensorflow.org/api_docs/python/tf/data/experimental/service) with autoscaling and autocaching policies. 
 
-This repository is a fork of TensorFlow with the source code for Cachew.
+**This repository is a fork of TensorFlow with the source code for Cachew.**
 
 
 ## Cachew System Architecture
@@ -26,21 +26,9 @@ Cachew's input data workers are stateless components responsible for producing b
 Clients fetch data from the workers that are assigned to them by the dispatcher. Clients and workers periodically send heartbeats to the dispatcher to maintain membership in the service and provide metrics used for the autoscaling and autocaching policies.
 
 
-## Getting Started
+## Deploying and Using Cachew
 
-### Deploying a Cachew cluster
-TODO: instruction/script to deploy a single worker cluster.
-
-### Writing an ML input data pipeline for Cachew
-TODO: basic tf.data pipeline example.
-
-### Executing an ML input data pipeline with Cachew
-TODO: instructions/script to run experiment. 
-
-
-## Reproducing Experiment Results
-
-The [cachew_experiments](https://github.com/eth-easl/cachew_experiments) repository provides scripts and instructions to reproduce the key results from the Cachew paper published at USENIX ATC'22. 
+The [cachew_experiments](https://github.com/eth-easl/cachew_experiments) repository provides scripts and instructions to get started with a Cachew deployment and execute example ML input data pipelines. The repository also provides detailed instructions for reproducing the key results from the Cachew research paper published at USENIX ATC'22. 
 
 ## Contributing
 
