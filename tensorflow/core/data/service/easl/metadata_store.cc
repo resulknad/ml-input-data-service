@@ -12,7 +12,7 @@ namespace easl {
 
 namespace {
   const uint8 kMaxClientMetricsHistory = 20;
-  const uint8 kMaxPerWorkerClientMetricHistory = 3;
+  const uint8 kMaxPerWorkerClientMetricHistory = 12;
 }
 
 
