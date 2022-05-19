@@ -122,7 +122,7 @@ Status DynamicWorkerCountUpdate(
 
     if (second_to_last_metrics->worker_count() < last_metrics->worker_count()) {
       // We are scaling up
-      if (relative_improvement > kMinBatchTimeRelativeImprovementUp) {
+      if (relative_improvement > dispatcher_config.scaling_threshold_up()) {
         if (last_performance == Performance::UP) {
           metadata_store.SetLastPerformance(job_id, Performance::NA);
           worker_count = last_metrics->worker_count() + 1;
