@@ -1322,6 +1322,10 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
   }
   TF_RETURN_IF_ERROR(s);
 
+
+  VLOG(0) << "(ClientHeartbeat) The scaling threshold << "
+          << config_.scaling_threshold_up();
+
   // EASL: Update the client metrics
   int64 job_target_worker_count;
   string job_type;
