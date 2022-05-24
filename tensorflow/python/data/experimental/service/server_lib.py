@@ -112,7 +112,7 @@ class DispatcherConfig(
               scaling_policy=1,
               log_dir="",
               log_dumps_interval_ms=None,
-              scaling_threshold_up=7):
+              scaling_threshold_up=0.07):
     if protocol is None:
         protocol = _pywrap_utils.TF_DATA_DefaultProtocol()
     job_gc_check_interval_ms = _get_time_or_placeholder(
