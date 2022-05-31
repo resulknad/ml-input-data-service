@@ -53,10 +53,10 @@ Status StandaloneTaskIterator::GetNext(std::vector<Tensor>& element,
   // VLOG(0) << "DBK: entering GetNext";
   // VariantTensorDataWriter writer;
   // std::unique_ptr<SerializationContext> serialization_ctx;
-  // serialization_ctx = absl::make_unique<SerializationContext>(SerializationContext::Params{});
+  // serialization_ctx =
+  // absl::make_unique<SerializationContext>(SerializationContext::Params{});
   // VLOG(0) << "DBK: calling iterator_->Save";
   // TF_RETURN_IF_ERROR(iterator_->Save(serialization_ctx.get(), &writer));
-
 
   // VLOG(0) << "DBK: calling get data on writer";
   // std::vector<const VariantTensorData*> data;
@@ -67,16 +67,17 @@ Status StandaloneTaskIterator::GetNext(std::vector<Tensor>& element,
   // restore should be exposed on the standalone dataset...
 
   // lets leak some memory
-//  iterator_.release();
-/*  VLOG(0) << "DBK: post reset";
-  VLOG(0) << "DBK: making split providers";
-  std::vector<std::unique_ptr<SplitProvider>> providers;
-  TF_RETURN_IF_ERROR(dataset_->MakeSplitProviders(&providers));
-  
-  VLOG(0) << "DBK: make iterator from checkpoint";
+  //  iterator_.release();
+  /*  VLOG(0) << "DBK: post reset";
+    VLOG(0) << "DBK: making split providers";
+    std::vector<std::unique_ptr<SplitProvider>> providers;
+    TF_RETURN_IF_ERROR(dataset_->MakeSplitProviders(&providers));
 
-  TF_RETURN_IF_ERROR(dataset_->MakeIteratorFromCheckpoint(std::move(providers), &reader, &iterator_));*/
-//  TF_RETURN_IF_ERROR(iterator_->Restore(&reader, dataset_.get()));
+    VLOG(0) << "DBK: make iterator from checkpoint";
+
+    TF_RETURN_IF_ERROR(dataset_->MakeIteratorFromCheckpoint(std::move(providers),
+    &reader, &iterator_));*/
+  //  TF_RETURN_IF_ERROR(iterator_->Restore(&reader, dataset_.get()));
 
   // VLOG(0) << "DBK: returning get next";
   auto status = iterator_->GetNext(&element, &end_of_sequence);
@@ -88,14 +89,14 @@ int64_t StandaloneTaskIterator::Cardinality() const {
   return dataset_->Get()->Cardinality();
 }
 
-Status StandaloneTaskIterator::Save(SerializationContext* ctx, IteratorStateWriter* writer) {
+Status StandaloneTaskIterator::Save(SerializationContext* ctx,
+                                    IteratorStateWriter* writer) {
   return iterator_->Save(ctx, writer);
 }
 
 model::Model::ModelMetrics StandaloneTaskIterator::GetMetrics() {
   return iterator_->GetMetrics();
 }
-
 
 Status TaskRunner::Create(const experimental::WorkerConfig& worker_config,
                           const TaskDef& task_def,
@@ -121,22 +122,20 @@ Status TaskRunner::Create(const experimental::WorkerConfig& worker_config,
   return Status::OK();
 }
 
-Status TaskRunner::CreateFromCheckpoint(const experimental::WorkerConfig& worker_config,
-                       const TaskDef& task_def,
-                       std::unique_ptr<TaskIterator> iterator,
-                       std::unique_ptr<TaskRunner>& out,
-                       VariantTensorDataReader* reader) {
-  TF_RETURN_IF_ERROR(Create(worker_config,task_def,std::move(iterator),out));
+Status TaskRunner::CreateFromCheckpoint(
+    const experimental::WorkerConfig& worker_config, const TaskDef& task_def,
+    std::unique_ptr<TaskIterator> iterator, std::unique_ptr<TaskRunner>& out,
+    VariantTensorDataReader* reader) {
+  TF_RETURN_IF_ERROR(Create(worker_config, task_def, std::move(iterator), out));
   return out->Restore(reader);
 }
 
 FirstComeFirstServedTaskRunner::FirstComeFirstServedTaskRunner(
     std::unique_ptr<TaskIterator> iterator)
     : iterator_(std::move(iterator)), buffer_(/*buffer_size=*/1) {
-      //TODO: restore prefetch here once initial checkpointing is fixed.
-  //RunPrefetchThread()
+  // TODO: restore prefetch here once initial checkpointing is fixed.
+  // RunPrefetchThread()
 }
-
 
 int64_t FirstComeFirstServedTaskRunner::GetNextElementIndex() {
   auto buffer_el = buffer_.Peek();
@@ -146,18 +145,20 @@ int64_t FirstComeFirstServedTaskRunner::GetNextElementIndex() {
   return element_index_;
 }
 
-Status FirstComeFirstServedTaskRunner::Save(SerializationContext* ctx, IteratorStateWriter* writer)
+Status FirstComeFirstServedTaskRunner::Save(SerializationContext* ctx,
+                                            IteratorStateWriter* writer)
     TF_LOCKS_EXCLUDED(mu_) {
   VLOG(0) << "DBK: need fcfs lock";
   mutex_lock l(mu_);
-
 
   VLOG(0) << "DBK: got fcfs lock";
 
   auto status = iterator_->Save(ctx, writer);
   VLOG(0) << "DBK: done with iterator saving";
 
-  TF_RETURN_IF_ERROR(writer->WriteScalar(FullName("TaskRunner", "FirstComeFirstServed.element_index"), this->element_index_));
+  TF_RETURN_IF_ERROR(writer->WriteScalar(
+      FullName("TaskRunner", "FirstComeFirstServed.element_index"),
+      this->element_index_));
   VLOG(0) << "DBK: saving element index";
 
   if (!prefetch_thread_) {
@@ -167,48 +168,56 @@ Status FirstComeFirstServedTaskRunner::Save(SerializationContext* ctx, IteratorS
   return status;
 }
 
-Status FirstComeFirstServedTaskRunner::Restore(VariantTensorDataReader* reader) {
-  auto status = reader->ReadScalar(FullName("TaskRunner", "FirstComeFirstServed.element_index"), &this->element_index_);
+Status FirstComeFirstServedTaskRunner::Restore(
+    VariantTensorDataReader* reader) {
+  auto status = reader->ReadScalar(
+      FullName("TaskRunner", "FirstComeFirstServed.element_index"),
+      &this->element_index_);
   VLOG(0) << "restoring element index in FCSFS: " << element_index_;
+  return status;
 }
 
 FirstComeFirstServedTaskRunner::~FirstComeFirstServedTaskRunner() { Cancel(); }
 
 Status FirstComeFirstServedTaskRunner::GetNext(const GetElementRequest& req,
                                                GetElementResult& result) {
-/*
-  while ((result.components.empty() || result.element_index < req.element_index()) && !result.end_of_sequence) {
- */   
-    DBK_TRACE(" BUFFER_POP_EL");
-    TF_ASSIGN_OR_RETURN(result, buffer_.Pop());
+  /*
+    while ((result.components.empty() || result.element_index <
+    req.element_index()) && !result.end_of_sequence) {
+   */
+  DBK_TRACE(" BUFFER_POP_EL");
+  TF_ASSIGN_OR_RETURN(result, buffer_.Pop());
 
-  //  VLOG(0) << "(DBK) GetNext in task runner element index: " << (int64_t) result.element_index << ", components size: " << result.components.size();
-    if (result.components.size() > 0) {
-  //     Variant x = result.components.at(0);
-  //     VLOG(0) << "x: " << x.DebugString();
-  //     Variant extracted = x.get<Tensor>()->flat<Variant>()(0);
-  //     VLOG(0) << "extracted: " << extracted.DebugString();
-  //     CompressedElement *i = extracted.get<CompressedElement>();
-  //     VLOG(0) << "iptr " << i;
-  //     std::vector<Tensor> out;
-  // //    UncompressElement(const CompressedElement &compressed, std::vector<Tensor> *out)
-  //     UncompressElement(*i, &out);
-  //     VLOG(0) << "vec len after decompress " << out.size();
+  //  VLOG(0) << "(DBK) GetNext in task runner element index: " << (int64_t)
+  //  result.element_index << ", components size: " << result.components.size();
+  if (result.components.size() > 0) {
+    //     Variant x = result.components.at(0);
+    //     VLOG(0) << "x: " << x.DebugString();
+    //     Variant extracted = x.get<Tensor>()->flat<Variant>()(0);
+    //     VLOG(0) << "extracted: " << extracted.DebugString();
+    //     CompressedElement *i = extracted.get<CompressedElement>();
+    //     VLOG(0) << "iptr " << i;
+    //     std::vector<Tensor> out;
+    // //    UncompressElement(const CompressedElement &compressed,
+    // std::vector<Tensor> *out)
+    //     UncompressElement(*i, &out);
+    //     VLOG(0) << "vec len after decompress " << out.size();
 
-  //    VLOG(0) << "vec el 0 " << " descibe " << out.at(0).SummarizeValue(100);
-      VLOG(0) << "Produced element=" //<< out.at(0).SummarizeValue(100, true)  
-                  << "[i=" << result.element_index
-                  << ", Task: " <<  req.task_id()
-                  << ", EOS: " << result.end_of_sequence
-                  << "]";
-      // VLOG(0) << "(DBK) componentv2: " << result.components.at(0).SummarizeValue(100, true) << ", " << i << " for task " << result.element_index;
-    }
-    
-    if (result.element_index < req.element_index()) {
-      DBK_TRACE(" BUFFER_POP_EL_SKIPPED");
-    } else {
-      DBK_TRACE(" BUFFER_POP_EL_DONE");
-    }
+    //    VLOG(0) << "vec el 0 " << " descibe " <<
+    //    out.at(0).SummarizeValue(100);
+    VLOG(0) << "Produced element="  //<< out.at(0).SummarizeValue(100, true)
+            << "[i=" << result.element_index << ", Task: " << req.task_id()
+            << ", EOS: " << result.end_of_sequence << "]";
+    // VLOG(0) << "(DBK) componentv2: " <<
+    // result.components.at(0).SummarizeValue(100, true) << ", " << i << " for
+    // task " << result.element_index;
+  }
+
+  if (result.element_index < req.element_index()) {
+    DBK_TRACE(" BUFFER_POP_EL_SKIPPED");
+  } else {
+    DBK_TRACE(" BUFFER_POP_EL_DONE");
+  }
 
   //}
 
@@ -218,14 +227,14 @@ Status FirstComeFirstServedTaskRunner::GetNext(const GetElementRequest& req,
 Status FirstComeFirstServedTaskRunner::PrefetchFn() {
   while (true) {
     auto status = (buffer_.Push(GetNextFromInputIterator()));
-    
+
     if (!status.ok()) {
       // the last element doesn't count since we did not manage to enqueue it...
       // element_index_--;
       // VLOG(0) << "FCFS: element index decrease...";
       return status;
     }
-    
+
     // VLOG(0) << "FCFS prefetch thread fetching...";
   }
   return Status::OK();
@@ -268,7 +277,7 @@ void FirstComeFirstServedTaskRunner::Cancel() {
   buffer_.Cancel(errors::Cancelled("tf.data service FCFS task is cancelled."));
 }
 
-model::Model::ModelMetrics FirstComeFirstServedTaskRunner::GetMetrics(){
+model::Model::ModelMetrics FirstComeFirstServedTaskRunner::GetMetrics() {
   return iterator_->GetMetrics();
 }
 
@@ -284,12 +293,14 @@ RoundRobinTaskRunner::RoundRobinTaskRunner(
 }
 
 int64_t RoundRobinTaskRunner::GetNextElementIndex() {
-  VLOG(0) << "RoundRobinTaskRunner does not implement GetNextElementIndex. Terminating!";
+  VLOG(0) << "RoundRobinTaskRunner does not implement GetNextElementIndex. "
+             "Terminating!";
   std::terminate();
   return 0;
 }
 
-Status RoundRobinTaskRunner::Save(SerializationContext* ctx, IteratorStateWriter* writer) {
+Status RoundRobinTaskRunner::Save(SerializationContext* ctx,
+                                  IteratorStateWriter* writer) {
   return prefetch_thread_.iterator_->Save(ctx, writer);
 }
 
