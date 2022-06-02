@@ -75,7 +75,7 @@ Status Iterator::Save(SerializationContext* ctx, IteratorStateWriter* writer) {
   VLOG(0) << "Save size split providers: " << ctx_->split_providers().size();
   TF_RETURN_IF_ERROR(iterator_->Save(ctx, writer));
   return Status::OK();
-//return iterator_->Save(ctx, writer);
+  // return iterator_->Save(ctx, writer);
 }
 
 void Iterator::SetTaskID(int64_t task_id) {
@@ -84,9 +84,9 @@ void Iterator::SetTaskID(int64_t task_id) {
 }
 model::Model::ModelMetrics Iterator::GetMetrics() {
   auto model = ctx_.get()->model();
-  //auto model = 
+  // auto model =
 
-  if(model != nullptr){
+  if (model != nullptr) {
     VLOG(0) << "EASL - Standalone iterator GetMetrics, model found";
     return model->CollectMetrics();
   } else {
@@ -100,10 +100,8 @@ Iterator::Iterator(IteratorBase* iterator, IteratorContext* ctx)
 
 Status Dataset::MakeIteratorFromCheckpoint(
     std::vector<std::unique_ptr<SplitProvider>> split_providers,
-    int64_t task_id,
-    IteratorStateReader* reader,
+    int64_t task_id, IteratorStateReader* reader,
     std::unique_ptr<Iterator>* result) {
-
   auto ctx = MakeIteratorContext(std::move(split_providers));
   if (ctx == nullptr) {
     VLOG(0) << "make interator context returned nullptr!!";
@@ -115,8 +113,8 @@ Status Dataset::MakeIteratorFromCheckpoint(
     VLOG(0) << "ERROR! reader is nullptr";
   }
 
-
-  TF_RETURN_IF_ERROR(dataset_->MakeIteratorFromCheckpoint(ctx, "Iterator", reader, &iterator));
+  TF_RETURN_IF_ERROR(
+      dataset_->MakeIteratorFromCheckpoint(ctx, "Iterator", reader, &iterator));
   if (iterator == nullptr) {
     VLOG(0) << "iterator is nullptr!!";
   }
@@ -184,7 +182,8 @@ Status Dataset::FromGraph(Params params, const GraphDef& graph_def,
   return Status::OK();
 }  // static
 
-IteratorContext* Dataset::MakeIteratorContext(std::vector<std::unique_ptr<SplitProvider>> split_providers) {
+IteratorContext* Dataset::MakeIteratorContext(
+    std::vector<std::unique_ptr<SplitProvider>> split_providers) {
   VLOG(0) << "making iterator context start";
   // Create an `IteratorContext`, which bundles together the necessary runtime
   // support to create and get elements from an iterator.
@@ -203,34 +202,32 @@ IteratorContext* Dataset::MakeIteratorContext(std::vector<std::unique_ptr<SplitP
             std::back_inserter(params.split_providers));
   params.thread_factory = unbounded_thread_pool_.get_thread_factory();
   params.thread_pool = &unbounded_thread_pool_;
-  //TODO: make unique ptr out of this...
+  // TODO: make unique ptr out of this...
   ctx = new IteratorContext(std::move(params));
   VLOG(0) << "end making iterator context start";
-  
+
   return ctx;
 }
 
 Status Dataset::MakeIterator(
     std::vector<std::unique_ptr<SplitProvider>> split_providers,
-    int64_t task_id,
-    std::unique_ptr<Iterator>* result) {
+    int64_t task_id, std::unique_ptr<Iterator>* result) {
   VLOG(0) << "calling make iterator...";
 
   auto ctx = MakeIteratorContext(std::move(split_providers));
   ctx->set_task_id(task_id);
   // Create the iterator from the dataset.
   std::unique_ptr<IteratorBase> iterator;
-  TF_RETURN_IF_ERROR(dataset_->MakeIterator(ctx, /*parent=*/nullptr,
-                                            "Iterator", &iterator));
+  TF_RETURN_IF_ERROR(
+      dataset_->MakeIterator(ctx, /*parent=*/nullptr, "Iterator", &iterator));
   *result = WrapUnique(new Iterator(iterator.release(), ctx));
   return Status::OK();
 }
 
-Status Dataset::MakeIterator(int64_t task_id, std::unique_ptr<Iterator>* result) {
+Status Dataset::MakeIterator(int64_t task_id,
+                             std::unique_ptr<Iterator>* result) {
   return MakeIterator(/*split_providers=*/{}, task_id, result);
 }
-
-
 
 Status Dataset::MakeSplitProviders(
     std::vector<std::unique_ptr<SplitProvider>>* result) {

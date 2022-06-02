@@ -145,12 +145,14 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
 
     Status Initialize(IteratorContext* ctx) override {
       if (ctx->split_providers().empty()) {
-        VLOG(0) << "(DBK) TensorSliceDataset: creating indexplistprovider because context split providers is emtpy...";
+        VLOG(0) << "(DBK) TensorSliceDataset: creating indexplistprovider "
+                   "because context split providers is emtpy...";
         split_provider_ = std::make_shared<IndexSplitProvider>(
             dataset()->tensors_[0].dim_size(0));
         no_sp_ = true;
       } else {
-        VLOG(0) << "(DBK) TensorSliceDataset: getting split provider from ctx/dataset";
+        VLOG(0) << "(DBK) TensorSliceDataset: getting split provider from "
+                   "ctx/dataset";
         TF_ASSIGN_OR_RETURN(split_provider_,
                             GetSingleSplitProvider(ctx, dataset()));
       }
@@ -168,7 +170,8 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
         return Status::OK();
       }
       int64_t index = split.scalar<int64_t>()();
-      VLOG(0) << "(DBK) TensorSliceDatasetOp::GetNextInternal got index: " << index << ". (not EOS)";
+      VLOG(0) << "(DBK) TensorSliceDatasetOp::GetNextInternal got index: "
+              << index << ". (not EOS)";
       out_tensors->reserve(dataset()->tensors_.size());
       for (size_t i = 0; i < dataset()->tensors_.size(); ++i) {
         out_tensors->push_back(
@@ -186,8 +189,10 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
 
     Status SaveInternal(SerializationContext* ctx,
                         IteratorStateWriter* writer) override {
-      writer->WriteScalar(full_name("no_sp"), (int64_t) no_sp_);
-      VLOG(0) << "save internal in tensor slice dataset. calling on split provider... which is: " << split_provider_ << "nosp:" << no_sp_;
+      writer->WriteScalar(full_name("no_sp"), (int64_t)no_sp_);
+      VLOG(0) << "save internal in tensor slice dataset. calling on split "
+                 "provider... which is: "
+              << split_provider_ << "nosp:" << no_sp_;
 
       return split_provider_->Save(
           [this](const std::string& key) { return full_name(key); }, writer);
@@ -197,7 +202,7 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
                            IteratorStateReader* reader) override {
       int64_t no_sp;
       reader->ReadScalar(full_name("no_sp"), &no_sp);
-      no_sp_ = (bool) no_sp;
+      no_sp_ = (bool)no_sp;
       if (no_sp_) {
         split_provider_ = std::make_shared<IndexSplitProvider>(
             dataset()->tensors_[0].dim_size(0));

@@ -131,10 +131,14 @@ class DispatcherState {
     // Number of splits produced so far by each split provider.
     std::vector<int64_t> indices;
   };
-  
+
   struct TaskSplitProviderState {
-    explicit TaskSplitProviderState(int64_t task_id, int64_t split_provider_index)
-      : task_id(task_id), split_provider_index(split_provider_index), indices(0), worker_cursor(0) {}
+    explicit TaskSplitProviderState(int64_t task_id,
+                                    int64_t split_provider_index)
+        : task_id(task_id),
+          split_provider_index(split_provider_index),
+          indices(0),
+          worker_cursor(0) {}
     const int64_t task_id;
     const int64_t split_provider_index;
 
@@ -166,9 +170,8 @@ class DispatcherState {
                  int64_t num_split_providers,
                  absl::optional<NamedJobKey> named_job_key,
                  absl::optional<int64_t> num_consumers,
-                 const std::string& job_type,
-                 int64_t target_worker_count,
-                  TargetWorkers target_workers)
+                 const std::string& job_type, int64_t target_worker_count,
+                 TargetWorkers target_workers)
         : job_id(job_id),
           dataset_id(dataset_id),
           processing_mode(processing_mode),
@@ -207,7 +210,7 @@ class DispatcherState {
     bool garbage_collected = false;
     // EASL
     const std::string job_type;
-    int64_t target_worker_count; // Non-constant, can be dynamically adjusted.
+    int64_t target_worker_count;  // Non-constant, can be dynamically adjusted.
     int64_t current_worker_count = 0;
   };
 
@@ -223,19 +226,19 @@ class DispatcherState {
                       create_task_update.worker_tags().end()),
           worker_uid(create_task_update.worker_uid()),
           dataset_key(create_task_update.dataset_key()),
-          splits (std::make_shared<std::list<TensorProto>>()),
-          splits_by_provider (std::make_shared<SplitsByProviderId>())
-          {
-            if (job && job->distributed_epoch_state) {
-              auto num_split_providers = (job->distributed_epoch_state->indices.size());
-              split_provider_state = std::vector<TaskSplitProviderState>();
-              split_provider_state.reserve(num_split_providers);
+          splits(std::make_shared<std::list<TensorProto>>()),
+          splits_by_provider(std::make_shared<SplitsByProviderId>()) {
+      if (job && job->distributed_epoch_state) {
+        auto num_split_providers =
+            (job->distributed_epoch_state->indices.size());
+        split_provider_state = std::vector<TaskSplitProviderState>();
+        split_provider_state.reserve(num_split_providers);
 
-              for (int i=0; i<num_split_providers; i++) {
-                split_provider_state.push_back(TaskSplitProviderState(task_id, i));
-              }
-            }
-          }
+        for (int i = 0; i < num_split_providers; i++) {
+          split_provider_state.push_back(TaskSplitProviderState(task_id, i));
+        }
+      }
+    }
 
     const int64_t task_id;
     const std::shared_ptr<Job> job;
@@ -260,7 +263,8 @@ class DispatcherState {
 
   using TasksById = absl::flat_hash_map<int64_t, std::shared_ptr<Task>>;
   using JobsById = absl::flat_hash_map<int64_t, std::shared_ptr<Job>>;
-  using WorkersByAddress = absl::flat_hash_map<std::string, std::shared_ptr<Worker>>;
+  using WorkersByAddress =
+      absl::flat_hash_map<std::string, std::shared_ptr<Worker>>;
 
   // Returns the next available dataset id.
   int64_t NextAvailableDatasetId() const;
@@ -286,8 +290,8 @@ class DispatcherState {
   // Reserves a number of available workers for a particular job. If num_workers
   // is lower than or equal to 0, then the reserved number of workers is equal
   // to all the available workers.
-  std::vector<std::shared_ptr<const Worker>> ReserveWorkers(int64 job_id,
-    int64 num_workers = 0);
+  std::vector<std::shared_ptr<const Worker>> ReserveWorkers(
+      int64 job_id, int64 num_workers = 0);
 
   // Returns the next available job id.
   int64_t NextAvailableJobId() const;
@@ -295,7 +299,7 @@ class DispatcherState {
   std::vector<std::shared_ptr<const Job>> ListJobs();
   // Returns a list of jobs assigned to particular worker.
   std::vector<std::shared_ptr<const Job>> ListJobsForWorker(
-    const absl::string_view worker_address);
+      const absl::string_view worker_address);
   // Gets a job by id. Returns NOT_FOUND if there is no such job.
   Status JobFromId(int64_t id, std::shared_ptr<const Job>& job) const;
   // Gets a named job by key. Returns NOT_FOUND if there is no such job.
@@ -323,7 +327,8 @@ class DispatcherState {
   Status TasksForWorker(const absl::string_view worker_address,
                         std::vector<std::shared_ptr<const Task>>& tasks) const;
 
-  Status IsEarlyEndedTask(const int64 job_id, const int64 task_id, bool& is_early_ended_task);
+  Status IsEarlyEndedTask(const int64 job_id, const int64 task_id,
+                          bool& is_early_ended_task);
 
   void AddFutureEndedJob(int64 job_id, int32 split_provider_index);
   bool IsFutureEndedJob(int64 job_id, int32 split_provider_index);
@@ -355,8 +360,10 @@ class DispatcherState {
 
   // EASL
   void ReassignFreeWorkers();
-  void UpdateJobTargetWorkerCount(const JobTargetWorkerCountUpdate job_target_worker_count_update);
-  void UpdateTaskSplitProviderState(const TaskSplitProviderUpdate task_split_provider_update);
+  void UpdateJobTargetWorkerCount(
+      const JobTargetWorkerCountUpdate job_target_worker_count_update);
+  void UpdateTaskSplitProviderState(
+      const TaskSplitProviderUpdate task_split_provider_update);
 
   int64_t next_available_dataset_id_ = 1000;
   // Registered datasets, keyed by dataset ids.
@@ -395,8 +402,8 @@ class DispatcherState {
   // List of tasks associated with each job.
 
   absl::flat_hash_map<int64_t, TasksById> tasks_by_job_;
-//  absl::flat_hash_map<int64_t, std::vector<std::shared_ptr<Task>>>
-//      tasks_by_job_;
+  //  absl::flat_hash_map<int64_t, std::vector<std::shared_ptr<Task>>>
+  //      tasks_by_job_;
   // Tasks, keyed by worker addresses. The values are a map from task id to
   // task.
   absl::flat_hash_map<std::string, TasksById> tasks_by_worker_;
@@ -405,8 +412,8 @@ class DispatcherState {
   // List of jobs associated with each worker, keyed by worker address.
   absl::flat_hash_map<std::string, JobsById> jobs_by_worker_;
 
-  // EASL - List of tasks for which the splitProvider should return eos, keyed by jobId.
-  // The values are a map from task id to task.
+  // EASL - List of tasks for which the splitProvider should return eos, keyed
+  // by jobId. The values are a map from task id to task.
   absl::flat_hash_map<int64, TasksById> ending_tasks_by_job_;
   // Split providers to be terminated after the scaling is done
   // Key to this data structure is: `<job_id>_<split_provider_index>`
