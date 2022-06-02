@@ -24,6 +24,7 @@ import numpy as np
 import six
 from six.moves import queue as Queue  # pylint: disable=redefined-builtin
 
+import tensorflow as tf
 from tensorflow.core.framework import dataset_metadata_pb2
 from tensorflow.core.framework import dataset_options_pb2
 from tensorflow.core.framework import graph_pb2
@@ -5830,9 +5831,11 @@ class DeterministicDataset(UnaryDataset):
 
     # flat structure internally calls the element|_spec property
 
-    variant_tensor = gen_dataset_ops.zip_dataset(
-        [self._input_dataset._variant_tensor, element_seed_batched],
-        **self._flat_structure)
+    def add_seed(el):
+        seed1 = tf.strings.to_hash_bucket_fast(el,2**20)
+        seed2 = tf.strings.to_hash_bucket_fast(tf.strings.as_string(seed1),2**20)
+        return [el, [seed1, seed2]]
+    variant_tensor = MapDataset(input_dataset, add_seed)._variant_tensor
     #logging_ops.print_v2 (variant_tensor)
     super(DeterministicDataset, self).__init__(input_dataset,
                                                     variant_tensor)
