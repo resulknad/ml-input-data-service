@@ -152,7 +152,8 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
         no_sp_ = true;
       } else {
         VLOG(0) << "(DBK) TensorSliceDataset: getting split provider from "
-                   "ctx/dataset";
+                   "ctx/dataset, ctx: "
+                << ctx;
         TF_ASSIGN_OR_RETURN(split_provider_,
                             GetSingleSplitProvider(ctx, dataset()));
       }

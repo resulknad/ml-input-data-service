@@ -198,6 +198,8 @@ IteratorContext* Dataset::MakeIteratorContext(
   params.cancellation_manager = &cancellation_manager_;
   params.function_handle_cache = function_handle_cache_.get();
   params.resource_mgr = &resource_mgr_;
+  VLOG(0) << "DBK: adding " << split_providers.size() << " sps to the existing "
+          << params.split_providers.size();
   std::move(split_providers.begin(), split_providers.end(),
             std::back_inserter(params.split_providers));
   params.thread_factory = unbounded_thread_pool_.get_thread_factory();

@@ -1031,7 +1031,7 @@ Status DataServiceDispatcherImpl::GetDataServiceMetadata(
 Status DataServiceDispatcherImpl::GetOrCreateJob(
     const GetOrCreateJobRequest* request, GetOrCreateJobResponse* response) {
   TF_RETURN_IF_ERROR(CheckStarted());
-  VLOG(3) << "GetOrCreateJob(" << request->DebugString() << ")";
+  VLOG(0) << "GetOrCreateJob(" << request->DebugString() << ")";
   absl::optional<NamedJobKey> key;
   if (request->has_job_key()) {
     key.emplace(request->job_key().job_name(),
@@ -1051,7 +1051,7 @@ Status DataServiceDispatcherImpl::GetOrCreateJob(
           int64_t job_client_id;
           TF_RETURN_IF_ERROR(AcquireJobClientId(job, job_client_id));
           response->set_job_client_id(job_client_id);
-          VLOG(3) << "Found existing job for name=" << key.value().name
+          VLOG(0) << "Found existing job for name=" << key.value().name
                   << ", index=" << key.value().index
                   << ". job_id: " << job->job_id;
           return Status::OK();
@@ -1067,7 +1067,7 @@ Status DataServiceDispatcherImpl::GetOrCreateJob(
     TF_RETURN_IF_ERROR(CreateTasksForJob(job, tasks));
   }
   TF_RETURN_IF_ERROR(AssignTasks(tasks));
-  VLOG(3) << "Created job " << job->job_id << " for CreateJob("
+  VLOG(0) << "Created job " << job->job_id << " for CreateJob("
           << request->DebugString() << ")";
   return Status::OK();
 }
@@ -1134,12 +1134,16 @@ Status DataServiceDispatcherImpl::ReleaseJobClient(
     TF_RETURN_IF_ERROR(Apply(update));
 
     if (job->num_clients <= 0) {
-      Update update;
-      update.mutable_garbage_collect_job()->set_job_id(job->job_id);
-      TF_RETURN_IF_ERROR(state_.Apply(update));
-      VLOG(0) << "EASL - (ReleaseJobClient): Overwrite job_gc_timeout_ms and "
-                 "garbage collect job "
-              << job->DebugString();
+      VLOG(0)
+          << "Prevented garbage-collecting job to keep the split-recovery store"
+          << job->DebugString();
+      // Update update;
+      // update.mutable_garbage_collect_job()->set_job_id(job->job_id);
+      // TF_RETURN_IF_ERROR(state_.Apply(update));
+      // VLOG(0) << "EASL - (ReleaseJobClient): Overwrite job_gc_timeout_ms and
+      // "
+      //            "garbage collect job "
+      //         << job->DebugString();
     }
   }
   if (job->num_clients <= 0) {

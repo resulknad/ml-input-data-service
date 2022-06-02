@@ -106,6 +106,7 @@ class DispatcherState {
   struct NamedJobKey {
     explicit NamedJobKey(absl::string_view name, int64_t index)
         : name(name), index(index) {}
+    // NamedJobKey& operator=(NamedJobKey&&) = default;
 
     friend bool operator==(const NamedJobKey& lhs, const NamedJobKey& rhs) {
       return lhs.name == rhs.name && lhs.index == rhs.index;
@@ -303,7 +304,7 @@ class DispatcherState {
   // Gets a job by id. Returns NOT_FOUND if there is no such job.
   Status JobFromId(int64_t id, std::shared_ptr<const Job>& job) const;
   // Gets a named job by key. Returns NOT_FOUND if there is no such job.
-  Status NamedJobByKey(NamedJobKey key, std::shared_ptr<const Job>& job) const;
+  Status NamedJobByKey(NamedJobKey key, std::shared_ptr<const Job>& job);
 
   // Returns the job associated with the given job client id. Returns NOT_FOUND
   // if the job_client_id is unknown or has been released.

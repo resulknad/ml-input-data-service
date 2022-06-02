@@ -63,6 +63,7 @@ Status DataServiceSplitProvider::GetNext(Tensor* split, bool* end_of_splits) {
     TF_RETURN_IF_ERROR(status);
     index_++;
   }
+  VLOG(0) << "index:" << index_ << ", target_index:" << target_index_;
 
   target_index_++;
   return status;

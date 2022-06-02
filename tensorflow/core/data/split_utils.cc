@@ -119,6 +119,10 @@ Status ShardingSplitProvider::Restore(
 
 StatusOr<std::shared_ptr<SplitProvider>> GetSingleSplitProvider(
     IteratorContext* ctx, const DatasetBase* dataset) {
+  VLOG(0) << "DBK: number of SplitProviders: " << ctx->split_providers().size();
+  for (auto sp : ctx->split_providers()) {
+    VLOG(0) << "SplitProvider: " << sp;
+  }
   if (ctx->split_providers().size() != 1) {
     return errors::FailedPrecondition(
         "Failed to get single split provider for dataset ",
@@ -162,8 +166,10 @@ StatusOr<std::vector<IteratorContext>> CreateInputIteratorContexts(
           "Failed to determine the number of sources for dataset of type ",
           inputs[i]->type_string());
     }
+    VLOG(0) << "DBK: resetting split providers";
     params.split_providers.clear();
     for (int j = 0; j < inputs[i]->num_sources(); ++j) {
+      VLOG(0) << "DBK: adding a split providers";
       params.split_providers.push_back(
           ctx->split_providers()[split_provider_index + j]);
     }

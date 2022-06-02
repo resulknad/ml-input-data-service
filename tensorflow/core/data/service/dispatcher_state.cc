@@ -622,13 +622,44 @@ Status DispatcherState::JobFromId(int64_t id,
 }
 
 Status DispatcherState::NamedJobByKey(NamedJobKey named_job_key,
-                                      std::shared_ptr<const Job>& job) const {
-  auto it = named_jobs_.find(named_job_key);
+                                      std::shared_ptr<const Job>& job) {
+  // dbk: hack to support "replaying" of first epoch when requesting second one
+  // FIXME: add the const back to function signature and properly journal the
+  // modifications done to the state store here
+
+  // always look up first epoch, no matter what index is
+  NamedJobKey first_epoch_job_key{named_job_key.name, 1};
+
+  auto it = named_jobs_.find(first_epoch_job_key);
+
   if (it == named_jobs_.end()) {
-    return errors::NotFound("Named job key (", named_job_key.name, ", ",
-                            named_job_key.index, ") not found");
+    return errors::NotFound("Named job key (", first_epoch_job_key.name, ", ",
+                            first_epoch_job_key.index, ") not found");
   }
   job = it->second;
+
+  // need a non-const copy
+  auto job_local = it->second;
+  if (named_job_key.index == 2) {
+    // we are in 2nd epoch, so revive old tasks + job
+    job_local->finished = false;
+    VLOG(0) << "DBK: set job " << job_local->job_id
+            << " finished=false (reviving it) ";
+
+    // need to iterate over all tasks bc finished tasks are removed from
+    // tasks_by_job
+    for (auto task : tasks_) {
+      auto t = task.second;
+      if (t->job->job_id == job_local->job_id) {
+        VLOG(0) << "DBK: reviving task " << t->task_id << " at address "
+                << t->transfer_address;
+        t->finished = false;
+        t->job->current_worker_count++;
+        tasks_by_job_[t->job->job_id][t->task_id] = t;
+        tasks_by_worker_[t->worker_address][t->task_id] = t;
+      }
+    }
+  }
   return Status::OK();
 }
 

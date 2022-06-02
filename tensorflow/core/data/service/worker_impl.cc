@@ -295,7 +295,8 @@ Status DataServiceWorkerImpl::GetElementResult(
             "sure to create your dataset only once, as opposed to re-creating "
             "it repeatedly inside a loop.");
       }
-      if (finished_tasks_.contains(request->task_id())) {
+      // FIXME: dbk, remove the false
+      if (false && finished_tasks_.contains(request->task_id())) {
         VLOG(0) << "Task is already finished";
         result->end_of_sequence = true;
         result->skip = false;
@@ -696,11 +697,17 @@ DataServiceWorkerImpl::MakeDatasetIteratorFromCheckpoint(
 
   if (IsDynamicShard(task_def.processing_mode_def())) {
     std::vector<std::unique_ptr<SplitProvider>> split_providers;
+    // if (!finished_tasks_.contains(task_def.task_id())) {
+    //  DBK: hack to prevent recreation of split providers for revived tasks
+
     split_providers.reserve(task_def.num_split_providers());
     for (int i = 0; i < task_def.num_split_providers(); ++i) {
+      VLOG(0) << "(DBK): Creating a split provider for task "
+              << task_def.task_id();
       split_providers.push_back(absl::make_unique<DataServiceSplitProvider>(
           config_.dispatcher_address(), config_.protocol(), task_def.job_id(),
           i, config_.dispatcher_timeout_ms(), task_def.task_id()));
+      // }
     }
     /*
 
@@ -733,6 +740,8 @@ DataServiceWorkerImpl::MakeDatasetIterator(standalone::Dataset& dataset,
     std::vector<std::unique_ptr<SplitProvider>> split_providers;
     split_providers.reserve(task_def.num_split_providers());
     for (int i = 0; i < task_def.num_split_providers(); ++i) {
+      VLOG(0) << "(DBK): Creating a split provider for task "
+              << task_def.task_id();
       split_providers.push_back(absl::make_unique<DataServiceSplitProvider>(
           config_.dispatcher_address(), config_.protocol(), task_def.job_id(),
           i, config_.dispatcher_timeout_ms(), task_def.task_id()));
@@ -1080,11 +1089,12 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
     for (const auto& task : response.new_tasks()) {
       VLOG(0) << "Received new task from dispatcher with id " << task.task_id();
       if (deleted_tasks_.contains(task.task_id()) ||
-          finished_tasks_.contains(task.task_id()) ||
+          // finished_tasks_.contains(task.task_id()) ||
           pending_completed_tasks_.contains(task.task_id())) {
-        VLOG(0) << "(DBK) Found task id " << task.task_id()
-                << " in deleted or finished tasks";
-        continue;
+        VLOG(0)
+            << "(DBK) Found task id " << task.task_id()
+            << " in deleted or finished tasks"
+            << " but still going ahead, because we want to revive old tasks";
       }
       Status s = ProcessTaskInternal(task);
       VLOG(0) << "(DBK) Processing (new) task id " << task.task_id()
