@@ -5832,9 +5832,9 @@ class DeterministicDataset(UnaryDataset):
     # flat structure internally calls the element|_spec property
 
     def add_seed(el):
-        seed1 = tf.strings.to_hash_bucket_fast(el,2**20)
-        seed2 = tf.strings.to_hash_bucket_fast(tf.strings.as_string(seed1),2**20)
-        return [el, [seed1, seed2]]
+        # seed1 = tf.strings.to_hash_bucket_fast(el,2**20)
+        # seed2 = tf.strings.to_hash_bucket_fast(tf.strings.as_string(seed1),2**20)
+        return [el, tf.constant([1,2], dtype=tf.int64)]
     variant_tensor = MapDataset(input_dataset, add_seed)._variant_tensor
     #logging_ops.print_v2 (variant_tensor)
     super(DeterministicDataset, self).__init__(input_dataset,

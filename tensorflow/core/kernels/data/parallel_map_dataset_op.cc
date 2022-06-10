@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/stats_aggregator.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/stringprintf.h"
@@ -234,6 +235,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
  private:
   class Iterator : public DatasetIterator<Dataset> {
    public:
+    std::atomic<int> element_ctr;
     explicit Iterator(const Params& params)
         : DatasetIterator<Dataset>(params),
           mu_(std::make_shared<mutex>()),
@@ -243,7 +245,8 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
           deterministic_(params.dataset->deterministic_.IsDeterministic() ||
                          params.dataset->deterministic_.IsDefault()),
           preserve_cardinality_(params.dataset->preserve_cardinality_),
-          autotune_(params.dataset->num_parallel_calls_ == model::kAutotune) {}
+          autotune_(params.dataset->num_parallel_calls_ == model::kAutotune),
+          element_ctr(0) {}
 
     ~Iterator() override {
       CancelThreads(/*wait=*/true);
@@ -293,6 +296,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
         return profiler::TraceMeEncode("ParallelMapConsume",
                                        {{"element_id", result->uid}});
       });
+
       return ProcessResult(ctx, result, out_tensors, end_of_sequence);
     }
 
@@ -482,6 +486,24 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
         CallCompleted(ctx, result);
       };
 
+      if (input_element.size() == 2 && input_element[1].dim_size(0) == 2) {
+        VLOG(0) << "(DBK) ParallelMapInputTensor ("
+                << "): " << input_element[1].DebugString();
+
+        input_element[1] = Tensor(DT_INT64, TensorShape({2}));
+        input_element[1].flat<int64>().data()[0] = element_ctr++;
+        input_element[1].flat<int64>().data()[1] = element_ctr++;
+        // input_element[1].flat<int64>().data()[0] =
+        //     rand() % 100000;  // element_ctr++;
+        // input_element[1].flat<int64>().data()[1] =
+        //     rand() % 100000;  // element_ctr++;
+
+        // input_element[1][1] = 4;
+
+        VLOG(0) << "(DBK) ParallelMapInputTensor ("
+                << ") - after: " << input_element[1].DebugString();
+      }
+
       // Apply the map function on `input_element`, storing the result in
       // `result->return_values`, and invoking `done` when finished.
       if (dataset()->captured_func_->use_inter_op_parallelism()) {
@@ -524,6 +546,10 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
         *out_tensors = std::move(result->return_values);
         RecordBufferDequeue(ctx, *out_tensors);
         *end_of_sequence = false;
+        // for (auto t : *out_tensors) {
+        //   VLOG(0) << "(DBK) ParallelMapOutputTensor" << t.DebugString();
+        // }
+        // VLOG(0) << "(DBK) ParallelMapOutputTensor done";
         return Status::OK();
       }
       if (errors::IsOutOfRange(result->status)) {
@@ -542,6 +568,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
         }
       }
       *end_of_sequence = result->end_of_input;
+
       return result->status;
     }
 
@@ -686,6 +713,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
     const bool deterministic_;
     const bool preserve_cardinality_;
     const bool autotune_;
+
     // Counts the number of outstanding calls.
     int64_t num_calls_ TF_GUARDED_BY(*mu_) = 0;
     // Controls cancellation of `input_impl_`. Must be ordered before
