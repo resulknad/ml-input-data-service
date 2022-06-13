@@ -28,7 +28,9 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/lib/random/random_distributions.h"
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
@@ -63,6 +65,7 @@ constexpr char kParallelMapDatasetV2[] = "ParallelMapDatasetV2";
 
 constexpr char kComponent[] = "component";
 constexpr char kInvocationResults[] = "invocation_results";
+constexpr char kRandomSeedPrefix[] = "random_seed_prefix";
 constexpr char kSize[] = "size";
 constexpr char kEndOfInput[] = "end_of_input";
 constexpr char kErrorCode[] = "code";
@@ -236,6 +239,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
   class Iterator : public DatasetIterator<Dataset> {
    public:
     std::atomic<int> element_ctr;
+    int64_t rand_prefix;
     explicit Iterator(const Params& params)
         : DatasetIterator<Dataset>(params),
           mu_(std::make_shared<mutex>()),
@@ -256,6 +260,9 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
 
     Status Initialize(IteratorContext* ctx) override {
       mutex_lock l(*mu_);
+      srand(time(NULL));
+      rand_prefix = rand();
+
       interleave_depth_ = ctx->interleave_depth();
 
       if (num_parallel_calls_->value == model::kAutotune) {
@@ -329,6 +336,8 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       VLOG(0) << "Calling SaveInput... ";
       TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       TF_RETURN_IF_ERROR(
+          writer->WriteScalar(this->full_name(kRandomSeedPrefix), rand_prefix));
+      TF_RETURN_IF_ERROR(
           writer->WriteScalar(absl::StrCat(prefix(), "::", kInvocationResults),
                               kSize, invocation_results_.size()));
       for (size_t i = 0; i < invocation_results_.size(); i++) {
@@ -357,6 +366,8 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
                            IteratorStateReader* reader) override {
       mutex_lock l(*mu_);
       TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
+      TF_RETURN_IF_ERROR(
+          reader->ReadScalar(this->full_name(kRandomSeedPrefix), &rand_prefix));
       int64_t invocation_results_size;
       TF_RETURN_IF_ERROR(
           reader->ReadScalar(absl::StrCat(prefix(), "::", kInvocationResults),
@@ -493,10 +504,13 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
         input_element[1] = Tensor(DT_INT64, TensorShape({2}));
         input_element[1].flat<int64>().data()[0] = element_ctr++;
         input_element[1].flat<int64>().data()[1] = element_ctr++;
-        // input_element[1].flat<int64>().data()[0] =
-        //     rand() % 100000;  // element_ctr++;
-        // input_element[1].flat<int64>().data()[1] =
-        //     rand() % 100000;  // element_ctr++;
+        // TODO: append a random prefix here. prefix can be restored using
+        // checkpointing
+
+        //  input_element[1].flat<int64>().data()[0] =
+        //      rand() % 100000;  // element_ctr++;
+        //  input_element[1].flat<int64>().data()[1] =
+        //      rand() % 100000;  // element_ctr++;
 
         // input_element[1][1] = 4;
 
