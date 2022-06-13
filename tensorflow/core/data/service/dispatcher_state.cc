@@ -639,7 +639,7 @@ Status DispatcherState::NamedJobByKey(NamedJobKey named_job_key,
   }
 
   NamedJobKey first_epoch_job_key{named_job_key.name,
-                                  named_job_key.index % epochs};
+                                  (named_job_key.index - 1) % epochs + 1};
 
   auto it = named_jobs_.find(first_epoch_job_key);
 
