@@ -651,7 +651,7 @@ Status DispatcherState::NamedJobByKey(NamedJobKey named_job_key,
 
   // need a non-const copy
   auto job_local = it->second;
-  if (named_job_key.index / epochs >= 2) {
+  if ((named_job_key.index - 1) / epochs >= 1) {
     // we are in 2nd epoch, so revive old tasks + job
     job_local->finished = false;
     VLOG(0) << "DBK: set job " << job_local->job_id
