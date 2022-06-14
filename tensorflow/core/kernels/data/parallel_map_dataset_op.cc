@@ -238,7 +238,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
  private:
   class Iterator : public DatasetIterator<Dataset> {
    public:
-    std::atomic<int> element_ctr;
+    int64_t element_ctr;
 
     explicit Iterator(const Params& params)
         : DatasetIterator<Dataset>(params),
@@ -368,10 +368,8 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
                            IteratorStateReader* reader) override {
       mutex_lock l(*mu_);
       TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
-      int64_t element_ctr_val;
       TF_RETURN_IF_ERROR(
-          reader->ReadScalar(this->full_name(kElementCtr), &element_ctr_val));
-      element_ctr = element_ctr_val;
+          reader->ReadScalar(this->full_name(kElementCtr), &element_ctr));
       int64_t invocation_results_size;
       TF_RETURN_IF_ERROR(
           reader->ReadScalar(absl::StrCat(prefix(), "::", kInvocationResults),
