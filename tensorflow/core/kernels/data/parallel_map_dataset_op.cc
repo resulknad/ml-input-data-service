@@ -337,6 +337,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       TF_RETURN_IF_ERROR(
           writer->WriteScalar(this->full_name(kRandomSeedPrefix), rand_prefix));
+      VLOG(0) << "(DBK):  Wrote rand_seed_prefix: " << rand_prefix;
       TF_RETURN_IF_ERROR(
           writer->WriteScalar(absl::StrCat(prefix(), "::", kInvocationResults),
                               kSize, invocation_results_.size()));
