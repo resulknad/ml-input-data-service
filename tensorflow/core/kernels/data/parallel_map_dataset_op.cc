@@ -65,7 +65,7 @@ constexpr char kParallelMapDatasetV2[] = "ParallelMapDatasetV2";
 
 constexpr char kComponent[] = "component";
 constexpr char kInvocationResults[] = "invocation_results";
-constexpr char kRandomSeedPrefix[] = "random_seed_prefix";
+constexpr char kElementCtr[] = "element_ctr";
 constexpr char kSize[] = "size";
 constexpr char kEndOfInput[] = "end_of_input";
 constexpr char kErrorCode[] = "code";
@@ -239,7 +239,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
   class Iterator : public DatasetIterator<Dataset> {
    public:
     std::atomic<int> element_ctr;
-    int64_t rand_prefix;
+
     explicit Iterator(const Params& params)
         : DatasetIterator<Dataset>(params),
           mu_(std::make_shared<mutex>()),
@@ -262,8 +262,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       mutex_lock l(*mu_);
       uint64 time_now = Env::Default()->NowMicros();
       srand(time_now);
-      rand_prefix = rand();
-      element_ctr = rand_prefix;
+      element_ctr = rand();
 
       interleave_depth_ = ctx->interleave_depth();
 
@@ -338,8 +337,8 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       VLOG(0) << "Calling SaveInput... ";
       TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       TF_RETURN_IF_ERROR(
-          writer->WriteScalar(this->full_name(kRandomSeedPrefix), rand_prefix));
-      VLOG(0) << "(DBK):  Wrote rand_seed_prefix: " << rand_prefix;
+          writer->WriteScalar(this->full_name(kElementCtr), element_ctr));
+      VLOG(0) << "(DBK):  Wrote element_ctr: " << element_ctr;
       TF_RETURN_IF_ERROR(
           writer->WriteScalar(absl::StrCat(prefix(), "::", kInvocationResults),
                               kSize, invocation_results_.size()));
@@ -369,8 +368,10 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
                            IteratorStateReader* reader) override {
       mutex_lock l(*mu_);
       TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
+      int64_t element_ctr_val;
       TF_RETURN_IF_ERROR(
-          reader->ReadScalar(this->full_name(kRandomSeedPrefix), &rand_prefix));
+          reader->ReadScalar(this->full_name(kElementCtr), &element_ctr_val));
+      element_ctr = element_ctr_val;
       int64_t invocation_results_size;
       TF_RETURN_IF_ERROR(
           reader->ReadScalar(absl::StrCat(prefix(), "::", kInvocationResults),
