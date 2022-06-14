@@ -28,7 +28,9 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/lib/random/random_distributions.h"
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
@@ -63,6 +65,7 @@ constexpr char kParallelMapDatasetV2[] = "ParallelMapDatasetV2";
 
 constexpr char kComponent[] = "component";
 constexpr char kInvocationResults[] = "invocation_results";
+constexpr char kElementCtr[] = "element_ctr";
 constexpr char kSize[] = "size";
 constexpr char kEndOfInput[] = "end_of_input";
 constexpr char kErrorCode[] = "code";
@@ -235,7 +238,8 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
  private:
   class Iterator : public DatasetIterator<Dataset> {
    public:
-    std::atomic<int> element_ctr;
+    int64_t element_ctr;
+
     explicit Iterator(const Params& params)
         : DatasetIterator<Dataset>(params),
           mu_(std::make_shared<mutex>()),
@@ -256,6 +260,10 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
 
     Status Initialize(IteratorContext* ctx) override {
       mutex_lock l(*mu_);
+      uint64 time_now = Env::Default()->NowMicros();
+      srand(time_now);
+      element_ctr = rand();
+
       interleave_depth_ = ctx->interleave_depth();
 
       if (num_parallel_calls_->value == model::kAutotune) {
@@ -329,6 +337,9 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       VLOG(0) << "Calling SaveInput... ";
       TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       TF_RETURN_IF_ERROR(
+          writer->WriteScalar(this->full_name(kElementCtr), element_ctr));
+      VLOG(0) << "(DBK):  Wrote element_ctr: " << element_ctr;
+      TF_RETURN_IF_ERROR(
           writer->WriteScalar(absl::StrCat(prefix(), "::", kInvocationResults),
                               kSize, invocation_results_.size()));
       for (size_t i = 0; i < invocation_results_.size(); i++) {
@@ -357,6 +368,8 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
                            IteratorStateReader* reader) override {
       mutex_lock l(*mu_);
       TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
+      TF_RETURN_IF_ERROR(
+          reader->ReadScalar(this->full_name(kElementCtr), &element_ctr));
       int64_t invocation_results_size;
       TF_RETURN_IF_ERROR(
           reader->ReadScalar(absl::StrCat(prefix(), "::", kInvocationResults),
@@ -487,21 +500,24 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       };
 
       if (input_element.size() == 2 && input_element[1].dim_size(0) == 2) {
-        VLOG(0) << "(DBK) ParallelMapInputTensor ("
-                << "): " << input_element[1].DebugString();
+        // VLOG(0) << "(DBK) ParallelMapInputTensor ("
+        //         << "): " << input_element[1].DebugString();
 
         input_element[1] = Tensor(DT_INT64, TensorShape({2}));
         input_element[1].flat<int64>().data()[0] = element_ctr++;
         input_element[1].flat<int64>().data()[1] = element_ctr++;
-        // input_element[1].flat<int64>().data()[0] =
-        //     rand() % 100000;  // element_ctr++;
-        // input_element[1].flat<int64>().data()[1] =
-        //     rand() % 100000;  // element_ctr++;
+        // TODO: append a random prefix here. prefix can be restored using
+        // checkpointing
+
+        //  input_element[1].flat<int64>().data()[0] =
+        //      rand() % 100000;  // element_ctr++;
+        //  input_element[1].flat<int64>().data()[1] =
+        //      rand() % 100000;  // element_ctr++;
 
         // input_element[1][1] = 4;
 
-        VLOG(0) << "(DBK) ParallelMapInputTensor ("
-                << ") - after: " << input_element[1].DebugString();
+        // VLOG(0) << "(DBK) ParallelMapInputTensor ("
+        //         << ") - after: " << input_element[1].DebugString();
       }
 
       // Apply the map function on `input_element`, storing the result in
