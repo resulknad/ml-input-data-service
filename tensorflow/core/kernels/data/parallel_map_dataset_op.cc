@@ -263,6 +263,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       uint64 time_now = Env::Default()->NowMicros();
       srand(time_now);
       rand_prefix = rand();
+      element_ctr = rand_prefix;
 
       interleave_depth_ = ctx->interleave_depth();
 
