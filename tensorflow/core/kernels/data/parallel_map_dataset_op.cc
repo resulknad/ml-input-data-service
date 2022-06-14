@@ -260,7 +260,8 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
 
     Status Initialize(IteratorContext* ctx) override {
       mutex_lock l(*mu_);
-      srand(time(NULL));
+      uint64 time_now = Env::Default()->NowMicros();
+      srand(time_now);
       rand_prefix = rand();
 
       interleave_depth_ = ctx->interleave_depth();
