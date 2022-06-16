@@ -566,7 +566,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     }
 
    private:
-    std::deque<int64_t>& processed_task_idcs_;
+    const std::deque<int64_t>& processed_task_idcs_;
     struct Task {
       Task(const TaskInfo& info,
            std::unique_ptr<DataServiceWorkerClient> worker)
