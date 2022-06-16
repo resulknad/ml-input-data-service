@@ -369,6 +369,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
   }
 
  private:
+  std::deque<int64_t> processed_task_idcs;
+
   class Iterator : public DatasetIterator<Dataset> {
    public:
     explicit Iterator(const Params& params, int64_t iterator_index)
@@ -561,7 +563,6 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     }
 
    private:
-    std::deque<int64_t> processed_task_idcs;
     struct Task {
       Task(const TaskInfo& info,
            std::unique_ptr<DataServiceWorkerClient> worker)
