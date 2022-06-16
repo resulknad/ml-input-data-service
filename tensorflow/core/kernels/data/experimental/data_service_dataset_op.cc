@@ -1291,6 +1291,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     // task a chance to proceed.
     std::shared_ptr<Task> GetAnyTaskToProcess()
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      VLOG(0) << "GetAnyTaskToProcess\n";
       for (int i = 0; i < tasks_.size(); ++i) {
         std::shared_ptr<Task>& task = tasks_[next_task_index_];
         if (StrictRoundRobin() &&
