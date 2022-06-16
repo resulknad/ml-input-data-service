@@ -1327,9 +1327,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         AdvanceTaskIndex();
         VLOG(0) << "Task ID?: " << task->info.task_id();
         processed_task_ids.push_back(task->info.task_id());
-        for (auto task_id: processed_task_ids) {
-          VLOG(0) << task_id;
-        }
+        // for (auto task_id: processed_task_ids) {
+        //   VLOG(0) << task_id;
+        // }
         return task;
       }
       return nullptr;
