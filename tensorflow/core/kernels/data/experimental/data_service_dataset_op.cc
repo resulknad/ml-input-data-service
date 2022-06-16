@@ -1299,7 +1299,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       } else if (iterator_index_ == 1) {
         VLOG(0) << "First epoch, saving task";
       } else {
-        VLOG(0) << "Later epoch, replaying";
+        VLOG(0) << "Later epoch, replaying. Len processed_task_ids: " << processed_task_idcs.size();
         int64_t next_task_index = processed_task_idcs.front();
         VLOG(0) << "Task idx: " << next_task_index;
         VLOG(0) << "Number of tasks: " << tasks_.size();
