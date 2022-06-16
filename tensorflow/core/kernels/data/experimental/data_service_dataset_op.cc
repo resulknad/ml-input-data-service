@@ -1301,6 +1301,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       } else {
         VLOG(0) << "Later epoch, replaying";
         next_task_index_ = processed_task_idcs.front();
+        VLOG(0) << "Task idx: " << next_task_index_;
+        VLOG(0) << "Number of tasks: " << tasks_.size();
         processed_task_idcs.pop_front();
         auto task = tasks_[next_task_index_];
         return task;
