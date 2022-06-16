@@ -1300,9 +1300,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         VLOG(0) << "First epoch, saving task";
       } else {
         VLOG(0) << "Later epoch, replaying";
-        auto task = tasks_[next_task_index_];
         next_task_index_ = processed_task_idcs.front();
         processed_task_idcs.pop_front();
+        auto task = tasks_[next_task_index_];
         return task;
       }
       for (int i = 0; i < tasks_.size(); ++i) {
