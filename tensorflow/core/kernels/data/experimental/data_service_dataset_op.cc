@@ -222,6 +222,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
+    // const keyword on method means only access const fields
+    // const std::vector<int> obj;
     return absl::make_unique<Iterator>(
         Iterator::Params{this,
                          name_utils::IteratorPrefix(kDatasetType, prefix)},
@@ -375,7 +377,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
   class Iterator : public DatasetIterator<Dataset> {
    public:
-    explicit Iterator(const Params& params, int64_t iterator_index, std::deque<int64_t>& processed_task_idcs)
+    explicit Iterator(const Params& params, int64_t iterator_index, std::deque<int64_t> processed_task_idcs)
         : DatasetIterator<Dataset>(params),
           iterator_index_(iterator_index),
           processed_task_idcs_(processed_task_idcs),
@@ -566,7 +568,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     }
 
    private:
-    std::deque<int64_t>& processed_task_idcs_;
+    std::deque<int64_t> processed_task_idcs_;
+
     struct Task {
       Task(const TaskInfo& info,
            std::unique_ptr<DataServiceWorkerClient> worker)
