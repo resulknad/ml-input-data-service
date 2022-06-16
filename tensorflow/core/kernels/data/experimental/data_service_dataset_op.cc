@@ -377,7 +377,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
   class Iterator : public DatasetIterator<Dataset> {
    public:
-    explicit Iterator(const Params& params, int64_t iterator_index, std::deque<int64_t>& processed_task_idcs)
+    explicit Iterator(const Params& params, int64_t iterator_index, std::deque<int64_t>* processed_task_idcs)
         : DatasetIterator<Dataset>(params),
           iterator_index_(iterator_index),
           processed_task_idcs_(processed_task_idcs),
