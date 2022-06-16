@@ -1325,7 +1325,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         task->round = current_round_;
         AdvanceTaskIndex();
         VLOG(0) << "Task ID?: " << task->info.task_id();
-        processed_task_ids.push_back(task->info.task_id())
+        processed_task_ids.push_back(task->info.task_id());
         return task;
       }
       return nullptr;
