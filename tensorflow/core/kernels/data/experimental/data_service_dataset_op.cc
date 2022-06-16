@@ -1323,6 +1323,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         }
         task->round = current_round_;
         AdvanceTaskIndex();
+        VLOG(0) << "Task ID?: " << task->info;
         return task;
       }
       return nullptr;
