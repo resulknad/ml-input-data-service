@@ -228,7 +228,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         Iterator::Params{this,
                          name_utils::IteratorPrefix(kDatasetType, prefix)},
         iteration_counter_->GetAndIncrement(),
-        std::make_unique(processed_task_idcs_));
+        &processed_task_idcs_);
   }
 
   const DataTypeVector& output_dtypes() const override { return output_types_; }
@@ -377,10 +377,10 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
   class Iterator : public DatasetIterator<Dataset> {
    public:
-    explicit Iterator(const Params& params, int64_t iterator_index, std::unique_ptr<std::deque<int64_t>> processed_task_idcs)
+    explicit Iterator(const Params& params, int64_t iterator_index, std::deque<int64_t>& processed_task_idcs)
         : DatasetIterator<Dataset>(params),
           iterator_index_(iterator_index),
-          processed_task_idcs_(std::move(processed_task_idcs)),
+          processed_task_idcs_(processed_task_idcs),
           max_outstanding_requests_(params.dataset->max_outstanding_requests_),
           max_request_pipelining_per_task_(
               params.dataset->max_request_pipelining_per_task_) {}
@@ -568,7 +568,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     }
 
    private:
-    std::unique_ptr<std::deque<int64_t>> processed_task_idcs_;
+    std::deque<int64_t>& processed_task_idcs_;
 
     struct Task {
       Task(const TaskInfo& info,
