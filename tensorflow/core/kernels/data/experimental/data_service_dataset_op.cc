@@ -378,7 +378,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     explicit Iterator(const Params& params, int64_t iterator_index, std::deque<int64_t>& processed_task_idcs)
         : DatasetIterator<Dataset>(params),
           iterator_index_(iterator_index),
-          processed_task_idcs_(processed_task_idcs)
+          processed_task_idcs_(processed_task_idcs),
           max_outstanding_requests_(params.dataset->max_outstanding_requests_),
           max_request_pipelining_per_task_(
               params.dataset->max_request_pipelining_per_task_) {}
