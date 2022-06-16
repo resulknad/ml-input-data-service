@@ -70,7 +70,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
-#include "third_party/tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 namespace data {
