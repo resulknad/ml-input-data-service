@@ -561,6 +561,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     }
 
    private:
+    std::vector<int> processed_task_ids;
     struct Task {
       Task(const TaskInfo& info,
            std::unique_ptr<DataServiceWorkerClient> worker)
@@ -1291,7 +1292,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     // task a chance to proceed.
     std::shared_ptr<Task> GetAnyTaskToProcess()
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-      VLOG(0) << "GetAnyTaskToProcess\n";
+      VLOG(0) << "GetAnyTaskToProcess";
       for (int i = 0; i < tasks_.size(); ++i) {
         std::shared_ptr<Task>& task = tasks_[next_task_index_];
         if (StrictRoundRobin() &&
@@ -1324,6 +1325,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         task->round = current_round_;
         AdvanceTaskIndex();
         VLOG(0) << "Task ID?: " << task->info.task_id();
+        processed_task_ids.append(task->info.task_id())
         return task;
       }
       return nullptr;
