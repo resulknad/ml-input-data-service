@@ -70,6 +70,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "third_party/tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 namespace data {
@@ -561,7 +562,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     }
 
    private:
-    std::vector<int> processed_task_ids;
+    std::vector<int> processed_task_idcs;
     struct Task {
       Task(const TaskInfo& info,
            std::unique_ptr<DataServiceWorkerClient> worker)
@@ -1294,6 +1295,16 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       VLOG(0) << "GetAnyTaskToProcess";
       VLOG(0) << "Epoch: " << iterator_index_;
+      if (iterator_index_ == 0) {
+        VLOG(0) << "Unexpected epoch, 0?";
+      } else if (iterator_index_ == 1) {
+        VLOG(0) << "First epoch, saving task";
+      } else {
+        VLOG(0) << "Later epoch, replaying";
+        auto task = tasks_[next_task_index_]
+        next_task_index_ = processed_task_idcs.pop_front();
+        return task;
+      }
       for (int i = 0; i < tasks_.size(); ++i) {
         std::shared_ptr<Task>& task = tasks_[next_task_index_];
         if (StrictRoundRobin() &&
@@ -1324,12 +1335,15 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           continue;
         }
         task->round = current_round_;
+
+        VLOG(0) << "Task idx: " << next_task_index_;
+        processed_task_idcs.push_back(next_task_index_);
+
         AdvanceTaskIndex();
         VLOG(0) << "Task ID: " << task->info.task_id();
-        processed_task_ids.push_back(task->info.task_id());
-        for (auto task_id: processed_task_ids) {
-          VLOG(0) << task_id;
-        }
+        // for (auto task_id: processed_task_ids) {
+        //   VLOG(0) << task_id;
+        // }
         return task;
       }
       return nullptr;
