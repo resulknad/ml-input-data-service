@@ -1308,11 +1308,11 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       } else if (iterator_index_ == 1) {
         VLOG(0) << "First epoch, saving task";
       } else {
-        VLOG(0) << "Later epoch, replaying. Len processed_task_ids: " << processed_task_idcs_.size();
-        int64_t next_task_index = processed_task_idcs_.front();
+        VLOG(0) << "Later epoch, replaying. Len processed_task_ids: " << processed_task_idcs_->size();
+        int64_t next_task_index = processed_task_idcs_->front();
         VLOG(0) << "Task idx: " << next_task_index;
         VLOG(0) << "Number of tasks: " << tasks_.size();
-        processed_task_idcs_.pop_front();
+        processed_task_idcs_->pop_front();
         auto task = tasks_[next_task_index];
         return task;
       }
@@ -1348,7 +1348,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         task->round = current_round_;
 
         VLOG(0) << "Task idx: " << next_task_index_;
-        processed_task_idcs_.push_back(next_task_index_);
+        processed_task_idcs_->push_back(next_task_index_);
 
         AdvanceTaskIndex();
         VLOG(0) << "Task ID: " << task->info.task_id();
