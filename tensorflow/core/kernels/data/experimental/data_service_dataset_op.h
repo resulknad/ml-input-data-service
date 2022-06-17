@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_DATA_EXPERIMENTAL_DATA_SERVICE_DATASET_OP_H_
 #define TENSORFLOW_CORE_KERNELS_DATA_EXPERIMENTAL_DATA_SERVICE_DATASET_OP_H_
 
+#include <deque>
 #include <memory>
 #include <string>
 #include <vector>
@@ -37,6 +38,7 @@ namespace data {
 class IterationCounter : public ResourceBase {
  public:
   IterationCounter() : counter_(0) {}
+  std::deque<int64_t> processed_task_ids_;
 
   std::string DebugString() const override {
     mutex_lock l(mu_);

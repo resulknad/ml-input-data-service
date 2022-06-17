@@ -204,7 +204,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         captured_uncompress_func_(std::move(captured_uncompress_func)),
         output_types_(output_types),
         output_shapes_(output_shapes),
-        processed_task_idcs_(new std::deque<int64_t>()) {
+        processed_task_idcs_(&iteration_counter->processed_task_ids_) {
     DBK_TRACE(" START (dataset created)");
   }
 
