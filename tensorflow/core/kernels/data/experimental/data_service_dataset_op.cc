@@ -1315,10 +1315,10 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         processed_task_ids_->pop_front();
         for (auto task: tasks_) {
           if (task->info.task_id() == next_task_id)
-            return task
+            return task;
         }
         VLOG(0) << "COULD NOT FIND TASK!!!";
-        return nullptr
+        return nullptr;
       }
       for (int i = 0; i < tasks_.size(); ++i) {
         std::shared_ptr<Task>& task = tasks_[next_task_index_];
