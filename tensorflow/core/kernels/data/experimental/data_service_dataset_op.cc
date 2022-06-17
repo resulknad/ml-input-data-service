@@ -228,7 +228,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         Iterator::Params{this,
                          name_utils::IteratorPrefix(kDatasetType, prefix)},
         iteration_counter_->GetAndIncrement(),
-        &processed_task_idcs_);
+        std::unique_ptr(processed_task_idcs_));
   }
 
   const DataTypeVector& output_dtypes() const override { return output_types_; }
@@ -568,7 +568,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     }
 
    private:
-    std::deque<int64_t>* processed_task_idcs_;
+    std::unique_ptr<std::deque<int64_t>> processed_task_idcs_;
 
     struct Task {
       Task(const TaskInfo& info,
