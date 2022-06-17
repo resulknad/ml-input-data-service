@@ -388,6 +388,7 @@ void MultiThreadedAsyncReader::Consume(string* s, bool* end_of_sequence) {
   VLOG(0) << "(Consume) In split_provider consume";
   // Void function --> can't use TF_RETURN_IF_ERROR
   Status status = split_provider_->GetNext(&split, end_of_sequence);
+  VLOG(0) << "(DBK): after split_provider get";
   if (!status.ok()) {
     VLOG(0) << "EASL - (MultiThreadedAsyncReader::Consume) split provider "
                "returned non-ok status"
@@ -400,6 +401,7 @@ void MultiThreadedAsyncReader::Consume(string* s, bool* end_of_sequence) {
                "reached eos.";
     *s = "";
   } else {
+    VLOG(0) << "(DBK): before trying to return stff";
     int64 file_idx = split.scalar<int64>()();
     *s = file_names_[file_idx];
     VLOG(0) << "(Consume) Got index " << file_idx << " which is file " << s;
