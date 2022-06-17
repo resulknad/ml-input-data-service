@@ -218,22 +218,22 @@ Status ServiceCacheGetOp::Dataset::Iterator::Initialize(IteratorContext* ctx) {
   // If we're in distributed epoch mode we should have a split provider,
   // otherwise we create one.
   std::shared_ptr<SplitProvider> split_provider = nullptr;
-  if (ctx->split_providers().empty()) {
-    // Find all the files of this dataset
-    std::vector<string> files;
-    TF_CHECK_OK(ctx->env()->GetMatchingPaths(
-        io::JoinPath(dataset()->path_, "*\\.easl"), &files));
-    VLOG(0) << "Creating index split provider with n = " << files.size();
-    split_provider = std::make_shared<IndexSplitProvider>(files.size());
-    VLOG(0) << "Created index split provider with n = " << files.size();
-    VLOG(0) << "file_names_ :";
-    for (auto file : files) {
-      VLOG(0) << file;
-    }
-  } else {
-    TF_ASSIGN_OR_RETURN(split_provider, GetSingleSplitProvider(ctx, dataset()));
-    VLOG(0) << "Created SingleSplitProvider";
+  // if (ctx->split_providers().empty()) {
+  // Find all the files of this dataset
+  std::vector<string> files;
+  TF_CHECK_OK(ctx->env()->GetMatchingPaths(
+      io::JoinPath(dataset()->path_, "*\\.easl"), &files));
+  VLOG(0) << "Creating index split provider with n = " << files.size();
+  split_provider = std::make_shared<IndexSplitProvider>(files.size());
+  VLOG(0) << "Created index split provider with n = " << files.size();
+  VLOG(0) << "file_names_ :";
+  for (auto file : files) {
+    VLOG(0) << file;
   }
+  // } else {
+  //   TF_ASSIGN_OR_RETURN(split_provider, GetSingleSplitProvider(ctx,
+  //   dataset())); VLOG(0) << "Created SingleSplitProvider";
+  // }
 
   /*
   for(auto dt: dataset()->output_dtypes_){
