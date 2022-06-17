@@ -374,7 +374,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
   }
 
  private:
-  const std::deque<int64_t> *processed_task_idcs_;
+  std::deque<int64_t>* const processed_task_idcs_;  // (EASL) Owned
 
   class Iterator : public DatasetIterator<Dataset> {
    public:
