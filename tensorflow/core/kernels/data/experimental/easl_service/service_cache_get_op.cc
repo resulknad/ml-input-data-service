@@ -223,6 +223,7 @@ Status ServiceCacheGetOp::Dataset::Iterator::Initialize(IteratorContext* ctx) {
     std::vector<string> files;
     TF_CHECK_OK(ctx->env()->GetMatchingPaths(
         io::JoinPath(dataset()->path_, "*\\.easl"), &files));
+    VLOG(0) << "Creating index split provider with n = " << files.size();
     split_provider = std::make_shared<IndexSplitProvider>(files.size());
     VLOG(0) << "Created index split provider with n = " << files.size();
     VLOG(0) << "file_names_ :";
