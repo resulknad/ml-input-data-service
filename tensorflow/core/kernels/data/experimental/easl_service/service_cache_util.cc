@@ -353,9 +353,9 @@ Status MultiThreadedAsyncReader::Initialize() {
     }
   }
 
-  VLOG(3) << "file_names_ :";
+  VLOG(0) << "file_names_ :";
   for (auto file : file_names_) {
-    VLOG(3) << file;
+    VLOG(0) << file;
   }
 
   reader_count_ = std::max(reader_count_, (int)file_names_.size());
@@ -369,15 +369,15 @@ Status MultiThreadedAsyncReader::Initialize() {
     output_shapes_.push_back(TensorShape({}));
   }
 
-  VLOG(3) << "(Reader) Starting ThreadPool";
+  VLOG(0) << "(Reader) Starting ThreadPool";
   running_readers_ = reader_count_;
-  VLOG(3) << "(Reader) with reader count" << reader_count_;
+  VLOG(0) << "(Reader) with reader count" << reader_count_;
   for (int i = 0; i < reader_count_; ++i) {
     thread_pool_->Schedule([this, i] {
       ReaderThread(env_, i, kWriterVersion, output_dtypes_, output_shapes_);
     });
   }
-  VLOG(3) << "(Reader) Finished Starting ThreadPool";
+  VLOG(0) << "(Reader) Finished Starting ThreadPool";
 }
 
 void MultiThreadedAsyncReader::Consume(string* s, bool* end_of_sequence) {
@@ -520,19 +520,19 @@ Status MultiThreadedAsyncReader::ReaderThread(
 
   while (!end_of_sequence) {
     std::string file_path;
-    VLOG(3) << "EASL - (Reader) getting file";
+    VLOG(0) << "EASL - (Reader) getting file";
     Consume(&file_path, &end_of_sequence);
-    VLOG(3) << "(Reader_" << writer_id << ") Got file " << file_path;
+    VLOG(0) << "(Reader_" << writer_id << ") Got file " << file_path;
 
     if (!end_of_sequence) {
-      VLOG(3) << "(Reader_" << writer_id << ") Reading file " << file_path;
+      VLOG(0) << "(Reader_" << writer_id << ") Reading file " << file_path;
 
       std::unique_ptr<snapshot_util::Reader> reader;
 
       snapshot_util::Reader::Create(env, file_path, io::compression::kNone,
                                     version, output_types, &reader);
 
-      VLOG(3) << "(Reader_" << writer_id << ") Starting to read file "
+      VLOG(0) << "(Reader_" << writer_id << ") Starting to read file "
               << file_path;
       auto base_name = io::Basename(file_path);
       int64 count = 0;
