@@ -203,7 +203,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         resource_mgr_(ctx->resource_manager()),
         captured_uncompress_func_(std::move(captured_uncompress_func)),
         output_types_(output_types),
-        output_shapes_(output_shapes) {
+        output_shapes_(output_shapes),
+        processed_task_idcs_(new vector<int64_t>) {
     DBK_TRACE(" START");
   }
 
@@ -228,7 +229,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         Iterator::Params{this,
                          name_utils::IteratorPrefix(kDatasetType, prefix)},
         iteration_counter_->GetAndIncrement(),
-        std::unique_ptr<std::deque<int64_t>>(processed_task_idcs_));
+        processed_task_idcs_);
   }
 
   const DataTypeVector& output_dtypes() const override { return output_types_; }
@@ -373,11 +374,11 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
   }
 
  private:
-  std::deque<int64_t> processed_task_idcs_;
+  const *std::deque<int64_t> processed_task_idcs_;
 
   class Iterator : public DatasetIterator<Dataset> {
    public:
-    explicit Iterator(const Params& params, int64_t iterator_index, std::deque<int64_t>* processed_task_idcs)
+    explicit Iterator(const Params& params, int64_t iterator_index, *std::deque<int64_t> processed_task_idcs)
         : DatasetIterator<Dataset>(params),
           iterator_index_(iterator_index),
           processed_task_idcs_(processed_task_idcs),
@@ -568,7 +569,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     }
 
    private:
-    std::unique_ptr<std::deque<int64_t>> processed_task_idcs_;
+    *std::deque<int64_t> processed_task_idcs_; // not owned
 
     struct Task {
       Task(const TaskInfo& info,
