@@ -204,7 +204,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         captured_uncompress_func_(std::move(captured_uncompress_func)),
         output_types_(output_types),
         output_shapes_(output_shapes),
-        processed_task_idcs_(&iteration_counter->processed_task_ids_) {
+        processed_task_ids_(&iteration_counter->processed_task_ids_) {
     DBK_TRACE(" START (dataset created)");
   }
 
@@ -229,7 +229,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         Iterator::Params{this,
                          name_utils::IteratorPrefix(kDatasetType, prefix)},
         iteration_counter_->GetAndIncrement(),
-        processed_task_idcs_);
+        processed_task_ids_);
   }
 
   const DataTypeVector& output_dtypes() const override { return output_types_; }
@@ -374,14 +374,14 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
   }
 
  private:
-  std::deque<int64_t>* const processed_task_idcs_;  // (EASL) Owned
+  std::deque<int64_t>* const processed_task_ids_;  // (EASL) Owned
 
   class Iterator : public DatasetIterator<Dataset> {
    public:
     explicit Iterator(const Params& params, int64_t iterator_index, std::deque<int64_t> *processed_task_idcs)
         : DatasetIterator<Dataset>(params),
           iterator_index_(iterator_index),
-          processed_task_idcs_(processed_task_idcs),
+          processed_task_ids_(processed_task_idcs),
           max_outstanding_requests_(params.dataset->max_outstanding_requests_),
           max_request_pipelining_per_task_(
               params.dataset->max_request_pipelining_per_task_) {}
@@ -569,7 +569,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     }
 
    private:
-    std::deque<int64_t> *processed_task_idcs_; // not owned
+    std::deque<int64_t> *processed_task_ids_; // not owned
 
     struct Task {
       Task(const TaskInfo& info,
@@ -1308,13 +1308,17 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       } else if (iterator_index_ == 1) {
         VLOG(0) << "First epoch, saving task";
       } else {
-        VLOG(0) << "Later epoch, replaying. Len processed_task_ids: " << processed_task_idcs_->size();
-        int64_t next_task_index = processed_task_idcs_->front();
-        VLOG(0) << "Task idx: " << next_task_index;
+        VLOG(0) << "Later epoch, replaying. Len processed_task_ids: " << processed_task_ids_->size();
+        int64_t next_task_id = processed_task_ids_->front();
+        VLOG(0) << "Task id: " << next_task_id;
         VLOG(0) << "Number of tasks: " << tasks_.size();
-        processed_task_idcs_->pop_front();
-        auto task = tasks_[next_task_index];
-        return task;
+        processed_task_ids_->pop_front();
+        for (auto task: tasks_) {
+          if (task->info.task_id() == next_task_id)
+            return task
+        }
+        VLOG(0) << "COULD NOT FIND TASK!!!";
+        return nullptr
       }
       for (int i = 0; i < tasks_.size(); ++i) {
         std::shared_ptr<Task>& task = tasks_[next_task_index_];
@@ -1348,7 +1352,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         task->round = current_round_;
 
         VLOG(0) << "Task idx: " << next_task_index_;
-        processed_task_idcs_->push_back(next_task_index_);
+        processed_task_ids_->push_back(task->info.task_id());
 
         AdvanceTaskIndex();
         VLOG(0) << "Task ID: " << task->info.task_id();
