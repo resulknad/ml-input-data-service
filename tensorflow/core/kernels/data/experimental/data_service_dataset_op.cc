@@ -205,7 +205,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         output_types_(output_types),
         output_shapes_(output_shapes),
         processed_task_idcs_(new std::deque<int64_t>()) {
-    DBK_TRACE(" START");
+    DBK_TRACE(" START (dataset created)");
   }
 
   ~Dataset() override {
