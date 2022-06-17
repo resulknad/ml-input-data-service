@@ -204,7 +204,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         captured_uncompress_func_(std::move(captured_uncompress_func)),
         output_types_(output_types),
         output_shapes_(output_shapes),
-        processed_task_idcs_(new vector<int64_t>) {
+        processed_task_idcs_(new vector<int64_t>()) {
     DBK_TRACE(" START");
   }
 
