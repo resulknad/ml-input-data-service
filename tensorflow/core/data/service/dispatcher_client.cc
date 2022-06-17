@@ -19,13 +19,13 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
+#include "absl/types/optional.h"
 #include "grpcpp/client_context.h"
 #include "grpcpp/create_channel.h"
 #include "grpcpp/security/credentials.h"
 #include "grpcpp/support/channel_arguments.h"
 #include "grpcpp/support/status.h"
-#include "absl/strings/str_cat.h"
-#include "absl/types/optional.h"
 #include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/credentials_factory.h"
@@ -50,8 +50,8 @@ StatusOr<WorkerHeartbeatResponse> DataServiceDispatcherClient::WorkerHeartbeat(
   WorkerHeartbeatResponse response;
 
   grpc::ClientContext client_ctx;
-  std::chrono::time_point<std::chrono::system_clock> deadline = std::chrono::system_clock::now() +
-      std::chrono::seconds(30);
+  std::chrono::time_point<std::chrono::system_clock> deadline =
+      std::chrono::system_clock::now() + std::chrono::seconds(30);
   client_ctx.set_deadline(deadline);
   grpc::Status status = stub_->WorkerHeartbeat(&client_ctx, request, &response);
   if (!status.ok()) {
@@ -94,8 +94,11 @@ Status DataServiceDispatcherClient::GetDatasetDef(int64_t dataset_id,
 }
 
 Status DataServiceDispatcherClient::GetSplit(int64_t job_id, int64_t task_id,
-      int64_t repetition, int64_t split_provider_index,Tensor& split,
-      bool& end_of_splits) {
+                                             int64_t repetition,
+                                             int64_t split_provider_index,
+                                             Tensor& split,
+                                             bool& end_of_splits) {
+  VLOG(0) << "Ensuring initialized in GetSplit";
   TF_RETURN_IF_ERROR(EnsureInitialized());
   GetSplitRequest req;
   req.set_job_id(job_id);
@@ -104,6 +107,7 @@ Status DataServiceDispatcherClient::GetSplit(int64_t job_id, int64_t task_id,
   req.set_task_id(task_id);
   GetSplitResponse resp;
   grpc::ClientContext client_ctx;
+  VLOG(0) << "Sending request";
   grpc::Status status = stub_->GetSplit(&client_ctx, req, &resp);
   if (!status.ok()) {
     return grpc_util::WrapError("Failed to get split", status);
