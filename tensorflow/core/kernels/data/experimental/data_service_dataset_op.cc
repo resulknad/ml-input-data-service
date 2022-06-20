@@ -1312,10 +1312,11 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         int64_t next_task_id = processed_task_ids_->front();
         VLOG(0) << "Task id: " << next_task_id;
         VLOG(0) << "Number of tasks: " << tasks_.size();
-        processed_task_ids_->pop_front();
         for (auto task: tasks_) {
-          if (task->info.task_id() == next_task_id)
+          if (task->info.task_id() == next_task_id) {
+            processed_task_ids_->pop_front();
             return task;
+          }
         }
         VLOG(0) << "COULD NOT FIND TASK!!!";
         return nullptr;
