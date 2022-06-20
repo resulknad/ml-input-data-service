@@ -479,8 +479,8 @@ void MultiThreadedAsyncReader::Add(
     return;
   }
 
-  VLOG(0) << "Add could write to queue with element index " << element_index
-          << " was waiting for " << element_index_;
+  VLOG(0) << "Add could write to queue with element index "
+          << element_identifier.first << ", " << element_identifier.second;
 
   snapshot_util::ElementOrEOF element;
   element.value = tensors;
