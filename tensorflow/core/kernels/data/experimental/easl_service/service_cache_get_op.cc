@@ -282,6 +282,7 @@ Status ServiceCacheGetOp::Dataset::Iterator::RestoreInternal(
 Status ServiceCacheGetOp::Dataset::Iterator::GetNextInternal(
     IteratorContext* ctx, std::vector<Tensor>* out_tensors,
     bool* end_of_sequence) {
+  mutex_lock l(mu_);
   target_element_index_++;
   while (target_element_index_ > element_index_) {
     element_index_++;
