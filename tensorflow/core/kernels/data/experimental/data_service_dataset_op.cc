@@ -1613,7 +1613,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           !local_results_buffer_.empty() && local_results_buffer_.front().ready;
       const bool result_ready = !results_.empty() && results_.front().ready;
       if (!results_.front().task_id == processed_task_ids_->front()) {
-        for (auto result: results_) {
+        for (auto it = results_.begin(); it != results_.end(); ++it) {
           if (result.task_id == processed_task_ids_->front()) {
             std::swap(results_.front(), result);
           }
