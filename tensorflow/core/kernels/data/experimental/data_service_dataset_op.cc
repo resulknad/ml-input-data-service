@@ -71,6 +71,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "third_party/tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 namespace data {
@@ -1353,7 +1354,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         task->round = current_round_;
 
         VLOG(0) << "Task idx: " << next_task_index_;
-        processed_task_ids_->push_back(task->info.task_id());
+        // processed_task_ids_->push_back(task->info.task_id());
 
         AdvanceTaskIndex();
         VLOG(0) << "Task ID: " << task->info.task_id();
@@ -1615,7 +1616,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       if (results_.empty()) {
         return false;
       }
-      if (!(results_.front().task_id == processed_task_ids_->front())) {
+      if (iteration_counter_ > 0 && results_.front().task_id != processed_task_ids_->front()) {
+        VLOG(0) << "REORDERING...";
         for (auto it = results_.begin(); it != results_.end(); ++it) {
           if (it->task_id == processed_task_ids_->front()) {
             std::swap(results_.front(), *it);
@@ -1632,8 +1634,12 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         return result;
       }
       Result result = std::move(results_.front());
-      VLOG(0) << "is_same_task_id: " << (processed_task_ids_->front() == result.task_id);
-      processed_task_ids_->pop_front();
+      if (iteration_counter_ > 0) {
+        VLOG(0) << "is_same_task_id: " << (processed_task_ids_->front() == result.task_id);
+        processed_task_ids_->pop_front();
+      } else {
+        processed_task_ids_->push_back(result.task_id)
+      }
       results_.pop_front();
       return result;
     }
