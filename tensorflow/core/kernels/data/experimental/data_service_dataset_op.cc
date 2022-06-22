@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/experimental/data_service_dataset_op.h"
 
 #include <algorithm>
+#include <cassert>
 #include <cstdlib>
 #include <deque>
 #include <fstream>
@@ -1616,16 +1617,18 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       if (results_.empty()) {
         return false;
       }
-      if (iterator_index_ > 1 && results_.front().task_id != processed_task_ids_->front()) {
+      // if (iterator_index_ > 1 && results_.front().task_id != processed_task_ids_->front()) {
+      if (iterator_index_ > 1) {
         VLOG(0) << "REORDERING...";
         VLOG(0) << "Looking for task_id: " << processed_task_ids_->front();
         for (auto it = results_.begin(); it != results_.end(); ++it) {
           if (it->task_id == processed_task_ids_->front()) {
-            VLOG(0) << "Swapping";
-            VLOG(0) << "Front task_id: " << results_.front().task_id;
-            std::swap(results_.front(), *it);
-            VLOG(0) << "Front task_id: " << results_.front().task_id;
-            break;
+            // VLOG(0) << "Swapping";
+            // VLOG(0) << "Front task_id: " << results_.front().task_id;
+            // std::swap(results_.front(), *it);
+            // VLOG(0) << "Front task_id: " << results_.front().task_id;
+            // break;
+            return it->ready;
           }
         }
         // EASL: task_id not found at this point
@@ -1641,16 +1644,25 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         local_results_buffer_.pop();
         return result;
       }
-      Result result = std::move(results_.front());
+
       if (iterator_index_ > 1) {
-        VLOG(0) << "is_same_task_id: " << (processed_task_ids_->front() == result.task_id);
-        processed_task_ids_->pop_front();
+        for (auto it = results_.begin(); it != results_.end(); ++it) {
+          if (it->task_id == processed_task_ids_.front()) {
+            processed_task_ids_.pop_front();
+            Result result = std::move(*it);
+            results_.erase(it);
+            return result;
+          }
+        }
+        assert(false);
       } else {
         VLOG(0) << "saving task_id";
         processed_task_ids_->push_back(result.task_id);
+        Result result = std::move(results_.front());
+        results_.pop_front();
+        return result;
       }
-      results_.pop_front();
-      return result;
+
     }
 
     bool StrictRoundRobin() const {
