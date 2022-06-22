@@ -50,6 +50,10 @@ class IterationCounter : public ResourceBase {
     return ++counter_;
   }
 
+  int64_t Get() {
+    return counter_;
+  }
+
  private:
   mutable mutex mu_;
   int64_t counter_ TF_GUARDED_BY(mu_) = 0;
