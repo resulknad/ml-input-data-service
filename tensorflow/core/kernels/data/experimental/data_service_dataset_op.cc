@@ -1612,6 +1612,13 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       const bool local_result_ready =
           !local_results_buffer_.empty() && local_results_buffer_.front().ready;
       const bool result_ready = !results_.empty() && results_.front().ready;
+      if (!results_.front().task_id == processed_task_ids_.front()) {
+        for (auto result: results_) {
+          if (result_.task_id == processed_task_ids_.front()) {
+            std::swap(results_.front(), result);
+          }
+        }
+      }
       return local_result_ready || result_ready;
     }
 
