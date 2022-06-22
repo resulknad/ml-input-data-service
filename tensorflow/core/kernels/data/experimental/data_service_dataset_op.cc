@@ -1651,6 +1651,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             processed_task_ids_->pop_front();
             Result result = std::move(*it);
             results_.erase(it);
+            VLOG(0) << "Popping: " << result.task_id;
             return result;
           }
         }
