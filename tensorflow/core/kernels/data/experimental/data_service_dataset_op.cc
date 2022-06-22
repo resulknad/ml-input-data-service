@@ -71,6 +71,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "third_party/tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 namespace data {
@@ -1619,7 +1620,10 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         VLOG(0) << "REORDERING...";
         for (auto it = results_.begin(); it != results_.end(); ++it) {
           if (it->task_id == processed_task_ids_->front()) {
+            VLOG(0) << "Swapping";
+            VLOG(0) << "Front task_id: " << results_.front().task_id;
             std::swap(results_.front(), *it);
+            VLOG(0) << "Front task_id: " << results_.front().task_id;
           }
         }
       }
