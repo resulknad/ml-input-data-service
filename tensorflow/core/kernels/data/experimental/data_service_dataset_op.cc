@@ -1608,7 +1608,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       return Status::OK();
     }
 
-    bool ResultReady() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    bool ResultReady() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       const bool local_result_ready =
           !local_results_buffer_.empty() && local_results_buffer_.front().ready;
       const bool result_ready = !results_.empty() && results_.front().ready;
