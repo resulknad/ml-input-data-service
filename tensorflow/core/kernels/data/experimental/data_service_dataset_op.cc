@@ -1619,7 +1619,10 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         VLOG(0) << "REORDERING...";
         for (auto it = results_.begin(); it != results_.end(); ++it) {
           if (it->task_id == processed_task_ids_->front()) {
-            std::swap(results_.front(), *it);
+            Result saved = results_.front();
+            results_.pop_front();
+            results_.push_front(*it);
+            *it = saved;
           }
         }
       }
