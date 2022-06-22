@@ -1629,6 +1629,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         // EASL: task_id not found at this point
         return false;
       }
+      VLOG(0) << "Returning ready";
       return results_.front().ready;
     }
 
