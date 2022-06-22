@@ -1614,8 +1614,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       const bool result_ready = !results_.empty() && results_.front().ready;
       if (!results_.front().task_id == processed_task_ids_->front()) {
         for (auto it = results_.begin(); it != results_.end(); ++it) {
-          if (result.task_id == processed_task_ids_->front()) {
-            std::swap(results_.front(), result);
+          if (it->task_id == processed_task_ids_->front()) {
+            std::swap(results_.front(), it);
           }
         }
       }
@@ -1736,7 +1736,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     // their `Result::ready` field false until their data has been retrieved
     // from a worker. When not doing round-robin reads, results are only added
     // to the queue after they are ready, to avoid head-of-line blocking.
-    std::queue<Result> results_ TF_GUARDED_BY(mu_);
+    std::deque<Result> results_ TF_GUARDED_BY(mu_);
     std::queue<Result> local_results_buffer_ TF_GUARDED_BY(mu_);
 
     bool initialized_ = false;
