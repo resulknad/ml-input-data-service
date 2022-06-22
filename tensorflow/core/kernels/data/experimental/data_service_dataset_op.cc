@@ -1615,7 +1615,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       if (results_.empty()) {
         return false;
       }
-      if (iteration_counter_ > 0 && results_.front().task_id != processed_task_ids_->front()) {
+      if (iterator_index_ > 0 && results_.front().task_id != processed_task_ids_->front()) {
         VLOG(0) << "REORDERING...";
         for (auto it = results_.begin(); it != results_.end(); ++it) {
           if (it->task_id == processed_task_ids_->front()) {
