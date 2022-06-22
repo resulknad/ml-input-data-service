@@ -1447,6 +1447,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         if (local_tasks_.contains(task.info.worker_address())) {
           local_results_buffer_.push(std::move(result));
         } else {
+          VLOG(0) << "Pushing: " << result.task_id;
           results_.push_back(std::move(result));
         }
       }
@@ -1617,6 +1618,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       }
       if (iterator_index_ > 1 && results_.front().task_id != processed_task_ids_->front()) {
         VLOG(0) << "REORDERING...";
+        VLOG(0) << "Looking for task_id: " << processed_task_ids_->front();
         for (auto it = results_.begin(); it != results_.end(); ++it) {
           if (it->task_id == processed_task_ids_->front()) {
             VLOG(0) << "Swapping";
