@@ -1148,7 +1148,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           task_to_process->in_use = true;
           if (StrictRoundRobin()) {
             // Reserve a spot in the results_ queue.
-            results_.emplace();
+            results_.emplace_back();
             result = &results_.back();
           }
 
@@ -1447,7 +1447,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         if (local_tasks_.contains(task.info.worker_address())) {
           local_results_buffer_.push(std::move(result));
         } else {
-          results_.push(std::move(result));
+          results_.push_back(std::move(result));
         }
       }
       get_next_cv_.notify_all();
@@ -1615,7 +1615,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       if (!(results_.front().task_id == processed_task_ids_->front())) {
         for (auto it = results_.begin(); it != results_.end(); ++it) {
           if (it->task_id == processed_task_ids_->front()) {
-            std::swap(*results_.front(), *it);
+            std::swap(results_.front(), it);
           }
         }
       }
@@ -1629,7 +1629,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         return result;
       }
       Result result = std::move(results_.front());
-      results_.pop();
+      results_.pop_front();
       return result;
     }
 
