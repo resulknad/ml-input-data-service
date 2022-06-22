@@ -1647,8 +1647,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
       if (iterator_index_ > 1) {
         for (auto it = results_.begin(); it != results_.end(); ++it) {
-          if (it->task_id == processed_task_ids_.front()) {
-            processed_task_ids_.pop_front();
+          if (it->task_id == processed_task_ids_->front()) {
+            processed_task_ids_->pop_front();
             Result result = std::move(*it);
             results_.erase(it);
             return result;
@@ -1656,9 +1656,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         }
         assert(false);
       } else {
+        Result result = std::move(results_.front());
         VLOG(0) << "saving task_id";
         processed_task_ids_->push_back(result.task_id);
-        Result result = std::move(results_.front());
         results_.pop_front();
         return result;
       }
