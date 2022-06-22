@@ -1615,7 +1615,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       if (results_.empty()) {
         return false;
       }
-      if (iteration_counter_->Get() > 0 && results_.front().task_id != processed_task_ids_->front()) {
+      if (iteration_counter_ > 0 && results_.front().task_id != processed_task_ids_->front()) {
         VLOG(0) << "REORDERING...";
         for (auto it = results_.begin(); it != results_.end(); ++it) {
           if (it->task_id == processed_task_ids_->front()) {
@@ -1633,7 +1633,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         return result;
       }
       Result result = std::move(results_.front());
-      if (iteration_counter_->Get() > 0) {
+      if (iterator_index_ > 0) {
         VLOG(0) << "is_same_task_id: " << (processed_task_ids_->front() == result.task_id);
         processed_task_ids_->pop_front();
       } else {
