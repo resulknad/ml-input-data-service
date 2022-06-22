@@ -1615,7 +1615,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       if (!(results_.front().task_id == processed_task_ids_->front())) {
         for (auto it = results_.begin(); it != results_.end(); ++it) {
           if (it->task_id == processed_task_ids_->front()) {
-            std::swap(results_.front(), it);
+            std::swap(results_.front(), *it);
           }
         }
       }
