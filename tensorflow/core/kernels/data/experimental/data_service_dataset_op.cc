@@ -463,7 +463,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           DBK_TRACE(" BLOCKING_IN_GETNEXT_START");
           VLOG(3) << "Blocking in GetNext: " << DebugString();
           hadToWait = true;  // EASL - metrics collection.
-          get_next_cv_.wait(l);
+          // get_next_cv_.wait(l);
           DBK_TRACE(" BLOCKING_IN_GETNEXT_END");
         }
         wait_time = Env::Default()->NowMicros() - wait_time;  // EASL metrics
