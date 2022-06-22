@@ -1609,9 +1609,12 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     }
 
     bool ResultReady() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-      const bool local_result_ready =
-          !local_results_buffer_.empty() && local_results_buffer_.front().ready;
-      const bool result_ready = !results_.empty() && results_.front().ready;
+      if (!local_results_buffer_.empty() && local_results_buffer_.front().ready) {
+        return true;
+      }
+      if (results_.empty()) {
+        return false;
+      }
       if (!(results_.front().task_id == processed_task_ids_->front())) {
         for (auto it = results_.begin(); it != results_.end(); ++it) {
           if (it->task_id == processed_task_ids_->front()) {
@@ -1619,7 +1622,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           }
         }
       }
-      return local_result_ready || result_ready;
+      return results_.front().ready;
     }
 
     Result PopNextResult() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
