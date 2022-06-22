@@ -1623,8 +1623,11 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             VLOG(0) << "Front task_id: " << results_.front().task_id;
             std::swap(results_.front(), *it);
             VLOG(0) << "Front task_id: " << results_.front().task_id;
+            break;
           }
         }
+        // EASL: task_id not found at this point
+        return false;
       }
       return results_.front().ready;
     }
