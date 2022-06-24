@@ -1168,7 +1168,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         }
         int64_t deadline_micros = kint64max;
         Status s;
-        if (StrictRoundRobin()) {
+        if (StrictRoundRobin() || ReplayMode()) {
           s = GetElementTraced(task_to_process.get(), deadline_micros,
                                /*enqueue_result=*/false, *result);
         } else {
@@ -1335,18 +1335,18 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       VLOG(0) << "GetAnyTaskToProcess";
       VLOG(0) << "Epoch: " << iterator_index_;
-      if (ReplayMode()) {
-        int64_t task_id = GetTaskId();
-        for (auto& task: tasks_) {
-          if (task->info.task_id() == task_id) {
-            IncrementTaskId();
-            expected_task_ids_.push(task_id);
-            return task;
-          }
-        }
-        VLOG(0) << "GetAnyTaskToProcess: task_id " << task_id << " not found";
-        return nullptr;
-      }
+      // if (ReplayMode()) {
+      //   int64_t task_id = GetTaskId();
+      //   for (auto& task: tasks_) {
+      //     if (task->info.task_id() == task_id) {
+      //       IncrementTaskId();
+      //       expected_task_ids_.push(task_id);
+      //       return task;
+      //     }
+      //   }
+      //   VLOG(0) << "GetAnyTaskToProcess: task_id " << task_id << " not found";
+      //   return nullptr;
+      // }
       for (int i = 0; i < tasks_.size(); ++i) {
         std::shared_ptr<Task>& task = tasks_[next_task_index_];
         if (StrictRoundRobin() &&
@@ -1683,7 +1683,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         assert(false);
       } else {
         Result result = std::move(results_.front());
-        VLOG(0) << "saving task_id " << result.task_id;
+        VLOG(0) << "saving task_id " << result.task_id << " (";
         processed_task_ids_->push_back(result.task_id);
         results_.pop_front();
         return result;
