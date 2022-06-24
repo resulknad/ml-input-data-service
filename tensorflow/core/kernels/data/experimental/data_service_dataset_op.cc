@@ -1154,7 +1154,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           DCHECK(task_to_process != nullptr);
           ++outstanding_requests_;
           task_to_process->in_use = true;
-          if (StrictRoundRobin()) {
+          if (StrictRoundRobin() || ReplayMode()) {
             // Reserve a spot in the results_ queue.
             results_.emplace_back();
             result = &results_.back();
@@ -1264,7 +1264,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
               << results_.size() << " + " << outstanding_requests_ << " <? "
               << max_outstanding_requests_;
 
-      if (iterator_index_ > 1) {
+      if (ReplayMode()) {
         return outstanding_requests_ < max_outstanding_requests_;
       } else {
         return local_results_buffer_.size() + results_.size() +
