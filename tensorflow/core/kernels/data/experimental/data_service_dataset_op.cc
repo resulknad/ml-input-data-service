@@ -1252,14 +1252,15 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
       // Note: I removed the outstanding_local_requests_ variable as that
       // became obsolete in master after v2.8 release
-      VLOG(3) << "(ShouldProcessTask) Values " << local_results_buffer_.size()
+      VLOG(0) << "(ShouldProcessTask) Values " << local_results_buffer_.size()
               << " + " << outstanding_local_requests_ << " + "
               << results_.size() << " + " << outstanding_requests_ << " <? "
               << max_outstanding_requests_;
 
-      return local_results_buffer_.size() + results_.size() +
-                 outstanding_requests_ <
-             max_outstanding_requests_;
+      // return local_results_buffer_.size() + results_.size() +
+      //            outstanding_requests_ <
+      //        max_outstanding_requests_;
+      return outstanding_requests_ < max_outstanding_requests_;
     }
 
     // Prefers reading from local tasks if they exist.
