@@ -1281,6 +1281,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       // return results_.size() + outstanding_requests_ +
       //            GetLocalTaskBufferSize() * local_tasks_.size() <
       //        max_outstanding_requests_;
+      VLOG(0) << "ShouldProcessAnyTask";
+      VLOG(0) << "  outstanding_requests=" << outstanding_requests_;
+      VLOG(0) << "  max_outstanding_requests=" << max_outstanding_requests_;
       return outstanding_requests_ < max_outstanding_requests_;
     }
 
