@@ -1318,6 +1318,10 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     }
 
     int64_t GetTaskId() {
+      if (task_ids_iterator_ == processed_task_ids_->end()) {
+        VLOG(0) << "REACHED END!!!";
+        assert(false)
+      }
       return *task_ids_iterator_;
     }
 
