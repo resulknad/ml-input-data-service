@@ -485,22 +485,20 @@ Status MakeDeterministic::OptimizeAndCollectStats(Cluster* cluster,
             << ") because it introduces nondeterminism through "
             << (rewrite_due_to_async ? "asynchrony" : "parallelism");
 
-    // bool num_changes = true;
-    // if (IsPrefetch(node.op())) {
-    //   TF_RETURN_IF_ERROR(ConvertPrefetch(node.name(), &graph));
-    // } else if (IsMapAndBatch(node.op())) {
-    //   TF_RETURN_IF_ERROR(ConvertMapAndBatch(node.name(), &graph));
-    //   nodes_to_delete.insert(node.name());
-    // } else if (IsParallelBatch(node.op())) {
-    //   TF_RETURN_IF_ERROR(ConvertBatch(node.name(), &graph));
-    // } else if (IsParallelInterleave(node.op())) {
-    //   TF_RETURN_IF_ERROR(ConvertMapOrInterleave(node.name(), &graph));
-    // } else {
-    //   DCHECK(IsParallelMap(node.op()));
-    //   // TF_RETURN_IF_ERROR(ConvertMapOrInterleave(node.name(), &graph));
-    //   num_changes = false;
-    // }
-    // stats->num_changes += num_changes;
+    if (IsPrefetch(node.op())) {
+      TF_RETURN_IF_ERROR(ConvertPrefetch(node.name(), &graph));
+    } else if (IsMapAndBatch(node.op())) {
+      TF_RETURN_IF_ERROR(ConvertMapAndBatch(node.name(), &graph));
+      nodes_to_delete.insert(node.name());
+    } else if (IsParallelBatch(node.op())) {
+      TF_RETURN_IF_ERROR(ConvertBatch(node.name(), &graph));
+    } else if (IsParallelInterleave(node.op())) {
+      TF_RETURN_IF_ERROR(ConvertMapOrInterleave(node.name(), &graph));
+    } else {
+      DCHECK(IsParallelMap(node.op()));
+      TF_RETURN_IF_ERROR(ConvertMapOrInterleave(node.name(), &graph));
+    }
+    stats->num_changes++;
   }
 
   TF_RETURN_IF_ERROR(graph.DeleteNodes(nodes_to_delete));
