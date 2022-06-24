@@ -1336,16 +1336,17 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       VLOG(0) << "GetAnyTaskToProcess";
       VLOG(0) << "Epoch: " << iterator_index_;
       if (ReplayMode()) {
-        int64_t task_id = GetTaskId();
-        for (auto& task: tasks_) {
-          if (task->info.task_id() == task_id) {
-            IncrementTaskId();
-            expected_task_ids_.push(task_id);
-            return task;
-          }
-        }
-        VLOG(0) << "GetAnyTaskToProcess: task_id " << task_id << " not found";
-        return nullptr;
+        // int64_t task_id = GetTaskId();
+        // for (auto& task: tasks_) {
+        //   if (task->info.task_id() == task_id) {
+        //     IncrementTaskId();
+        //     expected_task_ids_.push(task_id);
+        //     return task;
+        //   }
+        // }
+        // VLOG(0) << "GetAnyTaskToProcess: task_id " << task_id << " not found";
+        // return nullptr;
+        // TODO: Above code breaks pipeline
       }
       for (int i = 0; i < tasks_.size(); ++i) {
         std::shared_ptr<Task>& task = tasks_[next_task_index_];
@@ -1644,13 +1645,13 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       }
       // if (iterator_index_ > 1 && results_.front().task_id != processed_task_ids_->front()) {
       if (ReplayMode()) {
-        if (expected_task_ids_.empty()) {
-          return false;
-        }
+        // if (expected_task_ids_.empty()) {
+        //   return false;
+        // }
         VLOG(0) << "REORDERING...";
-        VLOG(0) << "Looking for task_id: " << expected_task_ids_.front();
+        // VLOG(0) << "Looking for task_id: " << expected_task_ids_.front();
         for (auto it = results_.begin(); it != results_.end(); ++it) {
-          if (it->task_id == expected_task_ids_.front()) {
+          if (it->task_id == GetTaskId()) {
             // VLOG(0) << "Swapping";
             // VLOG(0) << "Front task_id: " << results_.front().task_id;
             // std::swap(results_.front(), *it);
@@ -1673,10 +1674,12 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         return result;
       }
 
-      if (iterator_index_ > 1) {
+      if (ReplayMode()) {
         for (auto it = results_.begin(); it != results_.end(); ++it) {
-          if (it->task_id == expected_task_ids_.front()) {
-            expected_task_ids_.pop();
+          // front() should exist here, as we must have called ResultReady
+          // before this calling this function
+          if (it->task_id == GetTaskId()) {
+            IncrementTaskId();
             Result result = std::move(*it);
             results_.erase(it);
             VLOG(0) << "Popping: " << result.task_id;
