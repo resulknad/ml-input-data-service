@@ -1278,9 +1278,10 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
       // If all local tasks are busy, then process any task, reserving buffer
       // space for the local tasks.
-      return results_.size() + outstanding_requests_ +
-                 GetLocalTaskBufferSize() * local_tasks_.size() <
-             max_outstanding_requests_;
+      // return results_.size() + outstanding_requests_ +
+      //            GetLocalTaskBufferSize() * local_tasks_.size() <
+      //        max_outstanding_requests_;
+      return outstanding_requests_ < max_outstanding_requests_;
     }
 
     // Searches for a local task to process, returning nullptr if none is found.
