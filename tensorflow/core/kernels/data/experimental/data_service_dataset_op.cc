@@ -1683,7 +1683,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         assert(false);
       } else {
         Result result = std::move(results_.front());
-        VLOG(0) << "saving task_id";
+        VLOG(0) << "saving task_id " << result.task_id;
         processed_task_ids_->push_back(result.task_id);
         results_.pop_front();
         return result;
