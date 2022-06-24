@@ -1257,10 +1257,13 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
               << results_.size() << " + " << outstanding_requests_ << " <? "
               << max_outstanding_requests_;
 
-      // return local_results_buffer_.size() + results_.size() +
-      //            outstanding_requests_ <
-      //        max_outstanding_requests_;
-      return outstanding_requests_ < max_outstanding_requests_;
+      if (iterator_index_ > 1) {
+        return outstanding_requests_ < max_outstanding_requests_;
+      } else {
+        return local_results_buffer_.size() + results_.size() +
+                  outstanding_requests_ <
+              max_outstanding_requests_;
+      }
     }
 
     // Prefers reading from local tasks if they exist.
