@@ -375,14 +375,15 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
   }
 
  private:
-  std::deque<int64_t>* const processed_task_ids_;  // (EASL) Owned
+  std::vector<int64_t>* const processed_task_ids_;  // (EASL) Owned
 
   class Iterator : public DatasetIterator<Dataset> {
    public:
-    explicit Iterator(const Params& params, int64_t iterator_index, std::deque<int64_t> *processed_task_idcs)
+    explicit Iterator(const Params& params, int64_t iterator_index, std::vector<int64_t> *processed_task_idcs)
         : DatasetIterator<Dataset>(params),
           iterator_index_(iterator_index),
           processed_task_ids_(processed_task_idcs),
+          task_ids_iterator_(processed_task_idcs->begin()),
           max_outstanding_requests_(params.dataset->max_outstanding_requests_),
           max_request_pipelining_per_task_(
               params.dataset->max_request_pipelining_per_task_) {}
@@ -570,7 +571,13 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     }
 
    private:
-    std::deque<int64_t> *processed_task_ids_; // not owned
+
+    // DRR
+    std::vector<int64_t> *processed_task_ids_; // not owned
+    std::vector<int64_t>::iterator task_ids_iterator_;
+
+    // DRR
+    std::queue<int64_t> expected_task_ids_;
 
     struct Task {
       Task(const TaskInfo& info,
@@ -1306,30 +1313,36 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       return nullptr;
     }
 
+    bool ReplayMode() {
+      return iteration_counter_ > 1;
+    }
+
+    int64_t GetTaskId() {
+      return *task_ids_iterator_;
+    }
+
+    int64_t IncrementTaskId() {
+      return *task_ids_iterator_++;
+    }
+
     // Searches for a task to process, visiting tasks in-order and giving every
     // task a chance to proceed.
     std::shared_ptr<Task> GetAnyTaskToProcess()
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       VLOG(0) << "GetAnyTaskToProcess";
       VLOG(0) << "Epoch: " << iterator_index_;
-      // if (iterator_index_ == 0) {
-      //   VLOG(0) << "Unexpected epoch, 0?";
-      // } else if (iterator_index_ == 1) {
-      //   VLOG(0) << "First epoch, saving task";
-      // } else {
-      //   VLOG(0) << "Later epoch, replaying. Len processed_task_ids: " << processed_task_ids_->size();
-      //   int64_t next_task_id = processed_task_ids_->front();
-      //   VLOG(0) << "Task id: " << next_task_id;
-      //   VLOG(0) << "Number of tasks: " << tasks_.size();
-      //   for (auto task: tasks_) {
-      //     if (task->info.task_id() == next_task_id) {
-      //       processed_task_ids_->pop_front();
-      //       return task;
-      //     }
-      //   }
-      //   VLOG(0) << "COULD NOT FIND TASK!!!";
-      //   return nullptr;
-      // }
+      if (ReplayMode()) {
+        int64_t task_id = GetTaskId();
+        for (auto task: tasks_) {
+          if (task.task_id == task_id) {
+            IncrementTaskId();
+            expected_task_ids_.push(task_id);
+            return task;
+          }
+        }
+        VLOG(0) << "GetAnyTaskToProcess: task_id " << task_id << " not found";
+        return nullptr
+      }
       for (int i = 0; i < tasks_.size(); ++i) {
         std::shared_ptr<Task>& task = tasks_[next_task_index_];
         if (StrictRoundRobin() &&
@@ -1626,11 +1639,11 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         return false;
       }
       // if (iterator_index_ > 1 && results_.front().task_id != processed_task_ids_->front()) {
-      if (iterator_index_ > 1) {
+      if (ReplayMode()) {
         VLOG(0) << "REORDERING...";
-        VLOG(0) << "Looking for task_id: " << processed_task_ids_->front();
+        VLOG(0) << "Looking for task_id: " << expected_task_ids_.front();
         for (auto it = results_.begin(); it != results_.end(); ++it) {
-          if (it->task_id == processed_task_ids_->front()) {
+          if (it->task_id == expected_task_ids_.front()) {
             // VLOG(0) << "Swapping";
             // VLOG(0) << "Front task_id: " << results_.front().task_id;
             // std::swap(results_.front(), *it);
@@ -1655,8 +1668,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
       if (iterator_index_ > 1) {
         for (auto it = results_.begin(); it != results_.end(); ++it) {
-          if (it->task_id == processed_task_ids_->front()) {
-            processed_task_ids_->pop_front();
+          if (it->task_id == expected_task_ids_.front()) {
+            expected_task_ids_.pop();
             Result result = std::move(*it);
             results_.erase(it);
             VLOG(0) << "Popping: " << result.task_id;

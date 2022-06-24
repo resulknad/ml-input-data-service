@@ -38,7 +38,7 @@ namespace data {
 class IterationCounter : public ResourceBase {
  public:
   IterationCounter() : counter_(0) {}
-  std::deque<int64_t> processed_task_ids_;
+  std::vector<int64_t> processed_task_ids_;
 
   std::string DebugString() const override {
     mutex_lock l(mu_);
