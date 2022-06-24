@@ -1154,7 +1154,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           DCHECK(task_to_process != nullptr);
           ++outstanding_requests_;
           task_to_process->in_use = true;
-          if (StrictRoundRobin() || ReplayMode()) {
+          if (StrictRoundRobin()) {
             // Reserve a spot in the results_ queue.
             results_.emplace_back();
             result = &results_.back();
@@ -1168,7 +1168,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         }
         int64_t deadline_micros = kint64max;
         Status s;
-        if (StrictRoundRobin() || ReplayMode()) {
+        if (StrictRoundRobin()) {
           s = GetElementTraced(task_to_process.get(), deadline_micros,
                                /*enqueue_result=*/false, *result);
         } else {
@@ -1182,7 +1182,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           }
           int64_t deadline_for_non_rr = Env::Default()->NowMicros() + timeout;
           Result r;
-          s = GetElementTraced(task_to_process.get(), deadline_for_non_rr,
+          s = GetElementTraced(task_to_process.get(), ReplayMode() ? deadline_micros : deadline_for_non_rr,
                                /*enqueue_result=*/true, r);
         }
         if (errors::IsDeadlineExceeded(s) && !StrictRoundRobin()) {
