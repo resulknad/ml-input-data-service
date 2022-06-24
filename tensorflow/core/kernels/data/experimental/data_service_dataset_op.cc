@@ -1341,7 +1341,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           }
         }
         VLOG(0) << "GetAnyTaskToProcess: task_id " << task_id << " not found";
-        return nullptr
+        return nullptr;
       }
       for (int i = 0; i < tasks_.size(); ++i) {
         std::shared_ptr<Task>& task = tasks_[next_task_index_];
