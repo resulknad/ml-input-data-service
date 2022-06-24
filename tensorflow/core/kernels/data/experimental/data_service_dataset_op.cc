@@ -1644,6 +1644,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       }
       // if (iterator_index_ > 1 && results_.front().task_id != processed_task_ids_->front()) {
       if (ReplayMode()) {
+        if (expected_task_ids_.empty()) {
+          return false;
+        }
         VLOG(0) << "REORDERING...";
         VLOG(0) << "Looking for task_id: " << expected_task_ids_.front();
         for (auto it = results_.begin(); it != results_.end(); ++it) {
