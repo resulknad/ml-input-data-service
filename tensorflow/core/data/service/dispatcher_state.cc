@@ -628,7 +628,18 @@ Status DispatcherState::NamedJobByKey(NamedJobKey named_job_key,
   // modifications done to the state store here
 
   // always look up first epoch, no matter what index is
-  NamedJobKey first_epoch_job_key{named_job_key.name, 1};
+
+  auto epochs_str = getenv("DBK_REPLAY_EPOCHS");
+  int64_t epochs = 2;
+  if (epochs_str != nullptr) {
+    epochs = strtoul(epochs_str, NULL, 10);
+    VLOG(0) << "read epochs val of " << epochs << " from env";
+  } else {
+    VLOG(0) << "no timeout val read, used default";
+  }
+
+  NamedJobKey first_epoch_job_key{named_job_key.name,
+                                  (named_job_key.index - 1) % epochs + 1};
 
   auto it = named_jobs_.find(first_epoch_job_key);
 
@@ -640,7 +651,7 @@ Status DispatcherState::NamedJobByKey(NamedJobKey named_job_key,
 
   // need a non-const copy
   auto job_local = it->second;
-  if (named_job_key.index == 2) {
+  if ((named_job_key.index - 1) / epochs >= 1) {
     // we are in 2nd epoch, so revive old tasks + job
     job_local->finished = false;
     VLOG(0) << "DBK: set job " << job_local->job_id
