@@ -1336,16 +1336,16 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       VLOG(0) << "GetAnyTaskToProcess";
       VLOG(0) << "Epoch: " << iterator_index_;
       if (ReplayMode()) {
-        // int64_t task_id = GetTaskId();
-        // for (auto& task: tasks_) {
-        //   if (task->info.task_id() == task_id) {
-        //     IncrementTaskId();
-        //     expected_task_ids_.push(task_id);
-        //     return task;
-        //   }
-        // }
-        // VLOG(0) << "GetAnyTaskToProcess: task_id " << task_id << " not found";
-        // return nullptr;
+        int64_t task_id = GetTaskId();
+        for (auto& task: tasks_) {
+          if (task->info.task_id() == task_id) {
+            IncrementTaskId();
+            expected_task_ids_.push(task_id);
+            return task;
+          }
+        }
+        VLOG(0) << "GetAnyTaskToProcess: task_id " << task_id << " not found";
+        return nullptr;
         // TODO: Above code breaks pipeline
       }
       for (int i = 0; i < tasks_.size(); ++i) {
