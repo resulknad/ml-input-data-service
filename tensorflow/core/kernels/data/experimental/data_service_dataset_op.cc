@@ -1675,7 +1675,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       }
 
       if (ReplayMode()) {
-        VLOG(0) << "PopNextResult: searching for task_id=" << result.task_id;
+        VLOG(0) << "PopNextResult: searching for task_id=" << GetTaskId();
         for (auto it = results_.begin(); it != results_.end(); ++it) {
           // front() should exist here, as we must have called ResultReady
           // before this calling this function
