@@ -1687,7 +1687,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             return result;
           }
         }
-        VLOG(0) << "PopNextResult: did not find task_id=" << result.task_id;
+        VLOG(0) << "PopNextResult: did not find task_id=" << GetTaskId();
         assert(false);
       } else {
         Result result = std::move(results_.front());
