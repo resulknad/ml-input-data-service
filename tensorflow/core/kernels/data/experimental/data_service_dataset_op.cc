@@ -1675,6 +1675,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       }
 
       if (ReplayMode()) {
+        VLOG(0) << "PopNextResult: searching for task_id=" << result.task_id;
         for (auto it = results_.begin(); it != results_.end(); ++it) {
           // front() should exist here, as we must have called ResultReady
           // before this calling this function
@@ -1682,10 +1683,11 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             IncrementTaskId();
             Result result = std::move(*it);
             results_.erase(it);
-            VLOG(0) << "Popping: " << result.task_id;
+            VLOG(0) << "PopNextResult: popping task_id=" << result.task_id;
             return result;
           }
         }
+        VLOG(0) << "PopNextResult: did not find task_id=" << result.task_id;
         assert(false);
       } else {
         Result result = std::move(results_.front());
