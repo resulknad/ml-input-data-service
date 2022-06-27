@@ -500,13 +500,13 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       };
 
       if (input_element.size() == 2 && input_element[1].dim_size(0) == 2) {
-        VLOG(0) << "(DBK) ParallelMapInputTensor ("
-                  << "): " << input_element[1].DebugString();
+        // VLOG(0) << "(DBK) ParallelMapInputTensor ("
+        //           << "): " << input_element[1].DebugString();
         input_element[1] = Tensor(DT_INT64, TensorShape({2}));
         input_element[1].flat<int64>().data()[0] = element_ctr++;
         input_element[1].flat<int64>().data()[1] = element_ctr++;
-        VLOG(0) << "(DBK) ParallelMapInputTensor ("
-                  << ") - after: " << input_element[1].DebugString();
+        // VLOG(0) << "(DBK) ParallelMapInputTensor ("
+        //           << ") - after: " << input_element[1].DebugString();
       }
 
       // Apply the map function on `input_element`, storing the result in
