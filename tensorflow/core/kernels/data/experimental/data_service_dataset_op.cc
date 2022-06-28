@@ -1349,6 +1349,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         for (auto& task: tasks_) {
           if (task->info.task_id() == task_id) {
             IncrementTaskId();
+            expected_task_ids_.push(task_id);
             return task;
           }
         }
