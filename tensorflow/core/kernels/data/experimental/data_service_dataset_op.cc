@@ -579,6 +579,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
     // DRR
     std::queue<int64_t> expected_task_ids_;
+    std::vector<int64_t> skipped_task_ids_;
 
     struct Task {
       Task(const TaskInfo& info,
@@ -1319,6 +1320,11 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     }
 
     int64_t GetTaskId() {
+      if (!skipped_task_ids_.empty()) {
+        int64_t task_id = skipped_task_ids_.back();
+        skipped_task_ids_.pop_back();
+        return task_id;
+      }
       if (task_ids_iterator_ == processed_task_ids_->end()) {
         VLOG(0) << "REACHED END!!!";
         VLOG(0) << "Remaining tasks:";
@@ -1570,6 +1576,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
                       << (int64_t)get_element_result.element_index
                       << " but as looking for " << task->next_index
                       << " (Task: " << task->info.task_id() << ")";
+              skipped_task_ids_.push_back(task->info.task_id());
 
               if (get_element_result.components.size() > 0) {
                 Variant x = get_element_result.components.at(0);
