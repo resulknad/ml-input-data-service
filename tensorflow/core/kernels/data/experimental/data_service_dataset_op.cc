@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cassert>
+#include <cstddef>
 #include <cstdlib>
 #include <deque>
 #include <fstream>
@@ -1337,15 +1338,19 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       VLOG(0) << "Epoch: " << iterator_index_;
       if (ReplayMode()) {
         int64_t task_id = GetTaskId();
+        std::shared_ptr<Task>& found_task = nullptr;
+        size_t count = 0;
         for (auto& task: tasks_) {
           if (task->info.task_id() == task_id) {
-            IncrementTaskId();
-            expected_task_ids_.push(task_id);
-            return task;
+            count++;
+            found_task = task;
           }
         }
+        if (count) {
+          IncrementTaskId();
+        }
         VLOG(0) << "GetAnyTaskToProcess: task_id " << task_id << " not found";
-        return nullptr;
+        return found_task;
         // TODO: Above code breaks pipeline
       }
       for (int i = 0; i < tasks_.size(); ++i) {
@@ -1677,12 +1682,12 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       }
 
       if (ReplayMode()) {
-        VLOG(0) << "PopNextResult: searching for task_id=" << GetTaskId();
+        VLOG(0) << "PopNextResult: searching for task_id=" << expected_task_ids_.front();
         for (auto it = results_.begin(); it != results_.end(); ++it) {
           // front() should exist here, as we must have called ResultReady
           // before this calling this function
-          if (it->task_id == GetTaskId()) {
-            IncrementTaskId();
+          if (it->task_id == expected_task_ids_.front()) {
+            expected_task_ids_.pop();
             Result result = std::move(*it);
             results_.erase(it);
             VLOG(0) << "PopNextResult: popping task_id=" << result.task_id;
