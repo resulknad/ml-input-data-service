@@ -677,7 +677,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     // Returns whether the iterator has more data.
     bool ShouldWaitForNext() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       if (ReplayMode()) {
-        return expected_task_ids_.empty() && processing_task_ids_.empty();
+        return !expected_task_ids_.empty() || !processing_task_ids_.empty();
       }
       if (should_finish_job_) {
         return !job_finished_;
