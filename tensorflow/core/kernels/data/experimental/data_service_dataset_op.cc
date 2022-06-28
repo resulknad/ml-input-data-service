@@ -1326,7 +1326,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     }
 
     int64_t GetTaskId() {
-      return *processing_task_ids_.front();
+      return processing_task_ids_.front();
     }
 
     void IncrementTaskId() {
