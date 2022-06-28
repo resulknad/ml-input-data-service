@@ -17,6 +17,7 @@ limitations under the License.
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
+#include <cstdint>
 #include <cstdlib>
 #include <deque>
 #include <fstream>
@@ -384,10 +385,15 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         : DatasetIterator<Dataset>(params),
           iterator_index_(iterator_index),
           processed_task_ids_(processed_task_idcs),
-          task_ids_iterator_(processed_task_idcs->begin()),
           max_outstanding_requests_(params.dataset->max_outstanding_requests_),
           max_request_pipelining_per_task_(
-              params.dataset->max_request_pipelining_per_task_) {}
+              params.dataset->max_request_pipelining_per_task_) {
+                for (auto it = processed_task_idcs->begin(); it != processed_task_idcs->end(); it++) {
+                  int64_t task_id = *it;
+                  expected_task_ids_.push(task_id);
+                  processing_task_ids_.push(task_id);
+                }
+              }
 
     ~Iterator() override {
       // TODO (DADA) - revert to 1
@@ -575,11 +581,10 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
     // DRR
     std::vector<int64_t> *processed_task_ids_; // not owned
-    std::vector<int64_t>::iterator task_ids_iterator_;
 
     // DRR
-    std::queue<int64_t> expected_task_ids_;
-    std::vector<int64_t> skipped_task_ids_;
+    std::queue<int64_t> processing_task_ids_;  // For GetAnyTaskToProcess
+    std::queue<int64_t> expected_task_ids_;  // For the result queue
 
     struct Task {
       Task(const TaskInfo& info,
@@ -1192,7 +1197,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
                      "and making it non-fatal in order to wait for the "
                      "dispatcher to reassign task to different worker. ["
                   << s << "]";
-          skipped_task_ids_.push_back(task_to_process->info.task_id());
+          processing_task_ids_.push(task_to_process->info.task_id());
         } else if (!s.ok()) {
           mutex_lock l(mu_);
           VLOG(0) << "Failed to get element from worker "
@@ -1321,27 +1326,11 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     }
 
     int64_t GetTaskId() {
-      if (!skipped_task_ids_.empty()) {
-        int64_t task_id = skipped_task_ids_.back();
-        return task_id;
-      }
-      if (task_ids_iterator_ == processed_task_ids_->end()) {
-        VLOG(0) << "REACHED END!!!";
-        VLOG(0) << "Remaining tasks:";
-        for (auto& task: tasks_) {
-          VLOG(0) << "  - " << task->info.task_id();
-        }
-        assert(false);
-      }
-      return *task_ids_iterator_;
+      return *processing_task_ids_.front();
     }
 
     void IncrementTaskId() {
-      if (!skipped_task_ids_.empty()) {
-        skipped_task_ids_.pop_back();
-      } else {
-        *task_ids_iterator_++;
-      }
+      processing_task_ids_.pop()
     }
 
     // Searches for a task to process, visiting tasks in-order and giving every
