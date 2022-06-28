@@ -1324,7 +1324,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       return nullptr;
     }
 
-    bool ReplayMode() {
+    bool ReplayMode() const {
       return iterator_index_ > 1;
     }
 
