@@ -1184,7 +1184,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           }
           int64_t deadline_for_non_rr = Env::Default()->NowMicros() + timeout;
           Result r;
-          s = GetElementTraced(task_to_process.get(), ReplayMode() ? deadline_micros : deadline_for_non_rr,
+          s = GetElementTraced(task_to_process.get(), deadline_for_non_rr,
                                /*enqueue_result=*/true, r);
         }
         if (errors::IsDeadlineExceeded(s) && !StrictRoundRobin()) {
@@ -1192,6 +1192,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
                      "and making it non-fatal in order to wait for the "
                      "dispatcher to reassign task to different worker. ["
                   << s << "]";
+          skipped_task_ids_.push_back(task->info.task_id());
         } else if (!s.ok()) {
           mutex_lock l(mu_);
           VLOG(0) << "Failed to get element from worker "
@@ -1579,7 +1580,6 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
                       << (int64_t)get_element_result.element_index
                       << " but as looking for " << task->next_index
                       << " (Task: " << task->info.task_id() << ")";
-              skipped_task_ids_.push_back(task->info.task_id());
 
               if (get_element_result.components.size() > 0) {
                 Variant x = get_element_result.components.at(0);
