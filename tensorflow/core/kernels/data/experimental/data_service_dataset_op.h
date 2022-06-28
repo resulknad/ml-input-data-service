@@ -15,7 +15,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_DATA_EXPERIMENTAL_DATA_SERVICE_DATASET_OP_H_
 #define TENSORFLOW_CORE_KERNELS_DATA_EXPERIMENTAL_DATA_SERVICE_DATASET_OP_H_
 
-#include <cstdint>
 #include <deque>
 #include <memory>
 #include <string>
@@ -30,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "third_party/tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace data {
@@ -40,12 +38,7 @@ namespace data {
 class IterationCounter : public ResourceBase {
  public:
   IterationCounter() : counter_(0) {}
-  struct ResultId {
-    int64_t task_id;
-    int64_t element_id;
-  };
-
-  std::vector<ResultId> processed_task_ids_;
+  std::vector<int64_t> processed_task_ids_;
 
   std::string DebugString() const override {
     mutex_lock l(mu_);
