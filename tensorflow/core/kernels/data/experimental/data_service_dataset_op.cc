@@ -1330,7 +1330,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     }
 
     void IncrementTaskId() {
-      processing_task_ids_.pop()
+      processing_task_ids_.pop();
     }
 
     // Searches for a task to process, visiting tasks in-order and giving every
