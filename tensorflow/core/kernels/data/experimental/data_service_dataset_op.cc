@@ -1657,21 +1657,21 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         // if (expected_task_ids_.empty()) {
         //   return false;
         // }
-        VLOG(0) << "ResultReady: looking for task_id" << GetTaskId();
+        VLOG(0) << "ResultReady: looking for task_id" << expected_task_ids_.front();
         // VLOG(0) << "Looking for task_id: " << expected_task_ids_.front();
         for (auto it = results_.begin(); it != results_.end(); ++it) {
-          if (it->task_id == GetTaskId()) {
+          if (it->task_id == expected_task_ids_.front()) {
             // VLOG(0) << "Swapping";
             // VLOG(0) << "Front task_id: " << results_.front().task_id;
             // std::swap(results_.front(), *it);
             // VLOG(0) << "Front task_id: " << results_.front().task_id;
             // break;
-            VLOG(0) << "ResultReady: found task_id=" << GetTaskId() << " ready=" << it->ready;
+            VLOG(0) << "ResultReady: found task_id=" << expected_task_ids_.front() << " ready=" << it->ready;
             return it->ready;
           }
         }
         // EASL: task_id not found at this point
-        VLOG(0) << "ResultReady: did not find task_id" << GetTaskId();
+        VLOG(0) << "ResultReady: did not find task_id" << expected_task_ids_.front();
         return false;
       }
       VLOG(0) << "Returning ready";
