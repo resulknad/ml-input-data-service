@@ -1192,7 +1192,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
                      "and making it non-fatal in order to wait for the "
                      "dispatcher to reassign task to different worker. ["
                   << s << "]";
-          skipped_task_ids_.push_back(task->info.task_id());
+          skipped_task_ids_.push_back(r.task_id);
         } else if (!s.ok()) {
           mutex_lock l(mu_);
           VLOG(0) << "Failed to get element from worker "
