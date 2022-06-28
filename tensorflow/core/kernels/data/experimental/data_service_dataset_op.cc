@@ -1322,7 +1322,6 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     int64_t GetTaskId() {
       if (!skipped_task_ids_.empty()) {
         int64_t task_id = skipped_task_ids_.back();
-        skipped_task_ids_.pop_back();
         return task_id;
       }
       if (task_ids_iterator_ == processed_task_ids_->end()) {
@@ -1336,8 +1335,12 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       return *task_ids_iterator_;
     }
 
-    int64_t IncrementTaskId() {
-      return *task_ids_iterator_++;
+    void IncrementTaskId() {
+      if (!skipped_task_ids_.empty()) {
+        skipped_task_ids_.pop_back();
+      } else {
+        *task_ids_iterator_++;
+      }
     }
 
     // Searches for a task to process, visiting tasks in-order and giving every
