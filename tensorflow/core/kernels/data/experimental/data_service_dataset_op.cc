@@ -1338,19 +1338,20 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       VLOG(0) << "Epoch: " << iterator_index_;
       if (ReplayMode()) {
         int64_t task_id = GetTaskId();
-        std::shared_ptr<Task>& found_task;
         size_t count = 0;
         for (auto& task: tasks_) {
           if (task->info.task_id() == task_id) {
             count++;
-            found_task = task;
           }
         }
         VLOG(0) << "GetAnyTaskToProcess: task_id=" << task_id << " count=" << count;
-        if (count) {
-          IncrementTaskId();
-          return found_task
+        for (auto& task: tasks_) {
+          if (task->info.task_id() == task_id) {
+            IncrementTaskId();
+            return task;
+          }
         }
+        VLOG(0) << "GetAnyTaskToProcess: task_id=" << task_id << " not found";
         return nullptr;
         // TODO: Above code breaks pipeline
       }
