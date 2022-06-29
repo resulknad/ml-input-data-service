@@ -5835,7 +5835,7 @@ class DeterministicDataset(UnaryDataset):
         # seed1 = tf.strings.to_hash_bucket_fast(el,2**20)
         # seed2 = tf.strings.to_hash_bucket_fast(tf.strings.as_string(seed1),2**20)
         return [el, tf.constant([1,2], dtype=tf.int64)]
-    variant_tensor = ParallelMapDataset(input_dataset, add_seed, num_parallel_calls=tf.data.experimental.AUTOTUNE, deterministic=True)._variant_tensor
+    variant_tensor = ParallelMapDataset(input_dataset, add_seed, num_parallel_calls=128, deterministic=True)._variant_tensor
     #logging_ops.print_v2 (variant_tensor)
     super(DeterministicDataset, self).__init__(input_dataset,
                                                     variant_tensor)
