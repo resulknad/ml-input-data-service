@@ -826,6 +826,8 @@ Status WriteVariantTensor(const Tensor& val, FileOutputBuffer* out,
   }
   env->RecursivelyCreateDir(out_dir_tmp);
 
+  l.mutex()->unlock_shared();
+
   for (int i = 0; i < checkpoint_data.size(); i++) {
     auto str_data = checkpoint_data.at(i)->SerializeAsString();
     // VLOG(0) << "DebugString: " << checkpoint_data[i]->DebugString();
