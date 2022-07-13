@@ -767,14 +767,6 @@ Status WriteVariantTensor(const Tensor& val, FileOutputBuffer* out,
   // StopTask(task);
 
   VLOG(0) << "Acquiring locks...";
-
-  // since we only read from the task, it's fine to have the shared lock
-  // this allows for checkpointing and heartbeats to happen in parallel
-  tf_shared_lock l(task.mu);
-
-  // mutex_lock l2(mu_);
-  VLOG(0) << "Acquired locks...";
-
   // SAVING BUSINESS
   VLOG(0) << "DBK: entering SaveAndDeleteTask";
   std::unique_ptr<VariantTensorDataWriter> writer =
@@ -782,9 +774,19 @@ Status WriteVariantTensor(const Tensor& val, FileOutputBuffer* out,
   std::unique_ptr<SerializationContext> serialization_ctx;
   serialization_ctx =
       absl::make_unique<SerializationContext>(SerializationContext::Params{});
-  VLOG(0) << "DBK: calling iterator_->Save";
-  TF_RETURN_IF_ERROR(
-      task.task_runner->Save(serialization_ctx.get(), writer.get()));
+  {
+    // since we only read from the task, it's fine to have the shared lock
+    // this allows for checkpointing and heartbeats to happen in parallel
+    tf_shared_lock l(task.mu);
+
+    // mutex_lock l2(mu_);
+    VLOG(0) << "Acquired locks...";
+
+
+    VLOG(0) << "DBK: calling iterator_->Save";
+    TF_RETURN_IF_ERROR(
+        task.task_runner->Save(serialization_ctx.get(), writer.get()));
+  }
 
   // VLOG(0) << "DBK: calling get data on writer";
   // std::vector<std::unique_ptr<VariantTensorData>> data;
@@ -825,8 +827,6 @@ Status WriteVariantTensor(const Tensor& val, FileOutputBuffer* out,
         env->DeleteRecursively(out_dir_tmp, &undeleted_dirs, &undeleted_files));
   }
   env->RecursivelyCreateDir(out_dir_tmp);
-
-  l.mutex()->unlock_shared();
 
   for (int i = 0; i < checkpoint_data.size(); i++) {
     auto str_data = checkpoint_data.at(i)->SerializeAsString();
