@@ -632,14 +632,15 @@ void DataServiceWorkerImpl::TaskCheckpointingThread(Task& task)
           return;
         }
 
-        next_checkpoint =
-            Env::Default()->NowMicros() + checkpoint_freq_ms * 1000;
+
       }
 
       DBK_TRACE(" CHECKPOINT_START");
       auto s = SaveCheckpointToDisk(task);
       VLOG(0) << "SaveCheckpointToDisk ret val: " << s;
       DBK_TRACE(" CHECKPOINT_END");
+      next_checkpoint =
+          Env::Default()->NowMicros() + checkpoint_freq_ms * 1000;
     }
   }
 }
