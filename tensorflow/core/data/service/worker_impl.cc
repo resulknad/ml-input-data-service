@@ -636,11 +636,12 @@ void DataServiceWorkerImpl::TaskCheckpointingThread(Task& task)
       }
 
       DBK_TRACE(" CHECKPOINT_START");
-      auto s = SaveCheckpointToDisk(task);
+      int64_t checkpoint_was_done;
+      auto s = SaveCheckpointToDisk(task, checkpoint_was_done);
       VLOG(0) << "SaveCheckpointToDisk ret val: " << s;
       DBK_TRACE(" CHECKPOINT_END");
       next_checkpoint =
-          Env::Default()->NowMicros() + checkpoint_freq_ms * 1000;
+          checkpoint_was_done + checkpoint_freq_ms * 1000;
     }
   }
 }
@@ -747,7 +748,7 @@ DataServiceWorkerImpl::MakeDatasetIterator(standalone::Dataset& dataset,
                                  task_def.processing_mode_def().DebugString());
 }
 
-Status DataServiceWorkerImpl::SaveCheckpointToDisk(Task& task) {
+Status DataServiceWorkerImpl::SaveCheckpointToDisk(Task& task, int64_t& checkpoint_was_done) {
   /*
     std::unique_ptr<WritableFile> dump_file;
     string file_name = strings::StrCat(gpu_memory_map_file, "_", Name(), ".",
@@ -785,9 +786,12 @@ Status WriteVariantTensor(const Tensor& val, FileOutputBuffer* out,
 
 
     VLOG(0) << "DBK: calling iterator_->Save";
+    DBK_TRACE(" ITERATOR_SAVE");
     TF_RETURN_IF_ERROR(
         task.task_runner->Save(serialization_ctx.get(), writer.get()));
+    DBK_TRACE(" ITERATOR_SAVE_DONE");
   }
+  checkpoint_was_done = Env::Default()->NowMicros();
 
   // VLOG(0) << "DBK: calling get data on writer";
   // std::vector<std::unique_ptr<VariantTensorData>> data;
@@ -799,6 +803,7 @@ Status WriteVariantTensor(const Tensor& val, FileOutputBuffer* out,
 
   auto env = tensorflow::Env::Default();
 
+  DBK_TRACE(" TO_DISK");
   std::vector<const VariantTensorData*> checkpoint_data{};
   writer->GetData(&checkpoint_data);
 
@@ -845,6 +850,7 @@ Status WriteVariantTensor(const Tensor& val, FileOutputBuffer* out,
   VLOG(0) << "renaming";
   TF_RETURN_IF_ERROR(env->RenameFile(out_dir_tmp, out_dir));
   VLOG(0) << "post renaming";
+  DBK_TRACE(" TO_DISK_DONE");
   // VLOG(0) << "DBK: erasing task";
   // tasks_.erase(task_id);
   return Status::OK();
