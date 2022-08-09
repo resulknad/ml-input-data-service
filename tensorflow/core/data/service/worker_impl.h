@@ -101,7 +101,7 @@ class DataServiceWorkerImpl {
     bool cancelled = false;
   };
 
-  Status SaveCheckpointToDisk(Task& task) TF_LOCKS_EXCLUDED(mu_);
+  Status SaveCheckpointToDisk(Task& task, int64_t& checkpoint_was_done) TF_LOCKS_EXCLUDED(mu_);
 
 Status GetCheckpointFromDisk(
     DataServiceWorkerImpl::Task& task,

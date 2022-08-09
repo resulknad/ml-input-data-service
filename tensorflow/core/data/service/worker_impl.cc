@@ -632,14 +632,16 @@ void DataServiceWorkerImpl::TaskCheckpointingThread(Task& task)
           return;
         }
 
-        next_checkpoint =
-            Env::Default()->NowMicros() + checkpoint_freq_ms * 1000;
+
       }
 
       DBK_TRACE(" CHECKPOINT_START");
-      auto s = SaveCheckpointToDisk(task);
+      int64_t checkpoint_was_done;
+      auto s = SaveCheckpointToDisk(task, checkpoint_was_done);
       VLOG(0) << "SaveCheckpointToDisk ret val: " << s;
       DBK_TRACE(" CHECKPOINT_END");
+      next_checkpoint =
+          checkpoint_was_done + checkpoint_freq_ms * 1000;
     }
   }
 }
@@ -746,7 +748,7 @@ DataServiceWorkerImpl::MakeDatasetIterator(standalone::Dataset& dataset,
                                  task_def.processing_mode_def().DebugString());
 }
 
-Status DataServiceWorkerImpl::SaveCheckpointToDisk(Task& task) {
+Status DataServiceWorkerImpl::SaveCheckpointToDisk(Task& task, int64_t& checkpoint_was_done) {
   /*
     std::unique_ptr<WritableFile> dump_file;
     string file_name = strings::StrCat(gpu_memory_map_file, "_", Name(), ".",
@@ -767,14 +769,6 @@ Status WriteVariantTensor(const Tensor& val, FileOutputBuffer* out,
   // StopTask(task);
 
   VLOG(0) << "Acquiring locks...";
-
-  // since we only read from the task, it's fine to have the shared lock
-  // this allows for checkpointing and heartbeats to happen in parallel
-  tf_shared_lock l(task.mu);
-
-  // mutex_lock l2(mu_);
-  VLOG(0) << "Acquired locks...";
-
   // SAVING BUSINESS
   VLOG(0) << "DBK: entering SaveAndDeleteTask";
   std::unique_ptr<VariantTensorDataWriter> writer =
@@ -782,9 +776,22 @@ Status WriteVariantTensor(const Tensor& val, FileOutputBuffer* out,
   std::unique_ptr<SerializationContext> serialization_ctx;
   serialization_ctx =
       absl::make_unique<SerializationContext>(SerializationContext::Params{});
-  VLOG(0) << "DBK: calling iterator_->Save";
-  TF_RETURN_IF_ERROR(
-      task.task_runner->Save(serialization_ctx.get(), writer.get()));
+  {
+    // since we only read from the task, it's fine to have the shared lock
+    // this allows for checkpointing and heartbeats to happen in parallel
+    tf_shared_lock l(task.mu);
+
+    // mutex_lock l2(mu_);
+    VLOG(0) << "Acquired locks...";
+
+
+    VLOG(0) << "DBK: calling iterator_->Save";
+    DBK_TRACE(" ITERATOR_SAVE");
+    TF_RETURN_IF_ERROR(
+        task.task_runner->Save(serialization_ctx.get(), writer.get()));
+    DBK_TRACE(" ITERATOR_SAVE_DONE");
+  }
+  checkpoint_was_done = Env::Default()->NowMicros();
 
   // VLOG(0) << "DBK: calling get data on writer";
   // std::vector<std::unique_ptr<VariantTensorData>> data;
@@ -796,6 +803,7 @@ Status WriteVariantTensor(const Tensor& val, FileOutputBuffer* out,
 
   auto env = tensorflow::Env::Default();
 
+  DBK_TRACE(" TO_DISK");
   std::vector<const VariantTensorData*> checkpoint_data{};
   writer->GetData(&checkpoint_data);
 
@@ -842,6 +850,7 @@ Status WriteVariantTensor(const Tensor& val, FileOutputBuffer* out,
   VLOG(0) << "renaming";
   TF_RETURN_IF_ERROR(env->RenameFile(out_dir_tmp, out_dir));
   VLOG(0) << "post renaming";
+  DBK_TRACE(" TO_DISK_DONE");
   // VLOG(0) << "DBK: erasing task";
   // tasks_.erase(task_id);
   return Status::OK();
@@ -923,7 +932,7 @@ void DataServiceWorkerImpl::TaskCompletionThread() TF_LOCKS_EXCLUDED(mu_) {
 
     // EASL - Send heartbeat for metadata: makes sure the metrics have been sent
     // to the dispatcher at least once before the job gets deleted.
-    VLOG(1) << "EASL - calling heartbeat from taskCompletionThread";
+    VLOG(0) << "EASL - calling heartbeat from taskCompletionThread";
     Status s = Heartbeat();
     if (!s.ok()) {
       LOG(WARNING) << "Failed to send heartbeat to dispatcher: " << s;
@@ -945,7 +954,7 @@ Status DataServiceWorkerImpl::SendTaskUpdates() TF_LOCKS_EXCLUDED(mu_) {
   std::vector<TaskProgress> task_progress;
   {
     mutex_lock l(mu_);
-    VLOG(3) << "Sending " << pending_completed_tasks_.size()
+    VLOG(0) << "Sending " << pending_completed_tasks_.size()
             << " task updates to dispatcher";
     task_progress.reserve(pending_completed_tasks_.size());
     for (int task_id : pending_completed_tasks_) {
@@ -960,7 +969,7 @@ Status DataServiceWorkerImpl::SendTaskUpdates() TF_LOCKS_EXCLUDED(mu_) {
   for (const auto& update : task_progress) {
     pending_completed_tasks_.erase(update.task_id());
   }
-  VLOG(3) << "Sent " << task_progress.size() << " task updates ";
+  VLOG(0) << "Sent " << task_progress.size() << " task updates ";
   return Status::OK();
 }
 
@@ -988,6 +997,7 @@ void DataServiceWorkerImpl::HeartbeatThread() TF_LOCKS_EXCLUDED(mu_) {
         continue;
       }
     }
+    VLOG(0) << "Heartbeat from HeartbeatThread";
     Status s = Heartbeat();
     if (!s.ok()) {
       VLOG(0) << "Failed to send heartbeat to dispatcher: " << s;
@@ -1079,7 +1089,8 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
     for (const auto& task : response.new_tasks()) {
       VLOG(0) << "Received new task from dispatcher with id " << task.task_id();
       if (deleted_tasks_.contains(task.task_id()) ||
-          finished_tasks_.contains(task.task_id())) {
+          finished_tasks_.contains(task.task_id()) ||
+          pending_completed_tasks_.contains(task.task_id())) {
         VLOG(0) << "(DBK) Found task id " << task.task_id()
                 << " in deleted or finished tasks";
         continue;
@@ -1101,8 +1112,8 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
         continue;
       }
       tasks_to_delete.push_back(std::move(tasks_[task_id]));
-      tasks_.erase(task_id);
       finished_tasks_.insert(task_id);
+      tasks_.erase(task_id);
     }
   }
   for (const auto& task : tasks_to_delete) {
@@ -1129,7 +1140,7 @@ void DataServiceWorkerImpl::DeleteLocalTask(const TaskInfo& task_info)
     deleted_tasks_.insert(task_info.task_id());
   }
 
-  VLOG(2) << "Delete local task " << task_info.task_id() << " from worker "
+  VLOG(0) << "Delete local task " << task_info.task_id() << " from worker "
           << worker_address_ << " at the request of the client.";
   StopTask(*task);
 }

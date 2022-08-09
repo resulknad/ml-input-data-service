@@ -473,8 +473,7 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
   // VLOG(0) << "before check";
   TF_RETURN_IF_ERROR(CheckStarted());
   // VLOG(0) << "after check";
-  // VLOG(0) << "Received worker heartbeat request from worker "
-  // << request->worker_address();
+
   mutex_lock l(mu_);
   // VLOG(0) << "Acquired worker heratbeat lock...";
 
@@ -482,6 +481,18 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
   // Assigned tasks from the perspective of the dispatcher.
   std::vector<std::shared_ptr<const Task>> assigned_tasks;
   Status s = state_.TasksForWorker(worker_address, assigned_tasks);
+
+  string tasks_desc;
+  for (const auto& task : request->current_tasks()) {
+    tasks_desc.append(std::to_string(task) + ", ");
+  }
+  string tasks_ass_desc;
+  for (const auto& task : assigned_tasks) {
+    tasks_ass_desc.append(std::to_string(task->task_id) + ", ");
+  }
+  VLOG(0) << "Received worker heartbeat request from worker "
+          << request->worker_address() << ", curr: " << tasks_desc
+          << "; assigned: " << tasks_ass_desc;
 
   std::shared_ptr<const Worker> worker;
   s = state_.WorkerFromAddress(worker_address, worker);
@@ -611,7 +622,7 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
     }
   }
 
-  VLOG(4) << "Finished worker heartbeat for worker at address "
+  VLOG(0) << "Finished worker heartbeat for worker at address "
           << request->worker_address();
   return Status::OK();
 }
@@ -629,7 +640,7 @@ Status DataServiceDispatcherImpl::WorkerUpdate(
       TF_RETURN_IF_ERROR(state_.TaskFromId(task_id, task));
       if (update.completed()) {
         if (task->finished) {
-          VLOG(1) << "Received completion update for already-finished task "
+          VLOG(0) << "Received completion update for already-finished task "
                   << task->task_id << " on worker " << task->worker_address;
           continue;
         }
@@ -1225,7 +1236,15 @@ Status DataServiceDispatcherImpl::CreateJob(
   worker_count = job_metrics->target_worker_count_;
 
   if (config_.scaling_policy() == 2) {
-    worker_count = 100;
+    auto target_str = getenv("DBK_TARGET_WORKERS");
+    int64_t target = 100;
+    if (target_str != nullptr) {
+      target = strtoul(target_str, NULL, 10);
+      VLOG(0) << "read target worker val of " << target << " from env";
+    } else {
+      VLOG(0) << "no target worker val read, used default";
+    }
+    worker_count = target;
   }
 
   if (job_type == "PUT" || job_type == "PUT_SOURCE") {
@@ -1599,7 +1618,15 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
       }
     } else if (config_.scaling_policy() == 2) {
       metadata_store_.UnsetJobIsScaling(job->job_id);
-      int64 target_worker_count = state_.ListWorkers().size();
+      auto target_str = getenv("DBK_TARGET_WORKERS");
+      int64_t target = 100;
+      if (target_str != nullptr) {
+        target = strtoul(target_str, NULL, 10);
+        VLOG(0) << "read target worker val of " << target << " from env";
+      } else {
+        VLOG(0) << "no target worker val read, used default";
+      }
+      int64 target_worker_count = target;
       if (job->target_worker_count != target_worker_count) {
         Update update;
         JobTargetWorkerCountUpdate* job_target_worker_count_update =

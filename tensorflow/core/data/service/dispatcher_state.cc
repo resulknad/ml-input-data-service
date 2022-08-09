@@ -14,10 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/service/dispatcher_state.h"
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <vector>
-#include <algorithm>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
@@ -115,7 +115,8 @@ void DispatcherState::RegisterWorker(
   std::string address = register_worker.worker_address();
   DCHECK(!workers_.contains(address));
   DCHECK(!avail_workers_.contains(address));
-  // TODO(DanGraur): Could there be an issue that we're creating separate pointers?
+  // TODO(DanGraur): Could there be an issue that we're creating separate
+  // pointers?
   workers_[address] = std::make_shared<Worker>(register_worker);
   avail_workers_[address] = std::make_shared<Worker>(register_worker);
   tasks_by_worker_[address] =
@@ -195,7 +196,8 @@ void DispatcherState::ReleaseJobClient(
 void DispatcherState::GarbageCollectJob(
     const GarbageCollectJobUpdate& garbage_collect_job) {
   int64_t job_id = garbage_collect_job.job_id();
-  for(auto it=tasks_by_job_[job_id].begin(); it!=tasks_by_job_[job_id].end(); it++) {
+  for (auto it = tasks_by_job_[job_id].begin();
+       it != tasks_by_job_[job_id].end(); it++) {
     it->second->finished = true;
     tasks_by_worker_[it->second->worker_address].erase(it->second->task_id);
   }
@@ -203,7 +205,8 @@ void DispatcherState::GarbageCollectJob(
   jobs_[job_id]->garbage_collected = true;
 
   // EASL - Update available workers.
-  for (auto it = workers_by_job_[job_id].begin(); it != workers_by_job_[job_id].end(); ++it) {
+  for (auto it = workers_by_job_[job_id].begin();
+       it != workers_by_job_[job_id].end(); ++it) {
     VLOG(0) << "(GarbageCollectJob) Releasing worker at address " << it->first
             << " for job " << job_id;
     avail_workers_[it->first] = it->second;
@@ -221,7 +224,7 @@ void DispatcherState::RemoveTask(const RemoveTaskUpdate& remove_task) {
   avail_workers_[task->worker_address] = workers_[task->worker_address];
   ending_tasks_by_job_[task->job->job_id].erase(task->task_id);
   tasks_.erase(task->task_id);
-  VLOG(1) << "Removed task " << remove_task.task_id() << " from worker "
+  VLOG(0) << "Removed task " << remove_task.task_id() << " from worker "
           << task->worker_address;
 }
 
@@ -265,13 +268,16 @@ void DispatcherState::CreateTask(const CreateTaskUpdate& create_task) {
   int64_t task_id = create_task.task_id();
   auto& task = tasks_[task_id];
   if (task != nullptr) {
-    VLOG(0) << "DispatcherState: updating task worker address / worker. Previously: "
-      << task->worker_address << ", current/new: " << create_task.worker_address();
+    VLOG(0) << "DispatcherState: updating task worker address / worker. "
+               "Previously: "
+            << task->worker_address
+            << ", current/new: " << create_task.worker_address();
     tasks_by_worker_[task->worker_address].erase(task->task_id);
 
     task->worker_address = create_task.worker_address();
     task->transfer_address = create_task.transfer_address();
     tasks_by_worker_[create_task.worker_address()][task->task_id] = task;
+    avail_workers_.erase(create_task.worker_address());
   } else {
     DCHECK_EQ(task, nullptr);
     auto& job = jobs_[create_task.job_id()];
@@ -292,7 +298,8 @@ void DispatcherState::FinishTask(const FinishTaskUpdate& finish_task) {
   task->finished = true;
   tasks_by_worker_[task->worker_address].erase(task->task_id);
   jobs_[task->job->job_id]->current_worker_count--;
-  // Do not remove ended tasks because it's used as a reference for already ended tasks.
+  // Do not remove ended tasks because it's used as a reference for already
+  // ended tasks.
   ending_tasks_by_job_[task->job->job_id].erase(task_id);
   tasks_by_job_[task->job->job_id].erase(task_id);
 
@@ -304,7 +311,8 @@ void DispatcherState::FinishTask(const FinishTaskUpdate& finish_task) {
           << " for job " << task->job->job_id;
 
   bool all_finished = true;
-  for(auto it = tasks_by_job_[task->job->job_id].begin(); it != tasks_by_job_[task->job->job_id].end(); ++it){
+  for (auto it = tasks_by_job_[task->job->job_id].begin();
+       it != tasks_by_job_[task->job->job_id].end(); ++it) {
     if (!it->second->finished) {
       all_finished = false;
     }
@@ -312,10 +320,10 @@ void DispatcherState::FinishTask(const FinishTaskUpdate& finish_task) {
   jobs_[task->job->job_id]->finished = all_finished;
   // When a job completes, mark its workers as available
   if (all_finished) {
-    VLOG(0) << "(FinishTask) Job " << task->job->job_id << " finished: "
-            << all_finished;
+    VLOG(0) << "(FinishTask) Job " << task->job->job_id
+            << " finished: " << all_finished;
     workers_by_job_[task->job->job_id].clear();
-    ending_tasks_by_job_[task->job->job_id].clear(); // Or erase?
+    ending_tasks_by_job_[task->job->job_id].clear();  // Or erase?
   }
 }
 
@@ -392,56 +400,56 @@ DispatcherState::ListAvailableWorkers() const {
 }
 
 std::vector<std::shared_ptr<const DispatcherState::Worker>>
-DispatcherState::ReserveWorkers(
-    int64 job_id, int64 target_num_workers) {
-  // DCHECK(num_workers <= avail_workers_.size()); 
+DispatcherState::ReserveWorkers(int64 job_id, int64 target_num_workers) {
+  // DCHECK(num_workers <= avail_workers_.size());
   jobs_[job_id]->target_worker_count = target_num_workers;
   // If the number of required workers is below those available, we just assign
   // as many as there are available at this epoch's scheduling time.
-  int64 num_workers = target_num_workers <= 0 
-    || target_num_workers > avail_workers_.size() ? avail_workers_.size() 
-    : target_num_workers;
+  int64 num_workers =
+      target_num_workers <= 0 || target_num_workers > avail_workers_.size()
+          ? avail_workers_.size()
+          : target_num_workers;
   std::vector<std::shared_ptr<const Worker>> workers;
   workers.reserve(num_workers);
-  VLOG(0) << "(ReserveWorkers) User got " << num_workers << " workers from " 
+  VLOG(0) << "(ReserveWorkers) User got " << num_workers << " workers from "
           << "target " << target_num_workers << " workers";
-  for (auto it = avail_workers_.begin(); it != avail_workers_.end(); ) {
+  for (auto it = avail_workers_.begin(); it != avail_workers_.end();) {
     num_workers--;
     workers.push_back(it->second);
-    VLOG(0) << "(ReserveWorkers) Assigning worker at address " 
+    VLOG(0) << "(ReserveWorkers) Assigning worker at address "
             << it->second->address << " to job " << job_id;
     workers_by_job_[job_id][it->second->address] = it->second;
     jobs_by_worker_[it->second->address][job_id] = jobs_[job_id];
     avail_workers_.erase(it++);
-    if (num_workers == 0)
-      break;
+    if (num_workers == 0) break;
   }
-  VLOG(0) << "(ReserveWorkers) Number of workers for job " << job_id << " is: "
-          << workers_by_job_[job_id].size();
+  VLOG(0) << "(ReserveWorkers) Number of workers for job " << job_id
+          << " is: " << workers_by_job_[job_id].size();
   return workers;
 }
-
 
 // Go through jobs linearly and reassign free workers to jobs that miss workers.
 void DispatcherState::ReassignFreeWorkers() {
   auto job_iter = jobs_.begin();
-  if(job_iter == jobs_.end()){
+  if (job_iter == jobs_.end()) {
     // Went through all jobs, can return
     return;
   }
-  VLOG(3) << "EASL (ReassignFreeWorkers) - avail_workers_.size() " << avail_workers_.size();
-  for(auto it = avail_workers_.begin(); it != avail_workers_.end(); it++){
+  VLOG(3) << "EASL (ReassignFreeWorkers) - avail_workers_.size() "
+          << avail_workers_.size();
+  for (auto it = avail_workers_.begin(); it != avail_workers_.end(); it++) {
     // Get a job in need of workers
     std::shared_ptr<Job> job = job_iter->second;
     int64 num_assigned_workers = workers_by_job_[job->job_id].size();
-    while (job->finished || num_assigned_workers == job->target_worker_count){
+    while (job->finished || num_assigned_workers == job->target_worker_count) {
       // Check if split provider has reached eos
-      if (job->distributed_epoch_state.has_value()){
-        for (auto repetition : job->distributed_epoch_state.value().repetitions){
-          if (repetition!=0){
+      if (job->distributed_epoch_state.has_value()) {
+        for (auto repetition :
+             job->distributed_epoch_state.value().repetitions) {
+          if (repetition != 0) {
             // (Damien) We only allow for one repetitions per input pipeline.
             job_iter++;
-            if(job_iter == jobs_.end()){
+            if (job_iter == jobs_.end()) {
               // Went through all jobs, can return
               return;
             }
@@ -449,10 +457,11 @@ void DispatcherState::ReassignFreeWorkers() {
           }
         }
       } else {
-        VLOG(0) << "Dynamic scaling with parallel epochs mode may lead to infinite dataset.";
+        VLOG(0) << "Dynamic scaling with parallel epochs mode may lead to "
+                   "infinite dataset.";
       }
       job_iter++;
-      if(job_iter == jobs_.end()){
+      if (job_iter == jobs_.end()) {
         // Went through all jobs, can return
         return;
       }
@@ -476,23 +485,28 @@ void DispatcherState::UpdateJobTargetWorkerCount(
   std::shared_ptr<Job> job = jobs_[job_id];
 
   VLOG(3) << "Got request for worker count change:\n"
-               << " > job_target: " << job->target_worker_count << "\n"
-               << " > current: " << job->current_worker_count << "\n"
-               << " > request: " << job_target_worker_count_update.target_worker_count();
+          << " > job_target: " << job->target_worker_count << "\n"
+          << " > current: " << job->current_worker_count << "\n"
+          << " > request: "
+          << job_target_worker_count_update.target_worker_count();
 
-  if (job->target_worker_count < job_target_worker_count_update.target_worker_count()){
-    VLOG(0) << "EASL (UpdateJobTargetWorkerCount) - Increased worker count from "
-    << job->target_worker_count << " to target " << job_target_worker_count_update.target_worker_count();
-  } else if (job->current_worker_count > job_target_worker_count_update.target_worker_count()){
+  if (job->target_worker_count <
+      job_target_worker_count_update.target_worker_count()) {
+    VLOG(0)
+        << "EASL (UpdateJobTargetWorkerCount) - Increased worker count from "
+        << job->target_worker_count << " to target "
+        << job_target_worker_count_update.target_worker_count();
+  } else if (job->current_worker_count >
+             job_target_worker_count_update.target_worker_count()) {
     // Remove only created tasks..
-    VLOG(0) << "EASL (UpdateJobTargetWorkerCount) - Decreased worker count from "
-            << job->current_worker_count << " to target " << job_target_worker_count_update.target_worker_count();
-
-
+    VLOG(0)
+        << "EASL (UpdateJobTargetWorkerCount) - Decreased worker count from "
+        << job->current_worker_count << " to target "
+        << job_target_worker_count_update.target_worker_count();
 
     int64 tasks_currently_being_ended = 0;
     for (auto task : tasks_by_job_[job_id]) {
-      if (ending_tasks_by_job_[job_id].contains(task.second->task_id)){
+      if (ending_tasks_by_job_[job_id].contains(task.second->task_id)) {
         // task is still running (contained in tasks_by_job)
         // but also in ending, which means we are waiting for it
         // to finish processing all of its splits
@@ -500,37 +514,42 @@ void DispatcherState::UpdateJobTargetWorkerCount(
       }
     }
 
-    int64 num_tasks_to_end  =
-        std::max((int64) 0,(int64) (job->current_worker_count - job_target_worker_count_update.target_worker_count() - tasks_currently_being_ended));
-    VLOG(0) << "EASL (UpdateJobTargetWorkerCount) - Tasks currently being ended: " << tasks_currently_being_ended
-        << ", so looking to end: " << num_tasks_to_end - tasks_currently_being_ended << " (after max: " << num_tasks_to_end << ")";
-     
-    
+    int64 num_tasks_to_end = std::max(
+        (int64)0, (int64)(job->current_worker_count -
+                          job_target_worker_count_update.target_worker_count() -
+                          tasks_currently_being_ended));
+    VLOG(0)
+        << "EASL (UpdateJobTargetWorkerCount) - Tasks currently being ended: "
+        << tasks_currently_being_ended << ", so looking to end: "
+        << num_tasks_to_end - tasks_currently_being_ended
+        << " (after max: " << num_tasks_to_end << ")";
+
     // Find tasks to end early
     DCHECK(tasks_by_job_.contains(job_id));
     TasksById current_tasks = tasks_by_job_[job_id];
     auto it = current_tasks.begin();
-    for (int i=0; it!=current_tasks.end() && num_tasks_to_end>0; i++){
+    for (int i = 0; it != current_tasks.end() && num_tasks_to_end > 0; i++) {
       auto task = it->second;
       // Only add to list if not already there.
-      if (!ending_tasks_by_job_[job_id].contains(task->task_id)){
+      if (!ending_tasks_by_job_[job_id].contains(task->task_id)) {
         ending_tasks_by_job_[job_id][task->task_id] = task;
         num_tasks_to_end--;
-        VLOG(0) << "EASL - (UpdateJobTargetWorkerCount) - ending task " << task->task_id;
+        VLOG(0) << "EASL - (UpdateJobTargetWorkerCount) - ending task "
+                << task->task_id;
       }
       it++;
     }
-    if(num_tasks_to_end > 0){
-      VLOG(0) << "EASL (UpdateJobTargetWorkerCount) - not able to end enough tasks.";
+    if (num_tasks_to_end > 0) {
+      VLOG(0) << "EASL (UpdateJobTargetWorkerCount) - not able to end enough "
+                 "tasks.";
     }
   }
-  job->target_worker_count = job_target_worker_count_update.target_worker_count();
-
+  job->target_worker_count =
+      job_target_worker_count_update.target_worker_count();
 }
 
 void DispatcherState::UpdateTaskSplitProviderState(
     const TaskSplitProviderUpdate task_split_provider_update) {
-  
   // int64 task_id = 1;
   // int64 split_provider_index = 2;
   // int64 worker_cursor = 3;
@@ -540,26 +559,29 @@ void DispatcherState::UpdateTaskSplitProviderState(
   auto& task = tasks_[task_id];
   DCHECK_NE(task, nullptr);
 
-  int64_t split_provider_index = task_split_provider_update.split_provider_index();
+  int64_t split_provider_index =
+      task_split_provider_update.split_provider_index();
 
   DCHECK_LT(split_provider_index, task->split_provider_state.size());
   auto split_state = &task->split_provider_state[split_provider_index];
   DCHECK_NE(split_state, nullptr);
-  
+
   // update the mandatory worker_cursor
   split_state->worker_cursor = task_split_provider_update.worker_cursor();
 
   auto indices = &split_state->indices;
   // append any new indices
-  for (int i=0; i<task_split_provider_update.additional_indices_size(); i++) {
+  for (int i = 0; i < task_split_provider_update.additional_indices_size();
+       i++) {
     auto split = task_split_provider_update.additional_indices(i);
     indices->push_back(split);
   }
   split_state->worker_cursor = task_split_provider_update.worker_cursor();
 
-  VLOG(0) << "DispatcherState: Task" << task_id << ", cursor:"<<split_state->worker_cursor<<", list_length"<<split_state->indices.size();
+  VLOG(0) << "DispatcherState: Task" << task_id
+          << ", cursor:" << split_state->worker_cursor << ", list_length"
+          << split_state->indices.size();
 }
-
 
 std::vector<std::shared_ptr<const DispatcherState::Job>>
 DispatcherState::ListJobs() {
@@ -649,7 +671,7 @@ Status DispatcherState::TaskFromId(int64_t id,
 
 void DispatcherState::SetTaskJustReconnected(int64_t tid, bool val) {
   tasks_.at(tid)->just_reconnected = val;
-} 
+}
 
 Status DispatcherState::TasksForJob(
     int64_t job_id, std::vector<std::shared_ptr<const Task>>& tasks) const {
@@ -659,7 +681,8 @@ Status DispatcherState::TasksForJob(
   }
   tasks.clear();
   tasks.reserve(it->second.size());
-  for(auto task_it=it->second.begin(); task_it!=it->second.end(); task_it++) {
+  for (auto task_it = it->second.begin(); task_it != it->second.end();
+       task_it++) {
     tasks.push_back(task_it->second);
   }
   return Status::OK();
@@ -682,22 +705,24 @@ Status DispatcherState::TasksForWorker(
   return Status::OK();
 }
 
-Status DispatcherState::IsEarlyEndedTask(const int64 job_id, const int64 task_id, bool& is_early_ended_task){
+Status DispatcherState::IsEarlyEndedTask(const int64 job_id,
+                                         const int64 task_id,
+                                         bool& is_early_ended_task) {
   DCHECK(ending_tasks_by_job_.contains(job_id));
   is_early_ended_task = ending_tasks_by_job_[job_id].contains(task_id);
   return Status::OK();
 }
 
 void DispatcherState::AddFutureEndedJob(int64 job_id,
-  int32 split_provider_index) {
-  std::string key = std::to_string(job_id) + "_" + std::to_string(
-    split_provider_index);
+                                        int32 split_provider_index) {
+  std::string key =
+      std::to_string(job_id) + "_" + std::to_string(split_provider_index);
   future_terminated_split_providers_.insert(key);
 }
 bool DispatcherState::IsFutureEndedJob(int64 job_id,
-  int32 split_provider_index) {
-  std::string key = std::to_string(job_id) + "_" + std::to_string(
-    split_provider_index);
+                                       int32 split_provider_index) {
+  std::string key =
+      std::to_string(job_id) + "_" + std::to_string(split_provider_index);
   auto loc = future_terminated_split_providers_.find(key);
   return loc != future_terminated_split_providers_.end();
 }
